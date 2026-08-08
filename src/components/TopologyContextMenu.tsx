@@ -102,6 +102,15 @@ const styles = {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     padding: 4px 0;
     z-index: 10001;
+    /* Ponte anti-gap: evita fechar o submenu ao mover o mouse para a direita */
+    &::before {
+      content: '';
+      position: absolute;
+      left: -10px;
+      top: 0;
+      bottom: 0;
+      width: 10px;
+    }
   `,
 };
 
@@ -120,13 +129,29 @@ function itemIcon(item: ContextMenuItem): string {
 
 function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => void }) {
   const [open, setOpen] = useState(false);
+  const closeTimer = useRef<number | null>(null);
   const hasChildren = Boolean(item.children?.length);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimer.current != null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => setOpen(false), 180);
+  }, [clearCloseTimer]);
+
+  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
 
   const handleClick = useCallback(() => {
     if (item.disabled) {
       return;
     }
     if (hasChildren) {
+      setOpen((v) => !v);
       return;
     }
     item.onClick?.();
@@ -137,8 +162,18 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
     <div
       className={`${styles.item} ${item.disabled ? styles.itemDisabled : ''} ${item.variant === 'delete' ? styles.itemDelete : ''}`}
       onClick={handleClick}
-      onMouseEnter={() => hasChildren && setOpen(true)}
-      onMouseLeave={() => hasChildren && setOpen(false)}
+      onMouseEnter={() => {
+        if (!hasChildren) {
+          return;
+        }
+        clearCloseTimer();
+        setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (hasChildren) {
+          scheduleClose();
+        }
+      }}
     >
       <span
         className={
@@ -154,12 +189,16 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
       {item.label}
       {hasChildren && <span className={styles.submenuArrow}>▶</span>}
       {hasChildren && open && (
-        <div className={styles.submenu}>
+        <div
+          className={styles.submenu}
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
           {item.children!.map((child) => (
             <div
               key={child.id}
               className={`${styles.item} ${child.disabled ? styles.itemDisabled : ''}`}
-              onMouseDown={(e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (child.disabled) {
@@ -303,6 +342,8 @@ export function TopologyToolbar({
   onToggleNetworksLock,
   flowPaused,
   onToggleFlow,
+  isFullscreen,
+  onToggleFullscreen,
   showEditControls = true,
 }: {
   locked?: boolean;
@@ -315,6 +356,8 @@ export function TopologyToolbar({
   onToggleNetworksLock?: () => void;
   flowPaused: boolean;
   onToggleFlow: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
   showEditControls?: boolean;
 }) {
   const btnStyle = (active: boolean, warn = false, disabled = false): React.CSSProperties => ({
@@ -391,6 +434,15 @@ export function TopologyToolbar({
       >
         <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
         {flowPaused ? 'Tráfego pausado' : 'Pausar tráfego'}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        title={isFullscreen ? 'Sair da tela cheia (Esc)' : 'Abrir mapa em tela cheia'}
+        style={btnStyle(isFullscreen)}
+      >
+        <Icon name={isFullscreen ? 'compress-arrows' : 'expand-arrows-alt'} size="sm" />
+        {isFullscreen ? 'Sair tela cheia' : 'Tela cheia'}
       </button>
     </div>
   );

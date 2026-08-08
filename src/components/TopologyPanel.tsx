@@ -11,6 +11,7 @@ import {
 import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
+import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
@@ -20,6 +21,7 @@ const ICMP_REFRESH_MS = 60_000;
 
 export function TopologyPanel({ options, width, height, onOptionsChange }: Props) {
   const theme = useTheme2();
+  const dashboardEditing = useDashboardEditMode();
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
   const [icmpStatusMap, setIcmpStatusMap] = useState<HostStatusMap>({});
   const [icmpFetchDone, setIcmpFetchDone] = useState(false);
@@ -261,12 +263,12 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
         hostMetadata={hostMetadata}
         problemMap={problemMap}
         submapHosts={submapHosts}
-        onMapChange={commitChange}
-        onViewChange={handleViewChange}
-        onUndo={undo}
-        onRedo={redo}
-        canUndo={canUndo}
-        canRedo={canRedo}
+        onMapChange={dashboardEditing ? commitChange : undefined}
+        onViewChange={dashboardEditing ? handleViewChange : undefined}
+        onUndo={dashboardEditing ? undo : undefined}
+        onRedo={dashboardEditing ? redo : undefined}
+        canUndo={dashboardEditing && canUndo}
+        canRedo={dashboardEditing && canRedo}
       />
     </div>
   );

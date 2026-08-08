@@ -94,6 +94,16 @@ const styles = {
     &:active {
       cursor: grabbing;
     }
+    &:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      background: #111217;
+    }
+    &:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      background: #111217;
+    }
   `,
   wrapEditing: css`
     cursor: default;
@@ -275,6 +285,7 @@ export function TopologyCanvas({
   );
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const [flowPaused, setFlowPaused] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
@@ -465,6 +476,36 @@ export function TopologyCanvas({
   useEffect(() => {
     linkFlowRef.current?.setPaused(flowPaused);
   }, [flowPaused]);
+
+  useEffect(() => {
+    const syncFullscreen = () => {
+      const el = wrapRef.current;
+      setIsFullscreen(Boolean(el && document.fullscreenElement === el));
+    };
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    syncFullscreen();
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = wrapRef.current;
+    if (!el) {
+      return;
+    }
+    try {
+      if (document.fullscreenElement === el) {
+        await document.exitFullscreen();
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        await el.requestFullscreen();
+      } else {
+        await el.requestFullscreen();
+      }
+    } catch {
+      setToast('Não foi possível alternar a tela cheia neste navegador');
+      window.setTimeout(() => setToast(null), 3500);
+    }
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1560,6 +1601,8 @@ export function TopologyCanvas({
         onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
         flowPaused={flowPaused}
         onToggleFlow={() => setFlowPaused((p) => !p)}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={() => void toggleFullscreen()}
         showEditControls={canPersist}
       />
 

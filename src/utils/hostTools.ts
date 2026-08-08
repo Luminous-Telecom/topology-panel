@@ -60,13 +60,53 @@ function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+/**
+ * Abre esquema customizado (winbox://, ssh://, …).
+ * Dentro do iframe do painel Grafana, <a>.click() costuma ser ignorado —
+ * por isso tentamos janela top-level e iframe oculto.
+ */
 function tryProtocol(url: string): void {
+  // 1) Nova janela top-level (preserva user-gesture fora do iframe do painel)
+  let opened: Window | null = null;
+  try {
+    opened = window.open(url, '_blank');
+  } catch {
+    opened = null;
+  }
+  if (opened) {
+    window.setTimeout(() => {
+      try {
+        opened.close();
+      } catch {
+        /* ignore */
+      }
+    }, 800);
+    return;
+  }
+
+  // 2) iframe oculto — comum para URI handlers registrados no SO
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:fixed;left:-9999px';
+  document.body.appendChild(iframe);
+  try {
+    if (iframe.contentWindow) {
+      iframe.contentWindow.location.href = url;
+    } else {
+      iframe.src = url;
+    }
+  } catch {
+    iframe.src = url;
+  }
+  window.setTimeout(() => iframe.remove(), 2500);
+
+  // 3) Fallback <a>
   const a = document.createElement('a');
   a.href = url;
+  a.rel = 'noreferrer';
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
+  a.remove();
 }
 
 /** Executa ferramenta de acesso ao host (estilo The Dude). */
