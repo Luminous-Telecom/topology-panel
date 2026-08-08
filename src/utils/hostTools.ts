@@ -107,6 +107,16 @@ function tryProtocol(url: string): void {
   a.remove();
 }
 
+/** Base64 URL-safe (sem % — o handler do Windows corrompe %XX no %1). */
+function toB64Url(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  bytes.forEach((b) => {
+    bin += String.fromCharCode(b);
+  });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 function authPrefix(auth?: HostToolAuth): string {
   const user = auth?.username?.trim();
   if (!user) {
@@ -119,14 +129,22 @@ function authPrefix(auth?: HostToolAuth): string {
   return `${encodeURIComponent(user)}@`;
 }
 
-/** variant: classic = winbox.exe | novo = "Winbox Novo.exe" via winboxnovo:// */
-function winboxUrl(
-  ip: string,
-  variant: 'classic' | 'novo',
-  auth?: HostToolAuth
-): string {
+/**
+ * Winbox/WinBoxNovo — formato compatível com o launcher Windows:
+ *   winbox://IP?c=BASE64URL(user\\npass)
+ * Evita user:pass@IP com encodeURIComponent (quebra no registro do Windows).
+ */
+function winboxUrl(ip: string, variant: 'classic' | 'novo', auth?: HostToolAuth): string {
   const scheme = variant === 'novo' ? 'winboxnovo' : 'winbox';
-  return `${scheme}://${authPrefix(auth)}${ip}`;
+  const user = auth?.username?.trim();
+  const pass = auth?.password;
+  if (user && pass != null && pass !== '') {
+    return `${scheme}://${ip}?c=${toB64Url(`${user}\n${pass}`)}`;
+  }
+  if (user) {
+    return `${scheme}://${ip}?c=${toB64Url(`${user}\n`)}`;
+  }
+  return `${scheme}://${ip}`;
 }
 
 function sshUrl(ip: string, auth?: HostToolAuth): string {
@@ -144,18 +162,17 @@ async function openWinbox(
 ): Promise<string> {
   const user = auth?.username?.trim();
   const pass = auth?.password;
+  const app = variant === 'novo' ? 'WinBoxNovo' : 'Winbox';
+  tryProtocol(winboxUrl(target, variant, auth));
+
   if (!user || pass == null || pass === '') {
-    tryProtocol(winboxUrl(target, variant, auth));
     const copied = await copyText(target);
     const tip = copied ? ' IP copiado.' : '';
-    const app = variant === 'novo' ? 'WinBoxNovo' : 'Winbox';
     return (
       `Abrindo ${app} em ${target}…${tip}` +
       ' Cadastre usuário e senha no host (Propriedades) para login automático.'
     );
   }
-  tryProtocol(winboxUrl(target, variant, auth));
-  const app = variant === 'novo' ? 'WinBoxNovo' : 'Winbox';
   return `Abrindo ${app} em ${target} como ${user} (login automático)…`;
 }
 

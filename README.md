@@ -127,8 +127,12 @@ Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
 2. Preencha **Usuário (Tools)** e **Senha (Tools)**
 3. Salve o dashboard
 
-Ao clicar em **Winbox** / **WinBoxNovo**, o app abre com `IP usuário senha` e tenta login automático.  
-SSH/Telnet usam a mesma credencial na URI (`ssh://user:pass@IP`).
+Ao clicar em **Winbox** / **WinBoxNovo**, o launcher Windows chama o exe como o The Dude:
+
+`WinBoxNovo.exe "IP" "usuario" "senha"` — login automático.
+
+> Após atualizar o `extras/winbox-protocol`, rode `install.ps1` de novo no PC.
+> Se não logar, confira `last-launch.txt` na mesma pasta (`hasPassword=True`).
 
 ### Padrão do painel (fallback)
 

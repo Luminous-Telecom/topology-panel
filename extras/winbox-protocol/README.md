@@ -2,38 +2,26 @@
 
 | Menu no mapa | Protocolo | Executável |
 |--------------|-----------|------------|
-| **Winbox** | `winbox://IP` | `winbox64.exe` |
-| **Winbox Novo** | `winboxnovo://IP` | `WinBoxNovo.exe` |
+| **Winbox** | `winbox://IP?c=…` | `winbox64.exe` |
+| **Winbox Novo** | `winboxnovo://IP?c=…` | `WinBoxNovo.exe` |
 
-O launcher usa um `.vbs` para **não abrir a janela do PowerShell**.
+O launcher chama o exe **como o The Dude**:
 
-## Baixar
+```text
+WinBoxNovo.exe "IP" "usuario" "senha"
+```
 
-https://github.com/Luminous-Telecom/topology-panel/tree/main/extras/winbox-protocol
+Credenciais vão em `?c=` (Base64), para o Windows **não corromper** a senha no protocolo.
 
-## Instalar (uma vez por PC)
-
-1. Copie para esta pasta:
-   - `winbox64.exe`
-   - `WinBoxNovo.exe`
-2. PowerShell:
+## Instalar de novo (obrigatório após atualizar)
 
 ```powershell
+cd extras\winbox-protocol
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-3. No Chrome, permita abrir o app na primeira vez.
+Coloque `winbox64.exe` e `WinBoxNovo.exe` nesta pasta.
 
-## Teste
+## Conferir se a senha chegou
 
-```text
-winbox://192.168.88.1
-winboxnovo://admin:senha@192.168.88.1
-```
-
-## Remover
-
-```powershell
-Remove-Item -Recurse -Force HKCU:\Software\Classes\winbox
-Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
-```
+Após clicar Winbox no mapa, abra `extras/winbox-protocol/last-launch.txt` — deve mostrar `host=`, `user=` e `hasPassword=True`.
