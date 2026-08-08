@@ -1,9 +1,8 @@
-# Abre o Winbox a partir de URI winbox://
-# Exemplos:
+# Abre Winbox / Winbox Novo a partir da URI:
 #   winbox://192.168.88.1
-#   winbox://admin@192.168.88.1
 #   winbox://admin:senha@192.168.88.1
-#   winbox://admin:senha@192.168.88.1:8291
+#   winboxnovo://192.168.88.1
+#   winboxnovo://admin:senha@192.168.88.1
 
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -13,27 +12,32 @@ param(
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-function Find-Winbox {
-  $candidates = @(
-    (Join-Path $here 'winbox64.exe'),
-    (Join-Path $here 'winbox.exe'),
-    (Join-Path $here 'WinBox.exe'),
-    "$env:LOCALAPPDATA\MikroTik\WinBox\WinBox.exe",
-    "$env:LOCALAPPDATA\MikroTik\Winbox\winbox64.exe",
-    "$env:ProgramFiles\MikroTik\Winbox\winbox64.exe",
-    'C:\winbox64.exe',
-    'C:\winbox.exe'
+function Find-App([string[]]$Names) {
+  $dirs = @(
+    $here,
+    "$env:LOCALAPPDATA\MikroTik\WinBox",
+    "$env:LOCALAPPDATA\MikroTik\Winbox",
+    "$env:ProgramFiles\MikroTik\Winbox",
+    'C:\'
   )
-  foreach ($p in $candidates) {
-    if ($p -and (Test-Path -LiteralPath $p)) {
-      return $p
+  foreach ($dir in $dirs) {
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { continue }
+    foreach ($name in $Names) {
+      $p = Join-Path $dir $name
+      if (Test-Path -LiteralPath $p) { return $p }
     }
   }
   return $null
 }
 
-$raw = $Uri.Trim()
-$raw = $raw -replace '^winbox://', '' -replace '^winbox:', ''
+$uriTrim = $Uri.Trim()
+$variant = 'classic'
+if ($uriTrim -match '^(?i)winboxnovo:') {
+  $variant = 'novo'
+  $raw = $uriTrim -replace '^(?i)winboxnovo://', '' -replace '^(?i)winboxnovo:', ''
+} else {
+  $raw = $uriTrim -replace '^(?i)winbox://', '' -replace '^(?i)winbox:', ''
+}
 $raw = $raw.Split('/')[0]
 
 $user = $null
@@ -53,10 +57,30 @@ if (-not $hostPart) {
   exit 1
 }
 
-$wb = Find-Winbox
+if ($variant -eq 'novo') {
+  $wb = Find-App @(
+    'Winbox Novo.exe',
+    'WinboxNovo.exe',
+    'winbox novo.exe',
+    'WinBox Novo.exe'
+  )
+  $label = 'Winbox Novo'
+} else {
+  $wb = Find-App @(
+    'winbox64.exe',
+    'winbox.exe',
+    'WinBox.exe'
+  )
+  $label = 'Winbox'
+}
+
 if (-not $wb) {
-  Write-Host "Winbox nao encontrado."
-  Write-Host "Copie winbox64.exe para: $here"
+  Write-Host "$label nao encontrado."
+  if ($variant -eq 'novo') {
+    Write-Host "Copie o executavel 'Winbox Novo.exe' para: $here"
+  } else {
+    Write-Host "Copie winbox64.exe para: $here"
+  }
   Read-Host "Enter para sair"
   exit 1
 }

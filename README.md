@@ -71,15 +71,18 @@ Arquivos necessários:
 
 | Arquivo | Função |
 |---------|--------|
-| `install.ps1` | Registra `winbox://` no Windows |
-| `open-winbox.ps1` | Lê a URI e chama o Winbox |
+| `install.ps1` | Registra `winbox://` e `winboxnovo://` no Windows |
+| `open-winbox.ps1` | Lê a URI e chama o app certo |
 | `open-winbox.bat` | Atalho para o `.ps1` |
-| `winbox64.exe` | **Você copia** o executável do MikroTik para esta pasta |
+| `winbox64.exe` | **Você copia** — Tools → Winbox |
+| `Winbox Novo.exe` | **Você copia** — Tools → Winbox Novo |
 
-### 2. Copiar o Winbox
+### 2. Copiar os executáveis
 
-Coloque `winbox64.exe` (ou `WinBox.exe`) **dentro** de `extras/winbox-protocol`,  
-ou deixe instalado nos caminhos padrão da MikroTik.
+Nesta pasta `extras/winbox-protocol`:
+
+- `winbox64.exe` → menu **Winbox**
+- `Winbox Novo.exe` → menu **Winbox Novo** (nome exato do arquivo)
 
 ### 3. Registrar o protocolo (uma vez por PC)
 
@@ -89,7 +92,7 @@ Abra o **PowerShell** na pasta `extras/winbox-protocol` e rode:
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Deve aparecer: `Protocolo winbox:// registrado.`
+Deve aparecer: `Registrado: winbox://` e `Registrado: winboxnovo://`.
 
 ### 4. Testar
 
@@ -97,20 +100,22 @@ Na barra de endereços do Chrome/Edge:
 
 ```text
 winbox://192.168.88.1
-winbox://admin:senha@192.168.88.1
+winboxnovo://192.168.88.1
+winboxnovo://admin:senha@192.168.88.1
 ```
 
 Na primeira vez, permita abrir o aplicativo e marque para lembrar.
 
 ### 5. Usar no Grafana
 
-1. Botão direito no host → **Tools** → **Winbox**
+1. Botão direito no host → **Tools** → **Winbox** ou **Winbox Novo**
 2. Se pediu permissão no navegador, confirme
 
 ### Remover o registro
 
 ```powershell
 Remove-Item -Recurse -Force HKCU:\Software\Classes\winbox
+Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
 ```
 
 ## Usuário e senha (Winbox / SSH / Telnet)

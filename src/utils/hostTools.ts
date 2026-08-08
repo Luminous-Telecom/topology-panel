@@ -16,7 +16,7 @@ export const HOST_TOOLS: HostToolDef[] = [
   { id: 'web', label: 'Web' },
   { id: 'winbox', label: 'Winbox' },
   { id: 'telnet', label: 'Telnet' },
-  { id: 'winboxNovo', label: 'WinboxNovo' },
+  { id: 'winboxNovo', label: 'Winbox Novo' },
   { id: 'ssh', label: 'SSH' },
 ];
 
@@ -67,7 +67,7 @@ function openUrl(url: string): void {
 }
 
 /**
- * Abre esquema customizado (winbox://, ssh://, …).
+ * Abre esquema customizado (winbox://, winboxnovo://, ssh://, …).
  * Não usa window.open+close: isso abre/fecha uma guia e cancela o diálogo do protocolo.
  */
 function tryProtocol(url: string): void {
@@ -105,9 +105,14 @@ function authPrefix(auth?: HostToolAuth): string {
   return `${encodeURIComponent(user)}@`;
 }
 
-function winboxUrl(ip: string, port: number | undefined, auth?: HostToolAuth): string {
-  const host = port ? `${ip}:${port}` : ip;
-  return `winbox://${authPrefix(auth)}${host}`;
+/** variant: classic = winbox.exe | novo = "Winbox Novo.exe" via winboxnovo:// */
+function winboxUrl(
+  ip: string,
+  variant: 'classic' | 'novo',
+  auth?: HostToolAuth
+): string {
+  const scheme = variant === 'novo' ? 'winboxnovo' : 'winbox';
+  return `${scheme}://${authPrefix(auth)}${ip}`;
 }
 
 function sshUrl(ip: string, auth?: HostToolAuth): string {
@@ -118,13 +123,18 @@ function telnetUrl(ip: string, auth?: HostToolAuth): string {
   return `telnet://${authPrefix(auth)}${ip}`;
 }
 
-async function openWinbox(target: string, withPort8291: boolean, auth?: HostToolAuth): Promise<string> {
-  tryProtocol(winboxUrl(target, withPort8291 ? 8291 : undefined, auth));
+async function openWinbox(
+  target: string,
+  variant: 'classic' | 'novo',
+  auth?: HostToolAuth
+): Promise<string> {
+  tryProtocol(winboxUrl(target, variant, auth));
   const copied = await copyText(target);
   const tip = copied ? ' IP copiado.' : '';
   const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';
+  const app = variant === 'novo' ? 'Winbox Novo' : 'Winbox';
   return (
-    `Abrindo Winbox em ${target}${who}…${tip}` +
+    `Abrindo ${app} em ${target}${who}…${tip}` +
     ' Se o app não abrir, registre o protocolo — ver README (extras/winbox-protocol).'
   );
 }
@@ -147,9 +157,9 @@ export async function runHostTool(
       openUrl(`http://${target}`);
       return undefined;
     case 'winbox':
-      return openWinbox(target, false, auth);
+      return openWinbox(target, 'classic', auth);
     case 'winboxNovo':
-      return openWinbox(target, true, auth);
+      return openWinbox(target, 'novo', auth);
     case 'telnet': {
       tryProtocol(telnetUrl(target, auth));
       const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';

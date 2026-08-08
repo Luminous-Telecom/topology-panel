@@ -1,39 +1,37 @@
-# Protocolo `winbox://` (Windows)
+# Protocolos `winbox://` e `winboxnovo://` (Windows)
 
-O MikroTik **não registra** `winbox://` sozinho. O painel abre links como:
-
-- `winbox://192.168.88.1`
-- `winbox://admin@192.168.88.1`
-- `winbox://admin:senha@192.168.88.1`
+| Menu no mapa | Protocolo | Executável |
+|--------------|-----------|------------|
+| **Winbox** | `winbox://IP` | `winbox64.exe` / `WinBox.exe` |
+| **Winbox Novo** | `winboxnovo://IP` | `Winbox Novo.exe` |
 
 ## Baixar
 
-No repositório:
-
 https://github.com/Luminous-Telecom/topology-panel/tree/main/extras/winbox-protocol
-
-Ou clone/baixe o ZIP do projeto e abra a pasta `extras/winbox-protocol`.
 
 ## Instalar (uma vez por PC)
 
-1. Copie `winbox64.exe` (ou WinBox.exe) **para esta pasta**, ou use a instalação padrão MikroTik.
-2. PowerShell **nesta pasta**:
+1. Copie para esta pasta:
+   - `winbox64.exe` (Winbox clássico)
+   - `Winbox Novo.exe` (app com esse nome)
+2. PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-3. No Chrome/Edge, ao abrir o primeiro link, permita o aplicativo.
+3. No Chrome, permita abrir o app na primeira vez.
 
 ## Teste
 
 ```text
 winbox://192.168.88.1
-winbox://admin:senha@192.168.88.1
+winboxnovo://admin:senha@192.168.88.1
 ```
 
 ## Remover
 
 ```powershell
 Remove-Item -Recurse -Force HKCU:\Software\Classes\winbox
+Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
 ```
