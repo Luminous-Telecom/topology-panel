@@ -91,12 +91,87 @@ function linkKey(link: TopologyLink): string {
   return `${link.from}-${link.to}`;
 }
 
+function nodeCenter(node: { x: number; y: number; w: number; h: number }): { x: number; y: number } {
+  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
+}
+
+/** Ponto na borda do nó, voltado para outro centro (seta visível fora do host). */
+function nodeEdgeToward(
+  node: { x: number; y: number; w: number; h: number },
+  toward: { x: number; y: number }
+): { x: number; y: number } {
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  const dx = toward.x - cx;
+  const dy = toward.y - cy;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: dx >= 0 ? node.x + node.w : node.x, y: cy };
+  }
+  return { x: cx, y: dy >= 0 ? node.y + node.h : node.y };
+}
+
 function linkPath(from: NodeLayout & { x: number; y: number }, to: NodeLayout & { x: number; y: number }): string {
-  const ax = from.x + from.w / 2;
-  const ay = from.y + from.h / 2;
-  const bx = to.x + to.w / 2;
-  const by = to.y + to.h / 2;
-  return `M ${ax} ${ay} L ${bx} ${by}`;
+  const start = nodeCenter(from);
+  const end = nodeEdgeToward(to, start);
+  return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+}
+
+function LinkMarkers({ colorLink }: { colorLink: string }) {
+  const arrow = (stroke: string, sw = 1.2) => (
+    <path
+      d="M1,1 L7,4 L1,7"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={sw}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+  const origin = (stroke: string, filled = false, sw = 1) =>
+    filled ? (
+      <circle cx="3" cy="3" r="1.4" fill={stroke} />
+    ) : (
+      <circle cx="3" cy="3" r="1.5" fill="none" stroke={stroke} strokeWidth={sw} />
+    );
+
+  return (
+    <defs>
+      <marker id="link-dot-start" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
+        {origin(colorLink)}
+      </marker>
+      <marker id="link-arrow-end" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
+        {arrow(colorLink)}
+      </marker>
+      <marker
+        id="link-dot-start-active"
+        viewBox="0 0 6 6"
+        refX="3"
+        refY="3"
+        markerWidth="4"
+        markerHeight="4"
+        orient="auto"
+      >
+        {origin('#4FC3F7', true)}
+      </marker>
+      <marker
+        id="link-arrow-end-active"
+        viewBox="0 0 8 8"
+        refX="6.5"
+        refY="4"
+        markerWidth="4.5"
+        markerHeight="4.5"
+        orient="auto"
+      >
+        {arrow('#4FC3F7', 1.5)}
+      </marker>
+      <marker id="link-dot-start-hover" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
+        {origin('#81D4FA', true)}
+      </marker>
+      <marker id="link-arrow-end-hover" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
+        {arrow('#81D4FA', 1.3)}
+      </marker>
+    </defs>
+  );
 }
 
 function nodeFill(
@@ -887,7 +962,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       {selectedLinkLabels && (
         <TopologyEditHint>
           Link ({selectedLinkLabels.medium === 'radio' ? 'Rádio' : 'Fibra'}):{' '}
-          <strong>{selectedLinkLabels.from}</strong> ↔ <strong>{selectedLinkLabels.to}</strong> (clique no fundo
+          <strong>{selectedLinkLabels.from}</strong> → <strong>{selectedLinkLabels.to}</strong> (clique no fundo
           para desmarcar)
         </TopologyEditHint>
       )}
@@ -907,6 +982,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
 
       <svg className={styles.svg} width="100%" height="100%" onContextMenu={(e) => handleContextMenu(e)}>
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
+          <LinkMarkers colorLink={options.colorLink} />
           <rect
             x={gridBounds.x0}
             y={gridBounds.y0}
@@ -1214,6 +1290,16 @@ function LinkLine({
   const toCy = to.y + to.h / 2;
   const strokeWidth = selected ? 4 : hovered ? 3 : options.colorLinkWidth;
   const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
+  const markerStart = selected
+    ? 'url(#link-dot-start-active)'
+    : hovered
+      ? 'url(#link-dot-start-hover)'
+      : 'url(#link-dot-start)';
+  const markerEnd = selected
+    ? 'url(#link-arrow-end-active)'
+    : hovered
+      ? 'url(#link-arrow-end-hover)'
+      : 'url(#link-arrow-end)';
 
   return (
     <g
@@ -1250,13 +1336,15 @@ function LinkLine({
         stroke={strokeColor}
         strokeWidth={strokeWidth}
         strokeDasharray={dashArray}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
         fill="none"
         pointerEvents="none"
       />
       {selected && (
         <>
-          <circle cx={fromCx} cy={fromCy} r={7} fill="#4FC3F7" stroke="#fff" strokeWidth={2} pointerEvents="none" />
-          <circle cx={toCx} cy={toCy} r={7} fill="#4FC3F7" stroke="#fff" strokeWidth={2} pointerEvents="none" />
+          <circle cx={fromCx} cy={fromCy} r={4} fill="#4FC3F7" fillOpacity={0.85} pointerEvents="none" />
+          <circle cx={toCx} cy={toCy} r={4} fill="#4FC3F7" fillOpacity={0.85} pointerEvents="none" />
         </>
       )}
     </g>

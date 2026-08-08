@@ -8,19 +8,46 @@ alwaysApply: false
 
 ## Estrutura
 
-- Canvas/links: `components/TopologyCanvas.tsx`
-- Mutações: `utils/mapEdits.ts` | Helpers: `utils.ts` | Tipos: `types.ts`
+| Área | Arquivo |
+|------|---------|
+| Render SVG, pan/zoom, links | `components/TopologyCanvas.tsx` |
+| Opções Grafana | `components/TopologyPanel.tsx`, `module.ts` |
+| Editor JSON/nós/links | `editor/TopologyEditor.tsx` |
+| Mutações do mapa | `utils/mapEdits.ts` |
+| Helpers puros | `utils.ts` |
+| Tipos | `types.ts` |
 
-## Links — NÃO alterar sem pedido
+Mutações → `mapEdits.ts`. Lógica pura → `utils.ts`.
 
-- Linha **reta** | Saída: **centro** origem | Chegada: **borda** destino
-- `fiber` = contínua | `radio` = tracejada `10 6`
-- Setas pequenas (chevron + anel)
+## Tipos principais
 
-## Redes
+- Nós: `host` | `network` | `submap` | `static`
+- Link: `{ from, to, medium?: 'fiber' | 'radio' }`
+- Mapa: `locked`, `networksLocked` (padrão travado), `nodes`, `links`
 
-- `networksLocked` padrão **true** | Toolbar: Mapa editável + Redes livres
+## Links — NÃO alterar sem pedido explícito
+
+- Linha **reta** (não ortogonal/Manhattan)
+- **Saída**: centro do host origem
+- **Chegada**: borda do host destino (seta visível)
+- **Fibra**: contínua | **Rádio**: tracejada (`10 6`)
+- Marcadores SVG **pequenos** (chevron + anel na origem)
+- Seleção: destaque azul + hint `Origem → Destino`
+
+## Redes (network)
+
+- **Travadas por padrão** (`networksLocked !== false`)
+- Toolbar: **Mapa editável** e **Redes livres**
+- Travada: clique arrasta o **mapa**; destravada: arrasta a **caixa**
+- Resize só pelo canto inferior direito
 
 ## Grade
 
-- `gridSize: 10` | cobre área visível do painel | snap ativo
+- Padrão `gridSize: 10`, snap ativo
+- Grade cobre **área visível do painel** (não só `map.width/height`)
+- Linhas da grade com `pointerEvents: none`
+
+## Zabbix
+
+- Status via Perda de Pacotes; campo host `loss`
+- `mergeMapWithQueryHosts` — múltiplas posições para mesmo host Zabbix

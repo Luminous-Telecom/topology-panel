@@ -14,16 +14,29 @@ Plugin Grafana **`luminous-dude-topology-panel`** (`src/plugin.json`) para mapas
 
 ## O que NÃO vai pro GitHub
 
-Manter **somente local** (`.gitignore`): `examples/`, `dashboards/`, `scripts/`, `dist/`, `node_modules/`, `*.tar.gz`.
+Manter **somente local** (`.gitignore`):
+
+- `examples/` — JSON dos mapas
+- `dashboards/` — dashboards Grafana
+- `scripts/` — build/upload/deploy internos
+- `dist/`, `node_modules/`, `*.tar.gz`
+
+Não commitar credenciais, `.env` ou senhas em scripts.
 
 ## Versão e release
 
 1. Bump **`src/plugin.json`** e **`package.json`** (mesma versão)
-2. `npm run build` → deploy `dist/` → `/var/lib/grafana/plugins/luminous-dude-topology-panel/`
-3. Commit/push só código do plugin
+2. `npm run build`
+3. Deploy: `dist/` → `/var/lib/grafana/plugins/luminous-dude-topology-panel/`
+4. Reiniciar `grafana-server`
+5. Commit/push só código do plugin
 
-## UI
+## UI e idioma
 
-- Português | diffs mínimos | não refatorar fora do escopo
+- Labels, menus e hints em **português**
+- Diffs **mínimos** — não refatorar fora do escopo
 
-Ver também `AGENTS.md` e regras em `.cursor/rules/`.
+## Grafana
+
+- `allow_loading_unsigned_plugins = luminous-dude-topology-panel`
+- Upload dashboard preferir LAN; URL pública pode retornar 403 (Cloudflare)

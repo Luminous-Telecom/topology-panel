@@ -4,9 +4,37 @@ globs: "{examples,dashboards,scripts}/**/*"
 alwaysApply: false
 ---
 
-# Mapas internos
+# Mapas e layout — padrões internos
 
-- Mapas: `examples/map-*.json` | Dashboards: `dashboards/dude-*.json`
-- Snap grade **10px** | links com `medium: fiber|radio`
-- Rádio auto: LITEAP, WI2BE, PTP, PTMP, AIRFIBER, RADIO
-- Não commitar credenciais nos scripts
+## Arquivos
+
+- Mapas: `examples/map-{cidade}.json` (ex.: `map-dc.json`)
+- Dashboards: `dashboards/dude-{cidade}.json`
+- Regenerar dashboard: `python3 scripts/build_dashboard.py dc`
+
+## JSON do mapa
+
+```json
+{
+  "width": 1532,
+  "height": 540,
+  "locked": true,
+  "networksLocked": true,
+  "nodes": [...],
+  "links": [{ "from": "id-a", "to": "id-b", "medium": "fiber" }]
+}
+```
+
+## Grade e alinhamento
+
+- Snap em múltiplos de **10** px
+- Caixas `network` alinhadas em grid; hosts **dentro** das caixas sem sobreposição
+
+## Links — classificação rádio
+
+Heurística (nome do host): `LITEAP`, `WI2BE`, `PTP`, `PTMP`, `AIRFIBER`, `RADIO` → `medium: "radio"`. Demais → `fiber`.
+
+## Deploy interno
+
+- Plugin: `scripts/deploy.sh` ou tar para `45.5.147.20:2224`
+- Upload dashboard: LAN `192.168.100.18:3000` (credenciais via env vars)
