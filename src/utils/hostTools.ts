@@ -5,6 +5,12 @@ export interface HostToolDef {
   label: string;
 }
 
+/** Credenciais opcionais (opções do painel) para Winbox / SSH / Telnet. */
+export interface HostToolAuth {
+  username?: string;
+  password?: string;
+}
+
 export const HOST_TOOLS: HostToolDef[] = [
   { id: 'ping', label: 'Ping' },
   { id: 'web', label: 'Web' },
@@ -62,29 +68,9 @@ function openUrl(url: string): void {
 
 /**
  * Abre esquema customizado (winbox://, ssh://, …).
- * Dentro do iframe do painel Grafana, <a>.click() costuma ser ignorado —
- * por isso tentamos janela top-level e iframe oculto.
+ * Não usa window.open+close: isso abre/fecha uma guia e cancela o diálogo do protocolo.
  */
 function tryProtocol(url: string): void {
-  // 1) Nova janela top-level (preserva user-gesture fora do iframe do painel)
-  let opened: Window | null = null;
-  try {
-    opened = window.open(url, '_blank');
-  } catch {
-    opened = null;
-  }
-  if (opened) {
-    window.setTimeout(() => {
-      try {
-        opened.close();
-      } catch {
-        /* ignore */
-      }
-    }, 800);
-    return;
-  }
-
-  // 2) iframe oculto — comum para URI handlers registrados no SO
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:fixed;left:-9999px';
   document.body.appendChild(iframe);
@@ -97,20 +83,58 @@ function tryProtocol(url: string): void {
   } catch {
     iframe.src = url;
   }
-  window.setTimeout(() => iframe.remove(), 2500);
+  window.setTimeout(() => iframe.remove(), 4000);
 
-  // 3) Fallback <a>
   const a = document.createElement('a');
   a.href = url;
-  a.rel = 'noreferrer';
-  a.style.display = 'none';
+  a.style.cssText = 'display:none';
   document.body.appendChild(a);
   a.click();
   a.remove();
 }
 
+function authPrefix(auth?: HostToolAuth): string {
+  const user = auth?.username?.trim();
+  if (!user) {
+    return '';
+  }
+  const pass = auth?.password;
+  if (pass != null && pass !== '') {
+    return `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`;
+  }
+  return `${encodeURIComponent(user)}@`;
+}
+
+function winboxUrl(ip: string, port: number | undefined, auth?: HostToolAuth): string {
+  const host = port ? `${ip}:${port}` : ip;
+  return `winbox://${authPrefix(auth)}${host}`;
+}
+
+function sshUrl(ip: string, auth?: HostToolAuth): string {
+  return `ssh://${authPrefix(auth)}${ip}`;
+}
+
+function telnetUrl(ip: string, auth?: HostToolAuth): string {
+  return `telnet://${authPrefix(auth)}${ip}`;
+}
+
+async function openWinbox(target: string, withPort8291: boolean, auth?: HostToolAuth): Promise<string> {
+  tryProtocol(winboxUrl(target, withPort8291 ? 8291 : undefined, auth));
+  const copied = await copyText(target);
+  const tip = copied ? ' IP copiado.' : '';
+  const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';
+  return (
+    `Abrindo Winbox em ${target}${who}…${tip}` +
+    ' Se o app não abrir, registre o protocolo — ver README (extras/winbox-protocol).'
+  );
+}
+
 /** Executa ferramenta de acesso ao host (estilo The Dude). */
-export async function runHostTool(tool: HostToolId, ip: string): Promise<string | undefined> {
+export async function runHostTool(
+  tool: HostToolId,
+  ip: string,
+  auth?: HostToolAuth
+): Promise<string | undefined> {
   const target = ip.trim();
   if (!IPV4.test(target)) {
     return 'IP inválido ou indisponível';
@@ -123,17 +147,19 @@ export async function runHostTool(tool: HostToolId, ip: string): Promise<string 
       openUrl(`http://${target}`);
       return undefined;
     case 'winbox':
-      tryProtocol(`winbox://${target}`);
-      return `Abrindo Winbox em ${target}…`;
+      return openWinbox(target, false, auth);
     case 'winboxNovo':
-      tryProtocol(`winbox://${target}:8291`);
-      return `Abrindo WinboxNovo em ${target}…`;
-    case 'telnet':
-      tryProtocol(`telnet://${target}`);
-      return `Abrindo Telnet em ${target}…`;
-    case 'ssh':
-      tryProtocol(`ssh://${target}`);
-      return `Abrindo SSH em ${target}…`;
+      return openWinbox(target, true, auth);
+    case 'telnet': {
+      tryProtocol(telnetUrl(target, auth));
+      const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';
+      return `Abrindo Telnet em ${target}${who}…`;
+    }
+    case 'ssh': {
+      tryProtocol(sshUrl(target, auth));
+      const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';
+      return `Abrindo SSH em ${target}${who}…`;
+    }
     default:
       return undefined;
   }

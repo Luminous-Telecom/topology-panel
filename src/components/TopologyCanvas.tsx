@@ -1296,12 +1296,15 @@ export function TopologyCanvas({
               });
               return;
             }
-            void runHostTool(tool.id, ip).then(showToast);
+            void runHostTool(tool.id, ip, {
+              username: options.toolUsername,
+              password: options.toolPassword,
+            }).then(showToast);
           },
         })),
       };
     },
-    [showToast]
+    [options.toolPassword, options.toolUsername, showToast]
   );
 
   const handleContextMenu = useCallback(

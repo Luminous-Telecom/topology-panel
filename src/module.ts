@@ -139,5 +139,20 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         description: 'UID do datasource Zabbix — status, IP e problemas vêm da API (aba Query não é necessária)',
         defaultValue: 'afkagcaezrrpca',
         category: ['Zabbix'],
+      })
+      .addTextInput({
+        path: 'toolUsername',
+        name: 'Usuário (Tools)',
+        description: 'Usado em Winbox, SSH e Telnet (ex.: admin). Deixe vazio para abrir só com o IP.',
+        defaultValue: '',
+        category: ['Acesso remoto'],
+      })
+      .addTextInput({
+        path: 'toolPassword',
+        name: 'Senha (Tools)',
+        description:
+          'Opcional — Winbox/SSH/Telnet. Fica salva no JSON do dashboard (visível a quem edita). Prefira conta só de leitura.',
+        defaultValue: '',
+        category: ['Acesso remoto'],
       });
   });

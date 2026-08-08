@@ -14,16 +14,19 @@ Repositório: [github.com/Luminous-Telecom/topology-panel](https://github.com/Lu
 - **Grade** configurável com snap ao mover/redimensionar
 - **Pan/zoom** no mapa; seleção de links com destaque visual
 - **Travas** separadas: mapa editável e caixas de rede (arrastar rede só quando destravada)
-- **Menu de contexto** — ferramentas SSH (ping, traceroute, etc.) nos hosts
+- **Menu Tools** — Ping, Web, Winbox, Telnet, SSH (botão direito no host)
+- **Usuário/senha** nas opções do painel — pré-preenche Winbox, SSH e Telnet
 - **Submapas** — clique abre outro dashboard Grafana
+- **Tela cheia** e pause do tráfego nas linhas
 
 ## Requisitos
 
 - Node.js **18+**
 - Grafana **9+** (testado em Grafana 11/13)
 - Datasource Zabbix (opcional, para cores de status)
+- Windows + Winbox (para abrir Winbox a partir do navegador)
 
-## Instalação
+## Instalação do plugin (Grafana)
 
 ```bash
 git clone https://github.com/Luminous-Telecom/topology-panel.git
@@ -53,16 +56,91 @@ Reinicie o Grafana:
 sudo systemctl restart grafana-server
 ```
 
+## Abrir Winbox a partir do mapa (Windows)
+
+O navegador só consegue abrir o Winbox se o protocolo `winbox://` estiver registrado no PC.
+O MikroTik **não faz isso sozinho**.
+
+### 1. Baixar os arquivos
+
+- Abra: [extras/winbox-protocol](https://github.com/Luminous-Telecom/topology-panel/tree/main/extras/winbox-protocol)
+- Ou baixe o ZIP do repositório: **Code → Download ZIP** e extraia a pasta `extras/winbox-protocol`
+- Ou clone o repo e entre em `extras/winbox-protocol`
+
+Arquivos necessários:
+
+| Arquivo | Função |
+|---------|--------|
+| `install.ps1` | Registra `winbox://` no Windows |
+| `open-winbox.ps1` | Lê a URI e chama o Winbox |
+| `open-winbox.bat` | Atalho para o `.ps1` |
+| `winbox64.exe` | **Você copia** o executável do MikroTik para esta pasta |
+
+### 2. Copiar o Winbox
+
+Coloque `winbox64.exe` (ou `WinBox.exe`) **dentro** de `extras/winbox-protocol`,  
+ou deixe instalado nos caminhos padrão da MikroTik.
+
+### 3. Registrar o protocolo (uma vez por PC)
+
+Abra o **PowerShell** na pasta `extras/winbox-protocol` e rode:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Deve aparecer: `Protocolo winbox:// registrado.`
+
+### 4. Testar
+
+Na barra de endereços do Chrome/Edge:
+
+```text
+winbox://192.168.88.1
+winbox://admin:senha@192.168.88.1
+```
+
+Na primeira vez, permita abrir o aplicativo e marque para lembrar.
+
+### 5. Usar no Grafana
+
+1. Botão direito no host → **Tools** → **Winbox**
+2. Se pediu permissão no navegador, confirme
+
+### Remover o registro
+
+```powershell
+Remove-Item -Recurse -Force HKCU:\Software\Classes\winbox
+```
+
+## Usuário e senha (Winbox / SSH / Telnet)
+
+Nas opções do painel → categoria **Acesso remoto**:
+
+| Opção | Descrição |
+|-------|-----------|
+| Usuário (Tools) | Ex.: `admin` — usado em Winbox, SSH e Telnet |
+| Senha (Tools) | Opcional — enviada na URI quando preenchida |
+
+Com usuário/senha configurados, o painel abre por exemplo:
+
+- Winbox: `winbox://admin:senha@10.0.0.1`
+- SSH: `ssh://admin:senha@10.0.0.1`
+- Telnet: `telnet://admin:senha@10.0.0.1`
+
+Deixe em branco para abrir só com o IP.
+
+> **Segurança:** a senha fica no JSON do dashboard (visível a quem pode editar). Prefira conta de leitura/operação, não a senha master de produção.
+
+SSH/Telnet dependem do cliente instalado no PC (PuTTY, Windows Terminal, etc.) e do protocolo `ssh://` / `telnet://` do sistema.
+
 ## Uso no Grafana
 
 1. Crie um dashboard → adicione painel **Topology Panel**
-2. **Query** (opcional): datasource Zabbix, item *Perda de Pacotes*, grupo dos hosts do mapa
-3. **Transformations** (recomendado):
-   - `Reduce` → *Series to rows*, reducer *Last*
-   - Renomeie o campo numérico para `loss`
-4. **Opções → Topologia**:
-   - Cole ou edite o JSON do mapa (`width`, `height`, `nodes`, `links`)
-   - Configure datasource Zabbix, grupo, etc.
+2. **Opções → Zabbix**: UID do datasource (status ICMP via API)
+3. **Opções → Topologia**: edite o mapa (hosts, links, redes)
+4. **Opções → Acesso remoto**: usuário/senha padrão das Tools (opcional)
+5. Modo edição do dashboard (lápis) para mover hosts; **Save dashboard** para gravar
 
 ### Opções do painel
 
@@ -72,14 +150,15 @@ sudo systemctl restart grafana-server
 | Tamanho da grade | Passo em pixels (padrão: 10) |
 | Alinhar à grade | Snap ao mover hosts e caixas |
 | Permitir arrastar mapa | Pan com clique na área vazia |
+| Usuário / Senha (Tools) | Credenciais para Winbox, SSH e Telnet |
 
 ### Edição no canvas
 
-1. Destrave o mapa (cadeado nas opções ou barra do painel)
-2. **Botão direito** — adicionar host, rede, submapa, link
-3. Barra superior:
-   - **Mapa editável** — hosts e links
-   - **Redes livres** — permite arrastar caixas de rede (padrão: travadas)
+1. Entre no **modo edição** do dashboard (ícone lápis)
+2. Destrave o mapa (**Mapa editável**)
+3. **Botão direito** — adicionar host, rede, submapa, link
+4. Barra superior (só no modo edição): Desfazer, Refazer, travas de mapa/redes
+5. Sempre visíveis: Pausar tráfego, Tela cheia
 
 ## Formato JSON do mapa
 
@@ -153,10 +232,12 @@ npm run build      # produção → dist/
 ```
 src/
   components/     # TopologyCanvas, TopologyPanel, modais
-  editor/           # Editor JSON / nós / links
-  utils/            # Zabbix, mapEdits, hostTools
-  types.ts          # Tipos do mapa e opções
-  module.ts         # Registro do plugin Grafana
+  editor/         # Editor JSON / nós / links
+  utils/          # Zabbix, mapEdits, hostTools
+  types.ts        # Tipos do mapa e opções
+  module.ts       # Registro do plugin Grafana
+extras/
+  winbox-protocol/  # Registrar winbox:// no Windows
 .config/            # Webpack
 ```
 

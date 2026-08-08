@@ -157,6 +157,10 @@ export interface TopologyPanelOptions {
   gridSize: number;
   /** Snap nodes and networks to grid when moving or resizing */
   snapToGrid: boolean;
+  /** Usuário padrão para Winbox / SSH / Telnet (Tools) */
+  toolUsername?: string;
+  /** Senha padrão para Winbox / SSH / Telnet (fica no JSON do dashboard) */
+  toolPassword?: string;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -212,6 +216,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   snapToGrid: true,
   zabbixDatasourceUid: 'afkagcaezrrpca',
   useZabbixProblems: true,
+  toolUsername: '',
+  toolPassword: '',
 });
 
 /** Host name -> last status value (ICMP rtt em segundos, ou perda %) */
