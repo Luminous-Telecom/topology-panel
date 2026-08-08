@@ -1,17 +1,46 @@
 import { DataFrame, FieldType, LoadingState, PanelData } from '@grafana/data';
 import {
   HostMetadataMap,
+  HostProblemMap,
   HostStatusMap,
+  TopologyHostIcon,
   TopologyLink,
   TopologyLinkMedium,
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
+  TopologyStatusMetric,
 } from './types';
+import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderSize } from './utils/hostIcons';
+
+/** Métrica efetiva — dashboards antigos com campo `loss` continuam em perda de pacotes. */
+export function effectiveStatusMetric(
+  options: Pick<TopologyPanelOptions, 'statusMetric' | 'statusValueField'>
+): TopologyStatusMetric {
+  if (options.statusMetric === 'icmp_rtt' || options.statusMetric === 'packet_loss') {
+    return options.statusMetric;
+  }
+  if (options.statusValueField === 'loss') {
+    return 'packet_loss';
+  }
+  return 'icmp_rtt';
+}
+
+export function resolveStatusFromValue(
+  v: number,
+  threshold: number,
+  metric: TopologyStatusMetric
+): 'online' | 'offline' {
+  if (metric === 'packet_loss') {
+    return v >= threshold ? 'offline' : 'online';
+  }
+  // icmppingsec: segundos; 0 = sem resposta ICMP
+  return v <= 0 ? 'offline' : 'online';
+}
 
 /**
- * Build host -> packet loss map from Grafana panel data.
- * Expects a table frame (after reduce transform) with host + loss columns,
+ * Build host -> status value map from Grafana panel data.
+ * Expects a table frame (after reduce transform) with host + value columns,
  * or time_series with labels on the value field.
  */
 export function extractHostStatus(data: PanelData, options: TopologyPanelOptions): HostStatusMap {
@@ -21,7 +50,7 @@ export function extractHostStatus(data: PanelData, options: TopologyPanelOptions
   }
 
   const hostField = options.statusHostField || 'host';
-  const valueField = options.statusValueField || 'loss';
+  const valueField = options.statusValueField || 'rtt';
 
   for (const frame of data.series) {
     const fields = frame.fields;
@@ -74,6 +103,105 @@ export function extractHostStatus(data: PanelData, options: TopologyPanelOptions
   }
 
   return result;
+}
+
+/** Busca valor de status por nome visível/técnico (case-insensitive + aliases do metadata). */
+export function lookupHostStatus(
+  statusMap: HostStatusMap,
+  host: string,
+  metadata?: HostMetadataMap
+): number | null | undefined {
+  const key = host.trim();
+  if (!key) {
+    return undefined;
+  }
+
+  const candidates = new Set<string>([key]);
+  const meta = metadata?.[key];
+  if (meta?.name?.trim()) {
+    candidates.add(meta.name.trim());
+  }
+  for (const [metaKey, entry] of Object.entries(metadata ?? {})) {
+    const mk = metaKey.trim();
+    const mn = entry.name?.trim();
+    if (mk === key || mn === key) {
+      candidates.add(mk);
+      if (mn) {
+        candidates.add(mn);
+      }
+    }
+  }
+
+  for (const name of candidates) {
+    const v = statusMap[name];
+    if (v !== null && v !== undefined) {
+      return v;
+    }
+  }
+
+  const lower = key.toLowerCase();
+  for (const [name, v] of Object.entries(statusMap)) {
+    if (v !== null && v !== undefined && name.toLowerCase() === lower) {
+      return v;
+    }
+  }
+
+  return undefined;
+}
+
+export function lookupProblemCount(problemMap: HostProblemMap, host: string): number {
+  const key = host.trim();
+  if (!key) {
+    return 0;
+  }
+  if ((problemMap[key] ?? 0) > 0) {
+    return problemMap[key];
+  }
+  const lower = key.toLowerCase();
+  for (const [name, count] of Object.entries(problemMap)) {
+    if (count > 0 && name.toLowerCase() === lower) {
+      return count;
+    }
+  }
+  return 0;
+}
+
+/** Combina valor da query com problemas ativos do Zabbix. */
+export function mergeStatusWithProblems(
+  statusMap: HostStatusMap,
+  problemMap: HostProblemMap,
+  mapHostNames: string[],
+  offlineThreshold: number,
+  metric: TopologyStatusMetric = 'icmp_rtt'
+): HostStatusMap {
+  const merged: HostStatusMap = { ...statusMap };
+  const offlineValue = metric === 'packet_loss' ? Math.max(offlineThreshold, 100) : 0;
+
+  const markOffline = (host: string) => {
+    const key = host.trim();
+    if (!key) {
+      return;
+    }
+    if (metric === 'packet_loss') {
+      merged[key] = Math.max(Number(merged[key] ?? 0), offlineValue);
+    } else {
+      merged[key] = 0;
+    }
+  };
+
+  for (const [host, count] of Object.entries(problemMap)) {
+    if (count > 0) {
+      markOffline(host);
+    }
+  }
+
+  for (const host of mapHostNames) {
+    if (lookupProblemCount(problemMap, host) > 0) {
+      markOffline(host);
+    }
+  }
+
+  return merged;
 }
 
 function panelDataFromFrames(frames: DataFrame[]): PanelData {
@@ -248,7 +376,7 @@ export function mergeMapWithQueryHosts(
           y: saved.y,
           width: saved.width,
           height: saved.height,
-          icon: saved.icon,
+          icon: saved.icon ?? map.hostIcons?.[hostName],
         });
       }
       return;
@@ -261,6 +389,7 @@ export function mergeMapWithQueryHosts(
       subtitle: meta?.ip,
       zabbixHost: hostName,
       type: 'host',
+      icon: map.hostIcons?.[hostName],
       x: 100 + (index % cols) * 160,
       y: 100 + Math.floor(index / cols) * 80,
     });
@@ -317,13 +446,19 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
     });
   }
 
-  return { ...map, nodes };
+  let hostIcons = map.hostIcons;
+  if (patch.icon !== undefined) {
+    hostIcons = { ...(map.hostIcons ?? {}), [key]: patch.icon };
+  }
+
+  return { ...map, nodes, hostIcons };
 }
 
 export function resolveNodeStatus(
   node: { zabbixHost?: string; type?: string },
   statusMap: HostStatusMap,
-  threshold: number
+  threshold: number,
+  metric: TopologyStatusMetric = 'icmp_rtt'
 ): 'online' | 'offline' | 'unknown' {
   if (node.type === 'submap' || node.type === 'static' || node.type === 'network') {
     return 'unknown';
@@ -332,11 +467,11 @@ export function resolveNodeStatus(
   if (!key) {
     return 'unknown';
   }
-  const v = statusMap[key];
+  const v = lookupHostStatus(statusMap, key);
   if (v === null || v === undefined) {
     return 'unknown';
   }
-  return v >= threshold ? 'offline' : 'online';
+  return resolveStatusFromValue(v, threshold, metric);
 }
 
 export function clamp(n: number, min: number, max: number): number {
@@ -433,10 +568,12 @@ export interface NodeLayout {
   h: number;
   label: string;
   sub?: string;
+  labelFontSize: number;
   subFontSize: number;
   labelY: number;
   subY?: number;
-  iconGutter: number;
+  /** Centro Y do ícone (relativo ao topo do nó) */
+  iconCenterY?: number;
 }
 
 export function computeNodeLayout(
@@ -447,12 +584,49 @@ export function computeNodeLayout(
     width?: number;
     height?: number;
     type?: string;
-    icon?: string;
+    icon?: TopologyHostIcon;
   },
   options: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>
 ): NodeLayout {
   const fontSize = options.nodeFontSize;
   const subFontSize = Math.max(9, fontSize - 2);
+
+  if (node.type === 'submap') {
+    const pad = 8;
+    const lineGap = 4;
+    const label = (node.label || node.id).trim();
+    const sub = node.subtitle?.trim();
+    const hasTwoLines = Boolean(sub);
+    const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
+    const w = node.width ?? Math.max(Math.ceil(contentW + pad * 2), 80);
+    const autoMinH = hasTwoLines
+      ? pad * 2 + fontSize + lineGap + subFontSize
+      : pad * 2 + fontSize;
+    const h = node.height ?? Math.max(autoMinH, hasTwoLines ? 44 : 28);
+
+    if (hasTwoLines) {
+      return {
+        w,
+        h,
+        label,
+        sub,
+        labelFontSize: fontSize,
+        subFontSize,
+        labelY: pad + fontSize / 2,
+        subY: h - pad - subFontSize / 2,
+      };
+    }
+
+    return {
+      w,
+      h,
+      label,
+      labelFontSize: fontSize,
+      subFontSize,
+      labelY: h / 2,
+    };
+  }
+
   const padX = 10;
   const padY = 6;
   const lineGap = 3;
@@ -460,18 +634,59 @@ export function computeNodeLayout(
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
   const showIcon =
     node.type !== 'submap' && node.type !== 'static' && node.type !== 'network' && Boolean(node.icon);
-  const iconGutter = showIcon ? 22 : 0;
+  const iconSize = showIcon && node.icon ? hostIconRenderSize(node.icon) : HOST_ICON_SIZE;
+  const iconRowHeight = showIcon ? iconSize + HOST_ICON_GAP : 0;
 
   const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
-  const w = Math.max(Math.ceil(contentW + padX * 2 + iconGutter), showIcon ? 56 : 48);
-  const h = sub
-    ? Math.max(Math.ceil(padY * 2 + fontSize + lineGap + subFontSize), 28)
-    : Math.max(Math.ceil(padY * 2 + fontSize), 24);
+  const w = Math.max(Math.ceil(contentW + padX * 2), showIcon ? iconSize + padX * 2 : 48);
+  const textBlockH = sub ? fontSize + lineGap + subFontSize : fontSize;
+  const h = Math.max(Math.ceil(padY * 2 + iconRowHeight + textBlockH), showIcon ? iconSize + 32 : 24);
 
-  const labelY = sub ? padY + fontSize / 2 : h / 2;
+  const iconCenterY = showIcon ? padY + iconSize / 2 : undefined;
+  const labelY = showIcon
+    ? padY + iconRowHeight + fontSize / 2
+    : sub
+      ? padY + fontSize / 2
+      : h / 2;
+  const subY = sub ? padY + iconRowHeight + fontSize + lineGap + subFontSize / 2 : undefined;
+
+  return { w, h, label, sub, labelFontSize: fontSize, subFontSize, labelY, subY, iconCenterY };
+}
+
+export const DEFAULT_STATIC_WIDTH = 120;
+export const DEFAULT_STATIC_HEIGHT = 36;
+
+export function computeStaticLayout(
+  node: {
+    id: string;
+    label?: string;
+    subtitle?: string;
+    width?: number;
+    height?: number;
+    fontSize?: number;
+  },
+  options: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>
+): NodeLayout {
+  const labelFontSize = node.fontSize ?? options.nodeFontSize;
+  const subFontSize = Math.max(9, labelFontSize - 2);
+  const padX = 10;
+  const padY = 6;
+  const lineGap = 3;
+  const label = (node.label || node.id).trim();
+  const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
+
+  const contentW = Math.max(textWidth(label, labelFontSize), sub ? textWidth(sub, subFontSize) : 0);
+  const autoW = Math.max(Math.ceil(contentW + padX * 2), 48);
+  const autoH = sub
+    ? Math.max(Math.ceil(padY * 2 + labelFontSize + lineGap + subFontSize), 28)
+    : Math.max(Math.ceil(padY * 2 + labelFontSize), 24);
+
+  const w = node.width ?? autoW;
+  const h = node.height ?? autoH;
+  const labelY = sub ? padY + labelFontSize / 2 : h / 2;
   const subY = sub ? h - padY - subFontSize / 2 : undefined;
 
-  return { w, h, label, sub, subFontSize, labelY, subY, iconGutter };
+  return { w, h, label, sub, labelFontSize, subFontSize, labelY, subY };
 }
 
 export const DEFAULT_NETWORK_WIDTH = 220;
@@ -491,7 +706,7 @@ export function computeNetworkLayout(
     h,
     label,
     subFontSize: fontSize,
+    labelFontSize: fontSize,
     labelY: pad + fontSize / 2,
-    iconGutter: 0,
   };
 }

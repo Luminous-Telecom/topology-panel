@@ -71,17 +71,24 @@ export function addLinkToMap(map: TopologyMap, from: string, to: string): Topolo
   };
 }
 
-export function removeNodeFromMap(map: TopologyMap, nodeId: string): TopologyMap {
+export function removeNodeFromMap(
+  map: TopologyMap,
+  nodeId: string,
+  opts?: { zabbixHost?: string; type?: TopologyNode['type'] }
+): TopologyMap {
   const node = map.nodes.find((n) => n.id === nodeId);
   const nodes = map.nodes.filter((n) => n.id !== nodeId);
   const links = map.links.filter((l) => l.from !== nodeId && l.to !== nodeId);
 
   let hiddenHosts = map.hiddenHosts ? [...map.hiddenHosts] : undefined;
-  if (node?.type === 'host' && node.zabbixHost) {
-    const key = node.zabbixHost.trim();
+  const nodeType = node?.type ?? opts?.type ?? 'host';
+  const hostKey = (node?.zabbixHost ?? opts?.zabbixHost)?.trim();
+
+  // Hosts só da query Zabbix não estão em map.nodes — hiddenHosts evita reaparecer.
+  if (nodeType === 'host' && hostKey) {
     hiddenHosts = hiddenHosts ?? [];
-    if (!hiddenHosts.includes(key)) {
-      hiddenHosts.push(key);
+    if (!hiddenHosts.includes(hostKey)) {
+      hiddenHosts.push(hostKey);
     }
   }
 
@@ -97,20 +104,68 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
   return { ...map, nodes };
 }
 
-/** Aplica o mesmo ícone a vários hosts de uma vez. */
+/** Aplica o mesmo ícone a vários hosts de uma vez (usa nós do canvas, incl. hosts só da query). */
 export function updateHostsIconBulk(
   map: TopologyMap,
-  nodeIds: string[],
+  selectedNodes: TopologyNode[],
   icon: TopologyNode['icon']
 ): TopologyMap {
-  const idSet = new Set(nodeIds);
-  let next = map;
-  for (const node of map.nodes) {
-    if (!idSet.has(node.id) || (node.type ?? 'host') !== 'host') {
+  if (!icon) {
+    return map;
+  }
+
+  const hostIcons = { ...(map.hostIcons ?? {}) };
+  const zabbixKeys = new Set<string>();
+
+  for (const node of selectedNodes) {
+    if ((node.type ?? 'host') !== 'host') {
       continue;
     }
-    next = updateStoredNode(next, node, { icon });
+    const key = node.zabbixHost?.trim();
+    if (key) {
+      zabbixKeys.add(key);
+      hostIcons[key] = icon;
+    }
   }
+
+  let next: TopologyMap = { ...map, hostIcons };
+
+  for (const key of zabbixKeys) {
+    const displayNode = selectedNodes.find((n) => n.zabbixHost?.trim() === key);
+    let matched = false;
+    const nodes = next.nodes.map((n) => {
+      if ((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key) {
+        matched = true;
+        return { ...n, icon };
+      }
+      return n;
+    });
+    if (matched) {
+      next = { ...next, nodes };
+      continue;
+    }
+    if (displayNode) {
+      next = upsertHostLayout(next, key, {
+        icon,
+        id: displayNode.id,
+        x: displayNode.x,
+        y: displayNode.y,
+        width: displayNode.width,
+        height: displayNode.height,
+      });
+    }
+  }
+
+  for (const node of selectedNodes) {
+    if ((node.type ?? 'host') !== 'host' || node.zabbixHost?.trim()) {
+      continue;
+    }
+    const stored = next.nodes.find((n) => n.id === node.id);
+    if (stored && (stored.type ?? 'host') === 'host') {
+      next = updateStoredNode(next, stored, { icon });
+    }
+  }
+
   return next;
 }
 
@@ -248,11 +303,30 @@ export function updateLinkMedium(
   to: string,
   medium: TopologyLinkMedium
 ): TopologyMap {
+  return updateLinkProps(map, from, to, { medium });
+}
+
+export function updateLinkProps(
+  map: TopologyMap,
+  from: string,
+  to: string,
+  patch: Partial<Pick<TopologyLink, 'medium' | 'bandwidthMbps' | 'waypoints'>>
+): TopologyMap {
   return {
     ...map,
-    links: map.links.map((l) =>
-      (l.from === from && l.to === to) || (l.from === to && l.to === from) ? { ...l, medium } : l
-    ),
+    links: map.links.map((l) => {
+      if (!((l.from === from && l.to === to) || (l.from === to && l.to === from))) {
+        return l;
+      }
+      const next = { ...l, ...patch };
+      if (patch.bandwidthMbps === undefined && Object.prototype.hasOwnProperty.call(patch, 'bandwidthMbps')) {
+        delete next.bandwidthMbps;
+      }
+      if (patch.waypoints !== undefined && (!patch.waypoints || patch.waypoints.length === 0)) {
+        delete next.waypoints;
+      }
+      return next;
+    }),
   };
 }
 

@@ -153,7 +153,8 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
             <div
               key={child.id}
               className={`${styles.item} ${child.disabled ? styles.itemDisabled : ''}`}
-              onClick={(e) => {
+              onMouseDown={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 if (child.disabled) {
                   return;
@@ -275,15 +276,23 @@ const toolbarStyle = css`
 export function TopologyToolbar({
   locked,
   networksLocked,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onToggleLock,
   onToggleNetworksLock,
 }: {
   locked: boolean;
   networksLocked: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onToggleLock: () => void;
   onToggleNetworksLock: () => void;
 }) {
-  const btnStyle = (active: boolean, warn = false): React.CSSProperties => ({
+  const btnStyle = (active: boolean, warn = false, disabled = false): React.CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: 6,
@@ -291,13 +300,34 @@ export function TopologyToolbar({
     borderRadius: 4,
     border: '1px solid rgba(255,255,255,0.25)',
     background: warn ? 'rgba(0,0,0,0.55)' : active ? 'rgba(46,125,50,0.85)' : 'rgba(0,0,0,0.45)',
-    color: warn ? '#ffb74d' : '#fff',
+    color: disabled ? 'rgba(255,255,255,0.35)' : warn ? '#ffb74d' : '#fff',
     fontSize: 11,
-    cursor: 'pointer',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
   });
 
   return (
     <div className={toolbarStyle}>
+      <button
+        type="button"
+        disabled={!canUndo}
+        onClick={onUndo}
+        title="Desfazer (Ctrl+Z)"
+        style={btnStyle(false, false, !canUndo)}
+      >
+        <Icon name="arrow-left" size="sm" />
+        Desfazer
+      </button>
+      <button
+        type="button"
+        disabled={!canRedo}
+        onClick={onRedo}
+        title="Refazer (Ctrl+Shift+Z)"
+        style={btnStyle(false, false, !canRedo)}
+      >
+        <Icon name="arrow-right" size="sm" />
+        Refazer
+      </button>
       <button
         type="button"
         onClick={onToggleLock}
@@ -325,11 +355,11 @@ export function TopologyToolbar({
 }
 
 const toastStyle = css`
-  position: absolute;
-  bottom: 12px;
+  position: fixed;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10002;
+  z-index: 10050;
   padding: 8px 14px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.82);
@@ -344,5 +374,9 @@ export function TopologyToast({ message }: { message: string | null }) {
   if (!message) {
     return null;
   }
-  return <div className={toastStyle}>{message}</div>;
+  const toast = <div className={toastStyle}>{message}</div>;
+  if (typeof document === 'undefined') {
+    return toast;
+  }
+  return createPortal(toast, document.body);
 }

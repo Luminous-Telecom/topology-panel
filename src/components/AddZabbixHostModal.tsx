@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
-import { hostIconSelectOptions } from '../utils/hostIcons';
+import { HostIconPicker } from './HostIconPicker';
 import {
   fetchZabbixGroups,
   fetchZabbixGroupsForHost,
@@ -52,7 +52,7 @@ export function ZabbixHostPickerModal({
   const [hosts, setHosts] = useState<ZabbixHostOption[]>([]);
   const [groupId, setGroupId] = useState<string | undefined>();
   const [hostName, setHostName] = useState<string | undefined>();
-  const [icon, setIcon] = useState<TopologyHostIcon>(initialIcon ?? 'host');
+  const [icon, setIcon] = useState<TopologyHostIcon>(initialIcon ?? 'network');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingHosts, setLoadingHosts] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -180,11 +180,7 @@ export function ZabbixHostPickerModal({
             </Field>
           ) : null}
           <Field label="Tipo / ícone">
-            <Select
-              options={hostIconSelectOptions()}
-              value={icon}
-              onChange={(v) => setIcon((v.value ?? 'host') as TopologyHostIcon)}
-            />
+            <HostIconPicker value={icon} onChange={setIcon} />
           </Field>
         </>
       )}

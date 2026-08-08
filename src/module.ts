@@ -86,8 +86,22 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addColorPicker({
         path: 'colorLink',
-        name: 'Cor dos links',
+        name: 'Cor base dos links',
         defaultValue: '#78909C',
+        category: ['Aparência'],
+      })
+      .addColorPicker({
+        path: 'colorLinkDownload',
+        name: 'Cor download (→ destino)',
+        description: 'Faixa animada no sentido da seta',
+        defaultValue: '#4FC3F7',
+        category: ['Aparência'],
+      })
+      .addColorPicker({
+        path: 'colorLinkUpload',
+        name: 'Cor upload (← origem)',
+        description: 'Faixa animada no sentido oposto',
+        defaultValue: '#FFB74D',
         category: ['Aparência'],
       })
       .addNumberInput({
@@ -95,6 +109,19 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         name: 'Espessura dos links',
         defaultValue: 2,
         category: ['Aparência'],
+      })
+      .addRadio({
+        path: 'statusMetric',
+        name: 'Métrica de status',
+        description: 'Tempo de resposta ICMP (icmppingsec) ou perda de pacotes',
+        settings: {
+          options: [
+            { value: 'icmp_rtt', label: 'Tempo de resposta ICMP' },
+            { value: 'packet_loss', label: 'Perda de pacotes' },
+          ],
+        },
+        defaultValue: 'icmp_rtt',
+        category: ['Zabbix'],
       })
       .addTextInput({
         path: 'statusHostField',
@@ -105,9 +132,16 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addTextInput({
         path: 'statusValueField',
-        name: 'Campo status (perda pacotes)',
-        description: 'Coluna numérica: 0=online, >= limiar=offline',
-        defaultValue: 'loss',
+        name: 'Campo status (valor numérico)',
+        description: 'Coluna após transform: rtt (ICMP) ou loss (perda %)',
+        defaultValue: 'rtt',
+        category: ['Zabbix'],
+      })
+      .addNumberInput({
+        path: 'offlineThreshold',
+        name: 'Limiar offline (perda %)',
+        description: 'Só em modo perda de pacotes: valores >= limiar = offline',
+        defaultValue: 1,
         category: ['Zabbix'],
       })
       .addTextInput({

@@ -1,5 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
-import { HostMetadataMap } from '../types';
+import { HostMetadataMap, HostProblemMap } from '../types';
 
 interface ZabbixApiResponse<T> {
   result?: T;
@@ -12,6 +12,7 @@ interface ZabbixHostGroup {
 }
 
 interface ZabbixHost {
+  hostid?: string;
   host: string;
   name: string;
   interfaces?: Array<{ ip: string; main?: string; type?: string }>;
@@ -200,6 +201,59 @@ export async function fetchZabbixHostsInGroup(
   }
 }
 
+/** Nomes visíveis dos hosts por filtro de grupo (para estatísticas de rede/submapa). */
+export async function fetchZabbixGroupHostNamesMap(
+  datasourceUid: string,
+  groupNames: string[]
+): Promise<Record<string, string[]>> {
+  const result: Record<string, string[]> = {};
+  if (!datasourceUid || !groupNames.length) {
+    return result;
+  }
+
+  const wanted = [...new Set(groupNames.map((g) => g.trim()).filter(Boolean))];
+  if (!wanted.length) {
+    return result;
+  }
+
+  try {
+    const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
+      filter: { name: wanted },
+      output: ['groupid', 'name'],
+    });
+    const byName = new Map((groups ?? []).map((g) => [g.name, g.groupid]));
+
+    await Promise.all(
+      wanted.map(async (groupName) => {
+        const groupId = byName.get(groupName);
+        if (!groupId) {
+          result[groupName] = [];
+          return;
+        }
+        const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+          groupids: [groupId],
+          output: ['host', 'name'],
+        });
+        const names = new Set<string>();
+        for (const h of hosts ?? []) {
+          const visible = h.name?.trim();
+          const technical = h.host?.trim();
+          if (visible) {
+            names.add(visible);
+          } else if (technical) {
+            names.add(technical);
+          }
+        }
+        result[groupName] = [...names];
+      })
+    );
+  } catch {
+    // fallback: estatísticas só por hosts no mapa
+  }
+
+  return result;
+}
+
 /** Grupos Zabbix aos quais um host pertence (para edição). */
 export async function fetchZabbixGroupsForHost(
   datasourceUid: string,
@@ -227,4 +281,320 @@ export async function fetchZabbixGroupsForHost(
   } catch {
     return [];
   }
+}
+
+interface ZabbixProblemHost {
+  hostid?: string;
+  host?: string;
+  name?: string;
+}
+
+interface ZabbixHostRef {
+  hostid: string;
+  host?: string;
+  name?: string;
+}
+
+interface ZabbixTriggerProblem {
+  triggerid?: string;
+  hosts?: ZabbixProblemHost[];
+}
+
+function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost): void {
+  const visible = h.name?.trim();
+  const technical = h.host?.trim();
+  if (visible) {
+    result[visible] = (result[visible] ?? 0) + 1;
+  }
+  if (technical) {
+    result[technical] = (result[technical] ?? 0) + 1;
+  }
+}
+
+async function fetchHostIdsForProblems(
+  datasourceUid: string,
+  groupName?: string,
+  hostNames?: string[]
+): Promise<{ hostIds: string[]; hosts: ZabbixHostRef[] }> {
+  if (groupName) {
+    const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
+      filter: { name: [groupName] },
+      output: ['groupid'],
+    });
+    const groupId = groups?.[0]?.groupid;
+    if (!groupId) {
+      return { hostIds: [], hosts: [] };
+    }
+    const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+      groupids: [groupId],
+      output: ['hostid', 'host', 'name'],
+    });
+    const list = hosts ?? [];
+    return { hostIds: list.map((h) => h.hostid), hosts: list };
+  }
+
+  if (hostNames?.length) {
+    const names = hostNames.map((h) => h.trim()).filter(Boolean);
+    const byVisible = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+      filter: { name: names },
+      output: ['hostid', 'host', 'name'],
+    });
+    const byTechnical = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+      filter: { host: names },
+      output: ['hostid', 'host', 'name'],
+    });
+    const merged = new Map<string, ZabbixHostRef>();
+    for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
+      merged.set(h.hostid, h);
+    }
+    const list = [...merged.values()];
+    return { hostIds: list.map((h) => h.hostid), hosts: list };
+  }
+
+  return { hostIds: [], hosts: [] };
+}
+
+/** Problemas ativos no Zabbix por nome de host (visível e técnico). */
+export async function fetchZabbixHostProblems(
+  datasourceUid: string,
+  groupName?: string,
+  hostNames?: string[]
+): Promise<HostProblemMap> {
+  const result: HostProblemMap = {};
+  if (!datasourceUid) {
+    return result;
+  }
+
+  try {
+    const { hostIds } = await fetchHostIdsForProblems(datasourceUid, groupName, hostNames);
+    if (!hostIds.length) {
+      return result;
+    }
+
+    try {
+      // problem.get não suporta selectHosts — usar trigger.get (triggers em estado PROBLEM)
+      const triggers = await zabbixCall<ZabbixTriggerProblem[]>(datasourceUid, 'trigger.get', {
+        hostids: hostIds,
+        output: ['triggerid'],
+        selectHosts: ['name', 'host'],
+        filter: { value: 1 },
+        monitored: true,
+        skipDependent: true,
+        only_true: true,
+      });
+
+      for (const trigger of triggers ?? []) {
+        for (const h of trigger.hosts ?? []) {
+          addProblemHost(result, h);
+        }
+      }
+    } catch {
+      // tenta event.get abaixo
+    }
+
+    if (!Object.keys(result).length) {
+      interface ZabbixEventProblem {
+        eventid?: string;
+        hosts?: ZabbixProblemHost[];
+      }
+      try {
+        const events = await zabbixCall<ZabbixEventProblem[]>(datasourceUid, 'event.get', {
+          output: ['eventid'],
+          hostids: hostIds,
+          source: 0,
+          object: 0,
+          value: 1,
+          selectHosts: ['name', 'host'],
+          suppressed: false,
+          sortfield: 'clock',
+          sortorder: 'DESC',
+        });
+        for (const event of events ?? []) {
+          for (const h of event.hosts ?? []) {
+            addProblemHost(result, h);
+          }
+        }
+      } catch {
+        // fallback: só perda de pacotes da query
+      }
+    }
+  } catch {
+    // fallback: só perda de pacotes da query
+  }
+
+  return result;
+}
+
+export interface HostIcmpStatus {
+  reachable: boolean | null;
+  lossPct: number | null;
+  rttMs: number | null;
+  lastClock?: number;
+  error?: string;
+}
+
+interface ZabbixIcmpItem {
+  key_: string;
+  lastvalue?: string;
+  lastclock?: string;
+}
+
+function parseFloatOrNull(value?: string): number | null {
+  if (value === undefined || value === '') {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function resolveZabbixHostId(datasourceUid: string, hostName: string): Promise<string | undefined> {
+  const name = hostName.trim();
+  if (!name) {
+    return undefined;
+  }
+  let hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+    filter: { name: [name] },
+    output: ['hostid'],
+  });
+  if (!hosts?.length) {
+    hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+      filter: { host: [name] },
+      output: ['hostid'],
+    });
+  }
+  return hosts?.[0]?.hostid;
+}
+
+let cachedPingScriptIds: { panel?: string; continuous?: string } | undefined;
+
+export interface PingScriptResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+async function fetchPingScriptIds(
+  datasourceUid: string
+): Promise<{ panel?: string; continuous?: string }> {
+  if (cachedPingScriptIds !== undefined) {
+    return cachedPingScriptIds;
+  }
+  const scripts = await zabbixCall<Array<{ scriptid: string; name: string }>>(datasourceUid, 'script.get', {
+    output: ['scriptid', 'name'],
+  });
+  const byName = (name: string) =>
+    scripts?.find((s) => s.name?.trim().toLowerCase() === name.toLowerCase())?.scriptid;
+  cachedPingScriptIds = {
+    panel: byName('Ping rápido') ?? byName('Ping'),
+    continuous: byName('Ping'),
+  };
+  return cachedPingScriptIds;
+}
+
+/** Executa script Ping no Zabbix. Modo painel = pacotes curtos; contínuo = até timeout do script. */
+export async function executeHostPingScript(
+  datasourceUid: string,
+  hostName: string,
+  mode: 'panel' | 'continuous' = 'panel'
+): Promise<PingScriptResult> {
+  if (!datasourceUid || !hostName.trim()) {
+    return { success: false, output: '', error: 'Host ou datasource Zabbix não configurado' };
+  }
+
+  try {
+    const hostId = await resolveZabbixHostId(datasourceUid, hostName);
+    if (!hostId) {
+      return { success: false, output: '', error: `Host "${hostName.trim()}" não encontrado no Zabbix` };
+    }
+
+    const ids = await fetchPingScriptIds(datasourceUid);
+    const scriptId = mode === 'continuous' ? ids.continuous : ids.panel;
+    if (!scriptId) {
+      return { success: false, output: '', error: 'Script Ping não encontrado no Zabbix (Alerts → Scripts)' };
+    }
+
+    const result = await zabbixCall<{ response?: string; value?: string }>(datasourceUid, 'script.execute', {
+      scriptid: scriptId,
+      hostid: hostId,
+    });
+
+    const output = result.value?.trim() ?? '';
+    if (result.response === 'success' && output) {
+      return { success: true, output };
+    }
+    if (output) {
+      return { success: result.response === 'success', output };
+    }
+    return {
+      success: false,
+      output: '',
+      error: 'Ping executado, mas sem saída. Verifique permissões de script no Zabbix.',
+    };
+  } catch (err) {
+    return { success: false, output: '', error: String(err) };
+  }
+}
+
+/** Última medição ICMP do host no Zabbix (icmpping / icmppingloss / icmppingsec). */
+export async function fetchHostIcmpStatus(
+  datasourceUid: string,
+  hostName: string
+): Promise<HostIcmpStatus> {
+  const empty: HostIcmpStatus = { reachable: null, lossPct: null, rttMs: null };
+
+  if (!datasourceUid || !hostName.trim()) {
+    return { ...empty, error: 'Host ou datasource Zabbix não configurado' };
+  }
+
+  const hostId = await resolveZabbixHostId(datasourceUid, hostName.trim());
+  if (!hostId) {
+    return { ...empty, error: `Host "${hostName.trim()}" não encontrado no Zabbix` };
+  }
+
+  const items = await zabbixCall<ZabbixIcmpItem[]>(datasourceUid, 'item.get', {
+    hostids: [hostId],
+    output: ['key_', 'lastvalue', 'lastclock'],
+    search: { key_: 'icmpping' },
+    searchByAny: true,
+  });
+
+  if (!items?.length) {
+    return { ...empty, error: 'Itens ICMP (icmpping) não encontrados neste host' };
+  }
+
+  let reachable: boolean | null = null;
+  let lossPct: number | null = null;
+  let rttMs: number | null = null;
+  let lastClock: number | undefined;
+
+  for (const item of items) {
+    const key = item.key_?.toLowerCase() ?? '';
+    const val = item.lastvalue;
+    const clock = parseFloatOrNull(item.lastclock ?? undefined);
+    if (clock !== null) {
+      lastClock = Math.max(lastClock ?? 0, clock);
+    }
+
+    if (key.includes('icmppingloss')) {
+      lossPct = parseFloatOrNull(val);
+    } else if (key.includes('icmppingsec')) {
+      const sec = parseFloatOrNull(val);
+      rttMs = sec !== null ? sec * 1000 : null;
+    } else if (key.startsWith('icmpping')) {
+      const n = parseFloatOrNull(val);
+      if (n !== null) {
+        reachable = n >= 1;
+      }
+    }
+  }
+
+  if (reachable === null) {
+    if (lossPct !== null) {
+      reachable = lossPct < 100;
+    } else if (rttMs !== null && rttMs > 0) {
+      reachable = true;
+    }
+  }
+
+  return { reachable, lossPct, rttMs, lastClock };
 }

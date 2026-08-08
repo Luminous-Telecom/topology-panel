@@ -23,6 +23,8 @@ import {
   defaultOptions,
 } from '../types';
 import { extractHostMetadataFromData, extractQueryHosts, inferLinkMedium, mergeMapWithQueryHosts } from '../utils';
+import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
+import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
 type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
 
@@ -149,13 +151,29 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   }, [displayMap.nodes, map.links, updateMap]);
 
   const updateLink = useCallback(
-    (index: number, field: 'from' | 'to' | 'medium', value: string) => {
+    (index: number, field: 'from' | 'to' | 'medium' | 'bandwidthMbps', value: string) => {
       const links = map.links.map((l, i) => {
         if (i !== index) {
           return l;
         }
         if (field === 'medium') {
           return { ...l, medium: value as 'fiber' | 'radio' };
+        }
+        if (field === 'bandwidthMbps') {
+          const trimmed = value.trim();
+          if (!trimmed) {
+            const next = { ...l };
+            delete next.bandwidthMbps;
+            return next;
+          }
+          const [amount, unit] = trimmed.split(':');
+          const mbps = parseBandwidthInput(amount, (unit as LinkBandwidthUnit) || 'gbps');
+          if (!mbps) {
+            const next = { ...l };
+            delete next.bandwidthMbps;
+            return next;
+          }
+          return { ...l, bandwidthMbps: mbps };
         }
         const next = { ...l, [field]: value };
         if (field === 'from' || field === 'to') {
@@ -263,7 +281,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         <VerticalGroup spacing="sm">
           {hostNodes.length === 0 && (
             <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-              Configure a aba <strong>Query</strong> com grupo Zabbix e item &quot;Perda de Pacotes&quot;.
+              Configure a aba <strong>Query</strong> com grupo Zabbix e item de tempo de resposta ICMP (icmppingsec).
             </div>
           )}
           {hostNodes.map((node) => {
@@ -320,18 +338,19 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                       onChange={(e) => updateSubmap(idx, { label: e.currentTarget.value })}
                     />
                   </Field>
-                  <Field label="Dashboard UID">
-                    <Input
+                  <Field
+                    label="Dashboard"
+                    description={node.submapSlug ? `Slug: ${node.submapSlug}` : undefined}
+                  >
+                    <DashboardPickerSelect
                       value={node.submapUid ?? ''}
                       disabled={locked}
-                      onChange={(e) => updateSubmap(idx, { submapUid: e.currentTarget.value })}
-                    />
-                  </Field>
-                  <Field label="Slug (opcional)">
-                    <Input
-                      value={node.submapSlug ?? ''}
-                      disabled={locked}
-                      onChange={(e) => updateSubmap(idx, { submapSlug: e.currentTarget.value })}
+                      onChange={(uid, slug) =>
+                        updateSubmap(idx, {
+                          submapUid: uid || undefined,
+                          submapSlug: slug || uid || undefined,
+                        })
+                      }
                     />
                   </Field>
                   <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeSubmap(idx)}>
@@ -347,9 +366,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         </VerticalGroup>
       </Field>
 
-      <Field label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = linha tracejada">
+      <Field label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = tracejado · Capacidade define espessura e rótulo (Mb/Gb)">
         <VerticalGroup spacing="sm">
-          {map.links.map((link, idx) => (
+          {map.links.map((link, idx) => {
+            const bw = bandwidthToInput(link.bandwidthMbps);
+            return (
             <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <Field label="De">
                 <Select
@@ -378,11 +399,40 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   onChange={(v) => updateLink(idx, 'medium', v.value!)}
                 />
               </Field>
+              <Field label="Capacidade">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    width={10}
+                    disabled={locked}
+                    value={bw.value}
+                    placeholder="1"
+                    onChange={(e) =>
+                      updateLink(idx, 'bandwidthMbps', `${e.currentTarget.value}:${bw.unit}`)
+                    }
+                  />
+                  <Select
+                    width={10}
+                    options={[
+                      { label: 'Mb', value: 'mbps' },
+                      { label: 'Gb', value: 'gbps' },
+                    ]}
+                    value={bw.unit}
+                    disabled={locked}
+                    onChange={(v) =>
+                      updateLink(idx, 'bandwidthMbps', `${bw.value}:${v.value ?? 'gbps'}`)
+                    }
+                  />
+                </div>
+              </Field>
               <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeLink(idx)}>
                 Remover
               </Button>
             </div>
-          ))}
+            );
+          })}
           <Button onClick={addLink} disabled={locked || displayMap.nodes.length < 2}>
             + Adicionar link
           </Button>

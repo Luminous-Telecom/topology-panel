@@ -15,13 +15,18 @@ export const HOST_TOOLS: HostToolDef[] = [
 ];
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+const IPV4_IN_TEXT = /\b(\d{1,3}(?:\.\d{1,3}){3})\b/;
 
 export function hostIp(node: { subtitle?: string }): string | undefined {
-  const ip = node.subtitle?.trim();
-  if (ip && IPV4.test(ip)) {
-    return ip;
+  const raw = node.subtitle?.trim();
+  if (!raw) {
+    return undefined;
   }
-  return undefined;
+  if (IPV4.test(raw)) {
+    return raw;
+  }
+  const match = raw.match(IPV4_IN_TEXT);
+  return match?.[1];
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -29,8 +34,26 @@ async function copyText(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    return false;
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(area);
+      return ok;
+    } catch {
+      return false;
+    }
   }
+}
+
+export async function copyPingCommand(ip: string): Promise<string> {
+  const cmd = `ping ${ip.trim()}`;
+  const ok = await copyText(cmd);
+  return ok ? 'Comando copiado para a área de transferência' : `Copie manualmente: ${cmd}`;
 }
 
 function openUrl(url: string): void {
@@ -54,11 +77,8 @@ export async function runHostTool(tool: HostToolId, ip: string): Promise<string 
   }
 
   switch (tool) {
-    case 'ping': {
-      const cmd = `ping ${target}`;
-      const ok = await copyText(cmd);
-      return ok ? `Comando copiado: ${cmd}` : `Execute: ${cmd}`;
-    }
+    case 'ping':
+      return copyPingCommand(target);
     case 'web':
       openUrl(`http://${target}`);
       return undefined;

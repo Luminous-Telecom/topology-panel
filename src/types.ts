@@ -3,9 +3,27 @@ export type TopologyNodeType = 'host' | 'submap' | 'static' | 'network';
 
 export type TopologyHostIcon =
   | 'router'
-  | 'camera'
+  | 'bras'
+  | 'switch_managed'
+  | 'switch_unmanaged'
+  | 'load_balancer'
+  | 'firewall'
+  | 'vpn'
+  | 'olt'
+  | 'onu'
+  | 'fiber'
   | 'access_point'
+  | 'radio'
+  | 'tower'
+  | 'satellite'
+  | 'mesh'
+  | 'camera'
   | 'bridge'
+  | 'server'
+  | 'rack'
+  | 'dns'
+  | 'network'
+  /** Legado — mapas antigos; não aparece no picker */
   | 'web'
   | 'proxmox'
   | 'vmware'
@@ -40,6 +58,14 @@ export interface TopologyNode {
   fillColor?: string;
   /** Cor da borda (type=network) */
   borderColor?: string;
+  /** Grupo Zabbix para contagem dinâmica de hosts (network/submap) */
+  zabbixGroupFilter?: string;
+  /** Rede pai explícita (type=host) — alternativa à detecção por posição */
+  networkId?: string;
+  /** Hosts do mapa da cidade usados na contagem do overview */
+  statsHosts?: string[];
+  /** Tamanho da fonte (type=static) */
+  fontSize?: number;
 }
 
 export type TopologyLinkMedium = 'fiber' | 'radio';
@@ -51,6 +77,10 @@ export interface TopologyLink {
   to: string;
   /** fiber = linha contínua; radio = linha tracejada */
   medium?: TopologyLinkMedium;
+  /** Capacidade em Mbps (ex.: 100, 1000, 10000) — define rótulo e espessura */
+  bandwidthMbps?: number;
+  /** Pontos intermediários para desviar a linha (origem → … → destino) */
+  waypoints?: Array<{ x: number; y: number }>;
 }
 
 export interface TopologyMap {
@@ -60,6 +90,8 @@ export interface TopologyMap {
   height: number;
   nodes: TopologyNode[];
   links: TopologyLink[];
+  /** Ícone por nome do host Zabbix (persiste mesmo sem layout salvo) */
+  hostIcons?: Partial<Record<string, TopologyHostIcon>>;
   /** Hosts from Zabbix query hidden from the map */
   hiddenHosts?: string[];
   /** When true, canvas editing is disabled */
@@ -76,14 +108,30 @@ export interface HostMetadata {
 
 export type HostMetadataMap = Record<string, HostMetadata>;
 
+/** Como interpretar o valor numérico da query Zabbix para online/offline */
+export type TopologyStatusMetric = 'icmp_rtt' | 'packet_loss';
+
+/** Zoom/pan do canvas — salvo nas opções do painel */
+export interface TopologyView {
+  x: number;
+  y: number;
+  scale: number;
+}
+
 export interface TopologyPanelOptions {
   map: TopologyMap;
+  /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
+  view?: TopologyView;
   /** Colors */
   colorOnline: string;
   colorOffline: string;
   colorUnknown: string;
   colorSubmap: string;
   colorLink: string;
+  /** Animação download (sentido destino / seta) */
+  colorLinkDownload: string;
+  /** Animação upload (sentido origem) */
+  colorLinkUpload: string;
   colorLinkWidth: number;
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
@@ -94,9 +142,11 @@ export interface TopologyPanelOptions {
   showSubtitle: boolean;
   /** Zabbix: field name after transform (default host) */
   statusHostField: string;
-  /** Zabbix: field with packet loss / error value */
+  /** Zabbix: coluna numérica após transform (ex.: rtt, loss) */
   statusValueField: string;
-  /** Values >= this threshold = offline */
+  /** Métrica da query: tempo ICMP (icmppingsec) ou perda de pacotes */
+  statusMetric?: TopologyStatusMetric;
+  /** Perda de pacotes: valores >= limiar = offline. Ignorado em modo ICMP RTT. */
   offlineThreshold: number;
   /** Enable pan with mouse drag */
   enablePan: boolean;
@@ -114,6 +164,10 @@ export interface TopologyPanelOptions {
   zabbixGroupFilter?: string;
   /** Coluna IP nos dados da query (se houver) */
   hostIpField: string;
+  /** Marcar host offline quando houver problema ativo no Zabbix (além de perda de pacotes) */
+  useZabbixProblems?: boolean;
+  /** Desenhar hosts da query no mapa (false = overview só com submapas/redes) */
+  showQueryHostsOnMap?: boolean;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -153,6 +207,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorUnknown: '#616161',
   colorSubmap: '#1565C0',
   colorLink: '#78909C',
+  colorLinkDownload: '#4FC3F7',
+  colorLinkUpload: '#FFB74D',
   colorLinkWidth: 2,
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
@@ -160,7 +216,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   nodeFontSize: 11,
   showSubtitle: true,
   statusHostField: 'host',
-  statusValueField: 'loss',
+  statusValueField: 'rtt',
+  statusMetric: 'icmp_rtt',
   offlineThreshold: 1,
   enablePan: true,
   enableZoom: true,
@@ -169,10 +226,15 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   snapToGrid: true,
   zabbixDatasourceUid: 'afkagcaezrrpca',
   hostIpField: 'ip',
+  useZabbixProblems: true,
+  showQueryHostsOnMap: true,
 });
 
 /** Host name -> last status value (packet loss %) */
 export type HostStatusMap = Record<string, number | null | undefined>;
+
+/** Host name -> active Zabbix problem count */
+export type HostProblemMap = Record<string, number>;
 
 export function nodeDimensions(node: TopologyNode): { w: number; h: number } {
   return { w: node.width ?? 120, h: node.height ?? 40 };
@@ -203,6 +265,10 @@ export function parseTopologyJson(raw: string): TopologyMap | null {
       locked: Boolean(parsed.locked),
       networksLocked: parsed.networksLocked !== false,
       hiddenHosts: Array.isArray(parsed.hiddenHosts) ? parsed.hiddenHosts : undefined,
+      hostIcons:
+        parsed.hostIcons && typeof parsed.hostIcons === 'object' && !Array.isArray(parsed.hostIcons)
+          ? (parsed.hostIcons as TopologyMap['hostIcons'])
+          : undefined,
     };
   } catch {
     return null;

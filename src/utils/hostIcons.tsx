@@ -1,14 +1,54 @@
 import React from 'react';
+import { IconType } from 'react-icons';
+import { FaDesktop, FaGlobe, FaLinux, FaWindows } from 'react-icons/fa6';
+import { SiProxmox, SiVmware } from 'react-icons/si';
 import { TopologyHostIcon, TopologyNode } from '../types';
+import { CUSTOM_ICON_SVGS, inlineSvgMarkup, isCustomAssetIcon, SWITCH_UNMANAGED_ICON_FILTER } from './customIcons';
+import { isNetworkHostIcon, NETWORK_ICON_COMPONENTS } from './networkIcons';
 
-export const HOST_ICON_SIZE = 14;
-export const HOST_ICON_GUTTER = 22;
+export const HOST_ICON_SIZE = 28;
+export const HOST_ICON_GAP = 6;
+
+/** Escala por tipo — switches e equipamentos largos um pouco maiores no mapa. */
+export const HOST_ICON_SIZE_SCALE: Partial<Record<TopologyHostIcon, number>> = {
+  switch_managed: 1.45,
+  switch_unmanaged: 1.45,
+  camera: 1.3,
+  rack: 1.25,
+  bras: 1.25,
+  router: 1.2,
+  vpn: 1.2,
+  network: 1.15,
+  access_point: 1.2,
+};
+
+export function hostIconRenderSize(icon: TopologyHostIcon, base = HOST_ICON_SIZE): number {
+  const scale = HOST_ICON_SIZE_SCALE[icon] ?? 1;
+  return Math.round(base * scale);
+}
 
 export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
   router: 'Router',
-  camera: 'Câmera',
+  bras: 'Switch borda',
+  switch_managed: 'Switch gerenciável',
+  switch_unmanaged: 'Switch não gerenciável',
+  load_balancer: 'Load balancer',
+  firewall: 'Firewall',
+  vpn: 'Concentrador BNG',
+  olt: 'OLT',
+  onu: 'ONU / modem',
+  fiber: 'Fibra óptica',
   access_point: 'Access Point',
+  radio: 'Rádio / antena',
+  tower: 'Torre',
+  satellite: 'Satélite',
+  mesh: 'Mesh / rede',
+  camera: 'Câmera',
   bridge: 'Bridge',
+  server: 'Servidor',
+  rack: 'Rack',
+  dns: 'DNS',
+  network: 'Cloud / links externos',
   web: 'Web',
   proxmox: 'Proxmox',
   vmware: 'VMware',
@@ -19,38 +59,82 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
 
 export const HOST_ICON_ORDER: TopologyHostIcon[] = [
   'router',
-  'camera',
+  'bras',
+  'switch_managed',
+  'switch_unmanaged',
+  'load_balancer',
+  'firewall',
+  'vpn',
+  'olt',
+  'onu',
+  'fiber',
   'access_point',
+  'radio',
+  'tower',
+  'satellite',
+  'mesh',
+  'camera',
   'bridge',
-  'web',
-  'proxmox',
-  'vmware',
-  'linux',
-  'windows',
-  'host',
+  'server',
+  'rack',
+  'dns',
+  'network',
 ];
 
-/** SVG paths (viewBox 0 0 16 16) — ícones simples estilo The Dude */
-const ICON_PATHS: Record<TopologyHostIcon, string[]> = {
-  router: [
-    'M2 12h12v2H2z M4 5h8v5H4z',
-    'M8 2v2 M5 3.5l1.2 1 M11 3.5l-1.2 1',
-  ],
-  camera: ['M2 5h3l1-2h4l1 2h3v8H2z', 'M8 7.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z'],
-  access_point: [
-    'M8 13v-1',
-    'M5.5 10.5a4 4 0 015 0',
-    'M3.5 8a7 7 0 019 0',
-    'M8 11a1 1 0 100-2 1 1 0 000 2z',
-  ],
-  bridge: ['M1 6h4v4H1z M11 6h4v4h-4z', 'M5 8h6 M7 7v2 M9 7v2'],
-  web: ['M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z', 'M1.5 8h13 M8 1.5v13 M4 3.5c2 2.5 6 2.5 8 0 M4 12.5c2-2.5 6-2.5 8 0'],
-  proxmox: ['M8 1.5l6 3.5v7L8 15.5 2 12V5z', 'M8 5v6 M5.5 6.5L8 8l2.5-1.5'],
-  vmware: ['M3 6c0-2.2 2.2-4 5-4s5 1.8 5 4-2.2 4-5 4H5v3H3z', 'M5 10h6v2H5z'],
-  linux: ['M8 2c-2 0-3.5 1.5-3.5 3.5 0 1.2.6 2.2 1.5 2.8-.3.8-.5 1.5-.5 2.2 0 2 1.6 3.5 3.5 3.5h1c1.9 0 3.5-1.5 3.5-3.5 0-.7-.2-1.4-.5-2.2.9-.6 1.5-1.6 1.5-2.8C11.5 3.5 10 2 8 2z'],
-  windows: ['M1.5 2.5l5.5-1v5.5H1.5z M7.5 1.5L14 2.5v5H7.5z M1.5 8.5h5.5V14L1.5 12.5z M7.5 8.5H14V13l-6.5-1z'],
-  host: ['M2 3h12v10H2z', 'M5 13h6'],
+/** Fallback react-icons só para tipos legados (mapas antigos). */
+const LEGACY_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, IconType>> = {
+  web: FaGlobe,
+  proxmox: SiProxmox,
+  vmware: SiVmware,
+  linux: FaLinux,
+  windows: FaWindows,
+  host: FaDesktop,
 };
+
+const BRAND_ICON_COLORS: Partial<Record<TopologyHostIcon, string>> = {
+  proxmox: '#E57000',
+  vmware: '#696566',
+  linux: '#FCC624',
+  windows: '#00A4EF',
+};
+
+/** Equipamentos gerenciáveis — mesma cor padrão no mapa. */
+export const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
+  'router',
+  'bras',
+  'switch_managed',
+  'load_balancer',
+  'firewall',
+  'vpn',
+  'olt',
+  'dns',
+  'server',
+  'rack',
+  'access_point',
+];
+
+/** Cor padrão dos ícones gerenciáveis no mapa. */
+export const MANAGED_ICON_COLOR = '#4FC3F7';
+
+/** Switch não gerenciável e demais ícones passivos — branco. */
+export const PASSIVE_ICON_COLOR = 'rgba(255,255,255,0.92)';
+
+export function isManagedHostIcon(icon: TopologyHostIcon): boolean {
+  return MANAGED_HOST_ICONS.includes(icon);
+}
+
+export function hostIconColor(icon: TopologyHostIcon, fallback = PASSIVE_ICON_COLOR): string {
+  if (isCustomAssetIcon(icon)) {
+    return icon === 'switch_unmanaged' ? PASSIVE_ICON_COLOR : MANAGED_ICON_COLOR;
+  }
+  if (isManagedHostIcon(icon)) {
+    return MANAGED_ICON_COLOR;
+  }
+  if (isNetworkHostIcon(icon) || icon === 'switch_unmanaged') {
+    return PASSIVE_ICON_COLOR;
+  }
+  return BRAND_ICON_COLORS[icon] ?? fallback;
+}
 
 export function hostIconSelectOptions(): Array<{ label: string; value: TopologyHostIcon }> {
   return HOST_ICON_ORDER.map((id) => ({ label: HOST_ICON_LABELS[id], value: id }));
@@ -58,6 +142,56 @@ export function hostIconSelectOptions(): Array<{ label: string; value: TopologyH
 
 export function resolveHostIcon(node: Pick<TopologyNode, 'icon'>): TopologyHostIcon | null {
   return node.icon ?? null;
+}
+
+interface IconImageProps {
+  icon: TopologyHostIcon;
+  size?: number;
+  color?: string;
+  className?: string;
+}
+
+/** Ícone Dude (SVG inline), desenhado ou legado (react-icons). */
+export function HostIconImage({ icon, size = 20, color, className }: IconImageProps) {
+  const customSvg = CUSTOM_ICON_SVGS[icon];
+  if (customSvg) {
+    const style: React.CSSProperties = {
+      display: 'block',
+      width: size,
+      height: size,
+      lineHeight: 0,
+      overflow: 'hidden',
+    };
+    if (icon === 'switch_unmanaged') {
+      style.filter = SWITCH_UNMANAGED_ICON_FILTER;
+    }
+    return (
+      <span
+        className={className}
+        style={style}
+        aria-hidden
+        dangerouslySetInnerHTML={{ __html: inlineSvgMarkup(customSvg, size) }}
+      />
+    );
+  }
+
+  const NetIcon = NETWORK_ICON_COMPONENTS[icon];
+  if (NetIcon) {
+    const fill = color ?? hostIconColor(icon);
+    return (
+      <NetIcon
+        width={size}
+        height={size}
+        color={fill}
+        className={className}
+        style={{ display: 'block', color: fill }}
+      />
+    );
+  }
+
+  const Icon = LEGACY_ICON_COMPONENTS[icon] ?? LEGACY_ICON_COMPONENTS.host ?? FaDesktop;
+  const fill = color ?? hostIconColor(icon, 'currentColor');
+  return <Icon size={size} color={fill} className={className} aria-hidden />;
 }
 
 interface GlyphProps {
@@ -68,22 +202,31 @@ interface GlyphProps {
   color?: string;
 }
 
-export function HostIconGlyph({ icon, x, y, size = HOST_ICON_SIZE, color = 'rgba(255,255,255,0.92)' }: GlyphProps) {
-  const paths = ICON_PATHS[icon] ?? ICON_PATHS.host;
-  const scale = size / 16;
+/** Ícone dentro do SVG do mapa (foreignObject). */
+export function HostIconGlyph({ icon, x, y, size = HOST_ICON_SIZE, color }: GlyphProps) {
+  const iconColor = color ?? hostIconColor(icon);
   return (
-    <g transform={`translate(${x - size / 2}, ${y - size / 2}) scale(${scale})`} pointerEvents="none">
-      {paths.map((d, i) => (
-        <path
-          key={i}
-          d={d}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </g>
+    <foreignObject
+      x={x - size / 2}
+      y={y - size / 2}
+      width={size}
+      height={size}
+      pointerEvents="none"
+    >
+      <div
+        style={{
+          width: size,
+          height: size,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          lineHeight: 0,
+          overflow: 'hidden',
+          color: iconColor,
+        }}
+      >
+        <HostIconImage icon={icon} size={size} color={iconColor} />
+      </div>
+    </foreignObject>
   );
 }

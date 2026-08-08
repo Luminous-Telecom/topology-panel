@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import {
+  HostProblemMap,
   HostStatusMap,
   TopologyLink,
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
+  TopologyView,
 } from '../types';
 import {
   addLinkToMap,
@@ -23,12 +25,15 @@ import {
   toggleMapLock,
   toggleNetworksLock,
   updateLinkMedium,
+  updateLinkProps,
   updateStoredNode,
   updateHostsIconBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, findScrollParents, NodeLayout, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, runHostTool } from '../utils/hostTools';
-import { HostIconGlyph, resolveHostIcon } from '../utils/hostIcons';
+import { HostIconGlyph, hostIconRenderSize, resolveHostIcon } from '../utils/hostIcons';
+import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
+import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
 import {
   ContextMenuItem,
   TopologyContextMenu,
@@ -39,13 +44,32 @@ import {
 import { NodeEditModal } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
 import { ZabbixHostPickerModal } from './AddZabbixHostModal';
+import { PingModal } from './PingModal';
+import { LinkEditModal } from './LinkEditModal';
+import { formatLinkBandwidth, linkStrokeWidth } from '../utils/linkBandwidth';
+import {
+  buildLinkPathD,
+  closestPointOnPolyline,
+  computeLinkGeometry,
+  linkLabelAnchor,
+  LinkPoint,
+  nearestWaypointIndex,
+} from '../utils/linkGeometry';
+import { LINK_FLOW_DASH, startLinkFlowAnimation } from '../utils/linkFlow';
 
 interface Props {
   map: TopologyMap;
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
   statusMap: HostStatusMap;
+  problemMap?: HostProblemMap;
+  submapHosts?: Record<string, string[]>;
   onMapChange?: (map: TopologyMap) => void;
+  onViewChange?: (view: TopologyView) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 const styles = {
@@ -123,51 +147,8 @@ function rectsOverlap(
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-function nodeCenter(node: { x: number; y: number; w: number; h: number }): { x: number; y: number } {
-  return { x: node.x + node.w / 2, y: node.y + node.h / 2 };
-}
-
-/** Ponto na borda do nó, voltado para outro centro (seta visível fora do host). */
-function nodeEdgeToward(
-  node: { x: number; y: number; w: number; h: number },
-  toward: { x: number; y: number }
-): { x: number; y: number } {
-  const cx = node.x + node.w / 2;
-  const cy = node.y + node.h / 2;
-  const dx = toward.x - cx;
-  const dy = toward.y - cy;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return { x: dx >= 0 ? node.x + node.w : node.x, y: cy };
-  }
-  return { x: cx, y: dy >= 0 ? node.y + node.h : node.y };
-}
-
-/** Straight vertical/horizontal when endpoints are nearly axis-aligned (not Manhattan routing). */
-function snapLinkEndpoint(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-  gridStep: number
-): { x: number; y: number } {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const threshold = Math.max(6, gridStep * 0.55);
-  if (Math.abs(dx) <= threshold && Math.abs(dy) > threshold) {
-    return { x: start.x, y: end.y };
-  }
-  if (Math.abs(dy) <= threshold && Math.abs(dx) > threshold) {
-    return { x: end.x, y: start.y };
-  }
-  return end;
-}
-
-function linkPath(
-  from: NodeLayout & { x: number; y: number },
-  to: NodeLayout & { x: number; y: number },
-  gridStep: number
-): string {
-  const start = nodeCenter(from);
-  const end = snapLinkEndpoint(start, nodeEdgeToward(to, start), gridStep);
-  return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+function linkWaypointsMatch(a: { from: string; to: string }, b: { from: string; to: string }): boolean {
+  return (a.from === b.from && a.to === b.to) || (a.from === b.to && a.to === b.from);
 }
 
 function LinkMarkers({ colorLink }: { colorLink: string }) {
@@ -239,7 +220,7 @@ function nodeFill(
   if (node.type === 'static') {
     return options.colorUnknown;
   }
-  const st = resolveNodeStatus(node, statusMap, options.offlineThreshold);
+  const st = resolveNodeStatus(node, statusMap, options.offlineThreshold, effectiveStatusMetric(options));
   if (st === 'online') {
     return options.colorOnline;
   }
@@ -249,9 +230,27 @@ function nodeFill(
   return options.colorUnknown;
 }
 
-export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange }: Props) {
+export function TopologyCanvas({
+  map,
+  storedMap,
+  options,
+  statusMap,
+  problemMap = {},
+  submapHosts = {},
+  onMapChange,
+  onViewChange,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
+}: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
+  const savedView = options.view;
+  const [view, setView] = useState<TopologyView>(() =>
+    savedView && typeof savedView.scale === 'number'
+      ? savedView
+      : { x: 0, y: 0, scale: 1 }
+  );
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
@@ -272,26 +271,43 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       }
     | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
     | { kind: 'marquee'; mapX0: number; mapY0: number }
+    | {
+        kind: 'link-waypoint';
+        link: TopologyLink;
+        waypointIndex: number;
+        waypoints: LinkPoint[];
+        moved: boolean;
+        inserted: boolean;
+      }
     | null
   >(null);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [bulkIconEditOpen, setBulkIconEditOpen] = useState(false);
+  const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
   const [editZabbixHost, setEditZabbixHost] = useState<TopologyNode | null>(null);
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<TopologyLink | null>(null);
+  const [editLink, setEditLink] = useState<TopologyLink | null>(null);
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
   const [dragPreview, setDragPreview] = useState<{
     nodeId?: string;
     positions?: Record<string, { x: number; y: number }>;
     width?: number;
     height?: number;
+    linkWaypoints?: { from: string; to: string; waypoints: LinkPoint[] };
   } | null>(null);
+  const [alignGuides, setAlignGuides] = useState<AlignGuideLine[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [pingTarget, setPingTarget] = useState<{
+    label: string;
+    ip: string;
+    zabbixHost?: string;
+  } | null>(null);
 
   const layoutOpts = useMemo(
     () => ({ nodeFontSize: options.nodeFontSize, showSubtitle: options.showSubtitle }),
@@ -322,11 +338,32 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       const layout =
         node.type === 'network'
           ? computeNetworkLayout(positioned, layoutOpts)
-          : computeNodeLayout(positioned, layoutOpts);
+          : node.type === 'static'
+            ? computeStaticLayout(positioned, layoutOpts)
+            : computeNodeLayout(positioned, layoutOpts);
       layouts.set(node.id, { ...positioned, ...layout });
     }
+
+    const stats = buildRegionStatsMap(map.nodes, layouts, statusMap, options, problemMap, submapHosts);
+    for (const node of map.nodes) {
+      if (node.type !== 'submap') {
+        continue;
+      }
+      const region = stats.get(node.id);
+      if (!region) {
+        continue;
+      }
+      const positioned = layouts.get(node.id);
+      if (!positioned) {
+        continue;
+      }
+      const withStats = { ...positioned, subtitle: formatRegionStats(region) };
+      const layout = computeNodeLayout(withStats, layoutOpts);
+      layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
+    }
+
     return layouts;
-  }, [map.nodes, layoutOpts, dragPreview]);
+  }, [map.nodes, layoutOpts, dragPreview, statusMap, options, problemMap, submapHosts]);
 
   const linkableNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -348,6 +385,11 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
     );
   }, [map.links, linkableNodeIds, nodeLayouts]);
 
+  const regionStats = useMemo(
+    () => buildRegionStatsMap(map.nodes, nodeLayouts, statusMap, options, problemMap, submapHosts),
+    [map.nodes, nodeLayouts, statusMap, options, problemMap, submapHosts]
+  );
+
   const persist = useCallback(
     (next: TopologyMap) => {
       onMapChange?.(next);
@@ -368,20 +410,51 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
   }, []);
 
   useEffect(() => {
-    if (!canEditCanvas) {
+    const el = wrapRef.current;
+    if (!el) {
       return;
     }
+    return startLinkFlowAnimation(el);
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const inField =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable);
+
+      if (canPersist && !inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        onUndo?.();
+        return;
+      }
+      if (
+        canPersist &&
+        !inField &&
+        (e.ctrlKey || e.metaKey) &&
+        (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))
+      ) {
+        e.preventDefault();
+        onRedo?.();
+        return;
+      }
+
+      if (!canEditCanvas) {
+        return;
+      }
+
       if (e.key === 'Escape') {
         setLinkFromId(null);
         setContextMenu(null);
         setSelectedNodeIds([]);
         setMarqueeRect(null);
+        setAlignGuides([]);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [canEditCanvas]);
+  }, [canEditCanvas, canPersist, onRedo, onUndo]);
 
   const fitToView = useCallback(() => {
     const el = wrapRef.current;
@@ -404,9 +477,13 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
     if (didInitialFitRef.current || !map.width || !map.height) {
       return;
     }
-    fitToView();
+    if (savedView && typeof savedView.scale === 'number') {
+      setView(savedView);
+    } else {
+      fitToView();
+    }
     didInitialFitRef.current = true;
-  }, [fitToView, map.width, map.height]);
+  }, [fitToView, map.width, map.height, savedView]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -415,13 +492,29 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
     }
     const onResize = () => {
       setViewport({ w: el.clientWidth, h: el.clientHeight });
-      fitToView();
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(el);
     onResize();
     return () => ro.disconnect();
-  }, [fitToView]);
+  }, []);
+
+  useEffect(() => {
+    if (!onViewChange || !didInitialFitRef.current) {
+      return;
+    }
+    const current = options.view;
+    if (
+      current &&
+      current.x === view.x &&
+      current.y === view.y &&
+      current.scale === view.scale
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => onViewChange(view), 400);
+    return () => window.clearTimeout(timer);
+  }, [onViewChange, options.view, view]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -564,18 +657,20 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
 
   const onResizePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
-      if (!editable || node.type !== 'network') {
+      if (!editable || (node.type !== 'network' && node.type !== 'static')) {
         return;
       }
       e.stopPropagation();
       const layout = nodeLayouts.get(node.id);
+      const defaultW = node.type === 'static' ? DEFAULT_STATIC_WIDTH : DEFAULT_NETWORK_WIDTH;
+      const defaultH = node.type === 'static' ? DEFAULT_STATIC_HEIGHT : DEFAULT_NETWORK_HEIGHT;
       dragRef.current = {
         kind: 'resize',
         node,
         ox: e.clientX,
         oy: e.clientY,
-        startW: layout?.w ?? node.width ?? 220,
-        startH: layout?.h ?? node.height ?? 140,
+        startW: layout?.w ?? node.width ?? defaultW,
+        startH: layout?.h ?? node.height ?? defaultH,
         moved: false,
       };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -687,14 +782,100 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         return;
       }
       setSelectedNodeIds([]);
+      setSelectedLink(null);
       beginPan(e);
     },
     [beginPan, editable, view]
   );
 
   const onLinkSelect = useCallback((link: TopologyLink) => {
+    setSelectedNodeIds([]);
     setSelectedLink((prev) => (prev && linkKey(prev) === linkKey(link) ? null : link));
   }, []);
+
+  const resolveLinkWaypoints = useCallback(
+    (link: TopologyLink): LinkPoint[] => {
+      const preview = dragPreview?.linkWaypoints;
+      if (preview && linkWaypointsMatch(preview, link)) {
+        return preview.waypoints;
+      }
+      const stored = storedMap.links.find((l) => linkKey(l) === linkKey(link));
+      return stored?.waypoints ?? link.waypoints ?? [];
+    },
+    [dragPreview?.linkWaypoints, storedMap.links]
+  );
+
+  const beginLinkWaypointDrag = useCallback(
+    (e: React.PointerEvent, link: TopologyLink, mapX: number, mapY: number, waypointIndex?: number) => {
+      if (!editable || e.button !== 0) {
+        return;
+      }
+      e.stopPropagation();
+      const from = nodeLayouts.get(link.from);
+      const to = nodeLayouts.get(link.to);
+      if (!from || !to) {
+        return;
+      }
+
+      const currentWaypoints = resolveLinkWaypoints(link).map((p) => ({ ...p }));
+      const geom = computeLinkGeometry(from, to, gridStep, currentWaypoints);
+      const point = { x: mapX, y: mapY };
+      const hitRadius = Math.max(10, 14 / view.scale);
+      let index = waypointIndex;
+      let inserted = false;
+      let waypoints = currentWaypoints;
+
+      if (index === undefined) {
+        index = currentWaypoints.findIndex((wp) => Math.hypot(wp.x - mapX, wp.y - mapY) <= hitRadius);
+      }
+
+      if (index < 0) {
+        const hit = closestPointOnPolyline(geom.pathPoints, point);
+        if (hit.distance > hitRadius * 1.5) {
+          return;
+        }
+        index = hit.insertIndex;
+        waypoints = [...currentWaypoints];
+        waypoints.splice(index, 0, { x: snapCoord(hit.x), y: snapCoord(hit.y) });
+        inserted = true;
+      }
+
+      setSelectedNodeIds([]);
+      setSelectedLink(link);
+      dragRef.current = {
+        kind: 'link-waypoint',
+        link,
+        waypointIndex: index,
+        waypoints,
+        moved: false,
+        inserted,
+      };
+      setDragPreview({ linkWaypoints: { from: link.from, to: link.to, waypoints } });
+      wrapRef.current?.setPointerCapture(e.pointerId);
+    },
+    [editable, gridStep, nodeLayouts, resolveLinkWaypoints, snapCoord, view.scale]
+  );
+
+  const removeLinkWaypoint = useCallback(
+    (link: TopologyLink, waypointIndex: number) => {
+      const current = resolveLinkWaypoints(link);
+      if (waypointIndex < 0 || waypointIndex >= current.length) {
+        return;
+      }
+      const waypoints = current.filter((_, i) => i !== waypointIndex);
+      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints }));
+      setDragPreview(null);
+    },
+    [persist, resolveLinkWaypoints, storedMap]
+  );
+
+  const resetLinkRoute = useCallback(
+    (link: TopologyLink) => {
+      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints: [] }));
+      setDragPreview(null);
+    },
+    [persist, storedMap]
+  );
 
   const onWrapPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -755,6 +936,61 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
           positions[member.id] = { x: snapped.x, y: snapped.y };
         }
         setDragPreview({ positions });
+
+        const primaryPos = positions[primary.id];
+        if (primaryPos) {
+          const draggedIds = new Set(Object.keys(positions));
+          const guideThreshold = Math.max(6, gridStep * 0.5);
+          const pad = gridStep * 2;
+          let x0 = 0;
+          let y0 = 0;
+          let x1 = map.width;
+          let y1 = map.height;
+          if (viewport.w > 0 && viewport.h > 0 && view.scale > 0) {
+            x0 = Math.min(x0, -view.x / view.scale);
+            y0 = Math.min(y0, -view.y / view.scale);
+            x1 = Math.max(x1, (viewport.w - view.x) / view.scale);
+            y1 = Math.max(y1, (viewport.h - view.y) / view.scale);
+          }
+          const bounds = {
+            x0: Math.floor((x0 - pad) / gridStep) * gridStep,
+            y0: Math.floor((y0 - pad) / gridStep) * gridStep,
+            x1: Math.ceil((x1 + pad) / gridStep) * gridStep,
+            y1: Math.ceil((y1 + pad) / gridStep) * gridStep,
+          };
+          const others = map.nodes
+            .filter((n) => !draggedIds.has(n.id))
+            .flatMap((n) => {
+              const layout = nodeLayouts.get(n.id);
+              if (!layout) {
+                return [];
+              }
+              return [
+                {
+                  id: n.id,
+                  x: layout.x,
+                  y: layout.y,
+                  w: layout.w,
+                  h: layout.h,
+                  type: n.type,
+                },
+              ];
+            });
+          setAlignGuides(
+            computeAlignGuides({
+              dragged: {
+                id: primary.id,
+                x: primaryPos.x,
+                y: primaryPos.y,
+                w: primary.startW,
+                h: primary.startH,
+              },
+              others,
+              bounds,
+              threshold: guideThreshold,
+            })
+          );
+        }
         return;
       }
       if (d.kind === 'resize') {
@@ -770,6 +1006,21 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         });
         return;
       }
+      if (d.kind === 'link-waypoint') {
+        const el = wrapRef.current;
+        if (!el) {
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+        d.moved = true;
+        const waypoints = d.waypoints.map((wp, i) =>
+          i === d.waypointIndex ? { x: snapCoord(x), y: snapCoord(y) } : wp
+        );
+        d.waypoints = waypoints;
+        setDragPreview({ linkWaypoints: { from: d.link.from, to: d.link.to, waypoints } });
+        return;
+      }
       if (d.kind === 'marquee') {
         const el = wrapRef.current;
         if (!el) {
@@ -780,8 +1031,12 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: x, y1: y });
       }
     },
-    [snapCoord, view, gridStep]
+    [map.height, map.nodes, map.width, nodeLayouts, snapCoord, view, viewport.h, viewport.w, gridStep]
   );
+
+  const clearDragUi = useCallback(() => {
+    setAlignGuides([]);
+  }, []);
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent, node?: TopologyNode) => {
@@ -820,6 +1075,14 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         return;
       }
 
+      if (d?.kind === 'link-waypoint') {
+        if (d.moved || d.inserted) {
+          persist(updateLinkProps(storedMap, d.link.from, d.link.to, { waypoints: d.waypoints }));
+        }
+        setDragPreview(null);
+        return;
+      }
+
       if (d?.kind === 'node' && dragPreview?.positions && d.moved) {
         const moves = Object.entries(dragPreview.positions).map(([nodeId, pos]) => ({
           nodeId,
@@ -828,8 +1091,10 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         }));
         persist(moveStoredNodesBulk(storedMap, moves));
         setDragPreview(null);
+        clearDragUi();
       } else if (d?.kind === 'node') {
         setDragPreview(null);
+        clearDragUi();
       }
 
       if (d?.kind === 'resize' && dragPreview && d.moved) {
@@ -864,7 +1129,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         setSelectedLink(null);
       }
     },
-    [completeLink, dragPreview, linkFromId, map.nodes, nodeLayouts, persist, storedMap, view]
+    [clearDragUi, completeLink, dragPreview, linkFromId, map.nodes, nodeLayouts, persist, storedMap, view]
   );
 
   const onNodeClick = useCallback(
@@ -895,7 +1160,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       if (editable) {
         if (node.type === 'submap') {
           openSubmap(node);
-        } else if (node.type === 'network') {
+        } else if (node.type === 'network' || node.type === 'static') {
           setEditNode(node);
         } else if ((node.type ?? 'host') === 'host') {
           openHostEditor(node);
@@ -932,6 +1197,14 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
           label: tool.label,
           variant: 'tool' as const,
           onClick: () => {
+            if (tool.id === 'ping') {
+              setPingTarget({
+                label: node.label ?? node.zabbixHost ?? ip,
+                ip,
+                zabbixHost: node.zabbixHost,
+              });
+              return;
+            }
             void runHostTool(tool.id, ip).then(showToast);
           },
         })),
@@ -968,7 +1241,11 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       }
 
       if (node && isHost && !selectedNodeIds.includes(node.id)) {
-        setSelectedNodeIds([node.id]);
+        if (selectedNodeIds.length === 0 || !(e.shiftKey || e.ctrlKey || e.metaKey)) {
+          setSelectedNodeIds([node.id]);
+        } else {
+          setSelectedNodeIds((prev) => (prev.includes(node.id) ? prev : [...prev, node.id]));
+        }
       }
 
       const el = wrapRef.current;
@@ -990,15 +1267,23 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
   );
 
   const openBulkIconEdit = useCallback(() => {
+    const selected = selectedNodeIds
+      .map((id) => map.nodes.find((n) => n.id === id))
+      .filter((n): n is TopologyNode => Boolean(n && isHostNode(n)));
+    if (!selected.length) {
+      showToast('Nenhum host válido na seleção');
+      return;
+    }
+    setBulkIconTargets(selected);
     setContextMenu(null);
     setBulkIconEditOpen(true);
-  }, []);
+  }, [map.nodes, selectedNodeIds, showToast]);
 
   const canvasMenuItems = useCallback((): ContextMenuItem[] => {
     const { mapX, mapY } = contextMenu ?? { mapX: 0, mapY: 0 };
     const items: ContextMenuItem[] = [];
 
-    if (selectedNodeIds.length >= 2) {
+    if (selectedNodeIds.length >= 1) {
       items.push({
         id: 'bulk-icon',
         label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
@@ -1050,6 +1335,22 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       const medium = resolveLinkMedium(link);
       return [
         {
+          id: 'link-edit',
+          label: 'Editar link…',
+          onClick: () => {
+            setContextMenu(null);
+            setEditLink(link);
+          },
+        },
+        {
+          id: 'link-straight',
+          label: 'Linha reta (remover desvios)',
+          onClick: () => {
+            setContextMenu(null);
+            resetLinkRoute(link);
+          },
+        },
+        {
           id: 'link-fiber',
           label: medium === 'fiber' ? '✓ Fibra (linha contínua)' : 'Marcar como fibra',
           onClick: () => persist(updateLinkMedium(storedMap, link.from, link.to, 'fiber')),
@@ -1067,7 +1368,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         },
       ];
     },
-    [persist, storedMap]
+    [persist, resetLinkRoute, storedMap]
   );
 
   const nodeMenuItems = useCallback(
@@ -1082,7 +1383,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         return items;
       }
 
-      if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id) && isHostNode(node)) {
+      if (selectedNodeIds.length >= 1 && selectedNodeIds.includes(node.id) && isHostNode(node)) {
         items.push({
           id: 'bulk-icon',
           label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
@@ -1120,7 +1421,10 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         id: 'delete',
         label: deleteLabel,
         variant: 'delete',
-        onClick: () => persist(removeNodeFromMap(storedMap, node.id)),
+        onClick: () =>
+          persist(
+            removeNodeFromMap(storedMap, node.id, { zabbixHost: node.zabbixHost, type: node.type })
+          ),
       });
       return items;
     },
@@ -1199,6 +1503,10 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         <TopologyToolbar
           locked={Boolean(map.locked)}
           networksLocked={areNetworksLocked(storedMap)}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={onUndo}
+          onRedo={onRedo}
           onToggleLock={() => persist(toggleMapLock(storedMap))}
           onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
         />
@@ -1207,8 +1515,15 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       {selectedLinkLabels && (
         <TopologyEditHint>
           Link ({selectedLinkLabels.medium === 'radio' ? 'Rádio' : 'Fibra'}):{' '}
-          <strong>{selectedLinkLabels.from}</strong> → <strong>{selectedLinkLabels.to}</strong> (clique no fundo
-          para desmarcar)
+          <strong>{selectedLinkLabels.from}</strong> → <strong>{selectedLinkLabels.to}</strong>
+          {editable ? (
+            <>
+              {' '}
+              · Arraste a linha para desviar · Duplo-clique na curva para remover · Botão direito → Linha reta
+            </>
+          ) : (
+            <> (clique no fundo para desmarcar)</>
+          )}
         </TopologyEditHint>
       )}
 
@@ -1221,12 +1536,12 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       {editable && selectedNodeIds.length > 0 && (
         <TopologyEditHint>
           <strong>{selectedNodeIds.length}</strong> host(s) selecionado(s).
-          {selectedNodeIds.length >= 2 && (
+          {selectedNodeIds.length >= 1 && (
             <>
               {' '}
               <span
                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                onClick={() => setBulkIconEditOpen(true)}
+                onClick={openBulkIconEdit}
               >
                 Alterar tipo
               </span>
@@ -1306,8 +1621,19 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
                 return null;
               }
               const { w, h, label, labelY, x, y } = layout;
-              const fill = node.fillColor ?? options.colorNetworkFill;
-              const stroke = node.borderColor ?? options.colorNetworkBorder;
+              const stats = regionStats.get(node.id);
+              const fillOverride = regionFillColor(stats, options, 'network');
+              const fill = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
+              const stroke =
+                stats && stats.offline > 0
+                  ? options.colorOffline
+                  : stats && stats.online > 0
+                    ? options.colorOnline
+                    : node.borderColor ?? options.colorNetworkBorder;
+              const statsLabel = stats ? formatRegionStats(stats) : undefined;
+              const statsPad = 8;
+              const statsFontSize = Math.max(9, options.nodeFontSize - 1);
+              const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : y + labelY;
 
               return (
                 <g
@@ -1349,6 +1675,20 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
                   >
                     {label}
                   </text>
+                  {statsLabel && (
+                    <text
+                      x={x + 8}
+                      y={statsY}
+                      textAnchor="start"
+                      dominantBaseline="middle"
+                      fill={stats!.offline > 0 ? '#ffcdd2' : '#c8e6c9'}
+                      fontSize={statsFontSize}
+                      fontFamily="Inter, Helvetica, Arial, sans-serif"
+                      pointerEvents="none"
+                    >
+                      {statsLabel}
+                    </text>
+                  )}
                   {editable && (
                     <rect
                       x={x + w - 10}
@@ -1380,6 +1720,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
             <LinkLine
               key={`${link.from}-${link.to}-${i}`}
               link={link}
+              waypoints={resolveLinkWaypoints(link)}
               nodeLayouts={nodeLayouts}
               options={options}
               editable={editable}
@@ -1388,6 +1729,44 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
               onSelect={() => onLinkSelect(link)}
               onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
               onContextMenu={(e) => handleContextMenu(e, { link })}
+              onPathPointerDown={(e) => {
+                const el = wrapRef.current;
+                if (!el) {
+                  return;
+                }
+                const rect = el.getBoundingClientRect();
+                const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+                beginLinkWaypointDrag(e, link, x, y);
+              }}
+              onPathDoubleClick={(e) => {
+                const el = wrapRef.current;
+                if (!el || !editable) {
+                  return;
+                }
+                e.stopPropagation();
+                const rect = el.getBoundingClientRect();
+                const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+                const wps = resolveLinkWaypoints(link);
+                const idx = nearestWaypointIndex(wps, { x, y }, Math.max(12, 16 / view.scale));
+                if (idx >= 0) {
+                  removeLinkWaypoint(link, idx);
+                }
+              }}
+            />
+          ))}
+
+          {alignGuides.map((guide, i) => (
+            <line
+              key={`guide-${guide.orientation}-${guide.position}-${guide.kind}-${i}`}
+              x1={guide.x1}
+              y1={guide.y1}
+              x2={guide.x2}
+              y2={guide.y2}
+              stroke={guide.kind === 'center' ? '#FF4081' : '#00E5FF'}
+              strokeWidth={guide.kind === 'center' ? 1.5 : 1}
+              strokeDasharray={guide.kind === 'center' ? undefined : '6 4'}
+              strokeOpacity={0.95}
+              pointerEvents="none"
             />
           ))}
 
@@ -1412,16 +1791,24 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
             if (!layout) {
               return null;
             }
-            const { w, h, label, sub, subFontSize, labelY, subY, iconGutter, x, y } = layout as typeof layout & {
+            const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout as typeof layout & {
               x: number;
               y: number;
             };
-            const fill = nodeFill(node, options, statusMap);
+            const fillOverride =
+              node.type === 'submap' ? regionFillColor(regionStats.get(node.id), options, 'submap') : undefined;
+            const fill = fillOverride ?? nodeFill(node, options, statusMap);
+            const regionLabel =
+              node.type === 'submap' && regionStats.has(node.id)
+                ? formatRegionStats(regionStats.get(node.id)!)
+                : undefined;
+            const displaySub = regionLabel ?? sub;
+            const displaySubY = subY;
             const isHostNode = (node.type ?? 'host') === 'host';
             const hostIcon = isHostNode ? resolveHostIcon(node) : null;
-            const textCenterX = x + iconGutter + (w - iconGutter) / 2;
-            const iconX = x + 11;
-            const iconY = y + h / 2;
+            const textCenterX = x + w / 2;
+            const iconX = x + w / 2;
+            const iconY = iconCenterY !== undefined ? y + iconCenterY : y + h / 2;
             const isLinkSource = linkFromId === node.id;
             const isLinkTarget = linkFromId !== null && linkHoverId === node.id;
             const isSelected = selectedNodeIds.includes(node.id);
@@ -1468,31 +1855,53 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
                   }
                   strokeWidth={isSelected || isSelectedLinkEndpoint ? 3 : isLinkSource || isLinkTarget ? 2 : 1}
                 />
-                {hostIcon && <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} />}
+                {hostIcon && (
+                  <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} size={hostIconRenderSize(hostIcon)} />
+                )}
+                {editable && node.type === 'static' && (
+                  <rect
+                    x={x + w - 10}
+                    y={y + h - 10}
+                    width={10}
+                    height={10}
+                    fill="rgba(255,255,255,0.45)"
+                    stroke="rgba(255,255,255,0.6)"
+                    strokeWidth={1}
+                    style={{ cursor: 'nwse-resize' }}
+                    onPointerDown={(e) => onResizePointerDown(e, node)}
+                    onPointerUp={(e) => onPointerUp(e)}
+                  />
+                )}
                 <text
                   x={textCenterX}
                   y={y + labelY}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fill="#fff"
-                  fontSize={options.nodeFontSize}
+                  fontSize={labelFontSize}
                   fontFamily="Inter, Helvetica, Arial, sans-serif"
                   pointerEvents="none"
                 >
                   {label}
                 </text>
-                {sub && subY !== undefined && (
+                {displaySub && displaySubY !== undefined && (
                   <text
                     x={textCenterX}
-                    y={y + subY}
+                    y={y + displaySubY}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="rgba(255,255,255,0.85)"
-                    fontSize={subFontSize}
+                    fill={
+                      regionLabel
+                        ? regionStats.get(node.id)!.offline > 0
+                          ? '#ffcdd2'
+                          : '#c8e6c9'
+                        : 'rgba(255,255,255,0.85)'
+                    }
+                    fontSize={Math.max(9, subFontSize)}
                     fontFamily="Inter, Helvetica, Arial, sans-serif"
                     pointerEvents="none"
                   >
-                    {sub}
+                    {displaySub}
                   </text>
                 )}
                 {node.type === 'submap' && (
@@ -1564,14 +1973,36 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         />
       )}
 
-      {bulkIconEditOpen && selectedNodeIds.length >= 2 && (
+      {bulkIconEditOpen && bulkIconTargets.length >= 1 && (
         <BulkHostIconModal
-          count={selectedNodeIds.length}
-          onClose={() => setBulkIconEditOpen(false)}
-          onSave={(icon) => {
-            persist(updateHostsIconBulk(storedMap, selectedNodeIds, icon));
-            showToast(`Tipo aplicado a ${selectedNodeIds.length} hosts`);
+          count={bulkIconTargets.length}
+          onClose={() => {
+            setBulkIconEditOpen(false);
+            setBulkIconTargets([]);
           }}
+          onSave={(icon) => {
+            persist(updateHostsIconBulk(storedMap, bulkIconTargets, icon));
+            showToast(`Tipo aplicado a ${bulkIconTargets.length} hosts`);
+            setBulkIconTargets([]);
+          }}
+        />
+      )}
+
+      {pingTarget && (
+        <PingModal
+          label={pingTarget.label}
+          ip={pingTarget.ip}
+          zabbixHost={pingTarget.zabbixHost}
+          datasourceUid={options.zabbixDatasourceUid}
+          onClose={() => setPingTarget(null)}
+        />
+      )}
+
+      {editLink && (
+        <LinkEditModal
+          link={editLink}
+          onClose={() => setEditLink(null)}
+          onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
         />
       )}
 
@@ -1580,8 +2011,9 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
   );
 }
 
-function LinkLine({
+function LinkLineComponent({
   link,
+  waypoints,
   nodeLayouts,
   options,
   editable,
@@ -1590,8 +2022,11 @@ function LinkLine({
   onSelect,
   onHoverChange,
   onContextMenu,
+  onPathPointerDown,
+  onPathDoubleClick,
 }: {
   link: TopologyLink;
+  waypoints: LinkPoint[];
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
   editable: boolean;
@@ -1600,23 +2035,30 @@ function LinkLine({
   onSelect: () => void;
   onHoverChange: (active: boolean) => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onPathPointerDown: (e: React.PointerEvent) => void;
+  onPathDoubleClick: (e: React.MouseEvent) => void;
 }) {
   const from = nodeLayouts.get(link.from);
   const to = nodeLayouts.get(link.to);
   if (!from || !to) {
     return null;
   }
-  const d = linkPath(from, to, options.gridSize ?? 10);
-  const hitWidth = Math.max(14, options.colorLinkWidth + 12);
+  const gridStep = options.gridSize ?? 10;
+  const geom = computeLinkGeometry(from, to, gridStep, waypoints);
+  const { d, pathPoints } = geom;
+  const hasWaypoints = waypoints.length > 0;
+  const hitWidth = Math.max(14, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 12);
   const active = selected || hovered;
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? '10 6' : undefined;
-  const fromCx = from.x + from.w / 2;
-  const fromCy = from.y + from.h / 2;
-  const toCx = to.x + to.w / 2;
-  const toCy = to.y + to.h / 2;
-  const strokeWidth = selected ? 4 : hovered ? 3 : options.colorLinkWidth;
+  const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
+  const laneOffset = Math.max(2, strokeWidth * 0.75);
+  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
+  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
+  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps);
+  const mid = linkLabelAnchor(pathPoints);
   const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
+  const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const markerStart = selected
     ? 'url(#link-dot-start-active)'
     : hovered
@@ -1627,15 +2069,13 @@ function LinkLine({
     : hovered
       ? 'url(#link-arrow-end-hover)'
       : 'url(#link-arrow-end)';
+  const downloadColor = options.colorLinkDownload ?? '#4FC3F7';
+  const uploadColor = options.colorLinkUpload ?? '#FFB74D';
+  const flowStroke = Math.max(1.5, strokeWidth - 1);
 
   return (
     <g
       onContextMenu={editable ? onContextMenu : undefined}
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
     >
@@ -1645,7 +2085,25 @@ function LinkLine({
         strokeWidth={hitWidth}
         fill="none"
         pointerEvents="stroke"
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: editable ? 'grab' : 'pointer' }}
+        onPointerDown={(e) => {
+          if (editable) {
+            onPathPointerDown(e);
+            return;
+          }
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!editable) {
+            onSelect();
+          }
+        }}
+        onDoubleClick={(e) => {
+          if (editable) {
+            onPathDoubleClick(e);
+          }
+        }}
       />
       {active && (
         <path
@@ -1656,6 +2114,7 @@ function LinkLine({
           strokeDasharray={dashArray}
           fill="none"
           pointerEvents="none"
+          {...lineCap}
         />
       )}
       <path
@@ -1667,13 +2126,91 @@ function LinkLine({
         markerEnd={markerEnd}
         fill="none"
         pointerEvents="none"
+        {...lineCap}
       />
-      {selected && (
-        <>
-          <circle cx={fromCx} cy={fromCy} r={4} fill="#4FC3F7" fillOpacity={0.85} pointerEvents="none" />
-          <circle cx={toCx} cy={toCy} r={4} fill="#4FC3F7" fillOpacity={0.85} pointerEvents="none" />
-        </>
+      <path
+        d={downloadD}
+        data-link-flow="download"
+        stroke={downloadColor}
+        strokeWidth={flowStroke}
+        strokeDasharray={LINK_FLOW_DASH}
+        strokeDashoffset="0"
+        fill="none"
+        pointerEvents="none"
+        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
+        {...lineCap}
+      />
+      <path
+        d={uploadD}
+        data-link-flow="upload"
+        stroke={uploadColor}
+        strokeWidth={flowStroke}
+        strokeDasharray={LINK_FLOW_DASH}
+        strokeDashoffset="0"
+        fill="none"
+        pointerEvents="none"
+        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
+        {...lineCap}
+      />
+      {bandwidthLabel && (
+        <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
+          <rect
+            x={-bandwidthLabel.length * 3.2}
+            y={-8}
+            width={bandwidthLabel.length * 6.4}
+            height={14}
+            rx={3}
+            fill="rgba(18,18,20,0.82)"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={0.5}
+          />
+          <text
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#E3F2FD"
+            fontSize={9}
+            fontFamily="Inter, Helvetica, Arial, sans-serif"
+            fontWeight={500}
+          >
+            {bandwidthLabel}
+          </text>
+        </g>
       )}
     </g>
   );
 }
+
+const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
+  if (prev.selected !== next.selected || prev.hovered !== next.hovered || prev.editable !== next.editable) {
+    return false;
+  }
+  if (prev.link.from !== next.link.from || prev.link.to !== next.link.to) {
+    return false;
+  }
+  if (prev.link.medium !== next.link.medium || prev.link.bandwidthMbps !== next.link.bandwidthMbps) {
+    return false;
+  }
+  if (JSON.stringify(prev.waypoints) !== JSON.stringify(next.waypoints)) {
+    return false;
+  }
+  const pf = prev.nodeLayouts.get(prev.link.from);
+  const pt = prev.nodeLayouts.get(prev.link.to);
+  const nf = next.nodeLayouts.get(next.link.from);
+  const nt = next.nodeLayouts.get(next.link.to);
+  if (!pf || !pt || !nf || !nt) {
+    return false;
+  }
+  if (pf.x !== nf.x || pf.y !== nf.y || pf.w !== nf.w || pf.h !== nf.h) {
+    return false;
+  }
+  if (pt.x !== nt.x || pt.y !== nt.y || pt.w !== nt.w || pt.h !== nt.h) {
+    return false;
+  }
+  return (
+    prev.options.colorLink === next.options.colorLink &&
+    prev.options.colorLinkDownload === next.options.colorLinkDownload &&
+    prev.options.colorLinkUpload === next.options.colorLinkUpload &&
+    prev.options.colorLinkWidth === next.options.colorLinkWidth &&
+    prev.options.gridSize === next.options.gridSize
+  );
+});
