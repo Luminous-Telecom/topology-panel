@@ -23,7 +23,7 @@ import {
   updateLinkMedium,
   updateStoredNode,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, findScrollParents, NodeLayout, resolveLinkMedium, resolveNodeStatus, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, findScrollParents, NodeLayout, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, runHostTool } from '../utils/hostTools';
 import {
   ContextMenuItem,
@@ -110,9 +110,31 @@ function nodeEdgeToward(
   return { x: cx, y: dy >= 0 ? node.y + node.h : node.y };
 }
 
-function linkPath(from: NodeLayout & { x: number; y: number }, to: NodeLayout & { x: number; y: number }): string {
+/** Straight vertical/horizontal when endpoints are nearly axis-aligned (not Manhattan routing). */
+function snapLinkEndpoint(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  gridStep: number
+): { x: number; y: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const threshold = Math.max(6, gridStep * 0.55);
+  if (Math.abs(dx) <= threshold && Math.abs(dy) > threshold) {
+    return { x: start.x, y: end.y };
+  }
+  if (Math.abs(dy) <= threshold && Math.abs(dx) > threshold) {
+    return { x: end.x, y: start.y };
+  }
+  return end;
+}
+
+function linkPath(
+  from: NodeLayout & { x: number; y: number },
+  to: NodeLayout & { x: number; y: number },
+  gridStep: number
+): string {
   const start = nodeCenter(from);
-  const end = nodeEdgeToward(to, start);
+  const end = snapLinkEndpoint(start, nodeEdgeToward(to, start), gridStep);
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
 }
 
@@ -211,6 +233,8 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         oy: number;
         startX: number;
         startY: number;
+        startW: number;
+        startH: number;
         moved: boolean;
       }
     | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
@@ -525,6 +549,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       if (!editable || node.type === 'network') {
         return;
       }
+      const layout = nodeLayouts.get(node.id);
       dragRef.current = {
         kind: 'node',
         node,
@@ -532,11 +557,13 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         oy: e.clientY,
         startX: node.x,
         startY: node.y,
+        startW: layout?.w ?? node.width ?? 48,
+        startH: layout?.h ?? node.height ?? 28,
         moved: false,
       };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [editable]
+    [editable, nodeLayouts]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -549,6 +576,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
       setSelectedLink(null);
 
       if (editable && !areNetworksLocked(storedMap)) {
+        const layout = nodeLayouts.get(node.id);
         dragRef.current = {
           kind: 'node',
           node,
@@ -556,6 +584,8 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
           oy: e.clientY,
           startX: node.x,
           startY: node.y,
+          startW: layout?.w ?? node.width ?? DEFAULT_NETWORK_WIDTH,
+          startH: layout?.h ?? node.height ?? DEFAULT_NETWORK_HEIGHT,
           moved: false,
         };
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -564,7 +594,7 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
 
       beginPan(e);
     },
-    [beginPan, editable, storedMap]
+    [beginPan, editable, nodeLayouts, storedMap]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -612,10 +642,17 @@ export function TopologyCanvas({ map, storedMap, options, statusMap, onMapChange
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           d.moved = true;
         }
+        const snapped = snapNodeCenterToGrid(
+          d.startX + dx,
+          d.startY + dy,
+          d.startW,
+          d.startH,
+          gridStep
+        );
         setDragPreview({
           nodeId: d.node.id,
-          x: snapCoord(d.startX + dx),
-          y: snapCoord(d.startY + dy),
+          x: snapped.x,
+          y: snapped.y,
         });
         return;
       }
@@ -1279,7 +1316,7 @@ function LinkLine({
   if (!from || !to) {
     return null;
   }
-  const d = linkPath(from, to);
+  const d = linkPath(from, to, options.gridSize ?? 10);
   const hitWidth = Math.max(14, options.colorLinkWidth + 12);
   const active = selected || hovered;
   const medium = resolveLinkMedium(link);

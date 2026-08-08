@@ -51,3 +51,7 @@ Mutações → `mapEdits.ts`. Lógica pura → `utils.ts`.
 
 - Status via Perda de Pacotes; campo host `loss`
 - `mergeMapWithQueryHosts` — múltiplas posições para mesmo host Zabbix
+
+## Deploy (obrigatório)
+
+Após qualquer mudança em `src/`: bump versão se necessário → `bash scripts/deploy.sh` → confirmar no dashboard DC.

@@ -27,9 +27,20 @@ Não commitar credenciais, `.env` ou senhas em scripts.
 
 1. Bump **`src/plugin.json`** e **`package.json`** (mesma versão)
 2. `npm run build`
-3. Deploy: `dist/` → `/var/lib/grafana/plugins/luminous-dude-topology-panel/`
-4. Reiniciar `grafana-server`
-5. Commit/push só código do plugin
+3. **Deploy obrigatório para testes** (ver abaixo)
+4. Commit/push só código do plugin
+
+## Deploy — SEMPRE após mudanças no plugin
+
+**Toda alteração em `src/` deve ser buildada e deployada** no Grafana de testes antes de encerrar a tarefa.
+
+```bash
+GRAFANA_SSH_PASS='…' bash scripts/deploy.sh
+```
+
+- Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-dude-topology-panel/`
+- Senha via env `GRAFANA_SSH_PASS` (nunca commitar)
+- Testar: https://monitoramento.luminoustelecom.com.br/d/dude-topo-dc/dude-topology-dc?orgId=2
 
 ## UI e idioma
 
