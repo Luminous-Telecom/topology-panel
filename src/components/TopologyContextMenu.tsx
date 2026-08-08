@@ -301,15 +301,21 @@ export function TopologyToolbar({
   onRedo,
   onToggleLock,
   onToggleNetworksLock,
+  flowPaused,
+  onToggleFlow,
+  showEditControls = true,
 }: {
-  locked: boolean;
-  networksLocked: boolean;
+  locked?: boolean;
+  networksLocked?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
-  onToggleLock: () => void;
-  onToggleNetworksLock: () => void;
+  onToggleLock?: () => void;
+  onToggleNetworksLock?: () => void;
+  flowPaused: boolean;
+  onToggleFlow: () => void;
+  showEditControls?: boolean;
 }) {
   const btnStyle = (active: boolean, warn = false, disabled = false): React.CSSProperties => ({
     display: 'flex',
@@ -327,47 +333,64 @@ export function TopologyToolbar({
 
   return (
     <div className={toolbarStyle}>
+      {showEditControls && (
+        <>
+          <button
+            type="button"
+            disabled={!canUndo}
+            onClick={onUndo}
+            title="Desfazer (Ctrl+Z)"
+            style={btnStyle(false, false, !canUndo)}
+          >
+            <Icon name="arrow-left" size="sm" />
+            Desfazer
+          </button>
+          <button
+            type="button"
+            disabled={!canRedo}
+            onClick={onRedo}
+            title="Refazer (Ctrl+Shift+Z)"
+            style={btnStyle(false, false, !canRedo)}
+          >
+            <Icon name="arrow-right" size="sm" />
+            Refazer
+          </button>
+          <button
+            type="button"
+            onClick={onToggleLock}
+            title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
+            style={btnStyle(!locked, Boolean(locked))}
+          >
+            <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
+            {locked ? 'Mapa travado' : 'Mapa editável'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleNetworksLock}
+            title={
+              networksLocked
+                ? 'Destravar caixas de rede para arrastar'
+                : 'Travar caixas de rede (só mover o mapa)'
+            }
+            style={btnStyle(!networksLocked, Boolean(networksLocked))}
+          >
+            <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
+            {networksLocked ? 'Redes travadas' : 'Redes livres'}
+          </button>
+        </>
+      )}
       <button
         type="button"
-        disabled={!canUndo}
-        onClick={onUndo}
-        title="Desfazer (Ctrl+Z)"
-        style={btnStyle(false, false, !canUndo)}
-      >
-        <Icon name="arrow-left" size="sm" />
-        Desfazer
-      </button>
-      <button
-        type="button"
-        disabled={!canRedo}
-        onClick={onRedo}
-        title="Refazer (Ctrl+Shift+Z)"
-        style={btnStyle(false, false, !canRedo)}
-      >
-        <Icon name="arrow-right" size="sm" />
-        Refazer
-      </button>
-      <button
-        type="button"
-        onClick={onToggleLock}
-        title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
-        style={btnStyle(!locked, locked)}
-      >
-        <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
-        {locked ? 'Mapa travado' : 'Mapa editável'}
-      </button>
-      <button
-        type="button"
-        onClick={onToggleNetworksLock}
+        onClick={onToggleFlow}
         title={
-          networksLocked
-            ? 'Destravar caixas de rede para arrastar'
-            : 'Travar caixas de rede (só mover o mapa)'
+          flowPaused
+            ? 'Retomar animação de tráfego nas linhas'
+            : 'Pausar animação de tráfego nas linhas'
         }
-        style={btnStyle(!networksLocked, networksLocked)}
+        style={btnStyle(!flowPaused, flowPaused)}
       >
-        <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
-        {networksLocked ? 'Redes travadas' : 'Redes livres'}
+        <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
+        {flowPaused ? 'Tráfego pausado' : 'Pausar tráfego'}
       </button>
     </div>
   );

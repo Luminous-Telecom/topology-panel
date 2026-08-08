@@ -59,7 +59,7 @@ import {
   LinkPoint,
   nearestWaypointIndex,
 } from '../utils/linkGeometry';
-import { LINK_FLOW_DASH, startLinkFlowAnimation } from '../utils/linkFlow';
+import { LINK_FLOW_DASH, LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
 
 interface Props {
   map: TopologyMap;
@@ -266,6 +266,7 @@ export function TopologyCanvas({
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const linkFlowRef = useRef<LinkFlowController | null>(null);
   const savedView = options.view;
   const [view, setView] = useState<TopologyView>(() =>
     savedView && typeof savedView.scale === 'number'
@@ -273,6 +274,7 @@ export function TopologyCanvas({
       : { x: 0, y: 0, scale: 1 }
   );
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
+  const [flowPaused, setFlowPaused] = useState(false);
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
@@ -450,8 +452,19 @@ export function TopologyCanvas({
     if (!el) {
       return;
     }
-    return startLinkFlowAnimation(el);
+    const controller = startLinkFlowAnimation(el);
+    linkFlowRef.current = controller;
+    return () => {
+      controller.stop();
+      if (linkFlowRef.current === controller) {
+        linkFlowRef.current = null;
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    linkFlowRef.current?.setPaused(flowPaused);
+  }, [flowPaused]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1536,18 +1549,19 @@ export function TopologyCanvas({
       onPointerLeave={(e) => onPointerUp(e)}
       onContextMenu={(e) => handleContextMenu(e)}
     >
-      {canPersist && (
-        <TopologyToolbar
-          locked={Boolean(map.locked)}
-          networksLocked={areNetworksLocked(storedMap)}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onUndo={onUndo}
-          onRedo={onRedo}
-          onToggleLock={() => persist(toggleMapLock(storedMap))}
-          onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
-        />
-      )}
+      <TopologyToolbar
+        locked={Boolean(map.locked)}
+        networksLocked={areNetworksLocked(storedMap)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onToggleLock={() => persist(toggleMapLock(storedMap))}
+        onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
+        flowPaused={flowPaused}
+        onToggleFlow={() => setFlowPaused((p) => !p)}
+        showEditControls={canPersist}
+      />
 
       {selectedLinkLabels && (
         <TopologyEditHint>
