@@ -171,12 +171,26 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   if (patch.subtitle !== undefined) {
     layoutPatch.subtitle = patch.subtitle;
   }
+  if ('toolUsername' in patch) {
+    layoutPatch.toolUsername = patch.toolUsername?.trim() || undefined;
+  }
+  if ('toolPassword' in patch) {
+    layoutPatch.toolPassword =
+      patch.toolPassword != null && patch.toolPassword !== '' ? patch.toolPassword : undefined;
+  }
 
   const nodes = [...map.nodes];
   const idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key);
 
   if (idx >= 0) {
-    nodes[idx] = { ...nodes[idx], ...layoutPatch, zabbixHost: key, type: 'host' };
+    const merged: TopologyNode = { ...nodes[idx], ...layoutPatch, zabbixHost: key, type: 'host' };
+    if ('toolUsername' in patch && !merged.toolUsername) {
+      delete merged.toolUsername;
+    }
+    if ('toolPassword' in patch && !merged.toolPassword) {
+      delete merged.toolPassword;
+    }
+    nodes[idx] = merged;
   } else {
     nodes.push({
       id: hostToNodeId(key),

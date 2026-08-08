@@ -152,8 +152,9 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               icon: isHost ? icon : undefined,
             };
             if (isHost) {
-              patch.toolUsername = toolUsername.trim() || undefined;
-              patch.toolPassword = toolPassword !== '' ? toolPassword : undefined;
+              // Sempre envia as chaves para poder limpar credencial antiga
+              patch.toolUsername = toolUsername.trim();
+              patch.toolPassword = toolPassword;
             }
             if (type === 'network') {
               patch.width = Math.max(60, Number(width) || 220);
