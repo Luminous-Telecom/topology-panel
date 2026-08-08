@@ -157,7 +157,7 @@ export interface TopologyPanelOptions {
   zabbixDatasourceUid?: string;
   /** Enable pan with mouse drag */
   enablePan: boolean;
-  /** Enable zoom with mouse wheel */
+  /** Enable zoom with mouse wheel / pinch on touch */
   enableZoom: boolean;
   /** Show grid in edit-friendly mode */
   showGrid: boolean;

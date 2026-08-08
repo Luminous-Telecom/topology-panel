@@ -404,6 +404,10 @@ export function TopologyCanvas({
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
   const panRafRef = useRef<number | null>(null);
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  /** True while two-finger pinch zoom is active (blocks single-finger pan). */
+  const pinchActiveRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -709,6 +713,16 @@ export function TopologyCanvas({
     const hoveringRef = { current: false };
     const prevOverflow = new Map<HTMLElement, string>();
 
+    type PinchState = {
+      dist0: number;
+      mid0x: number;
+      mid0y: number;
+      view0: TopologyView;
+    };
+    let pinch: PinchState | null = null;
+    let pinchRaf: number | null = null;
+    let pinchPending: TopologyView | null = null;
+
     const isOverPanel = (e: { clientX: number; clientY: number }) => {
       const rect = el.getBoundingClientRect();
       return (
@@ -719,19 +733,112 @@ export function TopologyCanvas({
       );
     };
 
-    const applyZoom = (clientX: number, clientY: number, deltaY: number) => {
+    const applyZoomAt = (clientX: number, clientY: number, nextScale: number, from: TopologyView) => {
       const rect = el.getBoundingClientRect();
       const mx = clientX - rect.left;
       const my = clientY - rect.top;
-      const delta = deltaY > 0 ? 0.9 : 1.1;
+      const ns = clamp(nextScale, 0.1, 4);
+      return {
+        scale: ns,
+        x: mx - ((mx - from.x) * ns) / from.scale,
+        y: my - ((my - from.y) * ns) / from.scale,
+      };
+    };
+
+    const applyZoom = (clientX: number, clientY: number, deltaY: number) => {
       setView((v) => {
-        const ns = clamp(v.scale * delta, 0.1, 4);
-        return {
-          scale: ns,
-          x: mx - ((mx - v.x) * ns) / v.scale,
-          y: my - ((my - v.y) * ns) / v.scale,
-        };
+        const delta = deltaY > 0 ? 0.9 : 1.1;
+        return applyZoomAt(clientX, clientY, v.scale * delta, v);
       });
+    };
+
+    const flushPinch = () => {
+      pinchRaf = null;
+      if (!pinchPending) {
+        return;
+      }
+      const next = pinchPending;
+      pinchPending = null;
+      setView(next);
+      viewRef.current = next;
+    };
+
+    const touchPair = (touches: TouchList) => {
+      if (touches.length < 2) {
+        return null;
+      }
+      const a = touches[0];
+      const b = touches[1];
+      const rect = el.getBoundingClientRect();
+      return {
+        dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
+        midX: (a.clientX + b.clientX) / 2 - rect.left,
+        midY: (a.clientY + b.clientY) / 2 - rect.top,
+      };
+    };
+
+    const endPinch = () => {
+      pinchActiveRef.current = false;
+      pinch = null;
+      if (pinchRaf != null) {
+        cancelAnimationFrame(pinchRaf);
+        pinchRaf = null;
+      }
+      if (pinchPending) {
+        flushPinch();
+      }
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        return;
+      }
+      const pair = touchPair(e.touches);
+      if (!pair) {
+        return;
+      }
+      e.preventDefault();
+      // Interrompe pan/drag de 1 dedo — pinch assume o gesto.
+      dragRef.current = null;
+      if (panRafRef.current != null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
+      panPendingRef.current = null;
+      pinchActiveRef.current = true;
+      pinch = {
+        dist0: pair.dist,
+        mid0x: pair.midX,
+        mid0y: pair.midY,
+        view0: { ...viewRef.current },
+      };
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length < 2) {
+        return;
+      }
+      const pair = touchPair(e.touches);
+      if (!pair) {
+        return;
+      }
+      e.preventDefault();
+      const ns = clamp(pinch.view0.scale * (pair.dist / pinch.dist0), 0.1, 4);
+      // Mantém o ponto do mapa sob o meio dos dedos (zoom + pan com 2 dedos).
+      pinchPending = {
+        scale: ns,
+        x: pair.midX - ((pinch.mid0x - pinch.view0.x) * ns) / pinch.view0.scale,
+        y: pair.midY - ((pinch.mid0y - pinch.view0.y) * ns) / pinch.view0.scale,
+      };
+      if (pinchRaf == null) {
+        pinchRaf = requestAnimationFrame(flushPinch);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        endPinch();
+      }
     };
 
     const lockScroll = () => {
@@ -791,6 +898,10 @@ export function TopologyCanvas({
 
     document.addEventListener('pointermove', onHoverCheck, { passive: true });
     el.addEventListener('pointerleave', onPointerLeavePanel);
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
 
     for (const sp of scrollParents) {
       sp.addEventListener('wheel', onWheel, { passive: false, capture: true });
@@ -800,10 +911,15 @@ export function TopologyCanvas({
     return () => {
       document.removeEventListener('pointermove', onHoverCheck);
       el.removeEventListener('pointerleave', onPointerLeavePanel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
       for (const sp of scrollParents) {
         sp.removeEventListener('wheel', onWheel, { capture: true });
         sp.removeEventListener('wheel', onWheel, { capture: false });
       }
+      endPinch();
       unlockScroll();
     };
   }, [options.enableZoom, map.nodes.length]);
@@ -865,6 +981,9 @@ export function TopologyCanvas({
 
   const beginPan = useCallback(
     (e: React.PointerEvent) => {
+      if (pinchActiveRef.current) {
+        return;
+      }
       if (!options.enablePan) {
         return;
       }
@@ -1074,6 +1193,9 @@ export function TopologyCanvas({
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (pinchActiveRef.current) {
+        return;
+      }
       const d = dragRef.current;
       if (!d) {
         return;
@@ -1088,7 +1210,7 @@ export function TopologyCanvas({
           panRafRef.current = requestAnimationFrame(() => {
             panRafRef.current = null;
             const pending = panPendingRef.current;
-            if (!pending || dragRef.current?.kind !== 'pan') {
+            if (!pending || dragRef.current?.kind !== 'pan' || pinchActiveRef.current) {
               return;
             }
             setView((v) => ({ ...v, x: pending.x, y: pending.y }));

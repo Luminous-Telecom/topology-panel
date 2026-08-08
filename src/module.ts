@@ -44,7 +44,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addBooleanSwitch({
         path: 'enableZoom',
-        name: 'Permitir zoom (roda do mouse)',
+        name: 'Permitir zoom (roda / pinça no mobile)',
         defaultValue: true,
         category: ['Interação'],
       })
