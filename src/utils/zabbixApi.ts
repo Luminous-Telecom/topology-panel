@@ -1,5 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
-import { HostMetadataMap, HostProblemMap } from '../types';
+import { HostMetadataMap, HostProblemMap, HostStatusMap, TopologyStatusMetric } from '../types';
 
 interface ZabbixApiResponse<T> {
   result?: T;
@@ -19,6 +19,8 @@ interface ZabbixHost {
 }
 
 const BATCH_SIZE = 50;
+/** Zabbix host.status — 0 monitorado, 1 desativado (não entra em ICMP/stats). */
+const ZABBIX_HOST_MONITORED = 0;
 
 async function zabbixCall<T>(datasourceUid: string, method: string, params: object): Promise<T> {
   const response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
@@ -75,7 +77,7 @@ async function fetchByVisibleNames(
 
   for (const batch of chunk(missing, BATCH_SIZE)) {
     const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
-      filter: { name: batch },
+      filter: { name: batch, status: ZABBIX_HOST_MONITORED },
       output: ['host', 'name'],
       selectInterfaces: ['ip', 'main', 'type'],
     });
@@ -109,6 +111,7 @@ async function fetchByGroup(
 
   const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
     groupids: [groupId],
+    filter: { status: ZABBIX_HOST_MONITORED },
     output: ['host', 'name'],
     selectInterfaces: ['ip', 'main', 'type'],
   });
@@ -327,6 +330,7 @@ async function fetchHostIdsForProblems(
     }
     const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
       groupids: [groupId],
+      filter: { status: ZABBIX_HOST_MONITORED },
       output: ['hostid', 'host', 'name'],
     });
     const list = hosts ?? [];
@@ -336,11 +340,11 @@ async function fetchHostIdsForProblems(
   if (hostNames?.length) {
     const names = hostNames.map((h) => h.trim()).filter(Boolean);
     const byVisible = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
-      filter: { name: names },
+      filter: { name: names, status: ZABBIX_HOST_MONITORED },
       output: ['hostid', 'host', 'name'],
     });
     const byTechnical = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
-      filter: { host: names },
+      filter: { host: names, status: ZABBIX_HOST_MONITORED },
       output: ['hostid', 'host', 'name'],
     });
     const merged = new Map<string, ZabbixHostRef>();
@@ -434,6 +438,7 @@ export interface HostIcmpStatus {
 }
 
 interface ZabbixIcmpItem {
+  hostid?: string;
   key_: string;
   lastvalue?: string;
   lastclock?: string;
@@ -445,6 +450,163 @@ function parseFloatOrNull(value?: string): number | null {
   }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Converte itens ICMP do Zabbix em valor numérico para colorir o mapa. */
+function icmpItemsToStatusValue(items: ZabbixIcmpItem[], metric: TopologyStatusMetric): number | undefined {
+  let reachable: boolean | null = null;
+  let lossPct: number | null = null;
+  let rttSec: number | null = null;
+
+  for (const item of items) {
+    const key = item.key_?.toLowerCase() ?? '';
+    const val = item.lastvalue;
+
+    if (key.includes('icmppingloss')) {
+      lossPct = parseFloatOrNull(val);
+    } else if (key.includes('icmppingsec')) {
+      rttSec = parseFloatOrNull(val);
+    } else if (key.startsWith('icmpping')) {
+      const n = parseFloatOrNull(val);
+      if (n !== null) {
+        reachable = n >= 1;
+      }
+    }
+  }
+
+  if (metric === 'packet_loss') {
+    return lossPct !== null ? lossPct : undefined;
+  }
+
+  // icmpping=0 confirma offline; icmpping=1 prevalece sobre icmppingsec=0 (item dependente atrasado)
+  if (reachable === false) {
+    return 0;
+  }
+  if (reachable === true) {
+    return rttSec !== null && rttSec > 0 ? rttSec : 0.001;
+  }
+
+  // Sem item icmpping (só sec/loss): loss>=100 confirma offline; sec>0 confirma online.
+  // sec=0 com loss=0 é dado inválido/inicial — não marcar parado (evita falso positivo no overview).
+  if (lossPct !== null && lossPct >= 100) {
+    return 0;
+  }
+  if (rttSec !== null && rttSec > 0) {
+    return rttSec;
+  }
+  return undefined;
+}
+
+interface ResolvedZabbixHost {
+  hostid: string;
+  visible?: string;
+  technical?: string;
+}
+
+async function resolveZabbixHostsBatch(
+  datasourceUid: string,
+  hostNames: string[]
+): Promise<ResolvedZabbixHost[]> {
+  const names = [...new Set(hostNames.map((h) => h.trim()).filter(Boolean))];
+  const byId = new Map<string, ResolvedZabbixHost>();
+
+  for (const batch of chunk(names, BATCH_SIZE)) {
+    const [byVisible, byTechnical] = await Promise.all([
+      zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        filter: { name: batch, status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+      }),
+      zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        filter: { host: batch, status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+      }),
+    ]);
+
+    for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
+      if (!h.hostid) {
+        continue;
+      }
+      const existing = byId.get(h.hostid);
+      if (existing) {
+        existing.visible = existing.visible || h.name?.trim();
+        existing.technical = existing.technical || h.host?.trim();
+      } else {
+        byId.set(h.hostid, {
+          hostid: h.hostid,
+          visible: h.name?.trim(),
+          technical: h.host?.trim(),
+        });
+      }
+    }
+  }
+
+  return [...byId.values()];
+}
+
+/** ICMP de vários hosts via API Zabbix (icmpping / icmppingsec / icmppingloss). */
+export async function fetchZabbixHostIcmpStatusMap(
+  datasourceUid: string,
+  hostNames: string[],
+  metric: TopologyStatusMetric = 'icmp_rtt'
+): Promise<HostStatusMap> {
+  const result: HostStatusMap = {};
+  if (!datasourceUid || !hostNames.length) {
+    return result;
+  }
+
+  try {
+    const hosts = await resolveZabbixHostsBatch(datasourceUid, hostNames);
+    if (!hosts.length) {
+      return result;
+    }
+
+    const itemsByHostId = new Map<string, ZabbixIcmpItem[]>();
+
+    for (const batch of chunk(
+      hosts.map((h) => h.hostid),
+      BATCH_SIZE
+    )) {
+      const items = await zabbixCall<ZabbixIcmpItem[]>(datasourceUid, 'item.get', {
+        hostids: batch,
+        output: ['hostid', 'key_', 'lastvalue'],
+        search: { key_: 'icmpping' },
+        searchByAny: true,
+      });
+
+      for (const item of items ?? []) {
+        const hostid = item.hostid;
+        if (!hostid) {
+          continue;
+        }
+        const list = itemsByHostId.get(hostid) ?? [];
+        list.push(item);
+        itemsByHostId.set(hostid, list);
+      }
+    }
+
+    for (const host of hosts) {
+      const value = icmpItemsToStatusValue(itemsByHostId.get(host.hostid) ?? [], metric);
+      if (value === undefined) {
+        continue;
+      }
+      if (host.visible) {
+        result[host.visible] = value;
+      }
+      if (host.technical) {
+        result[host.technical] = value;
+      }
+    }
+  } catch {
+    // mantém mapa parcial/vazio
+  }
+
+  return result;
+}
+
+interface ZabbixIcmpItemLegacy {
+  key_: string;
+  lastvalue?: string;
+  lastclock?: string;
 }
 
 async function resolveZabbixHostId(datasourceUid: string, hostName: string): Promise<string | undefined> {
@@ -562,6 +724,7 @@ export async function fetchHostIcmpStatus(
     return { ...empty, error: 'Itens ICMP (icmpping) não encontrados neste host' };
   }
 
+  const parsed = icmpItemsToStatusValue(items, 'icmp_rtt');
   let reachable: boolean | null = null;
   let lossPct: number | null = null;
   let rttMs: number | null = null;
@@ -593,6 +756,8 @@ export async function fetchHostIcmpStatus(
       reachable = lossPct < 100;
     } else if (rttMs !== null && rttMs > 0) {
       reachable = true;
+    } else if (parsed !== undefined) {
+      reachable = parsed > 0;
     }
   }
 

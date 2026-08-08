@@ -11,7 +11,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'map',
         name: 'Layout e links',
         description:
-          'Hosts vêm da aba Query (Zabbix). Aqui ajuste posição, submapas e ligações.',
+          'Hosts e layout vêm do mapa salvo. Status ICMP via API Zabbix (aba Query não é necessária).',
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
@@ -63,18 +63,21 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addColorPicker({
         path: 'colorOnline',
         name: 'Cor online',
+        description: 'Hex (#2E7D32) ou cor da paleta Grafana — convertida automaticamente no mapa',
         defaultValue: '#2E7D32',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorOffline',
         name: 'Cor offline',
+        description: 'Hex (#C62828) ou cor da paleta Grafana — convertida automaticamente no mapa',
         defaultValue: '#C62828',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorUnknown',
         name: 'Cor sem dados',
+        description: 'Hex (#616161) ou cor da paleta Grafana — convertida automaticamente no mapa',
         defaultValue: '#616161',
         category: ['Aparência'],
       })
@@ -113,7 +116,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addRadio({
         path: 'statusMetric',
         name: 'Métrica de status',
-        description: 'Tempo de resposta ICMP (icmppingsec) ou perda de pacotes',
+        description: 'ICMP buscado via API Zabbix (icmpping / icmppingsec / icmppingloss)',
         settings: {
           options: [
             { value: 'icmp_rtt', label: 'Tempo de resposta ICMP' },
@@ -123,45 +126,17 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: 'icmp_rtt',
         category: ['Zabbix'],
       })
-      .addTextInput({
-        path: 'statusHostField',
-        name: 'Campo host (após transform)',
-        description: 'Nome da coluna com o host Zabbix',
-        defaultValue: 'host',
-        category: ['Zabbix'],
-      })
-      .addTextInput({
-        path: 'statusValueField',
-        name: 'Campo status (valor numérico)',
-        description: 'Coluna após transform: rtt (ICMP) ou loss (perda %)',
-        defaultValue: 'rtt',
-        category: ['Zabbix'],
-      })
-      .addNumberInput({
-        path: 'offlineThreshold',
-        name: 'Limiar offline (perda %)',
-        description: 'Só em modo perda de pacotes: valores >= limiar = offline',
-        defaultValue: 1,
-        category: ['Zabbix'],
-      })
-      .addTextInput({
-        path: 'hostIpField',
-        name: 'Campo IP (query)',
-        description: 'Coluna IP nos dados, se usar query separada',
-        defaultValue: 'ip',
-        category: ['Zabbix'],
-      })
-      .addTextInput({
-        path: 'zabbixGroupFilter',
-        name: 'Grupo Zabbix',
-        description: 'Mesmo grupo da query (ex.: Dude/Mapa/SWV) — usado para buscar IP',
-        defaultValue: '',
+      .addBooleanSwitch({
+        path: 'useZabbixProblems',
+        name: 'Usar problemas Zabbix',
+        description: 'Hosts com alerta ativo ficam vermelhos (overview usa só ICMP)',
+        defaultValue: true,
         category: ['Zabbix'],
       })
       .addTextInput({
         path: 'zabbixDatasourceUid',
         name: 'Datasource UID',
-        description: 'UID do datasource Zabbix',
+        description: 'UID do datasource Zabbix — status, IP e problemas vêm da API (aba Query não é necessária)',
         defaultValue: 'afkagcaezrrpca',
         category: ['Zabbix'],
       });

@@ -6,24 +6,25 @@ export type TopologyHostIcon =
   | 'bras'
   | 'switch_managed'
   | 'switch_unmanaged'
-  | 'load_balancer'
   | 'firewall'
   | 'vpn'
   | 'olt'
-  | 'onu'
-  | 'fiber'
   | 'access_point'
-  | 'radio'
-  | 'tower'
-  | 'satellite'
   | 'mesh'
   | 'camera'
   | 'bridge'
+  | 'power'
   | 'server'
-  | 'rack'
-  | 'dns'
   | 'network'
   /** Legado — mapas antigos; não aparece no picker */
+  | 'load_balancer'
+  | 'onu'
+  | 'fiber'
+  | 'radio'
+  | 'tower'
+  | 'satellite'
+  | 'rack'
+  | 'dns'
   | 'web'
   | 'proxmox'
   | 'vmware'
@@ -140,14 +141,12 @@ export interface TopologyPanelOptions {
   /** Node appearance */
   nodeFontSize: number;
   showSubtitle: boolean;
-  /** Zabbix: field name after transform (default host) */
-  statusHostField: string;
-  /** Zabbix: coluna numérica após transform (ex.: rtt, loss) */
-  statusValueField: string;
-  /** Métrica da query: tempo ICMP (icmppingsec) ou perda de pacotes */
+  /** Métrica ICMP via API Zabbix */
   statusMetric?: TopologyStatusMetric;
-  /** Perda de pacotes: valores >= limiar = offline. Ignorado em modo ICMP RTT. */
-  offlineThreshold: number;
+  /** Marcar host offline quando houver problema ativo no Zabbix */
+  useZabbixProblems?: boolean;
+  /** UID do datasource Zabbix (ICMP, IP, problemas) */
+  zabbixDatasourceUid?: string;
   /** Enable pan with mouse drag */
   enablePan: boolean;
   /** Enable zoom with mouse wheel */
@@ -158,16 +157,6 @@ export interface TopologyPanelOptions {
   gridSize: number;
   /** Snap nodes and networks to grid when moving or resizing */
   snapToGrid: boolean;
-  /** Zabbix datasource UID (for buscar IP via API) */
-  zabbixDatasourceUid?: string;
-  /** Grupo Zabbix (ex.: Dude/Mapa/SWV) — mesmo da query */
-  zabbixGroupFilter?: string;
-  /** Coluna IP nos dados da query (se houver) */
-  hostIpField: string;
-  /** Marcar host offline quando houver problema ativo no Zabbix (além de perda de pacotes) */
-  useZabbixProblems?: boolean;
-  /** Desenhar hosts da query no mapa (false = overview só com submapas/redes) */
-  showQueryHostsOnMap?: boolean;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -215,22 +204,17 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorNetworkLabel: '#bdbdbd',
   nodeFontSize: 11,
   showSubtitle: true,
-  statusHostField: 'host',
-  statusValueField: 'rtt',
   statusMetric: 'icmp_rtt',
-  offlineThreshold: 1,
   enablePan: true,
   enableZoom: true,
   showGrid: false,
   gridSize: 10,
   snapToGrid: true,
   zabbixDatasourceUid: 'afkagcaezrrpca',
-  hostIpField: 'ip',
   useZabbixProblems: true,
-  showQueryHostsOnMap: true,
 });
 
-/** Host name -> last status value (packet loss %) */
+/** Host name -> last status value (ICMP rtt em segundos, ou perda %) */
 export type HostStatusMap = Record<string, number | null | undefined>;
 
 /** Host name -> active Zabbix problem count */

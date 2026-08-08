@@ -1,9 +1,9 @@
-import { HostProblemMap, HostStatusMap, TopologyNode, TopologyPanelOptions, TopologyStatusMetric } from '../types';
+import { HostMetadataMap, HostStatusMap, TopologyNode, TopologyPanelOptions, TopologyStatusMetric } from '../types';
 import {
   effectiveStatusMetric,
   NodeLayout,
   lookupHostStatus,
-  lookupProblemCount,
+  offlineThresholdForMetric,
   resolveNodeStatus,
   resolveStatusFromValue,
 } from '../utils';
@@ -13,11 +13,19 @@ export interface RegionHostStats {
   offline: number;
   online: number;
   unknown: number;
+  /** Falha ao carregar hosts do dashboard filho (não usar statsHosts embutido). */
+  loadFailed?: boolean;
 }
 
-export function formatRegionStats(stats: RegionHostStats): string {
+export function formatRegionStats(stats: RegionHostStats, icmpReady = true): string {
+  if (stats.loadFailed) {
+    return 'Mapa indisponível';
+  }
   if (stats.total === 0) {
-    return 'Sem hosts';
+    return icmpReady ? 'Sem hosts monitorados' : 'Carregando…';
+  }
+  if (!icmpReady) {
+    return 'Carregando…';
   }
   if (stats.offline > 0) {
     const n = stats.offline;
@@ -27,7 +35,7 @@ export function formatRegionStats(stats: RegionHostStats): string {
 }
 
 function hostStatusKey(node: TopologyNode): string | undefined {
-  const key = node.zabbixHost?.trim() || node.label?.trim();
+  const key = node.zabbixHost?.trim();
   return key || undefined;
 }
 
@@ -44,24 +52,19 @@ function classifyHost(
   return resolveStatusFromValue(v, threshold, metric);
 }
 
-/** Status de um host da topologia — match exato no Zabbix, mesma regra do mapa. */
-function resolveTopologyHostStatus(
+/** Status agregado da região — só ICMP (parado = sem resposta), não alertas Zabbix. */
+function resolveRegionHostStatus(
   host: string,
   statusMap: HostStatusMap,
-  problemMap: HostProblemMap,
   threshold: number,
-  metric: TopologyStatusMetric
+  metric: TopologyStatusMetric,
+  hostMetadata?: HostMetadataMap
 ): 'online' | 'offline' | 'unknown' {
   const key = host.trim();
   if (!key) {
     return 'unknown';
   }
-
-  if (lookupProblemCount(problemMap, key) > 0) {
-    return 'offline';
-  }
-
-  return resolveNodeStatus({ zabbixHost: key, type: 'host' }, statusMap, threshold, metric);
+  return resolveNodeStatus({ zabbixHost: key, type: 'host' }, statusMap, threshold, metric, hostMetadata);
 }
 
 export function countRegionStats(
@@ -70,15 +73,16 @@ export function countRegionStats(
   threshold: number,
   options?: {
     topologyStats?: boolean;
-    problemMap?: HostProblemMap;
     metric?: TopologyStatusMetric;
+    hostMetadata?: HostMetadataMap;
+    /** Overview/submapa: ignora hosts sem ICMP na contagem de parados (não reduz o total). */
+    monitoredOnly?: boolean;
   }
 ): RegionHostStats {
   let offline = 0;
   let online = 0;
   let unknown = 0;
   const seen = new Set<string>();
-  const problemMap = options?.problemMap ?? {};
   const metric = options?.metric ?? 'icmp_rtt';
 
   for (const raw of hostNames) {
@@ -89,8 +93,13 @@ export function countRegionStats(
     seen.add(key.toLowerCase());
 
     const st = options?.topologyStats
-      ? resolveTopologyHostStatus(key, statusMap, problemMap, threshold, metric)
+      ? resolveRegionHostStatus(key, statusMap, threshold, metric, options.hostMetadata)
       : classifyHost(key, statusMap, threshold, metric);
+
+    if (options?.monitoredOnly && st === 'unknown') {
+      continue;
+    }
+
     if (st === 'offline') {
       offline++;
     } else if (st === 'online') {
@@ -99,7 +108,13 @@ export function countRegionStats(
       unknown++;
     }
   }
-  return { total: seen.size, offline, online, unknown };
+  const configuredTotal = seen.size;
+  return {
+    total: configuredTotal,
+    offline,
+    online,
+    unknown,
+  };
 }
 
 function pointInRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
@@ -130,29 +145,29 @@ export function buildRegionStatsMap(
   nodes: TopologyNode[],
   nodeLayouts: Map<string, NodeLayout & TopologyNode>,
   statusMap: HostStatusMap,
-  options: Pick<TopologyPanelOptions, 'offlineThreshold' | 'statusMetric' | 'statusValueField'>,
-  problemMap: HostProblemMap = {},
-  submapHosts: Record<string, string[]> = {}
+  options: Pick<TopologyPanelOptions, 'statusMetric'>,
+  submapHosts: Record<string, string[] | null | undefined> = {},
+  hostMetadata: HostMetadataMap = {}
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
   const hostNodes = nodes.filter((n) => (n.type ?? 'host') === 'host');
   const metric = effectiveStatusMetric(options);
-  const threshold = options.offlineThreshold ?? (metric === 'packet_loss' ? 1 : 0);
-  const statsOptions = { topologyStats: true, problemMap, metric };
+  const threshold = offlineThresholdForMetric(metric);
+  const baseStatsOptions = { topologyStats: true, metric, hostMetadata };
 
   for (const node of nodes) {
-    if (node.type !== 'network' && node.type !== 'submap') {
-      continue;
-    }
-
-    const liveSubmapHosts = submapHosts[node.id]?.map((h) => h.trim()).filter(Boolean);
-    const mapHosts = liveSubmapHosts?.length
-      ? liveSubmapHosts
-      : node.statsHosts?.map((h) => h.trim()).filter(Boolean);
-    if (mapHosts?.length) {
+    if (node.type === 'submap') {
+      const fetched = submapHosts[node.id];
+      if (fetched === undefined) {
+        continue;
+      }
+      if (fetched === null) {
+        result.set(node.id, { total: 0, offline: 0, online: 0, unknown: 0, loadFailed: true });
+        continue;
+      }
       result.set(
         node.id,
-        countRegionStats(mapHosts, statusMap, threshold, statsOptions)
+        countRegionStats(fetched, statusMap, threshold, baseStatsOptions)
       );
       continue;
     }
@@ -168,10 +183,7 @@ export function buildRegionStatsMap(
 
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
     const names = inside.map((h) => hostStatusKey(h)).filter(Boolean) as string[];
-    result.set(
-      node.id,
-      countRegionStats(names, statusMap, threshold, statsOptions)
-    );
+    result.set(node.id, countRegionStats(names, statusMap, threshold, baseStatsOptions));
   }
 
   return result;
@@ -180,10 +192,17 @@ export function buildRegionStatsMap(
 export function regionFillColor(
   stats: RegionHostStats | undefined,
   options: Pick<TopologyPanelOptions, 'colorOnline' | 'colorOffline' | 'colorSubmap' | 'colorNetworkFill'>,
-  kind: 'network' | 'submap'
+  kind: 'network' | 'submap',
+  icmpReady = true
 ): string | undefined {
-  if (!stats || stats.total === 0) {
-    return undefined;
+  if (!stats || stats.loadFailed) {
+    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+  }
+  if (stats.total === 0) {
+    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+  }
+  if (!icmpReady) {
+    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
   }
   if (stats.offline > 0) {
     return kind === 'submap' ? options.colorOffline : 'rgba(198,40,40,0.22)';

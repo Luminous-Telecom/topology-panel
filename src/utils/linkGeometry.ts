@@ -201,25 +201,40 @@ export function buildLinkPathD(
   return hasWaypoints ? pathToRoundedD(pts, cornerRadius) : pathToD(pts);
 }
 
-/** Rótulo de capacidade no segmento mais longo. */
-export function linkLabelAnchor(pathPoints: LinkPoint[]): { x: number; y: number; angle: number } {
+function segmentAngle(a: LinkPoint, b: LinkPoint): number {
+  let angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  if (angle > 90 || angle < -90) {
+    angle += 180;
+  }
+  return angle;
+}
+
+/** Rótulo de capacidade no meio visual da linha (projetado sobre o path). */
+export function linkLabelAnchor(
+  pathPoints: LinkPoint[],
+  from?: LinkBox,
+  to?: LinkBox
+): { x: number; y: number; angle: number } {
   if (pathPoints.length < 2) {
     return { x: 0, y: 0, angle: 0 };
   }
-  let bestLen = -1;
-  let mid = { x: 0, y: 0, angle: 0 };
-  for (let i = 0; i < pathPoints.length - 1; i++) {
-    const a = pathPoints[i];
-    const b = pathPoints[i + 1];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len > bestLen) {
-      bestLen = len;
-      let angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
-      if (angle > 90 || angle < -90) {
-        angle += 180;
-      }
-      mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, angle };
-    }
-  }
-  return mid;
+
+  const anchorTarget =
+    from && to
+      ? nodeCenter(from)
+      : pathPoints[0];
+  const anchorTargetEnd =
+    from && to
+      ? nodeCenter(to)
+      : pathPoints[pathPoints.length - 1];
+
+  const betweenNodes = {
+    x: (anchorTarget.x + anchorTargetEnd.x) / 2,
+    y: (anchorTarget.y + anchorTargetEnd.y) / 2,
+  };
+
+  const onPath = closestPointOnPolyline(pathPoints, betweenNodes);
+  const a = pathPoints[onPath.insertIndex];
+  const b = pathPoints[onPath.insertIndex + 1];
+  return { x: onPath.x, y: onPath.y, angle: segmentAngle(a, b) };
 }

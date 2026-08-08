@@ -20,9 +20,8 @@ import {
   defaultTopologyMap,
   parseTopologyJson,
   topologyToJson,
-  defaultOptions,
 } from '../types';
-import { extractHostMetadataFromData, extractQueryHosts, inferLinkMedium, mergeMapWithQueryHosts } from '../utils';
+import { inferLinkMedium } from '../utils';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
@@ -71,23 +70,9 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [openNodes, setOpenNodes] = useState<Record<string, boolean>>({});
 
-  const panelOptions = useMemo(
-    () => ({ ...defaultOptions(), ...context.options, map }),
-    [context.options, map]
-  );
-  const queryHosts = useMemo(
-    () => extractQueryHosts(context.data, panelOptions),
-    [context.data, panelOptions]
-  );
-  const dataMeta = useMemo(
-    () => extractHostMetadataFromData(context.data, panelOptions),
-    [context.data, panelOptions]
-  );
-
-  const displayMap = useMemo(() => mergeMapWithQueryHosts(map, queryHosts, dataMeta), [map, queryHosts, dataMeta]);
   const hostNodes = useMemo(
-    () => displayMap.nodes.filter((n) => (n.type ?? 'host') === 'host'),
-    [displayMap.nodes]
+    () => map.nodes.filter((n) => (n.type ?? 'host') === 'host'),
+    [map.nodes]
   );
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
 
@@ -140,15 +125,15 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   );
 
   const addLink = useCallback(() => {
-    if (displayMap.nodes.length < 2) {
+    if (map.nodes.length < 2) {
       return;
     }
-    const from = displayMap.nodes[0];
-    const to = displayMap.nodes[1];
+    const from = map.nodes[0];
+    const to = map.nodes[1];
     updateMap({
       links: [...map.links, { from: from.id, to: to.id, medium: inferLinkMedium(from, to) }],
     });
-  }, [displayMap.nodes, map.links, updateMap]);
+  }, [map.nodes, map.links, updateMap]);
 
   const updateLink = useCallback(
     (index: number, field: 'from' | 'to' | 'medium' | 'bandwidthMbps', value: string) => {
@@ -208,7 +193,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     setJsonMode(false);
   }, [jsonText, onChange]);
 
-  const nodeOptions = displayMap.nodes.map((n) => ({ label: `${n.label || n.id} (${n.id})`, value: n.id }));
+  const nodeOptions = map.nodes.map((n) => ({ label: `${n.label || n.id} (${n.id})`, value: n.id }));
   const mediumOptions = [
     { label: 'Fibra (linha contínua)', value: 'fiber' },
     { label: 'Rádio (linha tracejada)', value: 'radio' },
@@ -281,7 +266,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         <VerticalGroup spacing="sm">
           {hostNodes.length === 0 && (
             <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-              Configure a aba <strong>Query</strong> com grupo Zabbix e item de tempo de resposta ICMP (icmppingsec).
+              Configure o <strong>Datasource UID</strong> Zabbix nas opções do painel. O status ICMP é buscado direto na API (itens icmpping*).
             </div>
           )}
           {hostNodes.map((node) => {
@@ -433,7 +418,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             </div>
             );
           })}
-          <Button onClick={addLink} disabled={locked || displayMap.nodes.length < 2}>
+          <Button onClick={addLink} disabled={locked || map.nodes.length < 2}>
             + Adicionar link
           </Button>
         </VerticalGroup>

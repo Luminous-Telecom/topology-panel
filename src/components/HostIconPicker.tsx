@@ -2,7 +2,7 @@ import React from 'react';
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyHostIcon } from '../types';
-import { HOST_ICON_LABELS, HOST_ICON_ORDER, HostIconImage, hostIconRenderSize } from '../utils/hostIcons';
+import { HOST_ICON_LABELS, HOST_ICON_ORDER, HostIconImage, hostIconRenderDimensions } from '../utils/hostIcons';
 
 interface Props {
   value: TopologyHostIcon;
@@ -25,6 +25,7 @@ export function HostIconPicker({ value, onChange }: Props) {
     >
       {HOST_ICON_ORDER.map((id) => {
         const selected = value === id;
+        const { w, h } = hostIconRenderDimensions(id, 36);
         return (
           <button
             key={id}
@@ -54,7 +55,7 @@ export function HostIconPicker({ value, onChange }: Props) {
               }
             `}
           >
-            <HostIconImage icon={id} size={hostIconRenderSize(id, 36)} />
+            <HostIconImage icon={id} size={h} />
             <span>{HOST_ICON_LABELS[id]}</span>
           </button>
         );

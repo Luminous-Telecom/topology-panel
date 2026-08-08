@@ -1,16 +1,17 @@
 ---
-description: Visão geral do projeto Dude Topology (Luminous) — escopo, repo e deploy
+description: Visão geral do Topology Panel (Luminous) — escopo, repo e deploy
 alwaysApply: true
 ---
 
-# Dude Topology — visão geral
+# Topology Panel — visão geral
 
 ## Projeto
 
-Plugin Grafana **`luminous-dude-topology-panel`** (`src/plugin.json`) para mapas estilo The Dude com status Zabbix.
+Plugin Grafana **Topology Panel** (`src/plugin.json`, id `luminous-dude-topology-panel`) para mapas estilo The Dude com status Zabbix.
 
 - Repo: https://github.com/Luminous-Telecom/topology-panel
-- Id do plugin: `luminous-dude-topology-panel`
+- Nome no Grafana: **Topology Panel**
+- Id do plugin (não alterar): `luminous-dude-topology-panel`
 
 ## O que NÃO vai pro GitHub
 

@@ -1,6 +1,6 @@
 {
   "type": "panel",
-  "name": "Dude Topology",
+  "name": "Topology Panel",
   "id": "luminous-dude-topology-panel",
   "info": {
     "description": "Manual network topology maps with Zabbix host status, links between nodes, and submap navigation",
@@ -8,7 +8,7 @@
       "name": "Luminous Telecom"
     },
     "keywords": ["topology", "network", "zabbix", "dude", "map"],
-    "version": "1.0.92",
+    "version": "1.3.1",
     "updated": "2026-08-08"
   },
   "dependencies": {

@@ -1,6 +1,25 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { TopologyMap } from '../types';
 
+type DashboardTopologyPanel = { type?: string; options?: { map?: TopologyMap } };
+type DashboardTopologyElement = {
+  spec?: {
+    vizConfig?: {
+      spec?: {
+        options?: {
+          map?: TopologyMap;
+        };
+      };
+    };
+  };
+};
+type DashboardTopologyResponse = {
+  dashboard?: {
+    panels?: DashboardTopologyPanel[];
+    elements?: Record<string, DashboardTopologyElement>;
+  };
+};
+
 /** Hosts type=host do mapa (mesma regra do build_dashboard.py / map_stats_hosts). */
 export function extractTopologyHostNames(map: TopologyMap): string[] {
   const seen = new Set<string>();
@@ -11,7 +30,7 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
     if ((node.type ?? 'host') !== 'host') {
       continue;
     }
-    const name = node.zabbixHost?.trim() || node.label?.trim();
+    const name = node.zabbixHost?.trim();
     if (!name || hidden.has(name)) {
       continue;
     }
@@ -26,6 +45,24 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
   return hosts;
 }
 
+/** Extrai mapa da topologia de um dashboard (API v1 panels ou v2 elements/vizConfig). */
+function extractMapFromDashboardResponse(response: DashboardTopologyResponse): TopologyMap | undefined {
+  for (const panel of response?.dashboard?.panels ?? []) {
+    if (panel.type === 'luminous-dude-topology-panel' && panel.options?.map) {
+      return panel.options.map;
+    }
+  }
+
+  for (const element of Object.values(response?.dashboard?.elements ?? {})) {
+    const map = element?.spec?.vizConfig?.spec?.options?.map;
+    if (map) {
+      return map;
+    }
+  }
+
+  return undefined;
+}
+
 /** Carrega hosts da topologia do dashboard linkado (submapUid). */
 export async function fetchDashboardTopologyHosts(dashboardUid: string): Promise<string[]> {
   const uid = dashboardUid.trim();
@@ -33,18 +70,10 @@ export async function fetchDashboardTopologyHosts(dashboardUid: string): Promise
     return [];
   }
 
-  try {
-    const response = await getBackendSrv().get<{ dashboard?: { panels?: Array<{ type?: string; options?: { map?: TopologyMap } }> } }>(
-      `/api/dashboards/uid/${encodeURIComponent(uid)}`
-    );
-    for (const panel of response?.dashboard?.panels ?? []) {
-      if (panel.type === 'luminous-dude-topology-panel' && panel.options?.map?.nodes?.length) {
-        return extractTopologyHostNames(panel.options.map);
-      }
-    }
-  } catch {
-    // fallback: statsHosts embutido no nó submapa
-  }
+  const response = await getBackendSrv().get<DashboardTopologyResponse>(
+    `/api/dashboards/uid/${encodeURIComponent(uid)}`
+  );
 
-  return [];
+  const map = extractMapFromDashboardResponse(response);
+  return map ? extractTopologyHostNames(map) : [];
 }

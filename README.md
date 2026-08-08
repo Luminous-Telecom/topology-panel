@@ -1,4 +1,4 @@
-# Luminous Dude Topology Panel
+# Topology Panel
 
 Plugin de painel para **Grafana 9+** que exibe mapas de rede no estilo **The Dude**, com status ao vivo via **Zabbix**.
 
@@ -55,7 +55,7 @@ sudo systemctl restart grafana-server
 
 ## Uso no Grafana
 
-1. Crie um dashboard → adicione painel **Dude Topology**
+1. Crie um dashboard → adicione painel **Topology Panel**
 2. **Query** (opcional): datasource Zabbix, item *Perda de Pacotes*, grupo dos hosts do mapa
 3. **Transformations** (recomendado):
    - `Reduce` → *Series to rows*, reducer *Last*

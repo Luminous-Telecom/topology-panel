@@ -1,7 +1,7 @@
 {
   "name": "luminous-dude-topology-panel",
-  "version": "1.0.92",
-  "description": "Grafana panel for manual network topology maps with Zabbix host status, links and submaps",
+  "version": "1.3.1",
+  "description": "Topology Panel — Grafana panel for network maps with Zabbix status, links and submaps",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.js --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.js --env development",

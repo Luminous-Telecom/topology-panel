@@ -20,6 +20,12 @@ interface Props {
 }
 
 const styles = {
+  backdrop: css`
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: transparent;
+  `,
   menu: css`
     position: fixed;
     z-index: 10000;
@@ -199,31 +205,43 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
   }, [x, y, items]);
 
   useEffect(() => {
-    const onPointerDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
       }
     };
-    document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [onClose]);
 
+  const dismiss = useCallback(
+    (e: React.MouseEvent | React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    },
+    [onClose]
+  );
+
   const menu = (
-    <div
-      ref={ref}
-      className={styles.menu}
-      style={{ left: position.x, top: position.y }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
+    <>
+      <div
+        className={styles.backdrop}
+        aria-hidden
+        onMouseDown={dismiss}
+        onPointerDown={dismiss}
+        onContextMenu={dismiss}
+      />
+      <div
+        ref={ref}
+        className={styles.menu}
+        style={{ left: position.x, top: position.y }}
+        onContextMenu={(e) => e.preventDefault()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
       {items.map((item, idx) => {
         const isDelete = item.variant === 'delete';
         const showSep = isDelete && idx > 0 && items[idx - 1]?.variant !== 'delete';
@@ -234,7 +252,8 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
           </React.Fragment>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 
   if (typeof document === 'undefined') {

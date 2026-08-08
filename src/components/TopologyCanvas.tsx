@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
+import { useTheme2 } from '@grafana/ui';
 import {
+  HostMetadataMap,
   HostProblemMap,
   HostStatusMap,
   TopologyLink,
@@ -29,9 +31,11 @@ import {
   updateStoredNode,
   updateHostsIconBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize, resolveHostIcon } from '../utils/hostIcons';
+import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
+import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
 import {
@@ -62,8 +66,13 @@ interface Props {
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
   statusMap: HostStatusMap;
+  /** ICMP puro — estatísticas de rede/submapa (sem problemas Zabbix). */
+  regionStatusMap?: HostStatusMap;
+  /** ICMP carregado ao menos uma vez — evita vermelho/OK falso antes da API Zabbix. */
+  icmpReady?: boolean;
+  hostMetadata?: HostMetadataMap;
   problemMap?: HostProblemMap;
-  submapHosts?: Record<string, string[]>;
+  submapHosts?: Record<string, string[] | null | undefined>;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onUndo?: () => void;
@@ -212,7 +221,8 @@ function LinkMarkers({ colorLink }: { colorLink: string }) {
 function nodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
-  statusMap: HostStatusMap
+  statusMap: HostStatusMap,
+  hostMetadata?: HostMetadataMap
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -220,7 +230,13 @@ function nodeFill(
   if (node.type === 'static') {
     return options.colorUnknown;
   }
-  const st = resolveNodeStatus(node, statusMap, options.offlineThreshold, effectiveStatusMetric(options));
+  const st = resolveNodeStatus(
+    node,
+    statusMap,
+    offlineThresholdForMetric(effectiveStatusMetric(options)),
+    effectiveStatusMetric(options),
+    hostMetadata
+  );
   if (st === 'online') {
     return options.colorOnline;
   }
@@ -235,6 +251,9 @@ export function TopologyCanvas({
   storedMap,
   options,
   statusMap,
+  regionStatusMap,
+  icmpReady = false,
+  hostMetadata,
   problemMap = {},
   submapHosts = {},
   onMapChange,
@@ -244,6 +263,8 @@ export function TopologyCanvas({
   canUndo = false,
   canRedo = false,
 }: Props) {
+  const theme = useTheme2();
+  const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const savedView = options.view;
   const [view, setView] = useState<TopologyView>(() =>
@@ -344,7 +365,14 @@ export function TopologyCanvas({
       layouts.set(node.id, { ...positioned, ...layout });
     }
 
-    const stats = buildRegionStatsMap(map.nodes, layouts, statusMap, options, problemMap, submapHosts);
+    const stats = buildRegionStatsMap(
+      map.nodes,
+      layouts,
+      regionStatusMap ?? statusMap,
+      options,
+      submapHosts,
+      hostMetadata
+    );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
         continue;
@@ -357,13 +385,13 @@ export function TopologyCanvas({
       if (!positioned) {
         continue;
       }
-      const withStats = { ...positioned, subtitle: formatRegionStats(region) };
+      const withStats = { ...positioned, subtitle: formatRegionStats(region, icmpReady) };
       const layout = computeNodeLayout(withStats, layoutOpts);
       layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
     }
 
     return layouts;
-  }, [map.nodes, layoutOpts, dragPreview, statusMap, options, problemMap, submapHosts]);
+  }, [map.nodes, layoutOpts, dragPreview, regionStatusMap, statusMap, options, submapHosts, hostMetadata, icmpReady]);
 
   const linkableNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -386,8 +414,16 @@ export function TopologyCanvas({
   }, [map.links, linkableNodeIds, nodeLayouts]);
 
   const regionStats = useMemo(
-    () => buildRegionStatsMap(map.nodes, nodeLayouts, statusMap, options, problemMap, submapHosts),
-    [map.nodes, nodeLayouts, statusMap, options, problemMap, submapHosts]
+    () =>
+      buildRegionStatsMap(
+        map.nodes,
+        nodeLayouts,
+        regionStatusMap ?? statusMap,
+        options,
+        submapHosts,
+        hostMetadata
+      ),
+    [map.nodes, nodeLayouts, regionStatusMap, statusMap, options, submapHosts, hostMetadata]
   );
 
   const persist = useCallback(
@@ -783,6 +819,7 @@ export function TopologyCanvas({
       }
       setSelectedNodeIds([]);
       setSelectedLink(null);
+      setContextMenu(null);
       beginPan(e);
     },
     [beginPan, editable, view]
@@ -1622,15 +1659,20 @@ export function TopologyCanvas({
               }
               const { w, h, label, labelY, x, y } = layout;
               const stats = regionStats.get(node.id);
-              const fillOverride = regionFillColor(stats, options, 'network');
-              const fill = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
-              const stroke =
+              const fillOverride = regionFillColor(stats, options, 'network', icmpReady);
+              const fillRaw =
+                fillOverride ??
+                (node.fillColor ? node.fillColor : undefined) ??
+                options.colorNetworkFill;
+              const fill = resolveColor(fillRaw);
+              const strokeRaw =
                 stats && stats.offline > 0
                   ? options.colorOffline
                   : stats && stats.online > 0
                     ? options.colorOnline
                     : node.borderColor ?? options.colorNetworkBorder;
-              const statsLabel = stats ? formatRegionStats(stats) : undefined;
+              const stroke = resolveColor(strokeRaw);
+              const statsLabel = stats ? formatRegionStats(stats, icmpReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
               const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : y + labelY;
@@ -1668,7 +1710,7 @@ export function TopologyCanvas({
                     y={y + labelY}
                     textAnchor="start"
                     dominantBaseline="middle"
-                    fill={options.colorNetworkLabel}
+                    fill={resolveColor(options.colorNetworkLabel)}
                     fontSize={options.nodeFontSize}
                     fontFamily="Inter, Helvetica, Arial, sans-serif"
                     pointerEvents="none"
@@ -1795,13 +1837,27 @@ export function TopologyCanvas({
               x: number;
               y: number;
             };
-            const fillOverride =
-              node.type === 'submap' ? regionFillColor(regionStats.get(node.id), options, 'submap') : undefined;
-            const fill = fillOverride ?? nodeFill(node, options, statusMap);
+              const fillOverride =
+                node.type === 'submap' ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady) : undefined;
+              const fillRaw =
+                fillOverride ??
+                (node.fillColor ? node.fillColor : undefined) ??
+                nodeFill(node, options, statusMap, hostMetadata);
+              const fill = resolveColor(fillRaw);
             const regionLabel =
               node.type === 'submap' && regionStats.has(node.id)
-                ? formatRegionStats(regionStats.get(node.id)!)
+                ? formatRegionStats(regionStats.get(node.id)!, icmpReady)
                 : undefined;
+            const labelColor = textOnBackground(fill);
+            const subtitleColor = regionLabel
+              ? regionStats.get(node.id)!.offline > 0
+                ? isDarkBackground(fill)
+                  ? '#ffcdd2'
+                  : '#b71c1c'
+                : isDarkBackground(fill)
+                  ? '#c8e6c9'
+                  : '#1b5e20'
+              : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
             const isHostNode = (node.type ?? 'host') === 'host';
@@ -1856,7 +1912,12 @@ export function TopologyCanvas({
                   strokeWidth={isSelected || isSelectedLinkEndpoint ? 3 : isLinkSource || isLinkTarget ? 2 : 1}
                 />
                 {hostIcon && (
-                  <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} size={hostIconRenderSize(hostIcon)} />
+                  <HostIconGlyph
+                    icon={hostIcon}
+                    x={iconX}
+                    y={iconY}
+                    size={hostIconRenderSize(hostIcon)}
+                  />
                 )}
                 {editable && node.type === 'static' && (
                   <rect
@@ -1877,7 +1938,7 @@ export function TopologyCanvas({
                   y={y + labelY}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#fff"
+                  fill={labelColor}
                   fontSize={labelFontSize}
                   fontFamily="Inter, Helvetica, Arial, sans-serif"
                   pointerEvents="none"
@@ -1890,13 +1951,7 @@ export function TopologyCanvas({
                     y={y + displaySubY}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill={
-                      regionLabel
-                        ? regionStats.get(node.id)!.offline > 0
-                          ? '#ffcdd2'
-                          : '#c8e6c9'
-                        : 'rgba(255,255,255,0.85)'
-                    }
+                    fill={subtitleColor}
                     fontSize={Math.max(9, subFontSize)}
                     fontFamily="Inter, Helvetica, Arial, sans-serif"
                     pointerEvents="none"
@@ -1949,7 +2004,6 @@ export function TopologyCanvas({
         <ZabbixHostPickerModal
           mode="add"
           datasourceUid={options.zabbixDatasourceUid}
-          defaultGroup={options.zabbixGroupFilter}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon) =>
@@ -1962,7 +2016,6 @@ export function TopologyCanvas({
         <ZabbixHostPickerModal
           mode="edit"
           datasourceUid={options.zabbixDatasourceUid}
-          defaultGroup={options.zabbixGroupFilter}
           storedMap={storedMap}
           initialVisibleName={editZabbixHost.zabbixHost}
           initialIcon={editZabbixHost.icon}
@@ -2056,7 +2109,8 @@ function LinkLineComponent({
   const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
   const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
   const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps);
-  const mid = linkLabelAnchor(pathPoints);
+  const mid = linkLabelAnchor(pathPoints, from, to);
+  const bandwidthLabelWidth = bandwidthLabel ? bandwidthLabel.length * 6 : 0;
   const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
   const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const markerStart = selected
@@ -2155,9 +2209,9 @@ function LinkLineComponent({
       {bandwidthLabel && (
         <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
           <rect
-            x={-bandwidthLabel.length * 3.2}
-            y={-8}
-            width={bandwidthLabel.length * 6.4}
+            x={-bandwidthLabelWidth / 2}
+            y={-7}
+            width={bandwidthLabelWidth}
             height={14}
             rx={3}
             fill="rgba(18,18,20,0.82)"
@@ -2165,6 +2219,8 @@ function LinkLineComponent({
             strokeWidth={0.5}
           />
           <text
+            x={0}
+            y={0}
             textAnchor="middle"
             dominantBaseline="middle"
             fill="#E3F2FD"

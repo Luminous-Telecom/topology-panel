@@ -1,5 +1,5 @@
 ---
-description: Padrões de código do plugin Dude Topology (TypeScript/React)
+description: Padrões de código do Topology Panel (TypeScript/React)
 globs: src/**/*
 alwaysApply: false
 ---
@@ -49,9 +49,26 @@ Mutações → `mapEdits.ts`. Lógica pura → `utils.ts`.
 
 ## Zabbix
 
-- Status via Perda de Pacotes; campo host `loss`
+- Status **ICMP** via **API Zabbix** (`fetchZabbixHostIcmpStatusMap`) — itens `icmpping`, `icmppingsec`, `icmppingloss`; refresh ~60s
+- **Não depende** da query Grafana para colorir hosts — só precisa do **Datasource UID**
+- Query opcional: descobrir hosts extras / metadados; transform Reduce não é mais obrigatória
 - `mergeMapWithQueryHosts` — múltiplas posições para mesmo host Zabbix
+
+## Cores do painel
+
+- **Defaults e dashboards** (`types.ts`, `scripts/build_dashboard.py`): sempre **hex** (`#2E7D32`, `#C62828`, …)
+- **Color picker Grafana** pode salvar nome de paleta (`light-green`, `semi-dark-red`) — OK
+- **Render SVG**: toda cor passa por `resolvePanelColor()` em `utils/panelColors.ts`
+  - Hex/rgb → direto
+  - Nome Grafana → `theme.visualization.hues` + `getColorByName`
+  - **Proibido** passar nome de tema ao `fill=` do SVG (fica preto)
+  - **Proibido** fallback para o nome cru ou mapa estático hardcoded
+- Aplicar `resolveColor()` em todo `fill`/`stroke` de hosts, redes e links no `TopologyCanvas`
 
 ## Deploy (obrigatório)
 
 Após qualquer mudança em `src/`: bump versão se necessário → `bash scripts/deploy.sh` → confirmar no dashboard DC.
+
+## Ícones
+
+Ver regra **`dude-topology-icons.mdc`** — SVGs em `src/img/topology/`, paleta cinza Dude, registro em `customIcons.ts`.

@@ -186,6 +186,15 @@ export const BridgeIcon: FC<NetIconProps> = (props) => (
   </NetIcon>
 );
 
+/** Energia — UPS, nobreak ou alimentação. */
+export const PowerIcon: FC<NetIconProps> = (props) => (
+  <NetIcon {...props}>
+    <rect x="5.5" y="3.5" width="13" height="17" rx="2" {...S} />
+    <path d="M13.5 7L10 13h3.5l-1.5 6.5L16.5 11H13l.5-4z" fill="currentColor" stroke="none" />
+    <path d="M8.5 19h7" {...S} strokeWidth={1.5} opacity={0.55} />
+  </NetIcon>
+);
+
 export const ServerIcon: FC<NetIconProps> = (props) => (
   <NetIcon {...props}>
     <rect x="3.5" y="2.5" width="17" height="6.5" rx="1.5" {...S} />
@@ -246,6 +255,7 @@ export const NETWORK_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, NetworkIc
   mesh: MeshIcon,
   camera: CameraIcon,
   bridge: BridgeIcon,
+  power: PowerIcon,
   server: ServerIcon,
   rack: RackIcon,
   dns: DnsIcon,

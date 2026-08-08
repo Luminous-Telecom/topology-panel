@@ -1,0 +1,30 @@
+---
+description: Padrão de ícones SVG do mapa
+globs: src/img/topology/**/*,src/utils/customIcons.ts,src/utils/hostIcons.tsx
+alwaysApply: false
+---
+
+# Ícones — padrão visual e integração
+
+## Mapa vs picker
+
+| Contexto | Aparência |
+|----------|-----------|
+| **Mapa** (`onMap={true}`) | Silhueta **branca** (`brightness(0) invert(1)`) sobre card colorido — estilo Dude |
+| **Picker / modal** (`onMap={false}`) | SVG com **cores originais** do arquivo |
+
+## Arquivos SVG
+
+Ícones desenhados podem ter cores no SVG (router azul, firewall colorido, etc.) — visíveis só no picker.
+
+Equipamentos Dude originais (`switch.svg`, `ap.svg`, …) mantêm 3D cinza no picker.
+
+## Onde ficam
+
+- **Arquivos:** `src/img/topology/{nome}.svg`
+- **Registro:** `src/utils/customIcons.ts` → `CUSTOM_ICON_SVGS`
+- **Render:** `src/utils/hostIcons.tsx` → `HostIconImage` / `HostIconGlyph`
+
+## Deploy
+
+Após mudar ícones: bump versão → `bash scripts/deploy.sh`

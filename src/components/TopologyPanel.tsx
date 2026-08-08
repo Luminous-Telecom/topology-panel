@@ -5,43 +5,53 @@ import { TopologyCanvas } from './TopologyCanvas';
 import { HostMetadataMap, HostProblemMap, HostStatusMap, TopologyMap, TopologyPanelOptions, TopologyView, defaultOptions } from '../types';
 import {
   effectiveStatusMetric,
-  extractHostMetadataFromData,
-  extractHostStatus,
-  extractQueryHosts,
   lookupHostStatus,
-  mergeMapWithQueryHosts,
   mergeStatusWithProblems,
 } from '../utils';
-import { fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
+import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
+import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
 const PROBLEM_REFRESH_MS = 60_000;
+const ICMP_REFRESH_MS = 60_000;
 
-export function TopologyPanel({ options, data, width, height, onOptionsChange }: Props) {
+export function TopologyPanel({ options, width, height, onOptionsChange }: Props) {
   const theme = useTheme2();
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
+  const [icmpStatusMap, setIcmpStatusMap] = useState<HostStatusMap>({});
+  const [icmpFetchDone, setIcmpFetchDone] = useState(false);
   const [problemMap, setProblemMap] = useState<HostProblemMap>({});
-  const [submapHosts, setSubmapHosts] = useState<Record<string, string[]>>({});
+  const [submapHosts, setSubmapHosts] = useState<Record<string, string[] | null | undefined>>({});
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
-  /** Mantém último status conhecido entre refreshes da query (evita flash cinza). */
-  const statusCacheRef = useRef<HostStatusMap>({});
 
   const resolvedOptions = useMemo(() => {
-    return {
+    const merged = {
       ...defaultOptions(),
       ...options,
       map: options.map ?? { width: 1200, height: 800, nodes: [], links: [] },
     };
-  }, [options]);
+    return resolvePanelOptionsColors(merged, theme);
+  }, [options, theme]);
 
-  const queryHosts = useMemo(
-    () => extractQueryHosts(data, resolvedOptions),
-    [data, resolvedOptions]
-  );
+  /** Persiste hex no dashboard quando opções ainda têm nomes da paleta (ex.: light-green). */
+  useEffect(() => {
+    if (!onOptionsChange) {
+      return;
+    }
+    const merged = {
+      ...defaultOptions(),
+      ...options,
+      map: options.map ?? { width: 1200, height: 800, nodes: [], links: [] },
+    };
+    const { options: normalized, changed } = normalizeStoredPanelColors(merged, theme);
+    if (changed) {
+      onOptionsChange(normalized);
+    }
+  }, [options, theme, onOptionsChange]);
 
   const mapHostNames = useMemo(() => {
     const names = new Set<string>();
@@ -51,6 +61,9 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
       }
     }
     for (const hosts of Object.values(submapHosts)) {
+      if (hosts === undefined || hosts === null) {
+        continue;
+      }
       for (const host of hosts) {
         const key = host.trim();
         if (key) {
@@ -58,16 +71,8 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
         }
       }
     }
-    for (const host of queryHosts) {
-      names.add(host);
-    }
     return [...names];
-  }, [queryHosts, resolvedOptions.map.nodes, submapHosts]);
-
-  const dataMeta = useMemo(
-    () => extractHostMetadataFromData(data, resolvedOptions),
-    [data, resolvedOptions]
-  );
+  }, [resolvedOptions.map.nodes, submapHosts]);
 
   const submapNodes = useMemo(() => {
     return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
@@ -84,8 +89,12 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
     const load = async () => {
       const entries = await Promise.all(
         submapNodes.map(async (node) => {
-          const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim());
-          return [node.id, hosts] as const;
+          try {
+            const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim());
+            return [node.id, hosts] as const;
+          } catch {
+            return [node.id, null] as const;
+          }
         })
       );
       if (!cancelled) {
@@ -101,13 +110,13 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
 
   useEffect(() => {
     const uid = resolvedOptions.zabbixDatasourceUid;
-    if (!uid || !queryHosts.length) {
+    if (!uid || !mapHostNames.length) {
       setFetchedMeta({});
       return;
     }
 
     let cancelled = false;
-    fetchZabbixHostMetadata(uid, resolvedOptions.zabbixGroupFilter, queryHosts).then((meta) => {
+    fetchZabbixHostMetadata(uid, undefined, mapHostNames).then((meta) => {
       if (!cancelled) {
         setFetchedMeta(meta);
       }
@@ -116,12 +125,51 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
     return () => {
       cancelled = true;
     };
-  }, [queryHosts, resolvedOptions.zabbixDatasourceUid, resolvedOptions.zabbixGroupFilter]);
+  }, [mapHostNames, resolvedOptions.zabbixDatasourceUid]);
+
+  useEffect(() => {
+    const uid = resolvedOptions.zabbixDatasourceUid;
+    if (!uid || !mapHostNames.length) {
+      setIcmpStatusMap({});
+      setIcmpFetchDone(false);
+      return;
+    }
+
+    let cancelled = false;
+    const metric = effectiveStatusMetric(resolvedOptions);
+    const wanted = new Set(mapHostNames.map((h) => h.trim().toLowerCase()).filter(Boolean));
+
+    const load = () => {
+      void fetchZabbixHostIcmpStatusMap(uid, mapHostNames, metric).then((status) => {
+        if (cancelled) {
+          return;
+        }
+        setIcmpFetchDone(true);
+        setIcmpStatusMap((prev) => {
+          const next: HostStatusMap = { ...prev, ...status };
+          for (const key of Object.keys(next)) {
+            if (!wanted.has(key.toLowerCase())) {
+              delete next[key];
+            }
+          }
+          return next;
+        });
+      });
+    };
+
+    load();
+    const timer = window.setInterval(load, ICMP_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [mapHostNames, resolvedOptions.zabbixDatasourceUid, resolvedOptions.statusMetric]);
 
   useEffect(() => {
     const uid = resolvedOptions.zabbixDatasourceUid;
     const useProblems = resolvedOptions.useZabbixProblems !== false;
-    if (!uid || !useProblems) {
+    if (!uid || !useProblems || !mapHostNames.length) {
       setProblemMap({});
       return;
     }
@@ -129,8 +177,7 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
     let cancelled = false;
 
     const load = () => {
-      const groupFilter = submapNodes.length ? undefined : resolvedOptions.zabbixGroupFilter;
-      void fetchZabbixHostProblems(uid, groupFilter, mapHostNames).then((problems) => {
+      void fetchZabbixHostProblems(uid, undefined, mapHostNames).then((problems) => {
         if (!cancelled) {
           setProblemMap(problems);
         }
@@ -144,46 +191,25 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [
-    mapHostNames,
-    resolvedOptions.useZabbixProblems,
-    resolvedOptions.zabbixDatasourceUid,
-    resolvedOptions.zabbixGroupFilter,
-    submapNodes.length,
-  ]);
+  }, [mapHostNames, resolvedOptions.useZabbixProblems, resolvedOptions.zabbixDatasourceUid]);
 
-  const hostMetadata = useMemo(
-    () => ({ ...dataMeta, ...fetchedMeta }),
-    [dataMeta, fetchedMeta]
-  );
+  const hostMetadata = fetchedMeta;
 
-  const displayMap = useMemo(() => {
-    if (resolvedOptions.showQueryHostsOnMap === false) {
-      return resolvedOptions.map;
+  const icmpStatusForRegions = useMemo(() => {
+    const display: HostStatusMap = {};
+    for (const host of mapHostNames) {
+      const v = lookupHostStatus(icmpStatusMap, host, hostMetadata);
+      if (v !== null && v !== undefined) {
+        display[host] = v;
+      }
     }
-    return mergeMapWithQueryHosts(resolvedOptions.map, queryHosts, hostMetadata);
-  }, [resolvedOptions.map, resolvedOptions.showQueryHostsOnMap, queryHosts, hostMetadata]);
+    return display;
+  }, [hostMetadata, icmpStatusMap, mapHostNames]);
 
   const statusMap = useMemo(() => {
-    const fromQuery = extractHostStatus(data, resolvedOptions);
-    const cache = statusCacheRef.current;
-
-    for (const [host, v] of Object.entries(fromQuery)) {
-      if (v !== null && v !== undefined && !Number.isNaN(Number(v))) {
-        cache[host] = v;
-      }
-    }
-
-    const wanted = new Set(mapHostNames.map((h) => h.trim().toLowerCase()).filter(Boolean));
-    for (const key of Object.keys(cache)) {
-      if (!wanted.has(key.toLowerCase())) {
-        delete cache[key];
-      }
-    }
-
-    const display: HostStatusMap = { ...cache };
+    const display: HostStatusMap = {};
     for (const host of mapHostNames) {
-      const v = lookupHostStatus(cache, host, hostMetadata);
+      const v = lookupHostStatus(icmpStatusMap, host, hostMetadata);
       if (v !== null && v !== undefined) {
         display[host] = v;
       }
@@ -192,14 +218,8 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
     if (resolvedOptions.useZabbixProblems === false) {
       return display;
     }
-    return mergeStatusWithProblems(
-      display,
-      problemMap,
-      mapHostNames,
-      resolvedOptions.offlineThreshold,
-      effectiveStatusMetric(resolvedOptions)
-    );
-  }, [data, hostMetadata, mapHostNames, problemMap, resolvedOptions]);
+    return mergeStatusWithProblems(display, problemMap, mapHostNames, effectiveStatusMetric(resolvedOptions));
+  }, [hostMetadata, icmpStatusMap, mapHostNames, problemMap, resolvedOptions]);
 
   const applyMap = useCallback(
     (map: TopologyMap) => {
@@ -232,10 +252,13 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
       }}
     >
       <TopologyCanvas
-        map={displayMap}
+        map={resolvedOptions.map}
         storedMap={resolvedOptions.map}
         options={resolvedOptions}
         statusMap={statusMap}
+        regionStatusMap={icmpStatusForRegions}
+        icmpReady={icmpFetchDone}
+        hostMetadata={hostMetadata}
         problemMap={problemMap}
         submapHosts={submapHosts}
         onMapChange={commitChange}
