@@ -400,7 +400,8 @@ export function TopologyCanvas({
       regionStatusMap ?? statusMap,
       options,
       submapHosts,
-      hostMetadata
+      hostMetadata,
+      problemMap
     );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
@@ -414,13 +415,13 @@ export function TopologyCanvas({
       if (!positioned) {
         continue;
       }
-      const withStats = { ...positioned, subtitle: formatRegionStats(region, icmpReady) };
+      const withStats = { ...positioned, subtitle: formatRegionStats(region, icmpReady, 'submap') };
       const layout = computeNodeLayout(withStats, layoutOpts);
       layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
     }
 
     return layouts;
-  }, [map.nodes, layoutOpts, dragPreview, regionStatusMap, statusMap, options, submapHosts, hostMetadata, icmpReady]);
+  }, [map.nodes, layoutOpts, dragPreview, regionStatusMap, statusMap, options, submapHosts, hostMetadata, icmpReady, problemMap]);
 
   const linkableNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -450,9 +451,10 @@ export function TopologyCanvas({
         regionStatusMap ?? statusMap,
         options,
         submapHosts,
-        hostMetadata
+        hostMetadata,
+        problemMap
       ),
-    [map.nodes, nodeLayouts, regionStatusMap, statusMap, options, submapHosts, hostMetadata]
+    [map.nodes, nodeLayouts, regionStatusMap, statusMap, options, submapHosts, hostMetadata, problemMap]
   );
 
   const persist = useCallback(
@@ -763,13 +765,15 @@ export function TopologyCanvas({
 
   const onResizePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
-      if (!editable || (node.type !== 'network' && node.type !== 'static')) {
+      if (!editable || (node.type !== 'network' && node.type !== 'static' && node.type !== 'submap')) {
         return;
       }
       e.stopPropagation();
       const layout = nodeLayouts.get(node.id);
-      const defaultW = node.type === 'static' ? DEFAULT_STATIC_WIDTH : DEFAULT_NETWORK_WIDTH;
-      const defaultH = node.type === 'static' ? DEFAULT_STATIC_HEIGHT : DEFAULT_NETWORK_HEIGHT;
+      const defaultW =
+        node.type === 'static' ? DEFAULT_STATIC_WIDTH : node.type === 'submap' ? 120 : DEFAULT_NETWORK_WIDTH;
+      const defaultH =
+        node.type === 'static' ? DEFAULT_STATIC_HEIGHT : node.type === 'submap' ? 36 : DEFAULT_NETWORK_HEIGHT;
       dragRef.current = {
         kind: 'resize',
         node,
@@ -1268,9 +1272,7 @@ export function TopologyCanvas({
     (e: React.MouseEvent, node: TopologyNode) => {
       e.stopPropagation();
       if (editable) {
-        if (node.type === 'submap') {
-          openSubmap(node);
-        } else if (node.type === 'network' || node.type === 'static') {
+        if (node.type === 'submap' || node.type === 'network' || node.type === 'static') {
           setEditNode(node);
         } else if ((node.type ?? 'host') === 'host') {
           openHostEditor(node);
@@ -1524,7 +1526,12 @@ export function TopologyCanvas({
         });
       }
 
-      if ((node.type ?? 'host') === 'host' || node.type === 'network' || node.type === 'static') {
+      if (
+        (node.type ?? 'host') === 'host' ||
+        node.type === 'network' ||
+        node.type === 'static' ||
+        node.type === 'submap'
+      ) {
         if (selectedNodeIds.length < 2 || !selectedNodeIds.includes(node.id)) {
           items.push({
             id: 'props',
@@ -1965,7 +1972,7 @@ export function TopologyCanvas({
               const fill = resolveColor(fillRaw);
             const regionLabel =
               node.type === 'submap' && regionStats.has(node.id)
-                ? formatRegionStats(regionStats.get(node.id)!, icmpReady)
+                ? formatRegionStats(regionStats.get(node.id)!, icmpReady, 'submap')
                 : undefined;
             const labelColor =
               node.type === 'static' && node.labelColor
@@ -2064,7 +2071,7 @@ export function TopologyCanvas({
                     size={hostIconRenderSize(hostIcon)}
                   />
                 )}
-                {editable && node.type === 'static' && (
+                {editable && (node.type === 'static' || node.type === 'submap') && (
                   <rect
                     x={x + w - 10}
                     y={y + h - 10}

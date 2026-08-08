@@ -94,20 +94,28 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
         </>
       )}
       {type === 'submap' && (
-        <Field
-          label="Dashboard"
-          description={submapSlug ? `Slug: ${submapSlug}` : 'Selecione o dashboard de destino do submapa'}
-        >
-          <DashboardPickerSelect
-            value={submapUid}
-            onChange={(uid, slug) => {
-              setSubmapUid(uid);
-              if (slug) {
-                setSubmapSlug(slug);
-              }
-            }}
-          />
-        </Field>
+        <>
+          <Field
+            label="Dashboard"
+            description={submapSlug ? `Slug: ${submapSlug}` : 'Selecione o dashboard de destino do submapa'}
+          >
+            <DashboardPickerSelect
+              value={submapUid}
+              onChange={(uid, slug) => {
+                setSubmapUid(uid);
+                if (slug) {
+                  setSubmapSlug(slug);
+                }
+              }}
+            />
+          </Field>
+          <Field label="Largura (px)" description="Vazio = automático pelo texto">
+            <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
+          </Field>
+          <Field label="Altura (px)" description="Vazio = automático pelo texto">
+            <Input type="number" value={height} onChange={(e) => setHeight(e.currentTarget.value)} placeholder="Automático" />
+          </Field>
+        </>
       )}
       {type === 'static' && (
         <>
@@ -178,6 +186,10 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               patch.height = Math.max(40, Number(height) || 140);
               patch.fillColor = fillColor.trim() || undefined;
               patch.borderColor = borderColor.trim() || undefined;
+            }
+            if (type === 'submap') {
+              patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
+              patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
             }
             if (type === 'static') {
               patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;
