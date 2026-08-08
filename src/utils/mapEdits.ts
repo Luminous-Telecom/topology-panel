@@ -100,7 +100,19 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
     return upsertHostLayout(map, node.zabbixHost, { ...patch, id: node.id });
   }
 
-  const nodes = map.nodes.map((n) => (n.id === node.id ? { ...n, ...patch } : n));
+  const nodes = map.nodes.map((n) => {
+    if (n.id !== node.id) {
+      return n;
+    }
+    const next: TopologyNode = { ...n, ...patch };
+    // Limpa campos opcionais enviados como undefined (ex.: cor padrão do painel)
+    for (const key of ['fillColor', 'labelColor', 'borderColor', 'width', 'height', 'fontSize'] as const) {
+      if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key] === undefined) {
+        delete next[key];
+      }
+    }
+    return next;
+  });
   return { ...map, nodes };
 }
 

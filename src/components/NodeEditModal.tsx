@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Field, Input, Modal } from '@grafana/ui';
+import { Button, ColorPickerInput, Field, Input, Modal } from '@grafana/ui';
 import { TopologyHostIcon, TopologyNode } from '../types';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { HostIconPicker } from './HostIconPicker';
@@ -21,6 +21,7 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [height, setHeight] = useState(node.height !== undefined ? String(node.height) : '');
   const [fontSize, setFontSize] = useState(node.fontSize !== undefined ? String(node.fontSize) : '');
   const [fillColor, setFillColor] = useState(node.fillColor ?? '');
+  const [labelColor, setLabelColor] = useState(node.labelColor ?? '');
   const [borderColor, setBorderColor] = useState(node.borderColor ?? '');
   const [toolUsername, setToolUsername] = useState(node.toolUsername ?? '');
   const [toolPassword, setToolPassword] = useState(node.toolPassword ?? '');
@@ -119,6 +120,22 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
           <Field label="Tamanho da fonte (px)" description="Vazio = padrão do painel">
             <Input type="number" value={fontSize} onChange={(e) => setFontSize(e.currentTarget.value)} placeholder="Padrão do painel" />
           </Field>
+          <Field label="Cor de fundo" description="Vazio = cor estático do painel (Aparência)">
+            <ColorPickerInput
+              value={fillColor}
+              onChange={setFillColor}
+              returnColorAs="hex"
+              placeholder="Padrão do painel"
+            />
+          </Field>
+          <Field label="Cor do texto" description="Vazio = contraste automático sobre o fundo">
+            <ColorPickerInput
+              value={labelColor}
+              onChange={setLabelColor}
+              returnColorAs="hex"
+              placeholder="Automático"
+            />
+          </Field>
         </>
       )}
       {type === 'network' && (
@@ -166,6 +183,8 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;
               patch.height = height.trim() ? Math.max(20, Number(height) || 20) : undefined;
               patch.fontSize = fontSize.trim() ? Math.max(8, Number(fontSize) || 8) : undefined;
+              patch.fillColor = fillColor.trim() || undefined;
+              patch.labelColor = labelColor.trim() || undefined;
             }
             onSave(patch);
             onClose();

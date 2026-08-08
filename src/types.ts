@@ -55,10 +55,12 @@ export interface TopologyNode {
   y: number;
   width?: number;
   height?: number;
-  /** Cor de preenchimento (type=network) */
+  /** Cor de preenchimento (type=network | static) */
   fillColor?: string;
   /** Cor da borda (type=network) */
   borderColor?: string;
+  /** Cor do texto (type=static) */
+  labelColor?: string;
   /** Grupo Zabbix para contagem dinâmica de hosts (network/submap) */
   zabbixGroupFilter?: string;
   /** Rede pai explícita (type=host) — alternativa à detecção por posição */
@@ -131,6 +133,8 @@ export interface TopologyPanelOptions {
   colorOnline: string;
   colorOffline: string;
   colorUnknown: string;
+  /** Cor padrão dos rótulos estáticos */
+  colorStatic: string;
   colorSubmap: string;
   colorLink: string;
   /** Animação download (sentido destino / seta) */
@@ -202,6 +206,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorOnline: '#2E7D32',
   colorOffline: '#C62828',
   colorUnknown: '#616161',
+  colorStatic: '#616161',
   colorSubmap: '#1565C0',
   colorLink: '#78909C',
   colorLinkDownload: '#4FC3F7',

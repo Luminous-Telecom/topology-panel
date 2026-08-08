@@ -99,16 +99,19 @@ export function TopologyEditor({ value, onChange, context }: Props) {
       x: 400 + submapNodes.length * 40,
       y: 200,
     };
-    const hosts = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
-    updateMap({ nodes: [...hosts, ...submapNodes, node] });
+    updateMap({ nodes: [...map.nodes, node] });
     setOpenNodes((prev) => ({ ...prev, [id]: true }));
   }, [map.nodes, submapNodes.length, updateMap]);
 
   const updateSubmap = useCallback(
     (index: number, patch: Partial<TopologyNode>) => {
-      const submaps = submapNodes.map((n, i) => (i === index ? { ...n, ...patch } : n));
-      const hosts = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
-      updateMap({ nodes: [...hosts, ...submaps] });
+      const target = submapNodes[index];
+      if (!target) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.map((n) => (n.id === target.id ? { ...n, ...patch } : n)),
+      });
     },
     [map.nodes, submapNodes, updateMap]
   );
@@ -116,10 +119,13 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   const removeSubmap = useCallback(
     (index: number) => {
       const node = submapNodes[index];
-      const submaps = submapNodes.filter((_, i) => i !== index);
-      const hosts = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
-      const links = map.links.filter((l) => l.from !== node.id && l.to !== node.id);
-      updateMap({ nodes: [...hosts, ...submaps], links });
+      if (!node) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.filter((n) => n.id !== node.id),
+        links: map.links.filter((l) => l.from !== node.id && l.to !== node.id),
+      });
     },
     [map.links, map.nodes, submapNodes, updateMap]
   );

@@ -252,7 +252,7 @@ function nodeFill(
     return options.colorSubmap;
   }
   if (node.type === 'static') {
-    return options.colorUnknown;
+    return node.fillColor || options.colorStatic || options.colorUnknown;
   }
   const st = resolveNodeStatus(
     node,
@@ -1967,16 +1967,22 @@ export function TopologyCanvas({
               node.type === 'submap' && regionStats.has(node.id)
                 ? formatRegionStats(regionStats.get(node.id)!, icmpReady)
                 : undefined;
-            const labelColor = textOnBackground(fill);
-            const subtitleColor = regionLabel
-              ? regionStats.get(node.id)!.offline > 0
-                ? isDarkBackground(fill)
-                  ? '#ffcdd2'
-                  : '#b71c1c'
-                : isDarkBackground(fill)
-                  ? '#c8e6c9'
-                  : '#1b5e20'
-              : subtextOnBackground(fill);
+            const labelColor =
+              node.type === 'static' && node.labelColor
+                ? resolveColor(node.labelColor)
+                : textOnBackground(fill);
+            const subtitleColor =
+              node.type === 'static' && node.labelColor
+                ? resolveColor(node.labelColor)
+                : regionLabel
+                  ? regionStats.get(node.id)!.offline > 0
+                    ? isDarkBackground(fill)
+                      ? '#ffcdd2'
+                      : '#b71c1c'
+                    : isDarkBackground(fill)
+                      ? '#c8e6c9'
+                      : '#1b5e20'
+                  : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
             const isHostNode = (node.type ?? 'host') === 'host';

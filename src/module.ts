@@ -82,6 +82,13 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Aparência'],
       })
       .addColorPicker({
+        path: 'colorStatic',
+        name: 'Cor estático',
+        description: 'Cor de fundo padrão dos rótulos estáticos (pode sobrescrever por nó)',
+        defaultValue: '#616161',
+        category: ['Aparência'],
+      })
+      .addColorPicker({
         path: 'colorSubmap',
         name: 'Cor submapa',
         defaultValue: '#1565C0',
