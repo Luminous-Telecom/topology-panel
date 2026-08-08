@@ -1852,7 +1852,9 @@ export function TopologyCanvas({
               y: number;
             };
               const fillOverride =
-                node.type === 'submap' ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady) : undefined;
+                node.type === 'submap'
+                  ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady)
+                  : undefined;
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??

@@ -195,20 +195,27 @@ export function regionFillColor(
   kind: 'network' | 'submap',
   icmpReady = true
 ): string | undefined {
+  if (kind === 'submap') {
+    // OK / sem dados → cor submapa; com hosts parados → cor offline.
+    if (icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0) {
+      return options.colorOffline;
+    }
+    return options.colorSubmap;
+  }
   if (!stats || stats.loadFailed) {
-    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+    return options.colorNetworkFill;
   }
   if (stats.total === 0) {
-    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+    return options.colorNetworkFill;
   }
   if (!icmpReady) {
-    return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+    return options.colorNetworkFill;
   }
   if (stats.offline > 0) {
-    return kind === 'submap' ? options.colorOffline : 'rgba(198,40,40,0.22)';
+    return 'rgba(198,40,40,0.22)';
   }
   if (stats.online > 0) {
-    return kind === 'submap' ? options.colorOnline : 'rgba(46,125,50,0.18)';
+    return 'rgba(46,125,50,0.18)';
   }
-  return kind === 'submap' ? options.colorSubmap : options.colorNetworkFill;
+  return options.colorNetworkFill;
 }
