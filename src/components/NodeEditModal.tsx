@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Button, Field, Input, Modal } from '@grafana/ui';
-import { TopologyNode } from '../types';
+import { Button, Field, Input, Modal, Select } from '@grafana/ui';
+import { TopologyHostIcon, TopologyNode } from '../types';
+import { HOST_ICON_LABELS, hostIconSelectOptions } from '../utils/hostIcons';
 
 interface Props {
   node: TopologyNode;
@@ -13,14 +14,14 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
   const [submapSlug, setSubmapSlug] = useState(node.submapSlug ?? '');
-  const [zabbixHost, setZabbixHost] = useState(node.zabbixHost ?? '');
+  const [icon, setIcon] = useState<TopologyHostIcon>(node.icon ?? 'host');
   const [width, setWidth] = useState(String(node.width ?? 220));
   const [height, setHeight] = useState(String(node.height ?? 140));
   const [fillColor, setFillColor] = useState(node.fillColor ?? '');
   const [borderColor, setBorderColor] = useState(node.borderColor ?? '');
 
   const type = node.type ?? 'host';
-  const isZabbixHost = type === 'host' && Boolean(node.zabbixHost?.trim());
+  const isHost = type === 'host';
   const title =
     type === 'submap'
       ? 'Submapa'
@@ -28,44 +29,34 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
         ? 'Estático'
         : type === 'network'
           ? 'Rede'
-          : isZabbixHost
+          : node.zabbixHost
             ? 'Host Zabbix'
             : 'Dispositivo';
 
-  if (isZabbixHost) {
-    return (
-      <Modal title={title} isOpen onDismiss={onClose}>
-        <Field label="Nome (Zabbix)">
-          <Input value={node.zabbixHost ?? ''} disabled />
-        </Field>
-        {node.subtitle ? (
-          <Field label="IP (Zabbix)">
-            <Input value={node.subtitle} disabled />
-          </Field>
-        ) : null}
-        <Modal.ButtonRow>
-          <Button onClick={onClose}>Fechar</Button>
-        </Modal.ButtonRow>
-      </Modal>
-    );
-  }
-
   return (
     <Modal title={title} isOpen onDismiss={onClose}>
-      <Field label="Nome exibido">
-        <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
-      </Field>
-      <Field label="Subtítulo / IP">
-        <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
-      </Field>
-      {type === 'host' && !node.zabbixHost && (
-        <Field label="Host Zabbix (opcional)">
-          <Input value={zabbixHost} onChange={(e) => setZabbixHost(e.currentTarget.value)} />
-        </Field>
-      )}
-      {type === 'host' && node.zabbixHost && (
+      {node.zabbixHost && (
         <Field label="Host Zabbix">
           <Input value={node.zabbixHost} disabled />
+        </Field>
+      )}
+      {!node.zabbixHost && (
+        <Field label="Nome exibido">
+          <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+        </Field>
+      )}
+      {!node.zabbixHost && (
+        <Field label="Subtítulo / IP">
+          <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
+        </Field>
+      )}
+      {isHost && (
+        <Field label="Tipo / ícone" description={`Ícone: ${HOST_ICON_LABELS[icon]}`}>
+          <Select
+            options={hostIconSelectOptions()}
+            value={icon}
+            onChange={(v) => setIcon((v.value ?? 'host') as TopologyHostIcon)}
+          />
         </Field>
       )}
       {type === 'submap' && (
@@ -101,11 +92,12 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
         <Button
           onClick={() => {
             const patch: Partial<TopologyNode> = {
-              label,
-              subtitle,
+              label: node.zabbixHost ? node.label : label,
+              subtitle: node.zabbixHost ? node.subtitle : subtitle,
               submapUid: type === 'submap' ? submapUid : undefined,
               submapSlug: type === 'submap' ? submapSlug : undefined,
-              zabbixHost: type === 'host' && !node.zabbixHost ? zabbixHost : node.zabbixHost,
+              zabbixHost: node.zabbixHost,
+              icon: isHost ? icon : undefined,
             };
             if (type === 'network') {
               patch.width = Math.max(60, Number(width) || 220);

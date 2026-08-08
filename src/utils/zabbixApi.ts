@@ -8,6 +8,7 @@ interface ZabbixApiResponse<T> {
 
 interface ZabbixHostGroup {
   groupid: string;
+  name: string;
 }
 
 interface ZabbixHost {
@@ -143,4 +144,87 @@ export async function fetchZabbixHostMetadata(
   }
 
   return result;
+}
+
+export interface ZabbixGroupOption {
+  groupid: string;
+  name: string;
+}
+
+export interface ZabbixHostOption {
+  /** Nome visível (usado na query Zabbix / status) */
+  visibleName: string;
+  /** Nome técnico do host */
+  technicalName: string;
+  ip?: string;
+}
+
+/** Lista grupos de hosts no Zabbix. */
+export async function fetchZabbixGroups(datasourceUid: string): Promise<ZabbixGroupOption[]> {
+  if (!datasourceUid) {
+    return [];
+  }
+  try {
+    const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
+      output: ['groupid', 'name'],
+      sortfield: 'name',
+    });
+    return (groups ?? []).map((g) => ({ groupid: g.groupid, name: g.name }));
+  } catch {
+    return [];
+  }
+}
+
+/** Hosts de um grupo Zabbix (nome visível + IP). */
+export async function fetchZabbixHostsInGroup(
+  datasourceUid: string,
+  groupId: string
+): Promise<ZabbixHostOption[]> {
+  if (!datasourceUid || !groupId) {
+    return [];
+  }
+  try {
+    const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+      groupids: [groupId],
+      output: ['host', 'name'],
+      selectInterfaces: ['ip', 'main', 'type'],
+      sortfield: 'name',
+    });
+    return (hosts ?? []).map((h) => ({
+      visibleName: h.name?.trim() || h.host?.trim() || '',
+      technicalName: h.host?.trim() || h.name?.trim() || '',
+      ip: pickMainIp(h.interfaces),
+    })).filter((h) => h.visibleName);
+  } catch {
+    return [];
+  }
+}
+
+/** Grupos Zabbix aos quais um host pertence (para edição). */
+export async function fetchZabbixGroupsForHost(
+  datasourceUid: string,
+  visibleName: string
+): Promise<ZabbixGroupOption[]> {
+  if (!datasourceUid || !visibleName.trim()) {
+    return [];
+  }
+  try {
+    const key = visibleName.trim();
+    let hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
+      filter: { name: [key] },
+      output: ['hostid'],
+      selectGroups: ['groupid', 'name'],
+    });
+    if (!hosts?.length) {
+      hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
+        filter: { host: [key] },
+        output: ['hostid'],
+        selectGroups: ['groupid', 'name'],
+      });
+    }
+    const groups = hosts?.[0]?.groups ?? [];
+    return groups.map((g) => ({ groupid: g.groupid, name: g.name }));
+  } catch {
+    return [];
+  }
 }

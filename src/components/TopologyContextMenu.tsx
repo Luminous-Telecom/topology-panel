@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 
@@ -173,6 +174,28 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
 
 export function TopologyContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useLayoutEffect(() => {
+    setPosition({ x, y });
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const pad = 4;
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = Math.max(pad, window.innerHeight - rect.height - pad);
+    }
+    if (left !== x || top !== y) {
+      setPosition({ x: left, y: top });
+    }
+  }, [x, y, items]);
 
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
@@ -193,8 +216,13 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
     };
   }, [onClose]);
 
-  return (
-    <div ref={ref} className={styles.menu} style={{ left: x, top: y }} onContextMenu={(e) => e.preventDefault()}>
+  const menu = (
+    <div
+      ref={ref}
+      className={styles.menu}
+      style={{ left: position.x, top: position.y }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {items.map((item, idx) => {
         const isDelete = item.variant === 'delete';
         const showSep = isDelete && idx > 0 && items[idx - 1]?.variant !== 'delete';
@@ -207,6 +235,12 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
       })}
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return menu;
+  }
+
+  return createPortal(menu, document.body);
 }
 
 const hintStyle = css`
@@ -241,13 +275,11 @@ const toolbarStyle = css`
 export function TopologyToolbar({
   locked,
   networksLocked,
-  editable,
   onToggleLock,
   onToggleNetworksLock,
 }: {
   locked: boolean;
   networksLocked: boolean;
-  editable: boolean;
   onToggleLock: () => void;
   onToggleNetworksLock: () => void;
 }) {
@@ -266,32 +298,28 @@ export function TopologyToolbar({
 
   return (
     <div className={toolbarStyle}>
-      {editable && (
-        <>
-          <button
-            type="button"
-            onClick={onToggleLock}
-            title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
-            style={btnStyle(!locked, locked)}
-          >
-            <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
-            {locked ? 'Mapa travado' : 'Mapa editável'}
-          </button>
-          <button
-            type="button"
-            onClick={onToggleNetworksLock}
-            title={
-              networksLocked
-                ? 'Destravar caixas de rede para arrastar'
-                : 'Travar caixas de rede (só mover o mapa)'
-            }
-            style={btnStyle(!networksLocked, networksLocked)}
-          >
-            <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
-            {networksLocked ? 'Redes travadas' : 'Redes livres'}
-          </button>
-        </>
-      )}
+      <button
+        type="button"
+        onClick={onToggleLock}
+        title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
+        style={btnStyle(!locked, locked)}
+      >
+        <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
+        {locked ? 'Mapa travado' : 'Mapa editável'}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleNetworksLock}
+        title={
+          networksLocked
+            ? 'Destravar caixas de rede para arrastar'
+            : 'Travar caixas de rede (só mover o mapa)'
+        }
+        style={btnStyle(!networksLocked, networksLocked)}
+      >
+        <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
+        {networksLocked ? 'Redes travadas' : 'Redes livres'}
+      </button>
     </div>
   );
 }

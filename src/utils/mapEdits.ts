@@ -97,8 +97,40 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
   return { ...map, nodes };
 }
 
+/** Aplica o mesmo ícone a vários hosts de uma vez. */
+export function updateHostsIconBulk(
+  map: TopologyMap,
+  nodeIds: string[],
+  icon: TopologyNode['icon']
+): TopologyMap {
+  const idSet = new Set(nodeIds);
+  let next = map;
+  for (const node of map.nodes) {
+    if (!idSet.has(node.id) || (node.type ?? 'host') !== 'host') {
+      continue;
+    }
+    next = updateStoredNode(next, node, { icon });
+  }
+  return next;
+}
+
 export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, y: number): TopologyMap {
   return updateStoredNode(map, node, { x: Math.round(x), y: Math.round(y) });
+}
+
+/** Move vários nós de uma vez (arraste em grupo). */
+export function moveStoredNodesBulk(
+  map: TopologyMap,
+  moves: Array<{ nodeId: string; x: number; y: number }>
+): TopologyMap {
+  let next = map;
+  for (const { nodeId, x, y } of moves) {
+    const node = next.nodes.find((n) => n.id === nodeId);
+    if (node) {
+      next = moveStoredNode(next, node, x, y);
+    }
+  }
+  return next;
 }
 
 export function clientToMapCoords(
@@ -128,6 +160,78 @@ export function addManualDeviceAt(map: TopologyMap, x: number, y: number, label 
     y: Math.round(y),
   };
   return { ...map, nodes: [...map.nodes, node] };
+}
+
+/** Adiciona host Zabbix pelo nome visível (selecionado na API). */
+export function addZabbixHostAt(
+  map: TopologyMap,
+  x: number,
+  y: number,
+  visibleName: string,
+  ip?: string,
+  icon?: TopologyNode['icon']
+): TopologyMap {
+  const key = visibleName.trim();
+  if (!key) {
+    return map;
+  }
+  const hiddenHosts = map.hiddenHosts?.filter((h) => h.trim() !== key);
+  const next = upsertHostLayout(map, key, {
+    x: Math.round(x),
+    y: Math.round(y),
+    label: key,
+    subtitle: ip?.trim() || undefined,
+    type: 'host',
+    icon,
+  });
+  return {
+    ...next,
+    hiddenHosts: hiddenHosts?.length ? hiddenHosts : undefined,
+  };
+}
+
+/** Altera o host Zabbix vinculado a um nó existente (mantém id e posição). */
+export function rebindZabbixHost(
+  map: TopologyMap,
+  nodeId: string,
+  newVisibleName: string,
+  ip?: string,
+  icon?: TopologyNode['icon']
+): TopologyMap {
+  const node = map.nodes.find((n) => n.id === nodeId);
+  if (!node) {
+    return map;
+  }
+  const oldKey = node.zabbixHost?.trim();
+  const newKey = newVisibleName.trim();
+  if (!newKey) {
+    return map;
+  }
+
+  let nodes = map.nodes;
+  if (oldKey && oldKey !== newKey) {
+    nodes = nodes.filter(
+      (n) => !((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === oldKey && n.id === nodeId)
+    );
+  }
+
+  const hiddenHosts = map.hiddenHosts?.filter((h) => h.trim() !== newKey);
+  const next = upsertHostLayout({ ...map, nodes }, newKey, {
+    id: nodeId,
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+    label: newKey,
+    subtitle: ip?.trim() || node.subtitle,
+    type: 'host',
+    icon: icon ?? node.icon,
+  });
+
+  return {
+    ...next,
+    hiddenHosts: hiddenHosts?.length ? hiddenHosts : undefined,
+  };
 }
 
 export function findNodeById(map: TopologyMap, nodeId: string): TopologyNode | undefined {

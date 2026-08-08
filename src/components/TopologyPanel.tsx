@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelProps } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
@@ -16,6 +16,8 @@ export interface Props extends PanelProps<TopologyPanelOptions> {}
 export function TopologyPanel({ options, data, width, height, onOptionsChange }: Props) {
   const theme = useTheme2();
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
+  const latestOptionsRef = useRef(options);
+  latestOptionsRef.current = options;
 
   const resolvedOptions = useMemo(() => {
     return {
@@ -67,9 +69,9 @@ export function TopologyPanel({ options, data, width, height, onOptionsChange }:
 
   const handleMapChange = useCallback(
     (map: TopologyMap) => {
-      onOptionsChange({ ...options, map });
+      onOptionsChange({ ...latestOptionsRef.current, map });
     },
-    [onOptionsChange, options]
+    [onOptionsChange]
   );
 
   if (width < 1 || height < 1) {

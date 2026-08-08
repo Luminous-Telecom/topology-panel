@@ -1,6 +1,18 @@
 /** Node types: host = Zabbix; submap = dashboard; static = label; network = retângulo de agrupamento */
 export type TopologyNodeType = 'host' | 'submap' | 'static' | 'network';
 
+export type TopologyHostIcon =
+  | 'router'
+  | 'camera'
+  | 'access_point'
+  | 'bridge'
+  | 'web'
+  | 'proxmox'
+  | 'vmware'
+  | 'linux'
+  | 'windows'
+  | 'host';
+
 export interface TopologyNode {
   /** Unique id used by links (e.g. "swv01-switch") */
   id: string;
@@ -14,6 +26,8 @@ export interface TopologyNode {
    */
   zabbixHost?: string;
   type?: TopologyNodeType;
+  /** Ícone do host (seleção manual) */
+  icon?: TopologyHostIcon;
   /** Dashboard UID for submap nodes (type=submap) */
   submapUid?: string;
   /** Optional dashboard slug override */

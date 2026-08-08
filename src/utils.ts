@@ -248,6 +248,7 @@ export function mergeMapWithQueryHosts(
           y: saved.y,
           width: saved.width,
           height: saved.height,
+          icon: saved.icon,
         });
       }
       return;
@@ -289,6 +290,15 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   }
   if (patch.height !== undefined) {
     layoutPatch.height = patch.height;
+  }
+  if (patch.icon !== undefined) {
+    layoutPatch.icon = patch.icon;
+  }
+  if (patch.label !== undefined) {
+    layoutPatch.label = patch.label;
+  }
+  if (patch.subtitle !== undefined) {
+    layoutPatch.subtitle = patch.subtitle;
   }
 
   const nodes = [...map.nodes];
@@ -426,10 +436,19 @@ export interface NodeLayout {
   subFontSize: number;
   labelY: number;
   subY?: number;
+  iconGutter: number;
 }
 
 export function computeNodeLayout(
-  node: { id: string; label?: string; subtitle?: string; width?: number; height?: number },
+  node: {
+    id: string;
+    label?: string;
+    subtitle?: string;
+    width?: number;
+    height?: number;
+    type?: string;
+    icon?: string;
+  },
   options: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>
 ): NodeLayout {
   const fontSize = options.nodeFontSize;
@@ -439,9 +458,12 @@ export function computeNodeLayout(
   const lineGap = 3;
   const label = (node.label || node.id).trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
+  const showIcon =
+    node.type !== 'submap' && node.type !== 'static' && node.type !== 'network' && Boolean(node.icon);
+  const iconGutter = showIcon ? 22 : 0;
 
   const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
-  const w = Math.max(Math.ceil(contentW + padX * 2), 48);
+  const w = Math.max(Math.ceil(contentW + padX * 2 + iconGutter), showIcon ? 56 : 48);
   const h = sub
     ? Math.max(Math.ceil(padY * 2 + fontSize + lineGap + subFontSize), 28)
     : Math.max(Math.ceil(padY * 2 + fontSize), 24);
@@ -449,7 +471,7 @@ export function computeNodeLayout(
   const labelY = sub ? padY + fontSize / 2 : h / 2;
   const subY = sub ? h - padY - subFontSize / 2 : undefined;
 
-  return { w, h, label, sub, subFontSize, labelY, subY };
+  return { w, h, label, sub, subFontSize, labelY, subY, iconGutter };
 }
 
 export const DEFAULT_NETWORK_WIDTH = 220;
@@ -470,5 +492,6 @@ export function computeNetworkLayout(
     label,
     subFontSize: fontSize,
     labelY: pad + fontSize / 2,
+    iconGutter: 0,
   };
 }
