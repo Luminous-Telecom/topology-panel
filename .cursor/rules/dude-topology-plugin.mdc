@@ -1,0 +1,26 @@
+---
+description: Padrões de código do plugin Dude Topology (TypeScript/React)
+globs: src/**/*
+alwaysApply: false
+---
+
+# Plugin — padrões de código
+
+## Estrutura
+
+- Canvas/links: `components/TopologyCanvas.tsx`
+- Mutações: `utils/mapEdits.ts` | Helpers: `utils.ts` | Tipos: `types.ts`
+
+## Links — NÃO alterar sem pedido
+
+- Linha **reta** | Saída: **centro** origem | Chegada: **borda** destino
+- `fiber` = contínua | `radio` = tracejada `10 6`
+- Setas pequenas (chevron + anel)
+
+## Redes
+
+- `networksLocked` padrão **true** | Toolbar: Mapa editável + Redes livres
+
+## Grade
+
+- `gridSize: 10` | cobre área visível do painel | snap ativo

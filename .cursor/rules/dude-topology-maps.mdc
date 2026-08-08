@@ -1,0 +1,12 @@
+---
+description: Mapas JSON, dashboards e layout (dados internos — local only)
+globs: "{examples,dashboards,scripts}/**/*"
+alwaysApply: false
+---
+
+# Mapas internos
+
+- Mapas: `examples/map-*.json` | Dashboards: `dashboards/dude-*.json`
+- Snap grade **10px** | links com `medium: fiber|radio`
+- Rádio auto: LITEAP, WI2BE, PTP, PTMP, AIRFIBER, RADIO
+- Não commitar credenciais nos scripts
