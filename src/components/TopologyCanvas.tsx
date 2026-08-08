@@ -158,6 +158,77 @@ function isHostNode(node: TopologyNode): boolean {
   return (node.type ?? 'host') === 'host';
 }
 
+/** Nós que entram na seleção múltipla (marquee / Ctrl+clique). */
+function isSelectableNode(node: TopologyNode): boolean {
+  const t = node.type ?? 'host';
+  return t === 'host' || t === 'submap' || t === 'static' || t === 'network';
+}
+
+function canMoveSelectedNode(node: TopologyNode, networksLocked: boolean): boolean {
+  if (node.type === 'network') {
+    return !networksLocked;
+  }
+  return isSelectableNode(node);
+}
+
+function selectionHintLabel(nodes: TopologyNode[]): string {
+  let hosts = 0;
+  let submaps = 0;
+  let networks = 0;
+  let statics = 0;
+  for (const n of nodes) {
+    const t = n.type ?? 'host';
+    if (t === 'submap') {
+      submaps++;
+    } else if (t === 'network') {
+      networks++;
+    } else if (t === 'static') {
+      statics++;
+    } else {
+      hosts++;
+    }
+  }
+  const parts: string[] = [];
+  if (hosts) {
+    parts.push(`${hosts} host${hosts > 1 ? 's' : ''}`);
+  }
+  if (submaps) {
+    parts.push(`${submaps} submapa${submaps > 1 ? 's' : ''}`);
+  }
+  if (networks) {
+    parts.push(`${networks} rede${networks > 1 ? 's' : ''}`);
+  }
+  if (statics) {
+    parts.push(`${statics} estático${statics > 1 ? 's' : ''}`);
+  }
+  return parts.length ? parts.join(' · ') : `${nodes.length} item(ns)`;
+}
+
+function buildDragGroupMembers(
+  selectedNodeIds: string[],
+  nodes: TopologyNode[],
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>,
+  networksLocked: boolean
+): Array<{ id: string; startX: number; startY: number; startW: number; startH: number }> {
+  return selectedNodeIds
+    .map((id) => nodes.find((n) => n.id === id))
+    .filter((n): n is TopologyNode => Boolean(n && canMoveSelectedNode(n, networksLocked)))
+    .map((n) => {
+      const memberLayout = nodeLayouts.get(n.id);
+      const fallbackW =
+        n.type === 'network' ? DEFAULT_NETWORK_WIDTH : n.type === 'static' ? DEFAULT_STATIC_WIDTH : 48;
+      const fallbackH =
+        n.type === 'network' ? DEFAULT_NETWORK_HEIGHT : n.type === 'static' ? DEFAULT_STATIC_HEIGHT : 28;
+      return {
+        id: n.id,
+        startX: n.x,
+        startY: n.y,
+        startW: memberLayout?.w ?? n.width ?? fallbackW,
+        startH: memberLayout?.h ?? n.height ?? fallbackH,
+      };
+    });
+}
+
 function normalizeRect(x0: number, y0: number, x1: number, y1: number) {
   return {
     x: Math.min(x0, x1),
@@ -808,21 +879,10 @@ export function TopologyCanvas({
         return;
       }
       const layout = nodeLayouts.get(node.id);
+      const networksLocked = areNetworksLocked(storedMap);
       let group: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }> | undefined;
-      if (isHostNode(node) && selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
-        group = selectedNodeIds
-          .map((id) => map.nodes.find((n) => n.id === id))
-          .filter((n): n is TopologyNode => Boolean(n && isHostNode(n)))
-          .map((n) => {
-            const memberLayout = nodeLayouts.get(n.id);
-            return {
-              id: n.id,
-              startX: n.x,
-              startY: n.y,
-              startW: memberLayout?.w ?? n.width ?? 48,
-              startH: memberLayout?.h ?? n.height ?? 28,
-            };
-          });
+      if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
+        group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
       }
       dragRef.current = {
         kind: 'node',
@@ -838,7 +898,7 @@ export function TopologyCanvas({
       };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [editable, map.nodes, nodeLayouts, selectedNodeIds]
+    [editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -850,8 +910,13 @@ export function TopologyCanvas({
       e.stopPropagation();
       setSelectedLink(null);
 
-      if (editable && !areNetworksLocked(storedMap)) {
+      if (editable) {
         const layout = nodeLayouts.get(node.id);
+        const networksLocked = areNetworksLocked(storedMap);
+        let group: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }> | undefined;
+        if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
+          group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
+        }
         dragRef.current = {
           kind: 'node',
           node,
@@ -862,6 +927,7 @@ export function TopologyCanvas({
           startW: layout?.w ?? node.width ?? DEFAULT_NETWORK_WIDTH,
           startH: layout?.h ?? node.height ?? DEFAULT_NETWORK_HEIGHT,
           moved: false,
+          group,
         };
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
         return;
@@ -869,7 +935,7 @@ export function TopologyCanvas({
 
       beginPan(e);
     },
-    [beginPan, editable, nodeLayouts, storedMap]
+    [beginPan, editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -1018,13 +1084,26 @@ export function TopologyCanvas({
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           d.moved = true;
         }
-        const members = d.group && d.group.length > 1 ? d.group : [d.node].map((n) => ({
-          id: n.id,
-          startX: d.startX,
-          startY: d.startY,
-          startW: d.startW,
-          startH: d.startH,
-        }));
+        const networksLocked = areNetworksLocked(storedMap);
+        const rawMembers =
+          d.group && d.group.length > 1
+            ? d.group
+            : [
+                {
+                  id: d.node.id,
+                  startX: d.startX,
+                  startY: d.startY,
+                  startW: d.startW,
+                  startH: d.startH,
+                },
+              ];
+        const members = rawMembers.filter((m) => {
+          const n = map.nodes.find((node) => node.id === m.id);
+          return Boolean(n && canMoveSelectedNode(n, networksLocked));
+        });
+        if (members.length === 0) {
+          return;
+        }
         const primary = members.find((m) => m.id === d.node.id) ?? members[0];
         const primarySnapped = snapNodeCenterToGrid(
           primary.startX + dx,
@@ -1142,7 +1221,7 @@ export function TopologyCanvas({
         setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: x, y1: y });
       }
     },
-    [map.height, map.nodes, map.width, nodeLayouts, snapCoord, view, viewport.h, viewport.w, gridStep]
+    [map.height, map.nodes, map.width, nodeLayouts, snapCoord, storedMap, view, viewport.h, viewport.w, gridStep]
   );
 
   const clearDragUi = useCallback(() => {
@@ -1165,7 +1244,7 @@ export function TopologyCanvas({
           if (sel.w > 4 || sel.h > 4) {
             const ids: string[] = [];
             for (const n of map.nodes) {
-              if (!isHostNode(n)) {
+              if (!isSelectableNode(n)) {
                 continue;
               }
               const layout = nodeLayouts.get(n.id);
@@ -1223,7 +1302,7 @@ export function TopologyCanvas({
         return;
       }
 
-      if (node && d?.kind === 'node' && !d.moved && linkFromId === null && isHostNode(node)) {
+      if (node && d?.kind === 'node' && !d.moved && linkFromId === null && isSelectableNode(node)) {
         if (e.ctrlKey || e.metaKey) {
           setSelectedNodeIds((prev) => {
             const next = new Set(prev);
@@ -1352,7 +1431,7 @@ export function TopologyCanvas({
         return;
       }
 
-      if (node && isHost && !selectedNodeIds.includes(node.id)) {
+      if (node && isSelectableNode(node) && !selectedNodeIds.includes(node.id)) {
         if (selectedNodeIds.length === 0 || !(e.shiftKey || e.ctrlKey || e.metaKey)) {
           setSelectedNodeIds([node.id]);
         } else {
@@ -1685,8 +1764,12 @@ export function TopologyCanvas({
 
       {editable && selectedNodeIds.length > 0 && (
         <TopologyEditHint>
-          <strong>{selectedNodeIds.length}</strong> host(s) selecionado(s).
-          {selectedNodeIds.length >= 1 && (
+          <strong>{selectionHintLabel(selectedNodeIds.map((id) => map.nodes.find((n) => n.id === id)).filter((n): n is TopologyNode => Boolean(n)))}</strong>
+          {' selecionado(s).'}
+          {selectedNodeIds.some((id) => {
+            const n = map.nodes.find((node) => node.id === id);
+            return n && isHostNode(n);
+          }) && (
             <>
               {' '}
               <span
@@ -1705,7 +1788,7 @@ export function TopologyCanvas({
               {' · '}
             </>
           )}
-          Shift+arrastar no fundo para caixa de seleção · Ctrl+clique alterna · Arraste para mover · Esc limpa
+          Shift+arrastar no fundo para caixa de seleção · Ctrl+clique alterna · Arraste para mover o grupo · Esc limpa
         </TopologyEditHint>
       )}
 
@@ -1799,6 +1882,7 @@ export function TopologyCanvas({
 
               const networkOffline =
                 Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
+              const isSelected = selectedNodeIds.includes(node.id);
 
               return (
                 <g
@@ -1826,8 +1910,8 @@ export function TopologyCanvas({
                     rx={2}
                     ry={2}
                     fill={fill}
-                    stroke={stroke}
-                    strokeWidth={1.5}
+                    stroke={isSelected ? '#4FC3F7' : stroke}
+                    strokeWidth={isSelected ? 3 : 1.5}
                   />
                   <text
                     x={x + 8}
