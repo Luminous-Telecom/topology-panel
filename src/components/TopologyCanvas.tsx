@@ -32,7 +32,7 @@ import {
   updateHostsIconBulk,
   updateHostsCredentialsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize, resolveHostIcon } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -116,6 +116,7 @@ const styles = {
   svg: css`
     display: block;
     user-select: none;
+    touch-action: none;
   `,
   offlineBlink: css`
     animation: dude-offline-blink 1s ease-in-out infinite;
@@ -400,6 +401,9 @@ export function TopologyCanvas({
       }
     | null
   >(null);
+  /** Coalesce pan setState to one frame — avoids jank on mobile. */
+  const panRafRef = useRef<number | null>(null);
+  const panPendingRef = useRef<{ x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -875,7 +879,11 @@ export function TopologyCanvas({
   const onNodePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
       e.stopPropagation();
+      // Em visualização, hosts/submapas cobrem o canvas — sem pan aqui o mobile fica “preso”.
       if (!editable || node.type === 'network') {
+        if (!editable && e.button === 0) {
+          beginPan(e);
+        }
         return;
       }
       const layout = nodeLayouts.get(node.id);
@@ -898,7 +906,7 @@ export function TopologyCanvas({
       };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
+    [beginPan, editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -1071,11 +1079,21 @@ export function TopologyCanvas({
         return;
       }
       if (d.kind === 'pan') {
-        setView((v) => ({
-          ...v,
-          x: d.nx + (e.clientX - d.ox),
-          y: d.ny + (e.clientY - d.oy),
-        }));
+        // Evita scroll do dashboard no meio do gesto (especialmente mobile).
+        e.preventDefault();
+        const nextX = d.nx + (e.clientX - d.ox);
+        const nextY = d.ny + (e.clientY - d.oy);
+        panPendingRef.current = { x: nextX, y: nextY };
+        if (panRafRef.current == null) {
+          panRafRef.current = requestAnimationFrame(() => {
+            panRafRef.current = null;
+            const pending = panPendingRef.current;
+            if (!pending || dragRef.current?.kind !== 'pan') {
+              return;
+            }
+            setView((v) => ({ ...v, x: pending.x, y: pending.y }));
+          });
+        }
         return;
       }
       if (d.kind === 'node') {
@@ -1232,7 +1250,22 @@ export function TopologyCanvas({
     (e: React.PointerEvent, node?: TopologyNode) => {
       const d = dragRef.current;
       dragRef.current = null;
-      wrapRef.current?.releasePointerCapture(e.pointerId);
+      if (panRafRef.current != null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
+      if (d?.kind === 'pan' && panPendingRef.current) {
+        const pending = panPendingRef.current;
+        panPendingRef.current = null;
+        setView((v) => ({ ...v, x: pending.x, y: pending.y }));
+      } else {
+        panPendingRef.current = null;
+      }
+      try {
+        wrapRef.current?.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
 
       if (d?.kind === 'marquee') {
         setMarqueeRect(null);
@@ -1722,7 +1755,14 @@ export function TopologyCanvas({
       onPointerDown={onWrapPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => onPointerUp(e)}
-      onPointerLeave={(e) => onPointerUp(e)}
+      onPointerCancel={(e) => onPointerUp(e)}
+      onLostPointerCapture={(e) => {
+        // Só limpa se ainda há gesto — evita abortar pan quando o dedo sai do painel
+        // (pointerleave antigo encerrava o arrasto no mobile).
+        if (dragRef.current) {
+          onPointerUp(e);
+        }
+      }}
       onContextMenu={(e) => handleContextMenu(e)}
     >
       <TopologyToolbar
@@ -1860,7 +1900,7 @@ export function TopologyCanvas({
               if (!layout) {
                 return null;
               }
-              const { w, h, label, labelY, x, y } = layout;
+              const { w, h, label, x, y } = layout;
               const stats = regionStats.get(node.id);
               const fillOverride = regionFillColor(stats, options, 'network', icmpReady);
               const fillRaw =
@@ -1878,7 +1918,18 @@ export function TopologyCanvas({
               const statsLabel = stats ? formatRegionStats(stats, icmpReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
-              const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : y + labelY;
+              const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : undefined;
+
+              const titleFs = options.nodeFontSize;
+              const titlePadX = 8;
+              const titlePadY = 4;
+              const titleMargin = 8;
+              const titleH = Math.ceil(titleFs + titlePadY * 2);
+              const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs) + titlePadX * 2));
+              const titleX = x + (w - titleW) / 2;
+              const titleY = y + titleMargin;
+              const titleFill = resolveColor(options.colorStatic || options.colorUnknown);
+              const titleText = textOnBackground(titleFill);
 
               const networkOffline =
                 Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
@@ -1913,19 +1964,31 @@ export function TopologyCanvas({
                     stroke={isSelected ? '#4FC3F7' : stroke}
                     strokeWidth={isSelected ? 3 : 1.5}
                   />
+                  <rect
+                    x={titleX}
+                    y={titleY}
+                    width={titleW}
+                    height={titleH}
+                    rx={4}
+                    ry={4}
+                    fill={titleFill}
+                    stroke={isSelected ? '#4FC3F7' : 'rgba(255,255,255,0.35)'}
+                    strokeWidth={isSelected ? 2 : 1}
+                    pointerEvents="none"
+                  />
                   <text
-                    x={x + 8}
-                    y={y + labelY}
-                    textAnchor="start"
+                    x={titleX + titleW / 2}
+                    y={titleY + titleH / 2}
+                    textAnchor="middle"
                     dominantBaseline="middle"
-                    fill={resolveColor(options.colorNetworkLabel)}
-                    fontSize={options.nodeFontSize}
+                    fill={titleText}
+                    fontSize={titleFs}
                     fontFamily="Inter, Helvetica, Arial, sans-serif"
                     pointerEvents="none"
                   >
                     {label}
                   </text>
-                  {statsLabel && (
+                  {statsLabel && statsY !== undefined && (
                     <text
                       x={x + 8}
                       y={statsY}
@@ -1980,6 +2043,10 @@ export function TopologyCanvas({
               onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
               onContextMenu={(e) => handleContextMenu(e, { link })}
               onPathPointerDown={(e) => {
+                if (!editable) {
+                  beginPan(e);
+                  return;
+                }
                 const el = wrapRef.current;
                 if (!el) {
                   return;
@@ -2392,11 +2459,8 @@ function LinkLineComponent({
         pointerEvents="stroke"
         style={{ cursor: editable ? 'grab' : 'pointer' }}
         onPointerDown={(e) => {
-          if (editable) {
-            onPathPointerDown(e);
-            return;
-          }
           e.stopPropagation();
+          onPathPointerDown(e);
         }}
         onClick={(e) => {
           e.stopPropagation();

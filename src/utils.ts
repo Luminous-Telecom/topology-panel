@@ -302,7 +302,7 @@ export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
-function textWidth(text: string, fontSize: number): number {
+export function measureTextWidth(text: string, fontSize: number): number {
   if (!text) {
     return 0;
   }
@@ -318,6 +318,10 @@ function textWidth(text: string, fontSize: number): number {
   }
   measureCtx.font = `${fontSize}px Inter, Helvetica, Arial, sans-serif`;
   return measureCtx.measureText(text).width;
+}
+
+function textWidth(text: string, fontSize: number): number {
+  return measureTextWidth(text, fontSize);
 }
 
 export interface NodeLayout {

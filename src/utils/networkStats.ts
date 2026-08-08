@@ -36,7 +36,7 @@ export function formatRegionStats(
     return 'Mapa indisponível';
   }
   if (stats.total === 0) {
-    return icmpReady ? 'Sem hosts monitorados' : 'Carregando…';
+    return '';
   }
   if (!icmpReady) {
     return 'Carregando…';
