@@ -72,17 +72,18 @@ Arquivos necessários:
 | Arquivo | Função |
 |---------|--------|
 | `install.ps1` | Registra `winbox://` e `winboxnovo://` no Windows |
-| `open-winbox.ps1` | Lê a URI e chama o app certo |
-| `open-winbox.bat` | Atalho para o `.ps1` |
+| `open-winbox.vbs` | Abre o app **sem** janela do PowerShell |
+| `open-winbox.ps1` | Lê a URI e chama o executável |
+| `open-winbox.bat` | Atalho para o `.vbs` |
 | `winbox64.exe` | **Você copia** — Tools → Winbox |
-| `Winbox Novo.exe` | **Você copia** — Tools → Winbox Novo |
+| `WinBoxNovo.exe` | **Você copia** — Tools → Winbox Novo |
 
 ### 2. Copiar os executáveis
 
 Nesta pasta `extras/winbox-protocol`:
 
 - `winbox64.exe` → menu **Winbox**
-- `Winbox Novo.exe` → menu **Winbox Novo** (nome exato do arquivo)
+- `WinBoxNovo.exe` → menu **Winbox Novo**
 
 ### 3. Registrar o protocolo (uma vez por PC)
 

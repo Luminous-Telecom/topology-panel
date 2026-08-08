@@ -1,4 +1,4 @@
-# Abre Winbox / Winbox Novo a partir da URI:
+# Abre Winbox / WinBoxNovo a partir da URI:
 #   winbox://192.168.88.1
 #   winbox://admin:senha@192.168.88.1
 #   winboxnovo://192.168.88.1
@@ -59,12 +59,11 @@ if (-not $hostPart) {
 
 if ($variant -eq 'novo') {
   $wb = Find-App @(
+    'WinBoxNovo.exe',
     'Winbox Novo.exe',
-    'WinboxNovo.exe',
-    'winbox novo.exe',
-    'WinBox Novo.exe'
+    'WinboxNovo.exe'
   )
-  $label = 'Winbox Novo'
+  $label = 'WinBoxNovo'
 } else {
   $wb = Find-App @(
     'winbox64.exe',
@@ -75,13 +74,15 @@ if ($variant -eq 'novo') {
 }
 
 if (-not $wb) {
-  Write-Host "$label nao encontrado."
-  if ($variant -eq 'novo') {
-    Write-Host "Copie o executavel 'Winbox Novo.exe' para: $here"
-  } else {
-    Write-Host "Copie winbox64.exe para: $here"
-  }
-  Read-Host "Enter para sair"
+  # Sem console: escreve log e sai (chamado via VBS oculto)
+  $log = Join-Path $here 'winbox-launcher-error.txt'
+  @"
+$label nao encontrado.
+Copie o executavel para: $here
+Nomes aceitos (Novo): WinBoxNovo.exe
+Nomes aceitos (classico): winbox64.exe
+URI: $Uri
+"@ | Set-Content -LiteralPath $log -Encoding UTF8
   exit 1
 }
 
@@ -94,4 +95,4 @@ if ($user) {
   }
 }
 
-Start-Process -FilePath $wb -ArgumentList $argsList.ToArray()
+Start-Process -FilePath $wb -ArgumentList $argsList.ToArray() -WindowStyle Normal

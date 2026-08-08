@@ -2,8 +2,10 @@
 
 | Menu no mapa | Protocolo | Executável |
 |--------------|-----------|------------|
-| **Winbox** | `winbox://IP` | `winbox64.exe` / `WinBox.exe` |
-| **Winbox Novo** | `winboxnovo://IP` | `Winbox Novo.exe` |
+| **Winbox** | `winbox://IP` | `winbox64.exe` |
+| **Winbox Novo** | `winboxnovo://IP` | `WinBoxNovo.exe` |
+
+O launcher usa um `.vbs` para **não abrir a janela do PowerShell**.
 
 ## Baixar
 
@@ -12,8 +14,8 @@ https://github.com/Luminous-Telecom/topology-panel/tree/main/extras/winbox-proto
 ## Instalar (uma vez por PC)
 
 1. Copie para esta pasta:
-   - `winbox64.exe` (Winbox clássico)
-   - `Winbox Novo.exe` (app com esse nome)
+   - `winbox64.exe`
+   - `WinBoxNovo.exe`
 2. PowerShell:
 
 ```powershell
