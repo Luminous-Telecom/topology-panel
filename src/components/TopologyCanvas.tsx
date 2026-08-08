@@ -30,6 +30,7 @@ import {
   updateLinkProps,
   updateStoredNode,
   updateHostsIconBulk,
+  updateHostsCredentialsBulk,
 } from '../utils/mapEdits';
 import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
@@ -47,6 +48,7 @@ import {
 } from './TopologyContextMenu';
 import { NodeEditModal } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
+import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
 import { ZabbixHostPickerModal } from './AddZabbixHostModal';
 import { PingModal } from './PingModal';
 import { LinkEditModal } from './LinkEditModal';
@@ -320,6 +322,8 @@ export function TopologyCanvas({
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [bulkIconEditOpen, setBulkIconEditOpen] = useState(false);
   const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
+  const [bulkCredsEditOpen, setBulkCredsEditOpen] = useState(false);
+  const [bulkCredsTargets, setBulkCredsTargets] = useState<TopologyNode[]>([]);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
@@ -1373,6 +1377,19 @@ export function TopologyCanvas({
     setBulkIconEditOpen(true);
   }, [map.nodes, selectedNodeIds, showToast]);
 
+  const openBulkCredsEdit = useCallback(() => {
+    const selected = selectedNodeIds
+      .map((id) => map.nodes.find((n) => n.id === id))
+      .filter((n): n is TopologyNode => Boolean(n && isHostNode(n)));
+    if (!selected.length) {
+      showToast('Nenhum host válido na seleção');
+      return;
+    }
+    setBulkCredsTargets(selected);
+    setContextMenu(null);
+    setBulkCredsEditOpen(true);
+  }, [map.nodes, selectedNodeIds, showToast]);
+
   const canvasMenuItems = useCallback((): ContextMenuItem[] => {
     const { mapX, mapY } = contextMenu ?? { mapX: 0, mapY: 0 };
     const items: ContextMenuItem[] = [];
@@ -1382,6 +1399,11 @@ export function TopologyCanvas({
         id: 'bulk-icon',
         label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
         onClick: openBulkIconEdit,
+      });
+      items.push({
+        id: 'bulk-creds',
+        label: `Usuário / senha Tools (${selectedNodeIds.length} hosts)`,
+        onClick: openBulkCredsEdit,
       });
     }
 
@@ -1422,7 +1444,7 @@ export function TopologyCanvas({
     );
 
     return items;
-  }, [contextMenu, openBulkIconEdit, persist, selectedNodeIds.length, snapCoord, storedMap]);
+  }, [contextMenu, openBulkCredsEdit, openBulkIconEdit, persist, selectedNodeIds.length, snapCoord, storedMap]);
 
   const linkMenuItems = useCallback(
     (link: TopologyLink): ContextMenuItem[] => {
@@ -1483,6 +1505,11 @@ export function TopologyCanvas({
           label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
           onClick: openBulkIconEdit,
         });
+        items.push({
+          id: 'bulk-creds',
+          label: `Usuário / senha Tools (${selectedNodeIds.length} hosts)`,
+          onClick: openBulkCredsEdit,
+        });
       }
 
       if ((node.type ?? 'host') === 'host' || node.type === 'network' || node.type === 'static') {
@@ -1529,7 +1556,7 @@ export function TopologyCanvas({
       });
       return items;
     },
-    [beginLinkFrom, buildToolsMenu, editable, openBulkIconEdit, openHostEditor, openZabbixRebind, persist, selectedNodeIds, storedMap]
+    [beginLinkFrom, buildToolsMenu, editable, openBulkCredsEdit, openBulkIconEdit, openHostEditor, openZabbixRebind, persist, selectedNodeIds, storedMap]
   );
 
   const showEmptyHint = map.nodes.length === 0;
@@ -1648,6 +1675,13 @@ export function TopologyCanvas({
                 onClick={openBulkIconEdit}
               >
                 Alterar tipo
+              </span>
+              {' · '}
+              <span
+                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                onClick={openBulkCredsEdit}
+              >
+                Usuário/senha
               </span>
               {' · '}
             </>
@@ -2106,6 +2140,21 @@ export function TopologyCanvas({
             persist(updateHostsIconBulk(storedMap, bulkIconTargets, icon));
             showToast(`Tipo aplicado a ${bulkIconTargets.length} hosts`);
             setBulkIconTargets([]);
+          }}
+        />
+      )}
+
+      {bulkCredsEditOpen && bulkCredsTargets.length >= 1 && (
+        <BulkHostCredentialsModal
+          count={bulkCredsTargets.length}
+          onClose={() => {
+            setBulkCredsEditOpen(false);
+            setBulkCredsTargets([]);
+          }}
+          onSave={(creds) => {
+            persist(updateHostsCredentialsBulk(storedMap, bulkCredsTargets, creds));
+            showToast(`Credenciais aplicadas a ${bulkCredsTargets.length} hosts`);
+            setBulkCredsTargets([]);
           }}
         />
       )}

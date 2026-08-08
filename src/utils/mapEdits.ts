@@ -169,6 +169,46 @@ export function updateHostsIconBulk(
   return next;
 }
 
+/** Aplica usuário/senha Tools a vários hosts de uma vez. */
+export function updateHostsCredentialsBulk(
+  map: TopologyMap,
+  selectedNodes: TopologyNode[],
+  creds: { toolUsername: string; toolPassword: string }
+): TopologyMap {
+  const username = creds.toolUsername.trim();
+  const password = creds.toolPassword;
+  let next = map;
+
+  for (const node of selectedNodes) {
+    if ((node.type ?? 'host') !== 'host') {
+      continue;
+    }
+    const key = node.zabbixHost?.trim();
+    if (key) {
+      next = upsertHostLayout(next, key, {
+        id: node.id,
+        x: node.x,
+        y: node.y,
+        width: node.width,
+        height: node.height,
+        icon: node.icon,
+        toolUsername: username,
+        toolPassword: password,
+      });
+      continue;
+    }
+    const stored = next.nodes.find((n) => n.id === node.id);
+    if (stored && (stored.type ?? 'host') === 'host') {
+      next = updateStoredNode(next, stored, {
+        toolUsername: username,
+        toolPassword: password,
+      });
+    }
+  }
+
+  return next;
+}
+
 export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, y: number): TopologyMap {
   return updateStoredNode(map, node, { x: Math.round(x), y: Math.round(y) });
 }
