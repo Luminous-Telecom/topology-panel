@@ -2,8 +2,8 @@
 
 | Menu no mapa | Protocolo | Executável |
 |--------------|-----------|------------|
-| **Winbox** | `winbox://IP?c=…` | `winbox64.exe` |
-| **Winbox Novo** | `winboxnovo://IP?c=…` | `WinBoxNovo.exe` |
+| **Winbox** | `winbox://open?h=IP&c=…` | `winbox64.exe` |
+| **Winbox Novo** | `winboxnovo://open?h=IP&c=…` | `WinBoxNovo.exe` |
 
 O launcher chama o exe **como o The Dude**:
 
@@ -11,7 +11,7 @@ O launcher chama o exe **como o The Dude**:
 WinBoxNovo.exe "IP" "usuario" "senha"
 ```
 
-Credenciais vão em `?c=` (Base64), para o Windows **não corromper** a senha no protocolo.
+O IP vai em `?h=` (não como host da URI), porque o Chrome transforma `winbox://IP?…` em `winbox://IP/?…` e a `/` aparecia no Connect To.
 
 ## Instalar de novo (obrigatório após atualizar)
 
@@ -22,6 +22,6 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 Coloque `winbox64.exe` e `WinBoxNovo.exe` nesta pasta.
 
-## Conferir se a senha chegou
+## Conferir
 
-Após clicar Winbox no mapa, abra `extras/winbox-protocol/last-launch.txt` — deve mostrar `host=`, `user=` e `hasPassword=True`.
+Após clicar Winbox no mapa, abra `last-launch.txt` — `host=` deve ser só o IP, sem `/`, e `hasPassword=True` se cadastrou senha.

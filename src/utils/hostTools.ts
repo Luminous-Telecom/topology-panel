@@ -130,21 +130,22 @@ function authPrefix(auth?: HostToolAuth): string {
 }
 
 /**
- * Winbox/WinBoxNovo — formato compatível com o launcher Windows:
- *   winbox://IP?c=BASE64URL(user\\npass)
- * Evita user:pass@IP com encodeURIComponent (quebra no registro do Windows).
+ * Winbox/WinBoxNovo — IP e credenciais na query (o Chrome coloca "/" após o host
+ * em winbox://IP?… e isso ia parar no Connect To).
+ *   winbox://open?h=IP&c=BASE64URL(user\\npass)
  */
 function winboxUrl(ip: string, variant: 'classic' | 'novo', auth?: HostToolAuth): string {
   const scheme = variant === 'novo' ? 'winboxnovo' : 'winbox';
   const user = auth?.username?.trim();
   const pass = auth?.password;
+  const h = encodeURIComponent(ip.trim());
   if (user && pass != null && pass !== '') {
-    return `${scheme}://${ip}?c=${toB64Url(`${user}\n${pass}`)}`;
+    return `${scheme}://open?h=${h}&c=${toB64Url(`${user}\n${pass}`)}`;
   }
   if (user) {
-    return `${scheme}://${ip}?c=${toB64Url(`${user}\n`)}`;
+    return `${scheme}://open?h=${h}&c=${toB64Url(`${user}\n`)}`;
   }
-  return `${scheme}://${ip}`;
+  return `${scheme}://open?h=${h}`;
 }
 
 function sshUrl(ip: string, auth?: HostToolAuth): string {

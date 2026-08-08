@@ -1,10 +1,11 @@
 # Abre Winbox / WinBoxNovo — mesmo estilo The Dude:
 #   winbox.exe <IP> <user> <password>
 #
-# URI (sem % — o Windows corrompe %XX no handler):
-#   winbox://192.168.88.1?c=BASE64URL(user\npass)
-#   winboxnovo://192.168.88.1?c=BASE64URL(user\npass)
+# URI (IP na query — o Chrome injeta "/" se o IP for o host da URI):
+#   winbox://open?h=192.168.88.1&c=BASE64URL(user\npass)
+#   winboxnovo://open?h=192.168.88.1&c=BASE64URL(user\npass)
 # Legado:
+#   winbox://192.168.88.1?c=...
 #   winbox://user:pass@192.168.88.1
 
 param(
@@ -39,6 +40,19 @@ function From-B64Url([string]$s) {
   return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p))
 }
 
+function Decode-Query([string]$Query) {
+  $map = @{}
+  if (-not $Query) { return $map }
+  foreach ($pair in ($Query.TrimStart('?') -split '&')) {
+    if (-not $pair) { continue }
+    $kv = $pair -split '=', 2
+    $k = [uri]::UnescapeDataString($kv[0])
+    $v = if ($kv.Count -gt 1) { [uri]::UnescapeDataString($kv[1]) } else { '' }
+    $map[$k] = $v
+  }
+  return $map
+}
+
 function Write-LaunchLog([string]$App, [string]$HostPart, [string]$User, [bool]$HasPass) {
   $log = Join-Path $here 'last-launch.txt'
   @"
@@ -64,10 +78,36 @@ $user = $null
 $pass = $null
 $hostPart = $null
 
-# Formato novo: IP?c=b64  ou  IP:port?c=b64
-if ($raw -match '^(?<host>[^?]+)\?c=(?<c>[A-Za-z0-9_-]+)$') {
-  $hostPart = $Matches['host']
-  $decoded = From-B64Url $Matches['c']
+# Separa path e query (Chrome pode transformar open?h= em open/?h=)
+$query = ''
+$pathPart = $raw
+if ($raw.Contains('?')) {
+  $qi = $raw.IndexOf('?')
+  $pathPart = $raw.Substring(0, $qi).TrimEnd('/')
+  $query = $raw.Substring($qi)
+}
+
+$q = Decode-Query $query
+
+# Formato atual: ?h=IP&c=b64
+if ($q.ContainsKey('h') -and $q['h']) {
+  $hostPart = ($q['h']).Trim().TrimEnd('/')
+  if ($q.ContainsKey('c') -and $q['c']) {
+    $decoded = From-B64Url $q['c']
+    $nl = $decoded.IndexOf([char]10)
+    if ($nl -ge 0) {
+      $user = $decoded.Substring(0, $nl)
+      $pass = $decoded.Substring($nl + 1)
+    } else {
+      $user = $decoded
+      $pass = ''
+    }
+  }
+}
+# Legado: IP?c=b64  (path = IP ou IP/)
+elseif ($pathPart -and $q.ContainsKey('c') -and $q['c'] -and $pathPart -ne 'open') {
+  $hostPart = $pathPart.Trim().TrimEnd('/')
+  $decoded = From-B64Url $q['c']
   $nl = $decoded.IndexOf([char]10)
   if ($nl -ge 0) {
     $user = $decoded.Substring(0, $nl)
@@ -78,8 +118,8 @@ if ($raw -match '^(?<host>[^?]+)\?c=(?<c>[A-Za-z0-9_-]+)$') {
   }
 }
 # Legado: user:pass@host
-elseif ($raw -match '^(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>.+)$') {
-  $hostPart = $Matches['host'].Split('/')[0]
+elseif ($pathPart -match '^(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>.+)$') {
+  $hostPart = $Matches['host'].Split('/')[0].Trim().TrimEnd('/')
   if ($Matches['user']) {
     try { $user = [uri]::UnescapeDataString($Matches['user']) } catch { $user = $Matches['user'] }
   }
@@ -87,11 +127,17 @@ elseif ($raw -match '^(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>.+)$') 
     try { $pass = [uri]::UnescapeDataString($Matches['pass']) } catch { $pass = $Matches['pass'] }
   }
 }
+elseif ($pathPart -and $pathPart -ne 'open') {
+  $hostPart = $pathPart.Trim().TrimEnd('/')
+}
 
 if (-not $hostPart) {
   Write-Error "URI invalida: $Uri"
   exit 1
 }
+
+# Remove barra residual (ex.: 192.168.88.1/)
+$hostPart = $hostPart.Trim().TrimEnd('/')
 
 if ($variant -eq 'novo') {
   $wb = Find-App @('WinBoxNovo.exe', 'Winbox Novo.exe', 'WinboxNovo.exe')
@@ -111,19 +157,16 @@ URI: $Uri
   exit 1
 }
 
-$hasPass = ($null -ne $pass)
+$hasPass = ($null -ne $pass -and $pass -ne '')
 Write-LaunchLog -App $wb -HostPart $hostPart -User $(if ($user) { $user } else { '' }) -HasPass $hasPass
 
-# Igual The Dude: winbox.exe <IP> <user> <password>
-# ProcessStartInfo evita bugs do Start-Process -ArgumentList no PowerShell 5
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $wb
 $psi.UseShellExecute = $false
 $psi.WorkingDirectory = Split-Path -Parent $wb
 
 if ($user) {
-  # Aspas protegem senha com espacos; "" = senha vazia (doc MikroTik)
-  $passArg = if ($hasPass) { $pass } else { '' }
+  $passArg = if ($null -ne $pass) { $pass } else { '' }
   $psi.Arguments = ('"{0}" "{1}" "{2}"' -f $hostPart, $user, $passArg)
 } else {
   $psi.Arguments = ('"{0}"' -f $hostPart)
