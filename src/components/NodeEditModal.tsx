@@ -22,6 +22,8 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [fontSize, setFontSize] = useState(node.fontSize !== undefined ? String(node.fontSize) : '');
   const [fillColor, setFillColor] = useState(node.fillColor ?? '');
   const [borderColor, setBorderColor] = useState(node.borderColor ?? '');
+  const [toolUsername, setToolUsername] = useState(node.toolUsername ?? '');
+  const [toolPassword, setToolPassword] = useState(node.toolPassword ?? '');
 
   const type = node.type ?? 'host';
   const isHost = type === 'host';
@@ -53,10 +55,42 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
           <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
         </Field>
       )}
+      {node.zabbixHost && node.subtitle && (
+        <Field label="IP">
+          <Input value={node.subtitle} disabled />
+        </Field>
+      )}
       {isHost && (
         <Field label="Tipo / ícone" description={`Ícone: ${HOST_ICON_LABELS[icon]}`}>
           <HostIconPicker value={icon} onChange={setIcon} />
         </Field>
+      )}
+      {isHost && (
+        <>
+          <Field
+            label="Usuário (Tools)"
+            description="Winbox / SSH / Telnet — vazio usa o padrão do painel (Acesso remoto)"
+          >
+            <Input
+              value={toolUsername}
+              onChange={(e) => setToolUsername(e.currentTarget.value)}
+              placeholder="Padrão do painel"
+              autoComplete="off"
+            />
+          </Field>
+          <Field
+            label="Senha (Tools)"
+            description="Abre Winbox já autenticado. Fica salva no JSON do mapa."
+          >
+            <Input
+              type="password"
+              value={toolPassword}
+              onChange={(e) => setToolPassword(e.currentTarget.value)}
+              placeholder="Padrão do painel"
+              autoComplete="new-password"
+            />
+          </Field>
+        </>
       )}
       {type === 'submap' && (
         <Field
@@ -117,6 +151,10 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               zabbixHost: node.zabbixHost,
               icon: isHost ? icon : undefined,
             };
+            if (isHost) {
+              patch.toolUsername = toolUsername.trim() || undefined;
+              patch.toolPassword = toolPassword !== '' ? toolPassword : undefined;
+            }
             if (type === 'network') {
               patch.width = Math.max(60, Number(width) || 220);
               patch.height = Math.max(40, Number(height) || 140);

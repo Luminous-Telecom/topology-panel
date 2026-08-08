@@ -121,24 +121,20 @@ Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
 
 ## Usuário e senha (Winbox / SSH / Telnet)
 
-Nas opções do painel → categoria **Acesso remoto**:
+### Por host (recomendado)
 
-| Opção | Descrição |
-|-------|-----------|
-| Usuário (Tools) | Ex.: `admin` — usado em Winbox, SSH e Telnet |
-| Senha (Tools) | Opcional — enviada na URI quando preenchida |
+1. Modo edição do dashboard → **Propriedades** no host (botão direito ou duplo-clique)
+2. Preencha **Usuário (Tools)** e **Senha (Tools)**
+3. Salve o dashboard
 
-Com usuário/senha configurados, o painel abre por exemplo:
+Ao clicar em **Winbox** / **WinBoxNovo**, o app abre com `IP usuário senha` e tenta login automático.  
+SSH/Telnet usam a mesma credencial na URI (`ssh://user:pass@IP`).
 
-- Winbox: `winbox://admin:senha@10.0.0.1`
-- SSH: `ssh://admin:senha@10.0.0.1`
-- Telnet: `telnet://admin:senha@10.0.0.1`
+### Padrão do painel (fallback)
 
-Deixe em branco para abrir só com o IP.
+Opções do painel → **Acesso remoto**: usuário/senha usados quando o host não tem credencial própria.
 
-> **Segurança:** a senha fica no JSON do dashboard (visível a quem pode editar). Prefira conta de leitura/operação, não a senha master de produção.
-
-SSH/Telnet dependem do cliente instalado no PC (PuTTY, Windows Terminal, etc.) e do protocolo `ssh://` / `telnet://` do sistema.
+> **Segurança:** senhas ficam no JSON do dashboard/mapa (visíveis a quem edita). Prefira contas de operação, não a senha master.
 
 ## Uso no Grafana
 

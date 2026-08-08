@@ -32,7 +32,7 @@ import {
   updateHostsIconBulk,
 } from '../utils/mapEdits';
 import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
-import { HOST_TOOLS, hostIp, runHostTool } from '../utils/hostTools';
+import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize, resolveHostIcon } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
@@ -1238,10 +1238,13 @@ export function TopologyCanvas({
   );
 
   const openHostEditor = useCallback((node: TopologyNode) => {
+    // Propriedades (inclui usuário/senha das Tools) — hosts Zabbix e manuais
+    setEditNode(node);
+  }, []);
+
+  const openZabbixRebind = useCallback((node: TopologyNode) => {
     if (node.zabbixHost?.trim()) {
       setEditZabbixHost(node);
-    } else {
-      setEditNode(node);
     }
   }, []);
 
@@ -1296,15 +1299,12 @@ export function TopologyCanvas({
               });
               return;
             }
-            void runHostTool(tool.id, ip, {
-              username: options.toolUsername,
-              password: options.toolPassword,
-            }).then(showToast);
+            void runHostTool(tool.id, ip, resolveToolAuth(node, options)).then(showToast);
           },
         })),
       };
     },
-    [options.toolPassword, options.toolUsername, showToast]
+    [options, showToast]
   );
 
   const handleContextMenu = useCallback(
@@ -1489,9 +1489,16 @@ export function TopologyCanvas({
         if (selectedNodeIds.length < 2 || !selectedNodeIds.includes(node.id)) {
           items.push({
             id: 'props',
-            label: node.zabbixHost ? 'Editar host' : 'Propriedades',
+            label: 'Propriedades',
             onClick: () => openHostEditor(node),
           });
+          if (node.zabbixHost?.trim()) {
+            items.push({
+              id: 'rebind-zabbix',
+              label: 'Trocar host Zabbix',
+              onClick: () => openZabbixRebind(node),
+            });
+          }
         }
       }
       if (node.type !== 'network') {
@@ -1522,7 +1529,7 @@ export function TopologyCanvas({
       });
       return items;
     },
-    [beginLinkFrom, buildToolsMenu, editable, openBulkIconEdit, openHostEditor, persist, selectedNodeIds, storedMap]
+    [beginLinkFrom, buildToolsMenu, editable, openBulkIconEdit, openHostEditor, openZabbixRebind, persist, selectedNodeIds, storedMap]
   );
 
   const showEmptyHint = map.nodes.length === 0;

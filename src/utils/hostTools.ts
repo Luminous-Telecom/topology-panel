@@ -5,10 +5,24 @@ export interface HostToolDef {
   label: string;
 }
 
-/** Credenciais opcionais (opções do painel) para Winbox / SSH / Telnet. */
 export interface HostToolAuth {
   username?: string;
   password?: string;
+}
+
+/** Credenciais do host (prioridade) ou padrão do painel. */
+export function resolveToolAuth(
+  node: { toolUsername?: string; toolPassword?: string },
+  panel?: { toolUsername?: string; toolPassword?: string }
+): HostToolAuth {
+  const username = node.toolUsername?.trim() || panel?.toolUsername?.trim() || undefined;
+  const password =
+    node.toolPassword != null && node.toolPassword !== ''
+      ? node.toolPassword
+      : panel?.toolPassword != null && panel.toolPassword !== ''
+        ? panel.toolPassword
+        : undefined;
+  return { username, password };
 }
 
 export const HOST_TOOLS: HostToolDef[] = [
@@ -128,15 +142,21 @@ async function openWinbox(
   variant: 'classic' | 'novo',
   auth?: HostToolAuth
 ): Promise<string> {
+  const user = auth?.username?.trim();
+  const pass = auth?.password;
+  if (!user || pass == null || pass === '') {
+    tryProtocol(winboxUrl(target, variant, auth));
+    const copied = await copyText(target);
+    const tip = copied ? ' IP copiado.' : '';
+    const app = variant === 'novo' ? 'WinBoxNovo' : 'Winbox';
+    return (
+      `Abrindo ${app} em ${target}…${tip}` +
+      ' Cadastre usuário e senha no host (Propriedades) para login automático.'
+    );
+  }
   tryProtocol(winboxUrl(target, variant, auth));
-  const copied = await copyText(target);
-  const tip = copied ? ' IP copiado.' : '';
-  const who = auth?.username?.trim() ? ` (user ${auth.username.trim()})` : '';
-  const app = variant === 'novo' ? 'Winbox Novo' : 'Winbox';
-  return (
-    `Abrindo ${app} em ${target}${who}…${tip}` +
-    ' Se o app não abrir, registre o protocolo — ver README (extras/winbox-protocol).'
-  );
+  const app = variant === 'novo' ? 'WinBoxNovo' : 'Winbox';
+  return `Abrindo ${app} em ${target} como ${user} (login automático)…`;
 }
 
 /** Executa ferramenta de acesso ao host (estilo The Dude). */

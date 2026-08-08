@@ -67,6 +67,10 @@ export interface TopologyNode {
   statsHosts?: string[];
   /** Tamanho da fonte (type=static) */
   fontSize?: number;
+  /** Usuário para Tools (Winbox / SSH / Telnet) — sobrescreve o padrão do painel */
+  toolUsername?: string;
+  /** Senha para Tools — sobrescreve o padrão do painel (fica no JSON do mapa) */
+  toolPassword?: string;
 }
 
 export type TopologyLinkMedium = 'fiber' | 'radio';

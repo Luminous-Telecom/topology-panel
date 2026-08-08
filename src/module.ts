@@ -143,7 +143,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addTextInput({
         path: 'toolUsername',
         name: 'Usuário (Tools)',
-        description: 'Usado em Winbox, SSH e Telnet (ex.: admin). Deixe vazio para abrir só com o IP.',
+        description: 'Usado em Winbox, SSH e Telnet quando o host não tem usuário próprio. Deixe vazio para abrir só com o IP.',
         defaultValue: '',
         category: ['Acesso remoto'],
       })
@@ -151,7 +151,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'toolPassword',
         name: 'Senha (Tools)',
         description:
-          'Opcional — Winbox/SSH/Telnet. Fica salva no JSON do dashboard (visível a quem edita). Prefira conta só de leitura.',
+          'Opcional — padrão do painel. Preferível cadastrar por host em Propriedades. Fica no JSON do dashboard.',
         defaultValue: '',
         category: ['Acesso remoto'],
       });
