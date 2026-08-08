@@ -117,6 +117,18 @@ const styles = {
     display: block;
     user-select: none;
   `,
+  offlineBlink: css`
+    animation: dude-offline-blink 1s ease-in-out infinite;
+    @keyframes dude-offline-blink {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.28;
+      }
+    }
+  `,
   empty: css`
     display: flex;
     align-items: center;
@@ -1778,10 +1790,14 @@ export function TopologyCanvas({
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
               const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : y + labelY;
 
+              const networkOffline =
+                Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
+
               return (
                 <g
                   key={node.id}
                   data-node-id={node.id}
+                  className={networkOffline ? styles.offlineBlink : undefined}
                   onPointerDown={(e) => onNetworkPointerDown(e, node)}
                   onPointerUp={(e) => onPointerUp(e, node)}
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
@@ -1964,6 +1980,25 @@ export function TopologyCanvas({
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
             const isHostNode = (node.type ?? 'host') === 'host';
+            const hostStatus = isHostNode
+              ? resolveNodeStatus(
+                  node,
+                  statusMap,
+                  offlineThresholdForMetric(effectiveStatusMetric(options)),
+                  effectiveStatusMetric(options),
+                  hostMetadata
+                )
+              : null;
+            const submapOffline =
+              node.type === 'submap' &&
+              Boolean(
+                icmpReady &&
+                  regionStats.get(node.id) &&
+                  !regionStats.get(node.id)!.loadFailed &&
+                  regionStats.get(node.id)!.total > 0 &&
+                  regionStats.get(node.id)!.offline > 0
+              );
+            const isOfflineBlink = hostStatus === 'offline' || submapOffline;
             const hostIcon = isHostNode ? resolveHostIcon(node) : null;
             const textCenterX = x + w / 2;
             const iconX = x + w / 2;
@@ -1978,6 +2013,7 @@ export function TopologyCanvas({
               <g
                 key={node.id}
                 data-node-id={node.id}
+                className={isOfflineBlink ? styles.offlineBlink : undefined}
                 onPointerDown={(e) => onNodePointerDown(e, node)}
                 onPointerUp={(e) => onPointerUp(e, node)}
                 onClick={(e) => onNodeClick(e, node)}
