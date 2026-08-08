@@ -1,0 +1,73 @@
+const path = require('path');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+
+module.exports = (env) => {
+  const isProd = env?.production ?? env?.production === true;
+
+  return {
+    mode: isProd ? 'production' : 'development',
+    devtool: isProd ? 'source-map' : 'eval-source-map',
+    entry: {
+      module: './src/module.ts',
+    },
+    output: {
+      path: path.resolve(__dirname, '../../dist'),
+      filename: '[name].js',
+      library: {
+        type: 'amd',
+      },
+      clean: true,
+    },
+    externals: [
+      'lodash',
+      'jquery',
+      'moment',
+      'react',
+      'react-dom',
+      '@grafana/data',
+      '@grafana/runtime',
+      '@grafana/ui',
+      '@grafana/schema',
+      function ({ request }, callback) {
+        const prefix = 'grafana/';
+        if (request && request.indexOf(prefix) === 0) {
+          return callback(null, request.substring(prefix.length));
+        }
+        callback();
+      },
+    ],
+    resolve: {
+      extensions: ['.ts', '.tsx', '.js'],
+    },
+    module: {
+      rules: [
+        {
+          test: /\.tsx?$/,
+          exclude: /node_modules/,
+          use: {
+            loader: 'swc-loader',
+            options: {
+              jsc: {
+                parser: { syntax: 'typescript', tsx: true },
+                transform: { react: { runtime: 'automatic' } },
+              },
+            },
+          },
+        },
+        {
+          test: /\.css$/,
+          use: ['style-loader', 'css-loader'],
+        },
+        {
+          test: /\.scss$/,
+          use: ['style-loader', 'css-loader', 'sass-loader'],
+        },
+      ],
+    },
+    plugins: [
+      new CopyWebpackPlugin({
+        patterns: [{ from: 'src/plugin.json', to: '.' }],
+      }),
+    ],
+  };
+};

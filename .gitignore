@@ -1,0 +1,30 @@
+# Dependencies & build
+node_modules/
+dist/
+*.log
+
+# Artefatos locais
+*.tar.gz
+*.tgz
+.cache/
+coverage/
+
+# Ambiente / segredos
+.env
+.env.*
+*.pem
+credentials.json
+
+# Dados internos (mapas, dashboards, deploy)
+examples/
+dashboards/
+scripts/
+install-on-grafana-host.sh
+
+# SO / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
