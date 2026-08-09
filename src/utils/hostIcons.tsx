@@ -174,7 +174,7 @@ function mapIconFilter(icon: TopologyHostIcon, onMap: boolean): string | undefin
   return undefined;
 }
 
-/** Ícone Dude (SVG inline), desenhado ou legado (react-icons). */
+/** Ícone de topologia (SVG inline), desenhado ou legado (react-icons). */
 export function HostIconImage({ icon, size = 20, color, className, onMap = false }: IconImageProps) {
   const customSvg = CUSTOM_ICON_SVGS[icon];
   if (customSvg) {

@@ -71,4 +71,4 @@ Após qualquer mudança em `src/`: bump versão se necessário → `bash scripts
 
 ## Ícones
 
-Ver regra **`dude-topology-icons.mdc`** — SVGs em `src/img/topology/`, paleta cinza Dude, registro em `customIcons.ts`.
+Ver regra **`topology-icons.mdc`** — SVGs em `src/img/topology/`, registro em `customIcons.ts`.

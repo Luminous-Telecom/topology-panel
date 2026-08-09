@@ -7,11 +7,11 @@ alwaysApply: true
 
 ## Projeto
 
-Plugin Grafana **Topology Panel** (`src/plugin.json`, id `luminous-dude-topology-panel`) para mapas estilo The Dude com status Zabbix.
+Plugin Grafana **Topology Panel** (`src/plugin.json`, id `luminous-topology-panel`) para mapas de topologia de rede com status Zabbix.
 
 - Repo: https://github.com/Luminous-Telecom/topology-panel
 - Nome no Grafana: **Topology Panel**
-- Id do plugin (não alterar): `luminous-dude-topology-panel`
+- Id do plugin: `luminous-topology-panel`
 
 ## O que NÃO vai pro GitHub
 
@@ -39,9 +39,9 @@ Não commitar credenciais, `.env` ou senhas em scripts.
 GRAFANA_SSH_PASS='…' bash scripts/deploy.sh
 ```
 
-- Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-dude-topology-panel/`
+- Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-topology-panel/`
 - Senha via env `GRAFANA_SSH_PASS` (nunca commitar)
-- Testar: https://monitoramento.luminoustelecom.com.br/d/dude-topo-dc/dude-topology-dc?orgId=2
+- Testar: https://monitoramento.luminoustelecom.com.br/d/topo-dc/topology-dc?orgId=2
 
 ## UI e idioma
 
@@ -50,5 +50,5 @@ GRAFANA_SSH_PASS='…' bash scripts/deploy.sh
 
 ## Grafana
 
-- `allow_loading_unsigned_plugins = luminous-dude-topology-panel`
+- `allow_loading_unsigned_plugins = luminous-topology-panel`
 - Upload dashboard preferir LAN; URL pública pode retornar 403 (Cloudflare)

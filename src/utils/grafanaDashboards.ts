@@ -46,7 +46,12 @@ export function dashboardSelectOptions(
 ): Array<SelectableValue<string>> {
   let list = dashboards;
   if (tagHint) {
-    const tagged = dashboards.filter((d) => d.tags.includes(tagHint));
+    // Aceita a tag principal e aliases legados (ex.: topology + dude)
+    const hints = tagHint
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const tagged = dashboards.filter((d) => hints.some((h) => d.tags.includes(h)));
     if (tagged.length > 0) {
       list = tagged;
     }

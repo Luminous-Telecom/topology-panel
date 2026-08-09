@@ -177,7 +177,7 @@ async function openWinbox(
   return `Abrindo ${app} em ${target} como ${user} (login automático)…`;
 }
 
-/** Executa ferramenta de acesso ao host (estilo The Dude). */
+/** Executa ferramenta de acesso ao host (Winbox, SSH, Telnet, etc.). */
 export async function runHostTool(
   tool: HostToolId,
   ip: string,

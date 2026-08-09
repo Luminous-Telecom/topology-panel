@@ -5,7 +5,7 @@
 | **Winbox** | `winbox://open?h=IP&c=…` | `winbox64.exe` |
 | **Winbox Novo** | `winboxnovo://open?h=IP&c=…` | `WinBoxNovo.exe` |
 
-O launcher chama o exe **como o The Dude**:
+O launcher chama o exe com IP, usuário e senha:
 
 ```text
 WinBoxNovo.exe "IP" "usuario" "senha"

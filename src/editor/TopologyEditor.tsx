@@ -23,6 +23,7 @@ import {
   topologyToJson,
 } from '../types';
 import { inferLinkMedium } from '../utils';
+import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
@@ -76,6 +77,10 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     [map.nodes]
   );
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
+  const dashboardPickerNodes = useMemo(
+    () => map.nodes.filter((n) => n.type === 'dashboard_picker'),
+    [map.nodes]
+  );
 
   const updateMap = useCallback(
     (patch: Partial<TopologyMap>) => {
@@ -104,6 +109,20 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     setOpenNodes((prev) => ({ ...prev, [id]: true }));
   }, [map.nodes, submapNodes.length, updateMap]);
 
+  const addDashboardPicker = useCallback(() => {
+    const id = `dashboard-picker-${dashboardPickerNodes.length + 1}`;
+    const node: TopologyNode = {
+      id,
+      label: dashboardPickerNodes.length ? `Dashboards ${dashboardPickerNodes.length + 1}` : 'Dashboards',
+      type: 'dashboard_picker',
+      dashboardChoices: [],
+      x: 400 + dashboardPickerNodes.length * 40,
+      y: 280,
+    };
+    updateMap({ nodes: [...map.nodes, node] });
+    setOpenNodes((prev) => ({ ...prev, [id]: true }));
+  }, [dashboardPickerNodes.length, map.nodes, updateMap]);
+
   const updateSubmap = useCallback(
     (index: number, patch: Partial<TopologyNode>) => {
       const target = submapNodes[index];
@@ -129,6 +148,24 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     [map.nodes, submapNodes, updateMap]
   );
 
+  const updateDashboardPicker = useCallback(
+    (index: number, patch: Partial<TopologyNode>) => {
+      const target = dashboardPickerNodes[index];
+      if (!target) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.map((n) => {
+          if (n.id !== target.id) {
+            return n;
+          }
+          return { ...n, ...patch };
+        }),
+      });
+    },
+    [dashboardPickerNodes, map.nodes, updateMap]
+  );
+
   const removeSubmap = useCallback(
     (index: number) => {
       const node = submapNodes[index];
@@ -141,6 +178,20 @@ export function TopologyEditor({ value, onChange, context }: Props) {
       });
     },
     [map.links, map.nodes, submapNodes, updateMap]
+  );
+
+  const removeDashboardPicker = useCallback(
+    (index: number) => {
+      const node = dashboardPickerNodes[index];
+      if (!node) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.filter((n) => n.id !== node.id),
+        links: map.links.filter((l) => l.from !== node.id && l.to !== node.id),
+      });
+    },
+    [dashboardPickerNodes, map.links, map.nodes, updateMap]
   );
 
   const addLink = useCallback(() => {
@@ -391,6 +442,63 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           })}
           <Button onClick={addSubmap} disabled={locked}>
             + Adicionar submapa
+          </Button>
+        </VerticalGroup>
+      </Field>
+
+      <Field
+        label={`Seletores de dashboards (${dashboardPickerNodes.length})`}
+        description="Botão no mapa com lista configurável de dashboards para abrir"
+      >
+        <VerticalGroup spacing="sm">
+          {dashboardPickerNodes.map((node, idx) => {
+            const isOpen = openNodes[node.id] ?? false;
+            const count = node.dashboardChoices?.length ?? 0;
+            return (
+              <CollapsableSection
+                key={node.id}
+                label={
+                  <span>
+                    <Icon name="apps" style={{ marginRight: 6 }} />
+                    {nodeTitle(node)}
+                    {count > 0 ? ` (${count})` : ''}
+                  </span>
+                }
+                isOpen={isOpen}
+                onToggle={(open) => setOpenNodes((prev) => ({ ...prev, [node.id]: open }))}
+              >
+                <VerticalGroup spacing="sm">
+                  <Field label="Nome exibido">
+                    <Input
+                      value={node.label ?? ''}
+                      disabled={locked}
+                      onChange={(e) => updateDashboardPicker(idx, { label: e.currentTarget.value })}
+                    />
+                  </Field>
+                  <Field
+                    label="Dashboards disponíveis"
+                    description="Aparecem ao clicar no botão no mapa"
+                  >
+                    <DashboardMultiSelect
+                      value={node.dashboardChoices ?? []}
+                      disabled={locked}
+                      onChange={(choices) => updateDashboardPicker(idx, { dashboardChoices: choices })}
+                    />
+                  </Field>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={locked}
+                    onClick={() => removeDashboardPicker(idx)}
+                  >
+                    Remover seletor
+                  </Button>
+                </VerticalGroup>
+              </CollapsableSection>
+            );
+          })}
+          <Button onClick={addDashboardPicker} disabled={locked}>
+            + Adicionar seletor de dashboards
           </Button>
         </VerticalGroup>
       </Field>

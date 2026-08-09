@@ -9,7 +9,7 @@ alwaysApply: false
 ## Arquivos
 
 - Mapas: `examples/map-{cidade}.json` (ex.: `map-dc.json`)
-- Dashboards: `dashboards/dude-{cidade}.json`
+- Dashboards: `dashboards/topo-{cidade}.json`
 - Regenerar dashboard: `python3 scripts/build_dashboard.py dc`
 
 ## JSON do mapa

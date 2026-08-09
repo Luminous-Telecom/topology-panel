@@ -1,5 +1,12 @@
-/** Node types: host = Zabbix; submap = dashboard; static = label; network = retângulo de agrupamento */
-export type TopologyNodeType = 'host' | 'submap' | 'static' | 'network';
+/** Node types: host = Zabbix; submap = dashboard; static = label; network = retângulo; dashboard_picker = seletor de dashboards */
+export type TopologyNodeType = 'host' | 'submap' | 'static' | 'network' | 'dashboard_picker';
+
+/** Entrada configurável no seletor de dashboards (type=dashboard_picker) */
+export interface TopologyDashboardChoice {
+  uid: string;
+  slug?: string;
+  title?: string;
+}
 
 export type TopologyHostIcon =
   | 'router'
@@ -51,6 +58,11 @@ export interface TopologyNode {
   submapUid?: string;
   /** Optional dashboard slug override */
   submapSlug?: string;
+  /**
+   * Dashboards disponíveis no seletor (type=dashboard_picker).
+   * Em visualização o clique abre a lista para escolher e navegar.
+   */
+  dashboardChoices?: TopologyDashboardChoice[];
   /**
    * Quando false: conta só hosts diretos do dashboard linkado (ignora submapas internos)
    * e este submapa não entra na contagem de mapas pai.
@@ -206,7 +218,7 @@ export const defaultTopologyMap = (): TopologyMap => ({
       label: 'PORTALEGRE - RN',
       subtitle: 'Submapa',
       type: 'submap',
-      submapUid: 'dude-plw',
+      submapUid: 'topo-plw',
       x: 700,
       y: 200,
       width: 160,

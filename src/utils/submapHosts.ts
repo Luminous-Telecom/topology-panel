@@ -109,8 +109,9 @@ function mergeHostNames(lists: string[][]): string[] {
 
 /** Extrai mapa da topologia de um dashboard (API v1 panels ou v2 elements/vizConfig). */
 function extractMapFromDashboardResponse(response: DashboardTopologyResponse): TopologyMap | undefined {
+  const topologyPanelTypes = new Set(['luminous-topology-panel', 'luminous-dude-topology-panel']);
   for (const panel of response?.dashboard?.panels ?? []) {
-    if (panel.type === 'luminous-dude-topology-panel' && panel.options?.map) {
+    if (panel.type && topologyPanelTypes.has(panel.type) && panel.options?.map) {
       return panel.options.map;
     }
   }

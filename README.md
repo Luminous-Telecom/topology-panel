@@ -1,6 +1,6 @@
 # Topology Panel
 
-Plugin de painel para **Grafana 9+** que exibe mapas de rede no estilo **The Dude**, com status ao vivo via **Zabbix**.
+Plugin de painel para **Grafana 9+** que exibe mapas de topologia de rede, com status ao vivo via **Zabbix**.
 
 Repositório: [github.com/Luminous-Telecom/topology-panel](https://github.com/Luminous-Telecom/topology-panel)
 
@@ -38,16 +38,16 @@ npm run build
 Copie o build para o servidor Grafana:
 
 ```bash
-sudo mkdir -p /var/lib/grafana/plugins/luminous-dude-topology-panel
-sudo cp -r dist/* /var/lib/grafana/plugins/luminous-dude-topology-panel/
-sudo chown -R grafana:grafana /var/lib/grafana/plugins/luminous-dude-topology-panel
+sudo mkdir -p /var/lib/grafana/plugins/luminous-topology-panel
+sudo cp -r dist/* /var/lib/grafana/plugins/luminous-topology-panel/
+sudo chown -R grafana:grafana /var/lib/grafana/plugins/luminous-topology-panel
 ```
 
 Em `grafana.ini`:
 
 ```ini
 [plugins]
-allow_loading_unsigned_plugins = luminous-dude-topology-panel
+allow_loading_unsigned_plugins = luminous-topology-panel
 ```
 
 Reinicie o Grafana:
@@ -127,7 +127,7 @@ Remove-Item -Recurse -Force HKCU:\Software\Classes\winboxnovo
 2. Preencha **Usuário (Tools)** e **Senha (Tools)**
 3. Salve o dashboard
 
-Ao clicar em **Winbox** / **WinBoxNovo**, o launcher Windows chama o exe como o The Dude:
+Ao clicar em **Winbox** / **WinBoxNovo**, o launcher Windows chama o exe com IP, usuário e senha:
 
 `WinBoxNovo.exe "IP" "usuario" "senha"` — login automático.
 
@@ -197,7 +197,7 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
       "id": "sub-plw",
       "label": "PORTALEGRE",
       "type": "submap",
-      "submapUid": "dude-plw",
+      "submapUid": "topo-plw",
       "x": 700,
       "y": 200
     }

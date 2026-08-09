@@ -55,6 +55,25 @@ export function addStaticAt(map: TopologyMap, x: number, y: number, label = 'Est
   return { ...map, nodes: [...map.nodes, node] };
 }
 
+export function addDashboardPickerAt(
+  map: TopologyMap,
+  x: number,
+  y: number,
+  label = 'Dashboards'
+): TopologyMap {
+  const pickers = map.nodes.filter((n) => n.type === 'dashboard_picker');
+  const id = `dashboard-picker-${pickers.length + 1}`;
+  const node: TopologyNode = {
+    id,
+    label: pickers.length ? `${label} ${pickers.length + 1}` : label,
+    type: 'dashboard_picker',
+    dashboardChoices: [],
+    x: Math.round(x),
+    y: Math.round(y),
+  };
+  return { ...map, nodes: [...map.nodes, node] };
+}
+
 export function addLinkToMap(map: TopologyMap, from: string, to: string): TopologyMap {
   if (from === to) {
     return map;
@@ -115,6 +134,7 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
       'fontSize',
       'includeInParentStats',
       'showStatusStats',
+      'dashboardChoices',
     ] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key] === undefined) {
         delete next[key];

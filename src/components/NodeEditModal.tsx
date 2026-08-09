@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
-import { TopologyHostIcon, TopologyNode } from '../types';
+import { TopologyDashboardChoice, TopologyHostIcon, TopologyNode } from '../types';
+import { DashboardMultiSelect } from './DashboardMultiSelect';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
@@ -16,6 +17,9 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
   const [submapSlug, setSubmapSlug] = useState(node.submapSlug ?? '');
+  const [dashboardChoices, setDashboardChoices] = useState<TopologyDashboardChoice[]>(
+    node.dashboardChoices ?? []
+  );
   const [includeInParentStats, setIncludeInParentStats] = useState(
     node.includeInParentStats !== false && node.showStatusStats !== false
   );
@@ -34,13 +38,15 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const title =
     type === 'submap'
       ? 'Submapa'
-      : type === 'static'
-        ? 'Estático'
-        : type === 'network'
-          ? 'Rede'
-          : node.zabbixHost
-            ? 'Host Zabbix'
-            : 'Dispositivo';
+      : type === 'dashboard_picker'
+        ? 'Seletor de dashboards'
+        : type === 'static'
+          ? 'Estático'
+          : type === 'network'
+            ? 'Rede'
+            : node.zabbixHost
+              ? 'Host Zabbix'
+              : 'Dispositivo';
 
   return (
     <Modal title={title} isOpen onDismiss={onClose}>
@@ -54,7 +60,7 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
           <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
         </Field>
       )}
-      {!node.zabbixHost && (
+      {!node.zabbixHost && type !== 'dashboard_picker' && (
         <Field label="Subtítulo / IP">
           <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
         </Field>
@@ -130,6 +136,30 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
           </Field>
         </>
       )}
+      {type === 'dashboard_picker' && (
+        <>
+          <Field
+            label="Dashboards disponíveis"
+            description="Dashboards que aparecem ao clicar neste botão no mapa"
+          >
+            <DashboardMultiSelect value={dashboardChoices} onChange={setDashboardChoices} />
+          </Field>
+          <Field label="Largura (px)" description="Vazio = automático pelo texto">
+            <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
+          </Field>
+          <Field label="Altura (px)" description="Vazio = automático pelo texto">
+            <Input type="number" value={height} onChange={(e) => setHeight(e.currentTarget.value)} placeholder="Automático" />
+          </Field>
+          <Field label="Cor de fundo" description="Vazio = cor submapa do painel (Aparência)">
+            <ColorPickerInput
+              value={fillColor}
+              onChange={setFillColor}
+              returnColorAs="hex"
+              placeholder="Padrão do painel"
+            />
+          </Field>
+        </>
+      )}
       {type === 'static' && (
         <>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">
@@ -183,7 +213,7 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
           onClick={() => {
             const patch: Partial<TopologyNode> = {
               label: node.zabbixHost ? node.label : label,
-              subtitle: node.zabbixHost ? node.subtitle : subtitle,
+              subtitle: node.zabbixHost ? node.subtitle : type === 'dashboard_picker' ? undefined : subtitle,
               submapUid: type === 'submap' ? submapUid : undefined,
               submapSlug: type === 'submap' ? submapSlug : undefined,
               zabbixHost: node.zabbixHost,
@@ -207,6 +237,13 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               patch.includeInParentStats = includeInParentStats ? undefined : false;
               // Limpa flag legada se existir
               patch.showStatusStats = undefined;
+            }
+            if (type === 'dashboard_picker') {
+              patch.dashboardChoices = dashboardChoices.filter((c) => c.uid.trim());
+              patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
+              patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
+              patch.fillColor = fillColor.trim() || undefined;
+              patch.subtitle = undefined;
             }
             if (type === 'static') {
               patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;

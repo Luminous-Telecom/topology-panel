@@ -1,4 +1,4 @@
-# Abre Winbox / WinBoxNovo — mesmo estilo The Dude:
+# Abre Winbox / WinBoxNovo — IP, usuário e senha na linha de comando:
 #   winbox.exe <IP> <user> <password>
 #
 # URI (IP na query — o Chrome injeta "/" se o IP for o host da URI):

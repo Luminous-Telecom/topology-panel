@@ -217,7 +217,12 @@ export function resolveNodeStatus(
   metric: TopologyStatusMetric = 'icmp_rtt',
   metadata?: HostMetadataMap
 ): 'online' | 'offline' | 'unknown' {
-  if (node.type === 'submap' || node.type === 'static' || node.type === 'network') {
+  if (
+    node.type === 'submap' ||
+    node.type === 'static' ||
+    node.type === 'network' ||
+    node.type === 'dashboard_picker'
+  ) {
     return 'unknown';
   }
   const key = node.zabbixHost?.trim();
@@ -344,7 +349,7 @@ export function computeNodeLayout(
   const fontSize = options.nodeFontSize;
   const subFontSize = Math.max(9, fontSize - 2);
 
-  if (node.type === 'submap') {
+  if (node.type === 'submap' || node.type === 'dashboard_picker') {
     const pad = 8;
     const lineGap = 4;
     const label = (node.label ?? '').trim();
@@ -386,7 +391,11 @@ export function computeNodeLayout(
   const label = (node.label ?? '').trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
   const showIcon =
-    node.type !== 'submap' && node.type !== 'static' && node.type !== 'network' && Boolean(node.icon);
+    node.type !== 'submap' &&
+    node.type !== 'static' &&
+    node.type !== 'network' &&
+    node.type !== 'dashboard_picker' &&
+    Boolean(node.icon);
   const iconDims = showIcon && node.icon ? hostIconRenderDimensions(node.icon) : { w: HOST_ICON_SIZE, h: HOST_ICON_SIZE };
   const iconSize = iconDims.h;
   const iconRowHeight = showIcon ? iconSize + HOST_ICON_GAP : 0;

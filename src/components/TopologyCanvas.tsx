@@ -12,6 +12,7 @@ import {
   TopologyView,
 } from '../types';
 import {
+  addDashboardPickerAt,
   addLinkToMap,
   addManualDeviceAt,
   addNetworkAt,
@@ -47,6 +48,7 @@ import {
   TopologyToast,
   TopologyToolbar,
 } from './TopologyContextMenu';
+import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
 import { NodeEditModal } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
 import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
@@ -121,8 +123,8 @@ const styles = {
     touch-action: none;
   `,
   offlineBlink: css`
-    animation: dude-offline-blink 1s ease-in-out infinite;
-    @keyframes dude-offline-blink {
+    animation: topology-offline-blink 1s ease-in-out infinite;
+    @keyframes topology-offline-blink {
       0%,
       100% {
         opacity: 1;
@@ -174,6 +176,7 @@ function selectionHintLabel(nodes: TopologyNode[]): string {
   let submaps = 0;
   let networks = 0;
   let statics = 0;
+  let pickers = 0;
   for (const n of nodes) {
     const t = n.type ?? 'host';
     if (t === 'submap') {
@@ -182,6 +185,8 @@ function selectionHintLabel(nodes: TopologyNode[]): string {
       networks++;
     } else if (t === 'static') {
       statics++;
+    } else if (t === 'dashboard_picker') {
+      pickers++;
     } else {
       hosts++;
     }
@@ -192,6 +197,9 @@ function selectionHintLabel(nodes: TopologyNode[]): string {
   }
   if (submaps) {
     parts.push(`${submaps} submapa${submaps > 1 ? 's' : ''}`);
+  }
+  if (pickers) {
+    parts.push(`${pickers} seletor${pickers > 1 ? 'es' : ''}`);
   }
   if (networks) {
     parts.push(`${networks} rede${networks > 1 ? 's' : ''}`);
@@ -320,6 +328,9 @@ function nodeFill(
   if (node.type === 'submap') {
     return options.colorSubmap;
   }
+  if (node.type === 'dashboard_picker') {
+    return node.fillColor || options.colorSubmap;
+  }
   if (node.type === 'static') {
     return node.fillColor || options.colorStatic;
   }
@@ -426,6 +437,7 @@ export function TopologyCanvas({
   const [bulkSubmapTargets, setBulkSubmapTargets] = useState<TopologyNode[]>([]);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
+  const [pickerNode, setPickerNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
   const [editZabbixHost, setEditZabbixHost] = useState<TopologyNode | null>(null);
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
@@ -911,10 +923,19 @@ export function TopologyCanvas({
     if (node.type !== 'submap' || !node.submapUid) {
       return;
     }
-    const slug = node.submapSlug || node.submapUid;
-    const orgMatch = window.location.search.match(/orgId=\d+/);
-    const qs = orgMatch ? `?${orgMatch[0]}` : '';
-    window.location.href = `/d/${node.submapUid}/${slug}${qs}`;
+    openDashboardUrl(node.submapUid, node.submapSlug);
+  }, []);
+
+  const openDashboardPicker = useCallback((node: TopologyNode) => {
+    if (node.type !== 'dashboard_picker') {
+      return;
+    }
+    const choices = (node.dashboardChoices ?? []).filter((c) => c.uid?.trim());
+    if (choices.length === 1) {
+      openDashboardUrl(choices[0].uid, choices[0].slug);
+      return;
+    }
+    setPickerNode(node);
   }, []);
 
   const beginLinkFrom = useCallback((nodeId: string) => {
@@ -939,15 +960,29 @@ export function TopologyCanvas({
 
   const onResizePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
-      if (!editable || (node.type !== 'network' && node.type !== 'static' && node.type !== 'submap')) {
+      if (
+        !editable ||
+        (node.type !== 'network' &&
+          node.type !== 'static' &&
+          node.type !== 'submap' &&
+          node.type !== 'dashboard_picker')
+      ) {
         return;
       }
       e.stopPropagation();
       const layout = nodeLayouts.get(node.id);
       const defaultW =
-        node.type === 'static' ? DEFAULT_STATIC_WIDTH : node.type === 'submap' ? 120 : DEFAULT_NETWORK_WIDTH;
+        node.type === 'static'
+          ? DEFAULT_STATIC_WIDTH
+          : node.type === 'submap' || node.type === 'dashboard_picker'
+            ? 120
+            : DEFAULT_NETWORK_WIDTH;
       const defaultH =
-        node.type === 'static' ? DEFAULT_STATIC_HEIGHT : node.type === 'submap' ? 36 : DEFAULT_NETWORK_HEIGHT;
+        node.type === 'static'
+          ? DEFAULT_STATIC_HEIGHT
+          : node.type === 'submap' || node.type === 'dashboard_picker'
+            ? 36
+            : DEFAULT_NETWORK_HEIGHT;
       dragRef.current = {
         kind: 'resize',
         node,
@@ -1391,11 +1426,15 @@ export function TopologyCanvas({
         /* already released */
       }
 
-      // Tap em submapa (visualização): pointer capture no wrap mata o click nativo.
+      // Tap em submapa / seletor (visualização): pointer capture no wrap mata o click nativo.
       if (d?.kind === 'pan' && !d.moved) {
         const tap = d.tapNode ?? node;
         if (!editable && tap?.type === 'submap') {
           openSubmap(tap);
+          return;
+        }
+        if (!editable && tap?.type === 'dashboard_picker') {
+          openDashboardPicker(tap);
           return;
         }
         // Tap no cabo: mesma situação — captura no wrap mata o click.
@@ -1487,7 +1526,7 @@ export function TopologyCanvas({
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openSubmap, persist, storedMap, view]
+    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, storedMap, view]
   );
 
   const onNodeClick = useCallback(
@@ -1500,8 +1539,11 @@ export function TopologyCanvas({
       if (!editable && node.type === 'submap') {
         openSubmap(node);
       }
+      if (!editable && node.type === 'dashboard_picker') {
+        openDashboardPicker(node);
+      }
     },
-    [completeLink, editable, linkFromId, openSubmap]
+    [completeLink, editable, linkFromId, openDashboardPicker, openSubmap]
   );
 
   const openHostEditor = useCallback((node: TopologyNode) => {
@@ -1519,7 +1561,12 @@ export function TopologyCanvas({
     (e: React.MouseEvent, node: TopologyNode) => {
       e.stopPropagation();
       if (editable) {
-        if (node.type === 'submap' || node.type === 'network' || node.type === 'static') {
+        if (
+          node.type === 'submap' ||
+          node.type === 'network' ||
+          node.type === 'static' ||
+          node.type === 'dashboard_picker'
+        ) {
           setEditNode(node);
         } else if ((node.type ?? 'host') === 'host') {
           openHostEditor(node);
@@ -1529,8 +1576,11 @@ export function TopologyCanvas({
       if (node.type === 'submap') {
         openSubmap(node);
       }
+      if (node.type === 'dashboard_picker') {
+        openDashboardPicker(node);
+      }
     },
-    [editable, openHostEditor, openSubmap]
+    [editable, openDashboardPicker, openHostEditor, openSubmap]
   );
 
   const showToast = useCallback((message: string | undefined) => {
@@ -1716,6 +1766,11 @@ export function TopologyCanvas({
         onClick: () => persist(addSubmapAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
       },
       {
+        id: 'add-dashboard-picker',
+        label: 'Adicionar seletor de dashboards',
+        onClick: () => persist(addDashboardPickerAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
+      },
+      {
         id: 'add-network',
         label: 'Adicionar rede',
         onClick: () => persist(addNetworkAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
@@ -1823,7 +1878,8 @@ export function TopologyCanvas({
         (node.type ?? 'host') === 'host' ||
         node.type === 'network' ||
         node.type === 'static' ||
-        node.type === 'submap'
+        node.type === 'submap' ||
+        node.type === 'dashboard_picker'
       ) {
         if (selectedNodeIds.length < 2 || !selectedNodeIds.includes(node.id)) {
           items.push({
@@ -1851,11 +1907,13 @@ export function TopologyCanvas({
       const deleteLabel =
         node.type === 'submap'
           ? 'Excluir submapa'
-          : node.type === 'static'
-            ? 'Excluir estático'
-            : node.type === 'network'
-              ? 'Excluir rede'
-              : 'Excluir host';
+          : node.type === 'dashboard_picker'
+            ? 'Excluir seletor'
+            : node.type === 'static'
+              ? 'Excluir estático'
+              : node.type === 'network'
+                ? 'Excluir rede'
+                : 'Excluir host';
 
       items.push({
         id: 'delete',
@@ -2090,7 +2148,7 @@ export function TopologyCanvas({
 
       {editable && showEmptyHint && (
         <div className={styles.empty} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
-          Clique com o <strong>botão direito</strong> para adicionar dispositivos, redes, submapas e links. Hosts
+          Clique com o <strong>botão direito</strong> para adicionar dispositivos, redes, submapas, seletores e links. Hosts
           Zabbix vêm da aba <strong>Query</strong>.
         </div>
       )}
@@ -2453,7 +2511,7 @@ export function TopologyCanvas({
                       : 'move'
                     : (node.type ?? 'host') === 'host' && hostIp(node)
                       ? 'context-menu'
-                      : node.type === 'submap'
+                      : node.type === 'submap' || node.type === 'dashboard_picker'
                         ? 'pointer'
                         : 'default',
                 }}
@@ -2483,7 +2541,10 @@ export function TopologyCanvas({
                     size={hostIconRenderSize(hostIcon)}
                   />
                 )}
-                {editable && (node.type === 'static' || node.type === 'submap') && (
+                {editable &&
+                  (node.type === 'static' ||
+                    node.type === 'submap' ||
+                    node.type === 'dashboard_picker') && (
                   <rect
                     x={x + w - 10}
                     y={y + h - 10}
@@ -2535,6 +2596,18 @@ export function TopologyCanvas({
                     ↗
                   </text>
                 )}
+                {node.type === 'dashboard_picker' && (
+                  <text
+                    x={x + w - 8}
+                    y={y + 12}
+                    textAnchor="end"
+                    fill="rgba(255,255,255,0.7)"
+                    fontSize={10}
+                    pointerEvents="none"
+                  >
+                    ▾
+                  </text>
+                )}
               </g>
             );
           })}
@@ -2563,6 +2636,17 @@ export function TopologyCanvas({
           node={editNode}
           onClose={() => setEditNode(null)}
           onSave={(patch) => persist(updateStoredNode(storedMap, editNode, patch))}
+        />
+      )}
+
+      {pickerNode && (
+        <DashboardPickerModal
+          node={pickerNode}
+          onClose={() => setPickerNode(null)}
+          onSelect={(choice) => {
+            setPickerNode(null);
+            openDashboardUrl(choice.uid, choice.slug);
+          }}
         />
       )}
 

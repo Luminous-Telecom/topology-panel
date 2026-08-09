@@ -11,11 +11,11 @@ interface Props {
   value: string;
   onChange: (uid: string, slug?: string) => void;
   disabled?: boolean;
-  /** Prefer dashboards com esta tag (ex.: dude) */
+  /** Prefer dashboards com esta tag (ex.: topology) */
   tagHint?: string;
 }
 
-export function DashboardPickerSelect({ value, onChange, disabled, tagHint = 'dude' }: Props) {
+export function DashboardPickerSelect({ value, onChange, disabled, tagHint = 'topology,dude' }: Props) {
   const [dashboards, setDashboards] = useState<GrafanaDashboardOption[]>([]);
   const [loading, setLoading] = useState(true);
 
