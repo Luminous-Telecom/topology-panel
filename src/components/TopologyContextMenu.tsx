@@ -606,12 +606,43 @@ function legendColorCss(color: unknown): string {
   return '';
 }
 
-export function TopologyColorLegend({ items }: { items: TopologyLegendItem[] }) {
+const legendCountdownStyle = css`
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.3;
+  white-space: nowrap;
+`;
+
+export function TopologyColorLegend({
+  items,
+  refreshCountdown = null,
+  refreshIntervalSec = null,
+}: {
+  items: TopologyLegendItem[];
+  refreshCountdown?: number | null;
+  refreshIntervalSec?: number | null;
+}) {
   const visible = items
     .map((item) => ({ label: item.label, color: legendColorCss(item.color) }))
     .filter((item) => Boolean(item.color));
+
+  const countdownLabel =
+    refreshIntervalSec == null
+      ? 'Atualização: manual'
+      : `Atualiza em ${refreshCountdown ?? refreshIntervalSec}s`;
+
   if (visible.length === 0) {
-    return null;
+    // Ainda mostra o contador mesmo sem itens de legenda
+    return (
+      <div className={legendStyle} aria-label="Atualização do mapa">
+        <div className={legendCountdownStyle} style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+          {countdownLabel}
+        </div>
+      </div>
+    );
   }
   return (
     <div className={legendStyle} aria-label="Legenda de cores">
@@ -622,6 +653,7 @@ export function TopologyColorLegend({ items }: { items: TopologyLegendItem[] }) 
           <span>{item.label}</span>
         </div>
       ))}
+      <div className={legendCountdownStyle}>{countdownLabel}</div>
     </div>
   );
 }

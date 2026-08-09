@@ -36,12 +36,13 @@ Não commitar credenciais, `.env` ou senhas em scripts.
 **Toda alteração em `src/` deve ser buildada e deployada** no Grafana de testes antes de encerrar a tarefa.
 
 ```bash
-GRAFANA_SSH_PASS='…' bash scripts/deploy.sh
+bash scripts/deploy.sh
 ```
 
 - Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-topology-panel/`
-- Senha via env `GRAFANA_SSH_PASS` (nunca commitar)
-- Testar: https://monitoramento.luminoustelecom.com.br/d/topo-dc/topology-dc?orgId=2
+- Senha via `.env` (`GRAFANA_SSH_PASS`) — nunca commitar
+- Testar: https://monitoramento.luminoustelecom.com.br/d/dude-dc/dc?orgId=2
+- **O agent executa o deploy** — ver regra `auto-deploy.mdc`
 
 ## UI e idioma
 
@@ -52,3 +53,23 @@ GRAFANA_SSH_PASS='…' bash scripts/deploy.sh
 
 - `allow_loading_unsigned_plugins = luminous-topology-panel`
 - Upload dashboard preferir LAN; URL pública pode retornar 403 (Cloudflare)
+
+## Troubleshooting — mapa "preso" numa cor antiga (não acompanha o Zabbix)
+
+O datasource **Zabbix (`alexanderzobnin-zabbix-datasource`)** cacheia no próprio backend as respostas de
+`item.get` e `host.get` (entre outros métodos — ver `cachedMethods` em
+[`pkg/zabbix/cache.go`](https://github.com/grafana/grafana-zabbix/blob/main/pkg/zabbix/cache.go)),
+com **TTL padrão de 1h**. Como o painel lê o status ICMP via `item.get`, uma queda/recuperação real do
+equipamento pode não aparecer no mapa até esse cache expirar — só reiniciar o `grafana-server` limpa o
+cache na hora (bug conhecido: [grafana/grafana-zabbix#1891](https://github.com/grafana/grafana-zabbix/issues/1891)).
+
+**Como diminuir o TTL:**
+
+1. Grafana → **Connections/Configuration → Data sources** → abra o datasource Zabbix usado no mapa.
+2. Role até a seção de configurações da API Zabbix e procure o campo **"Cache TTL"** (pode estar em branco,
+   o que já assume o padrão de `1h`).
+3. Mude para um valor baixo, ex.: `10s` ou `30s`.
+4. **Save & Test**.
+
+Isso não é algo corrigível no código do `topology-panel` — o cache acontece no backend do datasource,
+antes da chamada chegar no Zabbix de verdade.

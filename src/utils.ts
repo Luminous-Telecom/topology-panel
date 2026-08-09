@@ -240,12 +240,12 @@ export function resolveNodeStatus(
   ) {
     return 'unknown';
   }
-  const hostId = node.zabbixHostId?.trim();
+  const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
   const key = node.zabbixHost?.trim();
   if (!key && !hostId) {
     return 'unknown';
   }
-  const v = lookupHostStatus(statusMap, key ?? '', metadata, hostId);
+  const v = lookupHostStatus(statusMap, key ?? '', metadata, hostId || undefined);
   if (v === null || v === undefined) {
     return 'unknown';
   }

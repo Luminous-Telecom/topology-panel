@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelProps } from '@grafana/data';
+import { RefreshEvent, getAppEvents, locationService } from '@grafana/runtime';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
@@ -11,18 +12,16 @@ import {
   TopologyView,
   defaultOptions,
 } from '../types';
-import { effectiveStatusMetric, lookupHostStatus } from '../utils';
+import { effectiveStatusMetric } from '../utils';
 import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
+import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
-
-const PROBLEM_REFRESH_MS = 60_000;
-const ICMP_REFRESH_MS = 60_000;
 
 /** Persiste hostid + nome/IP atuais do Zabbix no mapa (migrate + rename). */
 function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
@@ -32,13 +31,13 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
       return node;
     }
     const name = node.zabbixHost?.trim();
-    const hostId = node.zabbixHostId?.trim();
+    const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
     const entry = (hostId && meta[hostId]) || (name ? meta[name] : undefined);
     if (!entry) {
       return node;
     }
 
-    const nextId = entry.hostid?.trim() || hostId;
+    const nextId = (entry.hostid != null ? String(entry.hostid).trim() : '') || hostId;
     const nextName = entry.name?.trim() || name;
     const nextIp = entry.ip?.trim();
     const patch: typeof node = { ...node };
@@ -71,18 +70,23 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
   return changed ? { ...map, nodes } : null;
 }
 
-export function TopologyPanel({ options, width, height, onOptionsChange }: Props) {
+export function TopologyPanel({ options, width, height, onOptionsChange, eventBus }: Props) {
   const theme = useTheme2();
   const dashboardEditing = useDashboardEditMode();
-  /** Variável Grafana `$mapa` na barra do painel de controle → navega entre dashboards */
   useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
+
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
   const [icmpStatusMap, setIcmpStatusMap] = useState<HostStatusMap>({});
   const [icmpFetchDone, setIcmpFetchDone] = useState(false);
   const [problemMap, setProblemMap] = useState<HostProblemMap>({});
   const [submapHosts, setSubmapHosts] = useState<Record<string, string[] | null | undefined>>({});
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
+  const [refreshCountdown, setRefreshCountdown] = useState<number | null>(() => readDashboardRefreshSeconds());
+
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
+  const statusFetchGen = useRef(0);
 
   const resolvedOptions = useMemo(() => {
     const merged = {
@@ -93,7 +97,6 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     return resolvePanelOptionsColors(merged, theme);
   }, [options, theme]);
 
-  /** Persiste hex no dashboard quando opções ainda têm nomes da paleta (ex.: light-green). */
   useEffect(() => {
     if (!onOptionsChange) {
       return;
@@ -116,7 +119,7 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
       if ((node.type ?? 'host') !== 'host') {
         continue;
       }
-      const id = node.zabbixHostId?.trim();
+      const id = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
       const name = node.zabbixHost?.trim();
       if (id) {
         hostIds.add(id);
@@ -134,7 +137,6 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
         if (!key) {
           continue;
         }
-        // extractTopologyHostNames agora pode devolver hostid ou nome
         if (/^\d+$/.test(key)) {
           hostIds.add(key);
         } else {
@@ -142,19 +144,117 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
         }
       }
     }
-    return { hostIds: [...hostIds], hostNames: [...hostNames] };
+    return {
+      hostIds: [...hostIds].sort(),
+      hostNames: [...hostNames].sort(),
+    };
   }, [resolvedOptions.map.nodes, submapHosts]);
 
-  const mapHostKeys = useMemo(
-    () => [...mapHostRefs.hostIds, ...mapHostRefs.hostNames],
+  const mapHostRefsRef = useRef(mapHostRefs);
+  mapHostRefsRef.current = mapHostRefs;
+
+  const mapHostRefsKey = useMemo(
+    () => `${mapHostRefs.hostIds.join(',')}|${mapHostRefs.hostNames.join(',')}`,
     [mapHostRefs]
   );
+
+  /** Lê ICMP + problemas no Zabbix agora (botão Atualizar, auto-refresh ou timer). */
+  const fetchLiveStatus = useCallback(async () => {
+    const uid = latestOptionsRef.current.zabbixDatasourceUid?.trim();
+    const refs = mapHostRefsRef.current;
+    if (!uid || (!refs.hostIds.length && !refs.hostNames.length)) {
+      return;
+    }
+    const gen = ++statusFetchGen.current;
+    const metric = effectiveStatusMetric(latestOptionsRef.current);
+    const useProblems = latestOptionsRef.current.useZabbixProblems !== false;
+
+    try {
+      const [status, problems] = await Promise.all([
+        fetchZabbixHostIcmpStatusMap(uid, refs.hostNames, metric, refs.hostIds),
+        useProblems
+          ? fetchZabbixHostProblems(uid, undefined, refs.hostNames, refs.hostIds)
+          : Promise.resolve({} as HostProblemMap),
+      ]);
+      if (gen !== statusFetchGen.current) {
+        return;
+      }
+      setIcmpFetchDone(true);
+      if (Object.keys(status).length > 0) {
+        // Substitui o mapa: evita ficar vermelho com valor antigo se o fetch atual omitir o host
+        setIcmpStatusMap(status);
+      }
+      setProblemMap(useProblems ? problems : {});
+      setRefreshTick((t) => t + 1);
+    } catch {
+      // mantém último status conhecido
+    }
+  }, []);
+
+  // Botão Atualizar + auto-refresh do Grafana
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchLiveStatus();
+    };
+    const subs = [
+      eventBus.getStream(RefreshEvent).subscribe(onRefresh),
+      getAppEvents().getStream(RefreshEvent).subscribe(onRefresh),
+    ];
+    return () => {
+      for (const s of subs) {
+        s.unsubscribe();
+      }
+    };
+  }, [eventBus, fetchLiveStatus]);
+
+  // Intervalo do seletor (?refresh=5s)
+  useEffect(() => {
+    const syncInterval = () => {
+      setRefreshIntervalSec(parseGrafanaRefreshSeconds(locationService.getSearchObject().refresh));
+    };
+    syncInterval();
+    return locationService.getHistory().listen(syncInterval);
+  }, []);
+
+  // Contagem regressiva na legenda
+  useEffect(() => {
+    if (refreshIntervalSec == null) {
+      setRefreshCountdown(null);
+      return;
+    }
+    setRefreshCountdown(refreshIntervalSec);
+    const id = window.setInterval(() => {
+      setRefreshCountdown((c) => {
+        if (c == null) {
+          return refreshIntervalSec;
+        }
+        return c <= 1 ? refreshIntervalSec : c - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [refreshIntervalSec, refreshTick]);
+
+  // Carga inicial + polling contínuo (intervalo do dashboard ou 5s)
+  useEffect(() => {
+    void fetchLiveStatus();
+    const sec = refreshIntervalSec ?? 5;
+    const timer = window.setInterval(() => {
+      void fetchLiveStatus();
+    }, Math.max(5, sec) * 1000);
+    return () => window.clearInterval(timer);
+  }, [
+    fetchLiveStatus,
+    mapHostRefsKey,
+    resolvedOptions.zabbixDatasourceUid,
+    resolvedOptions.statusMetric,
+    resolvedOptions.useZabbixProblems,
+    refreshIntervalSec,
+  ]);
 
   const submapNodes = useMemo(() => {
     return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
   }, [resolvedOptions.map.nodes]);
 
-  /** Inclui o flag para refetch ao ligar/desligar status do submapa. */
   const submapFetchKey = useMemo(
     () =>
       submapNodes
@@ -168,14 +268,11 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
       setSubmapHosts({});
       return;
     }
-
     let cancelled = false;
-
     const load = async () => {
       const entries = await Promise.all(
         submapNodes.map(async (node) => {
           try {
-            // Desativado: só hosts diretos do dashboard (ignora submapas internos)
             const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim(), {
               includeNested: isIncludedInParentStats(node),
             });
@@ -189,12 +286,10 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
         setSubmapHosts(Object.fromEntries(entries));
       }
     };
-
     void load();
     return () => {
       cancelled = true;
     };
-    // submapFetchKey cobre uid + includeInParentStats; submapNodes traz os nós
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submapFetchKey]);
 
@@ -204,20 +299,19 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
       setFetchedMeta({});
       return;
     }
-
     let cancelled = false;
-    fetchZabbixHostMetadata(uid, undefined, mapHostRefs.hostNames, mapHostRefs.hostIds).then((meta) => {
-      if (!cancelled) {
-        setFetchedMeta(meta);
+    void fetchZabbixHostMetadata(uid, undefined, mapHostRefs.hostNames, mapHostRefs.hostIds).then(
+      (meta) => {
+        if (!cancelled) {
+          setFetchedMeta(meta);
+        }
       }
-    });
-
+    );
     return () => {
       cancelled = true;
     };
-  }, [mapHostRefs, resolvedOptions.zabbixDatasourceUid]);
+  }, [mapHostRefsKey, mapHostRefs.hostIds, mapHostRefs.hostNames, resolvedOptions.zabbixDatasourceUid, refreshTick]);
 
-  /** Migra hostid e sincroniza nome/IP quando o Zabbix renomeia o host. */
   useEffect(() => {
     if (!onOptionsChange || !Object.keys(fetchedMeta).length) {
       return;
@@ -228,96 +322,6 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     }
   }, [fetchedMeta, onOptionsChange]);
 
-  useEffect(() => {
-    const uid = resolvedOptions.zabbixDatasourceUid;
-    if (!uid || (!mapHostRefs.hostIds.length && !mapHostRefs.hostNames.length)) {
-      setIcmpStatusMap({});
-      setIcmpFetchDone(false);
-      return;
-    }
-
-    let cancelled = false;
-    const metric = effectiveStatusMetric(resolvedOptions);
-
-    const load = () => {
-      void fetchZabbixHostIcmpStatusMap(uid, mapHostRefs.hostNames, metric, mapHostRefs.hostIds).then(
-        (status) => {
-          if (cancelled) {
-            return;
-          }
-          setIcmpFetchDone(true);
-          setIcmpStatusMap(status);
-        }
-      );
-    };
-
-    load();
-    const timer = window.setInterval(load, ICMP_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [mapHostRefs, resolvedOptions.zabbixDatasourceUid, resolvedOptions.statusMetric]);
-
-  useEffect(() => {
-    const uid = resolvedOptions.zabbixDatasourceUid;
-    const useProblems = resolvedOptions.useZabbixProblems !== false;
-    if (!uid || !useProblems || (!mapHostRefs.hostIds.length && !mapHostRefs.hostNames.length)) {
-      setProblemMap({});
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = () => {
-      void fetchZabbixHostProblems(uid, undefined, mapHostRefs.hostNames, mapHostRefs.hostIds).then(
-        (problems) => {
-          if (!cancelled) {
-            setProblemMap(problems);
-          }
-        }
-      );
-    };
-
-    load();
-    const timer = window.setInterval(load, PROBLEM_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [mapHostRefs, resolvedOptions.useZabbixProblems, resolvedOptions.zabbixDatasourceUid]);
-
-  const hostMetadata = fetchedMeta;
-
-  const icmpStatusForRegions = useMemo(() => {
-    const display: HostStatusMap = {};
-    for (const host of mapHostKeys) {
-      const meta = hostMetadata[host];
-      const v = lookupHostStatus(icmpStatusMap, host, hostMetadata, meta?.hostid);
-      if (v !== null && v !== undefined) {
-        display[host] = v;
-      }
-    }
-    // Garante indexação por hostid dos nós do mapa
-    for (const node of resolvedOptions.map.nodes) {
-      if ((node.type ?? 'host') !== 'host') {
-        continue;
-      }
-      const id = node.zabbixHostId?.trim();
-      if (!id || display[id] !== undefined) {
-        continue;
-      }
-      const v = lookupHostStatus(icmpStatusMap, node.zabbixHost ?? '', hostMetadata, id);
-      if (v !== null && v !== undefined) {
-        display[id] = v;
-      }
-    }
-    return display;
-  }, [hostMetadata, icmpStatusMap, mapHostKeys, resolvedOptions.map.nodes]);
-
-  const statusMap = icmpStatusForRegions;
   const applyMap = useCallback(
     (map: TopologyMap) => {
       onOptionsChange({ ...latestOptionsRef.current, map });
@@ -352,12 +356,14 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
         map={resolvedOptions.map}
         storedMap={resolvedOptions.map}
         options={resolvedOptions}
-        statusMap={statusMap}
-        regionStatusMap={icmpStatusForRegions}
+        statusMap={icmpStatusMap}
+        regionStatusMap={icmpStatusMap}
         icmpReady={icmpFetchDone}
-        hostMetadata={hostMetadata}
+        hostMetadata={fetchedMeta}
         problemMap={problemMap}
         submapHosts={submapHosts}
+        refreshCountdown={refreshCountdown}
+        refreshIntervalSec={refreshIntervalSec}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
         onUndo={dashboardEditing ? undo : undefined}

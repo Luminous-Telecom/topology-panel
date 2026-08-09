@@ -22,6 +22,14 @@ const BATCH_SIZE = 50;
 /** Zabbix host.status — 0 monitorado, 1 desativado (não entra em ICMP/stats). */
 const ZABBIX_HOST_MONITORED = 0;
 
+/** hostid / ids do Zabbix podem vir como number no JSON — normaliza p/ string. */
+function asZabbixId(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+  return String(value).trim();
+}
+
 async function zabbixCall<T>(datasourceUid: string, method: string, params: object): Promise<T> {
   const response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
     `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
@@ -49,12 +57,12 @@ function addHostMeta(result: HostMetadataMap, h: ZabbixHost): void {
   const visible = h.name?.trim();
   const technical = h.host?.trim();
   const ip = pickMainIp(h.interfaces);
-  const hostid = h.hostid?.trim();
+  const hostid = asZabbixId(h.hostid);
   const name = visible || technical || '';
   if (!name && !hostid) {
     return;
   }
-  const entry: HostMetadataMap[string] = { name: name || hostid || '', ip, hostid };
+  const entry: HostMetadataMap[string] = { name: name || hostid || '', ip, hostid: hostid || undefined };
   if (hostid) {
     result[hostid] = entry;
   }
@@ -232,7 +240,7 @@ export async function fetchZabbixHostsInGroup(
       sortfield: 'name',
     });
     return (hosts ?? []).map((h) => ({
-      hostid: h.hostid?.trim() || '',
+      hostid: asZabbixId(h.hostid),
       visibleName: h.name?.trim() || h.host?.trim() || '',
       technicalName: h.host?.trim() || h.name?.trim() || '',
       ip: pickMainIp(h.interfaces),
@@ -301,15 +309,16 @@ interface ZabbixTriggerProblem {
 }
 
 function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost): void {
-  const hostid = h.hostid?.trim();
+  const hostid = asZabbixId(h.hostid);
   const visible = h.name?.trim();
   const technical = h.host?.trim();
   const bump = (key: string) => {
+    if (!key) {
+      return;
+    }
     result[key] = (result[key] ?? 0) + 1;
   };
-  if (hostid) {
-    bump(hostid);
-  }
+  bump(hostid);
   if (visible) {
     bump(visible);
   }
@@ -326,7 +335,7 @@ async function fetchHostIdsForProblems(
 ): Promise<{ hostIds: string[]; hosts: ZabbixHostRef[] }> {
   const merged = new Map<string, ZabbixHostRef>();
 
-  const ids = [...new Set((hostIds ?? []).map((h) => h.trim()).filter(Boolean))];
+  const ids = [...new Set((hostIds ?? []).map((h) => asZabbixId(h)).filter(Boolean))];
   if (ids.length) {
     for (const batch of chunk(ids, BATCH_SIZE)) {
       const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
@@ -334,7 +343,10 @@ async function fetchHostIdsForProblems(
         output: ['hostid', 'host', 'name'],
       });
       for (const h of hosts ?? []) {
-        merged.set(h.hostid, h);
+        const id = asZabbixId(h.hostid);
+        if (id) {
+          merged.set(id, { hostid: id, host: h.host, name: h.name });
+        }
       }
     }
   }
@@ -352,7 +364,10 @@ async function fetchHostIdsForProblems(
         output: ['hostid', 'host', 'name'],
       });
       for (const h of hosts ?? []) {
-        merged.set(h.hostid, h);
+        const id = asZabbixId(h.hostid);
+        if (id) {
+          merged.set(id, { hostid: id, host: h.host, name: h.name });
+        }
       }
     }
   }
@@ -368,7 +383,10 @@ async function fetchHostIdsForProblems(
       output: ['hostid', 'host', 'name'],
     });
     for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
-      merged.set(h.hostid, h);
+      const id = asZabbixId(h.hostid);
+      if (id) {
+        merged.set(id, { hostid: id, host: h.host, name: h.name });
+      }
     }
   }
 
@@ -389,7 +407,7 @@ export async function fetchZabbixHostProblems(
   }
 
   try {
-    const { hostIds: resolvedIds } = await fetchHostIdsForProblems(
+    const { hostIds: resolvedIds, hosts: resolvedHosts } = await fetchHostIdsForProblems(
       datasourceUid,
       groupName,
       hostNames,
@@ -398,35 +416,38 @@ export async function fetchZabbixHostProblems(
     if (!resolvedIds.length) {
       return result;
     }
+    const hostById = new Map(resolvedHosts.map((h) => [h.hostid, h]));
 
+    const absorbHosts = (hosts: ZabbixProblemHost[] | undefined) => {
+      for (const h of hosts ?? []) {
+        addProblemHost(result, h);
+        const id = asZabbixId(h.hostid);
+        const ref = id ? hostById.get(id) : undefined;
+        if (ref) {
+          addProblemHost(result, { hostid: ref.hostid, name: ref.name, host: ref.host });
+        }
+      }
+    };
+
+    // Triggers em PROBLEM (sem only_true/skipDependent — filtravam demais)
     try {
-      // problem.get não suporta selectHosts — usar trigger.get (triggers em estado PROBLEM)
       const triggers = await zabbixCall<ZabbixTriggerProblem[]>(datasourceUid, 'trigger.get', {
         hostids: resolvedIds,
         output: ['triggerid'],
         selectHosts: ['hostid', 'name', 'host'],
         filter: { value: 1 },
         monitored: true,
-        skipDependent: true,
-        only_true: true,
       });
-
       for (const trigger of triggers ?? []) {
-        for (const h of trigger.hosts ?? []) {
-          addProblemHost(result, h);
-        }
+        absorbHosts(trigger.hosts);
       }
     } catch {
-      // tenta event.get abaixo
+      // tenta event.get / problem.get
     }
 
     if (!Object.keys(result).length) {
-      interface ZabbixEventProblem {
-        eventid?: string;
-        hosts?: ZabbixProblemHost[];
-      }
       try {
-        const events = await zabbixCall<ZabbixEventProblem[]>(datasourceUid, 'event.get', {
+        const events = await zabbixCall<Array<{ hosts?: ZabbixProblemHost[] }>>(datasourceUid, 'event.get', {
           output: ['eventid'],
           hostids: resolvedIds,
           source: 0,
@@ -436,14 +457,13 @@ export async function fetchZabbixHostProblems(
           suppressed: false,
           sortfield: 'clock',
           sortorder: 'DESC',
+          limit: 200,
         });
         for (const event of events ?? []) {
-          for (const h of event.hosts ?? []) {
-            addProblemHost(result, h);
-          }
+          absorbHosts(event.hosts);
         }
       } catch {
-        // Sem events.get: mantém contagem só via problem.get
+        // Sem problemas Zabbix: mapa segue só com ICMP
       }
     }
   } catch {
@@ -484,41 +504,42 @@ function icmpItemsToStatusValue(items: ZabbixIcmpItem[], metric: TopologyStatusM
 
   for (const item of items) {
     const key = item.key_?.toLowerCase() ?? '';
-    const val = item.lastvalue;
-
+    const value = parseFloatOrNull(item.lastvalue);
+    if (value === null) {
+      continue;
+    }
     if (key.includes('icmppingloss')) {
-      lossPct = parseFloatOrNull(val);
+      lossPct = value;
     } else if (key.includes('icmppingsec')) {
-      rttSec = parseFloatOrNull(val);
+      rttSec = value;
     } else if (key.startsWith('icmpping')) {
-      const n = parseFloatOrNull(val);
-      if (n !== null) {
-        reachable = n >= 1;
-      }
+      reachable = value >= 1;
     }
   }
 
   if (metric === 'packet_loss') {
-    return lossPct !== null ? lossPct : undefined;
+    // RTT>0 = respondeu agora (ignora loss ainda atrasado em 100)
+    if (rttSec !== null && rttSec > 0) {
+      return 0;
+    }
+    if (lossPct !== null) {
+      return lossPct;
+    }
+    return reachable === null ? undefined : reachable ? 0 : 100;
   }
 
-  // icmpping=0 confirma offline; icmpping=1 prevalece sobre icmppingsec=0 (item dependente atrasado)
-  if (reachable === false) {
-    return 0;
-  }
-  if (reachable === true) {
-    return rttSec !== null && rttSec > 0 ? rttSec : 0.001;
-  }
-
-  // Sem item icmpping (só sec/loss): loss>=100 confirma offline; sec>0 confirma online.
-  // sec=0 com loss=0 é dado inválido/inicial — não marcar parado (evita falso positivo no overview).
-  if (lossPct !== null && lossPct >= 100) {
-    return 0;
-  }
+  // Prioridade: RTT>0 confirma online na hora; senão perda decide; senão icmpping;
+  // por último, sec<=0 sem mais nada ainda conta como offline.
   if (rttSec !== null && rttSec > 0) {
     return rttSec;
   }
-  return undefined;
+  if (lossPct !== null) {
+    return lossPct >= 100 ? 0 : 0.001;
+  }
+  if (reachable !== null) {
+    return reachable ? 0.001 : 0;
+  }
+  return rttSec !== null ? 0 : undefined;
 }
 
 interface ResolvedZabbixHost {
@@ -533,7 +554,7 @@ async function resolveZabbixHostsBatch(
   hostIds: string[] = []
 ): Promise<ResolvedZabbixHost[]> {
   const names = [...new Set(hostNames.map((h) => h.trim()).filter(Boolean))];
-  const ids = [...new Set(hostIds.map((h) => h.trim()).filter(Boolean))];
+  const ids = [...new Set(hostIds.map((h) => asZabbixId(h)).filter(Boolean))];
   const byId = new Map<string, ResolvedZabbixHost>();
 
   for (const batch of chunk(ids, BATCH_SIZE)) {
@@ -542,11 +563,12 @@ async function resolveZabbixHostsBatch(
       output: ['hostid', 'host', 'name'],
     });
     for (const h of hosts ?? []) {
-      if (!h.hostid) {
+      const hostid = asZabbixId(h.hostid);
+      if (!hostid) {
         continue;
       }
-      byId.set(h.hostid, {
-        hostid: h.hostid,
+      byId.set(hostid, {
+        hostid,
         visible: h.name?.trim(),
         technical: h.host?.trim(),
       });
@@ -566,16 +588,17 @@ async function resolveZabbixHostsBatch(
     ]);
 
     for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
-      if (!h.hostid) {
+      const hostid = asZabbixId(h.hostid);
+      if (!hostid) {
         continue;
       }
-      const existing = byId.get(h.hostid);
+      const existing = byId.get(hostid);
       if (existing) {
         existing.visible = existing.visible || h.name?.trim();
         existing.technical = existing.technical || h.host?.trim();
       } else {
-        byId.set(h.hostid, {
-          hostid: h.hostid,
+        byId.set(hostid, {
+          hostid,
           visible: h.name?.trim(),
           technical: h.host?.trim(),
         });
@@ -618,7 +641,7 @@ export async function fetchZabbixHostIcmpStatusMap(
       });
 
       for (const item of items ?? []) {
-        const hostid = item.hostid;
+        const hostid = asZabbixId(item.hostid);
         if (!hostid) {
           continue;
         }
@@ -797,13 +820,18 @@ export async function fetchHostIcmpStatus(
   }
 
   if (reachable === null) {
-    if (lossPct !== null) {
-      reachable = lossPct < 100;
-    } else if (rttMs !== null && rttMs > 0) {
+    // Prioridade alinhada ao mapa: RTT>0 vence loss atrasado
+    if (rttMs !== null && rttMs > 0) {
       reachable = true;
+    } else if (lossPct !== null) {
+      reachable = lossPct < 100;
     } else if (parsed !== undefined) {
       reachable = parsed > 0;
     }
+  } else if (rttMs !== null && rttMs > 0) {
+    reachable = true;
+  } else if (lossPct !== null && lossPct < 100) {
+    reachable = true;
   }
 
   return { reachable, lossPct, rttMs, lastClock };

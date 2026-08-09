@@ -244,7 +244,8 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addTextInput({
         path: 'zabbixDatasourceUid',
         name: 'Datasource UID',
-        description: 'UID do datasource Zabbix — status, IP e problemas vêm da API (aba Query não é necessária)',
+        description:
+          'UID do datasource Zabbix — status/problemas atualizam com o auto-refresh do dashboard (canto superior direito)',
         defaultValue: 'afkagcaezrrpca',
         category: ['Zabbix'],
       })

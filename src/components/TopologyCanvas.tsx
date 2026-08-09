@@ -33,7 +33,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -81,6 +81,10 @@ interface Props {
   hostMetadata?: HostMetadataMap;
   problemMap?: HostProblemMap;
   submapHosts?: Record<string, string[] | null | undefined>;
+  /** Segundos restantes até o próximo auto-refresh do dashboard */
+  refreshCountdown?: number | null;
+  /** Intervalo de auto-refresh do dashboard em segundos (null = off/manual) */
+  refreshIntervalSec?: number | null;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onUndo?: () => void;
@@ -340,23 +344,27 @@ function nodeFill(
     return node.fillColor || options.colorStatic;
   }
   const metric = effectiveStatusMetric(options);
-  const st = resolveNodeStatus(
-    node,
-    statusMap,
-    offlineThresholdForMetric(metric),
-    metric,
-    hostMetadata
-  );
-  // Offline ICMP tem prioridade sobre alerta Zabbix
-  if (st === 'offline') {
+  const threshold = offlineThresholdForMetric(metric);
+  const hostKey = node.zabbixHost?.trim() ?? '';
+  const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
+  const raw = lookupHostStatus(statusMap, hostKey, hostMetadata, hostId || undefined);
+  const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
+
+  // ICMP 0 (ou perda >= limiar) → offline vermelho na hora (nunca laranja)
+  const icmpDown =
+    raw !== null &&
+    raw !== undefined &&
+    (metric === 'packet_loss' ? raw >= threshold : raw <= 0);
+  if (st === 'offline' || icmpDown) {
     return options.colorOffline;
   }
-  const hostKey = node.zabbixHost?.trim();
-  const hostId = node.zabbixHostId?.trim();
+
+  // Laranja só se online no ICMP e com problema Zabbix
   if (
+    st === 'online' &&
     options.useZabbixProblems !== false &&
     (hostId || hostKey) &&
-    lookupProblemCount(problemMap, hostKey ?? '', hostId) > 0
+    lookupProblemCount(problemMap, hostKey, hostId || undefined) > 0
   ) {
     return options.colorAlert || '#EF6C00';
   }
@@ -376,6 +384,8 @@ export function TopologyCanvas({
   hostMetadata,
   problemMap = {},
   submapHosts = {},
+  refreshCountdown = null,
+  refreshIntervalSec = null,
   onMapChange,
   onViewChange,
   onUndo,
@@ -2750,7 +2760,11 @@ export function TopologyCanvas({
         </g>
       </svg>
 
-      <TopologyColorLegend items={legendItems} />
+      <TopologyColorLegend
+        items={legendItems}
+        refreshCountdown={refreshCountdown}
+        refreshIntervalSec={refreshIntervalSec}
+      />
 
       {contextMenu && (
         <TopologyContextMenu
