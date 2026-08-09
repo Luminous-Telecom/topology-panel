@@ -33,7 +33,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -352,10 +352,11 @@ function nodeFill(
     return options.colorOffline;
   }
   const hostKey = node.zabbixHost?.trim();
+  const hostId = node.zabbixHostId?.trim();
   if (
     options.useZabbixProblems !== false &&
-    hostKey &&
-    lookupProblemCount(problemMap, hostKey) > 0
+    (hostId || hostKey) &&
+    lookupProblemCount(problemMap, hostKey ?? '', hostId) > 0
   ) {
     return options.colorAlert || '#EF6C00';
   }
@@ -494,18 +495,19 @@ export function TopologyCanvas({
   const { nodeLayouts, regionStats } = useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
+      const liveNode = withLiveZabbixMeta(node, hostMetadata);
       const movePreview = dragPreview?.positions?.[node.id];
       const resizePreview =
         dragPreview?.nodeId === node.id && dragPreview.width !== undefined ? dragPreview : null;
       const positioned = movePreview
-        ? { ...node, x: movePreview.x, y: movePreview.y }
+        ? { ...liveNode, x: movePreview.x, y: movePreview.y }
         : resizePreview
           ? {
-              ...node,
-              width: resizePreview.width ?? node.width,
-              height: resizePreview.height ?? node.height,
+              ...liveNode,
+              width: resizePreview.width ?? liveNode.width,
+              height: resizePreview.height ?? liveNode.height,
             }
-          : node;
+          : liveNode;
       const layout =
         node.type === 'network'
           ? computeNetworkLayout(positioned, layoutOpts)
@@ -2790,8 +2792,8 @@ export function TopologyCanvas({
           datasourceUid={options.zabbixDatasourceUid}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
-          onConfirm={(visibleName, ip, icon) =>
-            persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon))
+          onConfirm={(visibleName, ip, icon, hostid) =>
+            persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon, hostid))
           }
         />
       )}
@@ -2802,10 +2804,11 @@ export function TopologyCanvas({
           datasourceUid={options.zabbixDatasourceUid}
           storedMap={storedMap}
           initialVisibleName={editZabbixHost.zabbixHost}
+          initialHostId={editZabbixHost.zabbixHostId}
           initialIcon={editZabbixHost.icon}
           onClose={() => setEditZabbixHost(null)}
-          onConfirm={(visibleName, ip, icon) =>
-            persist(rebindZabbixHost(storedMap, editZabbixHost.id, visibleName, ip, icon))
+          onConfirm={(visibleName, ip, icon, hostid) =>
+            persist(rebindZabbixHost(storedMap, editZabbixHost.id, visibleName, ip, icon, hostid))
           }
         />
       )}

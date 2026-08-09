@@ -47,8 +47,13 @@ export interface TopologyNode {
   /** Optional second line (IP or description) */
   subtitle?: string;
   /**
-   * Zabbix host name to match for status coloring.
-   * Required for type=host when a Zabbix query is configured.
+   * Zabbix hostid (vínculo estável — sobrevive a rename).
+   * Preferir este campo para status/problemas; zabbixHost fica como nome em cache.
+   */
+  zabbixHostId?: string;
+  /**
+   * Nome visível do host no Zabbix (cache para exibição / mapas legados).
+   * Atualizado automaticamente quando o nome muda no Zabbix.
    */
   zabbixHost?: string;
   type?: TopologyNodeType;
@@ -123,10 +128,11 @@ export interface TopologyMap {
   networksLocked?: boolean;
 }
 
-/** Host name -> display info from Zabbix */
+/** Host name ou hostid -> display info from Zabbix */
 export interface HostMetadata {
   name: string;
   ip?: string;
+  hostid?: string;
 }
 
 export type HostMetadataMap = Record<string, HostMetadata>;
@@ -287,10 +293,10 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   dashboardNavChoices: [],
 });
 
-/** Host name -> last status value (ICMP rtt em segundos, ou perda %) */
+/** Host name ou hostid -> last status value (ICMP rtt em segundos, ou perda %) */
 export type HostStatusMap = Record<string, number | null | undefined>;
 
-/** Host name -> active Zabbix problem count */
+/** Host name ou hostid -> active Zabbix problem count */
 export type HostProblemMap = Record<string, number>;
 
 export function parseTopologyJson(raw: string): TopologyMap | null {

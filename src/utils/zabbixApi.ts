@@ -49,11 +49,20 @@ function addHostMeta(result: HostMetadataMap, h: ZabbixHost): void {
   const visible = h.name?.trim();
   const technical = h.host?.trim();
   const ip = pickMainIp(h.interfaces);
+  const hostid = h.hostid?.trim();
+  const name = visible || technical || '';
+  if (!name && !hostid) {
+    return;
+  }
+  const entry: HostMetadataMap[string] = { name: name || hostid || '', ip, hostid };
+  if (hostid) {
+    result[hostid] = entry;
+  }
   if (visible) {
-    result[visible] = { name: visible, ip };
+    result[visible] = entry;
   }
   if (technical) {
-    result[technical] = { name: visible || technical, ip };
+    result[technical] = entry;
   }
 }
 
@@ -78,7 +87,7 @@ async function fetchByVisibleNames(
   for (const batch of chunk(missing, BATCH_SIZE)) {
     const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
       filter: { name: batch, status: ZABBIX_HOST_MONITORED },
-      output: ['host', 'name'],
+      output: ['hostid', 'host', 'name'],
       selectInterfaces: ['ip', 'main', 'type'],
     });
     for (const h of hosts ?? []) {
@@ -112,7 +121,7 @@ async function fetchByGroup(
   const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
     groupids: [groupId],
     filter: { status: ZABBIX_HOST_MONITORED },
-    output: ['host', 'name'],
+    output: ['hostid', 'host', 'name'],
     selectInterfaces: ['ip', 'main', 'type'],
   });
 
@@ -129,19 +138,45 @@ async function fetchByGroup(
 export async function fetchZabbixHostMetadata(
   datasourceUid: string,
   groupName: string | undefined,
-  hostNames: string[]
+  hostNames: string[],
+  hostIds: string[] = []
 ): Promise<HostMetadataMap> {
   const result: HostMetadataMap = {};
-  if (!datasourceUid || !hostNames.length) {
+  if (!datasourceUid || (!hostNames.length && !hostIds.length)) {
     return result;
   }
 
   const names = hostNames.map((h) => h.trim()).filter(Boolean);
+  const ids = [...new Set(hostIds.map((h) => h.trim()).filter(Boolean))];
 
   try {
-    await fetchByVisibleNames(datasourceUid, names, result);
-    if (groupName) {
-      await fetchByGroup(datasourceUid, groupName, names, result);
+    for (const batch of chunk(ids, BATCH_SIZE)) {
+      const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        hostids: batch,
+        output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
+      });
+      for (const h of hosts ?? []) {
+        addHostMeta(result, h);
+      }
+    }
+    if (names.length) {
+      await fetchByVisibleNames(datasourceUid, names, result);
+      // Fallback por nome técnico
+      const stillMissing = names.filter((n) => !result[n.trim()]);
+      for (const batch of chunk(stillMissing, BATCH_SIZE)) {
+        const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+          filter: { host: batch, status: ZABBIX_HOST_MONITORED },
+          output: ['hostid', 'host', 'name'],
+          selectInterfaces: ['ip', 'main', 'type'],
+        });
+        for (const h of hosts ?? []) {
+          addHostMeta(result, h);
+        }
+      }
+      if (groupName) {
+        await fetchByGroup(datasourceUid, groupName, names, result);
+      }
     }
   } catch {
     // Sem metadados da API: mantém o que já veio no layout/query
@@ -156,6 +191,8 @@ export interface ZabbixGroupOption {
 }
 
 export interface ZabbixHostOption {
+  /** hostid Zabbix (vínculo estável) */
+  hostid: string;
   /** Nome visível (usado na query Zabbix / status) */
   visibleName: string;
   /** Nome técnico do host */
@@ -190,15 +227,16 @@ export async function fetchZabbixHostsInGroup(
   try {
     const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
       groupids: [groupId],
-      output: ['host', 'name'],
+      output: ['hostid', 'host', 'name'],
       selectInterfaces: ['ip', 'main', 'type'],
       sortfield: 'name',
     });
     return (hosts ?? []).map((h) => ({
+      hostid: h.hostid?.trim() || '',
       visibleName: h.name?.trim() || h.host?.trim() || '',
       technicalName: h.host?.trim() || h.name?.trim() || '',
       ip: pickMainIp(h.interfaces),
-    })).filter((h) => h.visibleName);
+    })).filter((h) => h.hostid && h.visibleName);
   } catch {
     return [];
   }
@@ -207,24 +245,36 @@ export async function fetchZabbixHostsInGroup(
 /** Grupos Zabbix aos quais um host pertence (para edição). */
 export async function fetchZabbixGroupsForHost(
   datasourceUid: string,
-  visibleName: string
+  visibleName: string,
+  hostId?: string
 ): Promise<ZabbixGroupOption[]> {
-  if (!datasourceUid || !visibleName.trim()) {
+  if (!datasourceUid || (!visibleName.trim() && !hostId?.trim())) {
     return [];
   }
   try {
-    const key = visibleName.trim();
-    let hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
-      filter: { name: [key] },
-      output: ['hostid'],
-      selectGroups: ['groupid', 'name'],
-    });
-    if (!hosts?.length) {
+    let hosts: Array<{ groups?: ZabbixHostGroup[] }> | undefined;
+    const id = hostId?.trim();
+    if (id) {
       hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
-        filter: { host: [key] },
+        hostids: [id],
         output: ['hostid'],
         selectGroups: ['groupid', 'name'],
       });
+    }
+    if (!hosts?.length) {
+      const key = visibleName.trim();
+      hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
+        filter: { name: [key] },
+        output: ['hostid'],
+        selectGroups: ['groupid', 'name'],
+      });
+      if (!hosts?.length) {
+        hosts = await zabbixCall<Array<{ groups?: ZabbixHostGroup[] }>>(datasourceUid, 'host.get', {
+          filter: { host: [key] },
+          output: ['hostid'],
+          selectGroups: ['groupid', 'name'],
+        });
+      }
     }
     const groups = hosts?.[0]?.groups ?? [];
     return groups.map((g) => ({ groupid: g.groupid, name: g.name }));
@@ -251,37 +301,60 @@ interface ZabbixTriggerProblem {
 }
 
 function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost): void {
+  const hostid = h.hostid?.trim();
   const visible = h.name?.trim();
   const technical = h.host?.trim();
+  const bump = (key: string) => {
+    result[key] = (result[key] ?? 0) + 1;
+  };
+  if (hostid) {
+    bump(hostid);
+  }
   if (visible) {
-    result[visible] = (result[visible] ?? 0) + 1;
+    bump(visible);
   }
   if (technical) {
-    result[technical] = (result[technical] ?? 0) + 1;
+    bump(technical);
   }
 }
 
 async function fetchHostIdsForProblems(
   datasourceUid: string,
   groupName?: string,
-  hostNames?: string[]
+  hostNames?: string[],
+  hostIds?: string[]
 ): Promise<{ hostIds: string[]; hosts: ZabbixHostRef[] }> {
+  const merged = new Map<string, ZabbixHostRef>();
+
+  const ids = [...new Set((hostIds ?? []).map((h) => h.trim()).filter(Boolean))];
+  if (ids.length) {
+    for (const batch of chunk(ids, BATCH_SIZE)) {
+      const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+        hostids: batch,
+        output: ['hostid', 'host', 'name'],
+      });
+      for (const h of hosts ?? []) {
+        merged.set(h.hostid, h);
+      }
+    }
+  }
+
   if (groupName) {
     const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
       filter: { name: [groupName] },
       output: ['groupid'],
     });
     const groupId = groups?.[0]?.groupid;
-    if (!groupId) {
-      return { hostIds: [], hosts: [] };
+    if (groupId) {
+      const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+        groupids: [groupId],
+        filter: { status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+      });
+      for (const h of hosts ?? []) {
+        merged.set(h.hostid, h);
+      }
     }
-    const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
-      groupids: [groupId],
-      filter: { status: ZABBIX_HOST_MONITORED },
-      output: ['hostid', 'host', 'name'],
-    });
-    const list = hosts ?? [];
-    return { hostIds: list.map((h) => h.hostid), hosts: list };
   }
 
   if (hostNames?.length) {
@@ -294,22 +367,21 @@ async function fetchHostIdsForProblems(
       filter: { host: names, status: ZABBIX_HOST_MONITORED },
       output: ['hostid', 'host', 'name'],
     });
-    const merged = new Map<string, ZabbixHostRef>();
     for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
       merged.set(h.hostid, h);
     }
-    const list = [...merged.values()];
-    return { hostIds: list.map((h) => h.hostid), hosts: list };
   }
 
-  return { hostIds: [], hosts: [] };
+  const list = [...merged.values()];
+  return { hostIds: list.map((h) => h.hostid), hosts: list };
 }
 
-/** Problemas ativos no Zabbix por nome de host (visível e técnico). */
+/** Problemas ativos no Zabbix por hostid e/ou nome (visível e técnico). */
 export async function fetchZabbixHostProblems(
   datasourceUid: string,
   groupName?: string,
-  hostNames?: string[]
+  hostNames?: string[],
+  hostIds?: string[]
 ): Promise<HostProblemMap> {
   const result: HostProblemMap = {};
   if (!datasourceUid) {
@@ -317,17 +389,22 @@ export async function fetchZabbixHostProblems(
   }
 
   try {
-    const { hostIds } = await fetchHostIdsForProblems(datasourceUid, groupName, hostNames);
-    if (!hostIds.length) {
+    const { hostIds: resolvedIds } = await fetchHostIdsForProblems(
+      datasourceUid,
+      groupName,
+      hostNames,
+      hostIds
+    );
+    if (!resolvedIds.length) {
       return result;
     }
 
     try {
       // problem.get não suporta selectHosts — usar trigger.get (triggers em estado PROBLEM)
       const triggers = await zabbixCall<ZabbixTriggerProblem[]>(datasourceUid, 'trigger.get', {
-        hostids: hostIds,
+        hostids: resolvedIds,
         output: ['triggerid'],
-        selectHosts: ['name', 'host'],
+        selectHosts: ['hostid', 'name', 'host'],
         filter: { value: 1 },
         monitored: true,
         skipDependent: true,
@@ -351,11 +428,11 @@ export async function fetchZabbixHostProblems(
       try {
         const events = await zabbixCall<ZabbixEventProblem[]>(datasourceUid, 'event.get', {
           output: ['eventid'],
-          hostids: hostIds,
+          hostids: resolvedIds,
           source: 0,
           object: 0,
           value: 1,
-          selectHosts: ['name', 'host'],
+          selectHosts: ['hostid', 'name', 'host'],
           suppressed: false,
           sortfield: 'clock',
           sortorder: 'DESC',
@@ -452,10 +529,29 @@ interface ResolvedZabbixHost {
 
 async function resolveZabbixHostsBatch(
   datasourceUid: string,
-  hostNames: string[]
+  hostNames: string[],
+  hostIds: string[] = []
 ): Promise<ResolvedZabbixHost[]> {
   const names = [...new Set(hostNames.map((h) => h.trim()).filter(Boolean))];
+  const ids = [...new Set(hostIds.map((h) => h.trim()).filter(Boolean))];
   const byId = new Map<string, ResolvedZabbixHost>();
+
+  for (const batch of chunk(ids, BATCH_SIZE)) {
+    const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+      hostids: batch,
+      output: ['hostid', 'host', 'name'],
+    });
+    for (const h of hosts ?? []) {
+      if (!h.hostid) {
+        continue;
+      }
+      byId.set(h.hostid, {
+        hostid: h.hostid,
+        visible: h.name?.trim(),
+        technical: h.host?.trim(),
+      });
+    }
+  }
 
   for (const batch of chunk(names, BATCH_SIZE)) {
     const [byVisible, byTechnical] = await Promise.all([
@@ -494,15 +590,16 @@ async function resolveZabbixHostsBatch(
 export async function fetchZabbixHostIcmpStatusMap(
   datasourceUid: string,
   hostNames: string[],
-  metric: TopologyStatusMetric = 'icmp_rtt'
+  metric: TopologyStatusMetric = 'icmp_rtt',
+  hostIds: string[] = []
 ): Promise<HostStatusMap> {
   const result: HostStatusMap = {};
-  if (!datasourceUid || !hostNames.length) {
+  if (!datasourceUid || (!hostNames.length && !hostIds.length)) {
     return result;
   }
 
   try {
-    const hosts = await resolveZabbixHostsBatch(datasourceUid, hostNames);
+    const hosts = await resolveZabbixHostsBatch(datasourceUid, hostNames, hostIds);
     if (!hosts.length) {
       return result;
     }
@@ -536,6 +633,7 @@ export async function fetchZabbixHostIcmpStatusMap(
       if (value === undefined) {
         continue;
       }
+      result[host.hostid] = value;
       if (host.visible) {
         result[host.visible] = value;
       }

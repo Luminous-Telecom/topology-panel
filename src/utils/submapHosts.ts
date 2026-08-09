@@ -34,7 +34,7 @@ export function isIncludedInParentStats(node: { includeInParentStats?: boolean; 
   return true;
 }
 
-/** Hosts type=host do mapa (mesma regra do build_dashboard.py / map_stats_hosts). */
+/** Hosts type=host do mapa — prefer hostid (estável), senão nome. */
 export function extractTopologyHostNames(map: TopologyMap): string[] {
   const seen = new Set<string>();
   const hosts: string[] = [];
@@ -45,18 +45,54 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
       continue;
     }
     const name = node.zabbixHost?.trim();
-    if (!name || hidden.has(name)) {
+    const hostId = node.zabbixHostId?.trim();
+    if (name && hidden.has(name)) {
       continue;
     }
-    const key = name.toLowerCase();
-    if (seen.has(key)) {
+    // Chave estável para stats/ICMP; nome só como fallback (mapas legados)
+    const key = hostId || name;
+    if (!key) {
       continue;
     }
-    seen.add(key);
-    hosts.push(name);
+    const dedupe = key.toLowerCase();
+    if (seen.has(dedupe)) {
+      continue;
+    }
+    seen.add(dedupe);
+    hosts.push(key);
   }
 
   return hosts;
+}
+
+/** Extrai hostids e nomes separados (para API Zabbix). */
+export function extractTopologyHostRefs(map: TopologyMap): { hostIds: string[]; hostNames: string[] } {
+  const hostIds: string[] = [];
+  const hostNames: string[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
+
+  for (const node of map.nodes ?? []) {
+    if ((node.type ?? 'host') !== 'host') {
+      continue;
+    }
+    const name = node.zabbixHost?.trim();
+    const hostId = node.zabbixHostId?.trim();
+    if (name && hidden.has(name)) {
+      continue;
+    }
+    if (hostId && !seenIds.has(hostId)) {
+      seenIds.add(hostId);
+      hostIds.push(hostId);
+    }
+    if (name && !seenNames.has(name.toLowerCase())) {
+      seenNames.add(name.toLowerCase());
+      hostNames.push(name);
+    }
+  }
+
+  return { hostIds, hostNames };
 }
 
 /**

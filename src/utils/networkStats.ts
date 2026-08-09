@@ -47,6 +47,10 @@ export function formatRegionStats(
 }
 
 function hostStatusKey(node: TopologyNode): string | undefined {
+  const hostId = node.zabbixHostId?.trim();
+  if (hostId) {
+    return hostId;
+  }
   const key = node.zabbixHost?.trim();
   return key || undefined;
 }
@@ -63,7 +67,7 @@ function resolveRegionHostStatus(
   if (!key) {
     return 'unknown';
   }
-  return resolveNodeStatus({ zabbixHost: key, type: 'host' }, statusMap, threshold, metric, hostMetadata);
+  return resolveNodeStatus({ zabbixHost: key, zabbixHostId: key, type: 'host' }, statusMap, threshold, metric, hostMetadata);
 }
 
 export function countRegionStats(
@@ -92,7 +96,8 @@ export function countRegionStats(
     seen.add(key.toLowerCase());
 
     const st = resolveRegionHostStatus(key, statusMap, threshold, metric, options?.hostMetadata);
-    const hasAlert = lookupProblemCount(problemMap, key) > 0;
+    const meta = options?.hostMetadata?.[key];
+    const hasAlert = lookupProblemCount(problemMap, key, meta?.hostid) > 0;
 
     if (st === 'offline') {
       offline++;

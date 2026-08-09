@@ -17,25 +17,36 @@ interface Props {
   storedMap: TopologyMap;
   /** Host Zabbix atual (modo editar) */
   initialVisibleName?: string;
+  /** hostid Zabbix atual (modo editar) */
+  initialHostId?: string;
   /** Ícone atual (modo editar) */
   initialIcon?: TopologyHostIcon;
-  onConfirm: (visibleName: string, ip: string | undefined, icon: TopologyHostIcon) => void;
+  onConfirm: (visibleName: string, ip: string | undefined, icon: TopologyHostIcon, hostid: string) => void;
   onClose: () => void;
 }
 
-function hostsAlreadyOnMap(map: TopologyMap, except?: string): Set<string> {
-  const keys = new Set<string>();
-  const skip = except?.trim();
+function hostsAlreadyOnMap(map: TopologyMap, exceptName?: string, exceptHostId?: string): {
+  names: Set<string>;
+  hostIds: Set<string>;
+} {
+  const names = new Set<string>();
+  const hostIds = new Set<string>();
+  const skipName = exceptName?.trim();
+  const skipId = exceptHostId?.trim();
   for (const node of map.nodes) {
     if ((node.type ?? 'host') !== 'host') {
       continue;
     }
     const z = node.zabbixHost?.trim();
-    if (z && z !== skip) {
-      keys.add(z);
+    const id = node.zabbixHostId?.trim();
+    if (z && z !== skipName) {
+      names.add(z);
+    }
+    if (id && id !== skipId) {
+      hostIds.add(id);
     }
   }
-  return keys;
+  return { names, hostIds };
 }
 
 export function ZabbixHostPickerModal({
@@ -44,6 +55,7 @@ export function ZabbixHostPickerModal({
   defaultGroup,
   storedMap,
   initialVisibleName,
+  initialHostId,
   initialIcon,
   onConfirm,
   onClose,
@@ -58,8 +70,13 @@ export function ZabbixHostPickerModal({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const onMap = useMemo(
-    () => hostsAlreadyOnMap(storedMap, mode === 'edit' ? initialVisibleName : undefined),
-    [storedMap, mode, initialVisibleName]
+    () =>
+      hostsAlreadyOnMap(
+        storedMap,
+        mode === 'edit' ? initialVisibleName : undefined,
+        mode === 'edit' ? initialHostId : undefined
+      ),
+    [storedMap, mode, initialVisibleName, initialHostId]
   );
 
   useEffect(() => {
@@ -84,8 +101,12 @@ export function ZabbixHostPickerModal({
       }
 
       let preferredId: string | undefined;
-      if (mode === 'edit' && initialVisibleName) {
-        const hostGroups = await fetchZabbixGroupsForHost(datasourceUid, initialVisibleName);
+      if (mode === 'edit' && (initialVisibleName || initialHostId)) {
+        const hostGroups = await fetchZabbixGroupsForHost(
+          datasourceUid,
+          initialVisibleName ?? '',
+          initialHostId
+        );
         if (hostGroups.length) {
           preferredId = hostGroups[0].groupid;
         }
@@ -99,7 +120,7 @@ export function ZabbixHostPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, defaultGroup, mode, initialVisibleName]);
+  }, [datasourceUid, defaultGroup, mode, initialVisibleName, initialHostId]);
 
   useEffect(() => {
     if (!datasourceUid || !groupId) {
@@ -115,8 +136,10 @@ export function ZabbixHostPickerModal({
       }
       setHosts(list);
       setLoadingHosts(false);
-      if (mode === 'edit' && initialVisibleName) {
-        const match = list.find((h) => h.visibleName === initialVisibleName);
+      if (mode === 'edit') {
+        const match =
+          (initialHostId && list.find((h) => h.hostid === initialHostId)) ||
+          (initialVisibleName && list.find((h) => h.visibleName === initialVisibleName));
         if (match) {
           setHostName(match.visibleName);
         }
@@ -125,18 +148,18 @@ export function ZabbixHostPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, groupId, mode, initialVisibleName]);
+  }, [datasourceUid, groupId, mode, initialVisibleName, initialHostId]);
 
   const groupOptions = groups.map((g) => ({ label: g.name, value: g.groupid }));
   const hostOptions = hosts
-    .filter((h) => !onMap.has(h.visibleName))
+    .filter((h) => !onMap.hostIds.has(h.hostid) && !onMap.names.has(h.visibleName))
     .map((h) => ({
       label: h.ip ? `${h.visibleName} (${h.ip})` : h.visibleName,
       value: h.visibleName,
     }));
 
   const selectedHost = hosts.find((h) => h.visibleName === hostName);
-  const canConfirm = Boolean(hostName && selectedHost);
+  const canConfirm = Boolean(hostName && selectedHost?.hostid);
   const title = mode === 'edit' ? 'Editar host Zabbix' : 'Adicionar host Zabbix';
   const confirmLabel = mode === 'edit' ? 'Salvar' : 'Adicionar';
 
@@ -158,7 +181,7 @@ export function ZabbixHostPickerModal({
               placeholder="Selecione o grupo"
             />
           </Field>
-          <Field label="Host" description={loadError ?? 'Nome e IP vêm do Zabbix'}>
+          <Field label="Host" description={loadError ?? 'Vinculado pelo hostid do Zabbix (renomear não quebra o mapa)'}>
             <Select
               options={hostOptions}
               value={hostName}
@@ -191,8 +214,8 @@ export function ZabbixHostPickerModal({
         <Button
           disabled={!canConfirm}
           onClick={() => {
-            if (selectedHost) {
-              onConfirm(selectedHost.visibleName, selectedHost.ip, icon);
+            if (selectedHost?.hostid) {
+              onConfirm(selectedHost.visibleName, selectedHost.ip, icon, selectedHost.hostid);
               onClose();
             }
           }}

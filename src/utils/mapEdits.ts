@@ -333,14 +333,15 @@ export function addManualDeviceAt(map: TopologyMap, x: number, y: number, label 
   return { ...map, nodes: [...map.nodes, node] };
 }
 
-/** Adiciona host Zabbix pelo nome visível (selecionado na API). */
+/** Adiciona host Zabbix pelo hostid (vínculo estável) + nome visível. */
 export function addZabbixHostAt(
   map: TopologyMap,
   x: number,
   y: number,
   visibleName: string,
   ip?: string,
-  icon?: TopologyNode['icon']
+  icon?: TopologyNode['icon'],
+  zabbixHostId?: string
 ): TopologyMap {
   const key = visibleName.trim();
   if (!key) {
@@ -354,6 +355,7 @@ export function addZabbixHostAt(
     subtitle: ip?.trim() || undefined,
     type: 'host',
     icon,
+    zabbixHostId: zabbixHostId?.trim() || undefined,
   });
   return {
     ...next,
@@ -367,7 +369,8 @@ export function rebindZabbixHost(
   nodeId: string,
   newVisibleName: string,
   ip?: string,
-  icon?: TopologyNode['icon']
+  icon?: TopologyNode['icon'],
+  zabbixHostId?: string
 ): TopologyMap {
   const node = map.nodes.find((n) => n.id === nodeId);
   if (!node) {
@@ -397,6 +400,7 @@ export function rebindZabbixHost(
     subtitle: ip?.trim() || node.subtitle,
     type: 'host',
     icon: icon ?? node.icon,
+    zabbixHostId: zabbixHostId?.trim() || undefined,
   });
 
   return {

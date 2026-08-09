@@ -36,29 +36,55 @@ export function resolveStatusFromValue(
   return v <= 0 ? 'offline' : 'online';
 }
 
-/** Busca valor de status por nome visível/técnico (case-insensitive + aliases do metadata). */
+/** Busca valor de status por hostid, nome visível/técnico (case-insensitive + aliases do metadata). */
 export function lookupHostStatus(
   statusMap: HostStatusMap,
   host: string,
-  metadata?: HostMetadataMap
+  metadata?: HostMetadataMap,
+  hostId?: string
 ): number | null | undefined {
+  const id = hostId?.trim();
+  if (id) {
+    const byId = statusMap[id];
+    if (byId !== null && byId !== undefined) {
+      return byId;
+    }
+  }
+
   const key = host.trim();
-  if (!key) {
+  if (!key && !id) {
     return undefined;
   }
 
-  const candidates = new Set<string>([key]);
-  const meta = metadata?.[key];
+  const candidates = new Set<string>();
+  if (key) {
+    candidates.add(key);
+  }
+  if (id) {
+    candidates.add(id);
+    const byHostId = metadata?.[id];
+    if (byHostId?.name?.trim()) {
+      candidates.add(byHostId.name.trim());
+    }
+  }
+  const meta = key ? metadata?.[key] : undefined;
   if (meta?.name?.trim()) {
     candidates.add(meta.name.trim());
+  }
+  if (meta?.hostid?.trim()) {
+    candidates.add(meta.hostid.trim());
   }
   for (const [metaKey, entry] of Object.entries(metadata ?? {})) {
     const mk = metaKey.trim();
     const mn = entry.name?.trim();
-    if (mk === key || mn === key) {
+    const mid = entry.hostid?.trim();
+    if (mk === key || mn === key || (id && (mk === id || mid === id))) {
       candidates.add(mk);
       if (mn) {
         candidates.add(mn);
+      }
+      if (mid) {
+        candidates.add(mid);
       }
     }
   }
@@ -70,17 +96,27 @@ export function lookupHostStatus(
     }
   }
 
-  const lower = key.toLowerCase();
-  for (const [name, v] of Object.entries(statusMap)) {
-    if (v !== null && v !== undefined && name.toLowerCase() === lower) {
-      return v;
+  if (key) {
+    const lower = key.toLowerCase();
+    for (const [name, v] of Object.entries(statusMap)) {
+      if (v !== null && v !== undefined && name.toLowerCase() === lower) {
+        return v;
+      }
     }
   }
 
   return undefined;
 }
 
-export function lookupProblemCount(problemMap: HostProblemMap, host: string): number {
+export function lookupProblemCount(
+  problemMap: HostProblemMap,
+  host: string,
+  hostId?: string
+): number {
+  const id = hostId?.trim();
+  if (id && (problemMap[id] ?? 0) > 0) {
+    return problemMap[id];
+  }
   const key = host.trim();
   if (!key) {
     return 0;
@@ -108,6 +144,7 @@ export function hostToNodeId(host: string): string {
 
 export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Partial<TopologyNode>): TopologyMap {
   const key = zabbixHost.trim();
+  const hostId = patch.zabbixHostId?.trim();
   const layoutPatch: Partial<TopologyNode> = {};
   if (patch.x !== undefined) {
     layoutPatch.x = patch.x;
@@ -133,6 +170,9 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   if (patch.subtitle !== undefined) {
     layoutPatch.subtitle = patch.subtitle;
   }
+  if (patch.zabbixHostId !== undefined) {
+    layoutPatch.zabbixHostId = patch.zabbixHostId?.trim() || undefined;
+  }
   if ('toolUsername' in patch) {
     layoutPatch.toolUsername = patch.toolUsername?.trim() || undefined;
   }
@@ -142,10 +182,22 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   }
 
   const nodes = [...map.nodes];
-  const idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key);
+  let idx = -1;
+  if (hostId) {
+    idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHostId?.trim() === hostId);
+  }
+  if (idx < 0) {
+    idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key);
+  }
 
   if (idx >= 0) {
-    const merged: TopologyNode = { ...nodes[idx], ...layoutPatch, zabbixHost: key, type: 'host' };
+    const merged: TopologyNode = {
+      ...nodes[idx],
+      ...layoutPatch,
+      zabbixHost: key,
+      type: 'host',
+      zabbixHostId: hostId || nodes[idx].zabbixHostId,
+    };
     if ('toolUsername' in patch && !merged.toolUsername) {
       delete merged.toolUsername;
     }
@@ -157,6 +209,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
     nodes.push({
       id: hostToNodeId(key),
       zabbixHost: key,
+      zabbixHostId: hostId,
       type: 'host',
       x: 100,
       y: 100,
@@ -173,7 +226,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
 }
 
 export function resolveNodeStatus(
-  node: { zabbixHost?: string; type?: string },
+  node: { zabbixHost?: string; zabbixHostId?: string; type?: string },
   statusMap: HostStatusMap,
   threshold: number,
   metric: TopologyStatusMetric = 'icmp_rtt',
@@ -187,15 +240,47 @@ export function resolveNodeStatus(
   ) {
     return 'unknown';
   }
+  const hostId = node.zabbixHostId?.trim();
   const key = node.zabbixHost?.trim();
-  if (!key) {
+  if (!key && !hostId) {
     return 'unknown';
   }
-  const v = lookupHostStatus(statusMap, key, metadata);
+  const v = lookupHostStatus(statusMap, key ?? '', metadata, hostId);
   if (v === null || v === undefined) {
     return 'unknown';
   }
   return resolveStatusFromValue(v, threshold, metric);
+}
+
+/** Overlay do nome/IP atuais do Zabbix (sem alterar o mapa persistido). */
+export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMap): TopologyNode {
+  if ((node.type ?? 'host') !== 'host' || !metadata) {
+    return node;
+  }
+  const hostId = node.zabbixHostId?.trim();
+  const name = node.zabbixHost?.trim();
+  const entry = (hostId && metadata[hostId]) || (name ? metadata[name] : undefined);
+  if (!entry?.name?.trim()) {
+    return node;
+  }
+  const nextName = entry.name.trim();
+  const nextIp = entry.ip?.trim();
+  const nextId = entry.hostid?.trim() || hostId;
+  if (
+    nextName === (node.label?.trim() || name) &&
+    nextName === name &&
+    (nextIp || '') === (node.subtitle?.trim() || '') &&
+    nextId === hostId
+  ) {
+    return node;
+  }
+  return {
+    ...node,
+    label: nextName,
+    zabbixHost: nextName,
+    zabbixHostId: nextId || node.zabbixHostId,
+    subtitle: nextIp || node.subtitle,
+  };
 }
 
 export function clamp(n: number, min: number, max: number): number {
