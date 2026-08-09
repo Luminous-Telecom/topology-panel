@@ -56,20 +56,11 @@ bash scripts/deploy.sh
 
 ## Troubleshooting — mapa "preso" numa cor antiga (não acompanha o Zabbix)
 
-O datasource **Zabbix (`alexanderzobnin-zabbix-datasource`)** cacheia no próprio backend as respostas de
-`item.get` e `host.get` (entre outros métodos — ver `cachedMethods` em
-[`pkg/zabbix/cache.go`](https://github.com/grafana/grafana-zabbix/blob/main/pkg/zabbix/cache.go)),
-com **TTL padrão de 1h**. Como o painel lê o status ICMP via `item.get`, uma queda/recuperação real do
-equipamento pode não aparecer no mapa até esse cache expirar — só reiniciar o `grafana-server` limpa o
-cache na hora (bug conhecido: [grafana/grafana-zabbix#1891](https://github.com/grafana/grafana-zabbix/issues/1891)).
+Status online/offline vem **só da aba Query** do painel (mesmo caminho do gráfico Time series). Confira:
 
-**Como diminuir o TTL:**
+1. Query Zabbix com o item certo (`icmppingsec` ou `icmppingloss`) + Reduce Last se for tabela
+2. Auto-refresh do dashboard baixo o bastante (ex.: `10s`)
+3. Campos **Campo host** / **Campo status** batendo com as colunas da Query
 
-1. Grafana → **Connections/Configuration → Data sources** → abra o datasource Zabbix usado no mapa.
-2. Role até a seção de configurações da API Zabbix e procure o campo **"Cache TTL"** (pode estar em branco,
-   o que já assume o padrão de `1h`).
-3. Mude para um valor baixo, ex.: `10s` ou `30s`.
-4. **Save & Test**.
-
-Isso não é algo corrigível no código do `topology-panel` — o cache acontece no backend do datasource,
-antes da chamada chegar no Zabbix de verdade.
+Problemas (laranja), metadata e picker ainda usam a API do datasource; o cache TTL do Zabbix
+datasource pode atrasar só esses recursos, não a cor online/offline da Query.

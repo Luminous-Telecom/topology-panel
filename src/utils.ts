@@ -1,4 +1,7 @@
+import { DataFrame, FieldType, LoadingState, PanelData } from '@grafana/data';
 import {
+  HostDisplayInfo,
+  HostDisplayMap,
   HostMetadataMap,
   HostProblemMap,
   HostStatusMap,
@@ -12,11 +15,56 @@ import {
 } from './types';
 import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions, hostIconRenderSize } from './utils/hostIcons';
 
-/** Métrica efetiva de status (ICMP via API Zabbix). */
+/** Métrica pelo item_key cru da Query Zabbix (sem transform / sem opções). */
 export function effectiveStatusMetric(
-  options: Pick<TopologyPanelOptions, 'statusMetric'>
+  _options?: Pick<TopologyPanelOptions, 'statusMetric'>,
+  data?: PanelData
 ): TopologyStatusMetric {
-  return options.statusMetric === 'packet_loss' ? 'packet_loss' : 'icmp_rtt';
+  for (const frame of data?.series ?? []) {
+    for (const field of frame.fields ?? []) {
+      const key = String(field.labels?.item_key ?? field.labels?.key_ ?? '').trim().toLowerCase();
+      if (key.includes('icmppingloss')) {
+        return 'packet_loss';
+      }
+      if (key.includes('icmppingsec') || key === 'icmpping') {
+        return 'icmp_rtt';
+      }
+    }
+  }
+  return 'icmp_rtt';
+}
+
+/** UID do datasource Zabbix a partir das queries do painel (aba Query). */
+export function resolveZabbixDatasourceUid(data?: PanelData): string | undefined {
+  if (!data) {
+    return undefined;
+  }
+
+  const targets = data.request?.targets ?? [];
+  for (const target of targets) {
+    const ds = target.datasource as string | { uid?: string; type?: string } | undefined;
+    if (typeof ds === 'string') {
+      const uid = ds.trim();
+      if (uid && !uid.startsWith('--')) {
+        return uid;
+      }
+      continue;
+    }
+    const uid = ds?.uid?.trim();
+    if (uid && !uid.startsWith('--')) {
+      return uid;
+    }
+  }
+
+  for (const frame of data.series ?? []) {
+    const meta = frame.meta as { custom?: { datasourceUid?: string }; datasourceUid?: string } | undefined;
+    const uid = meta?.custom?.datasourceUid?.trim() || meta?.datasourceUid?.trim();
+    if (uid) {
+      return uid;
+    }
+  }
+
+  return undefined;
 }
 
 /** Limiar de perda (%) para marcar offline — só em modo perda de pacotes. */
@@ -140,6 +188,277 @@ export function hostToNodeId(host: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function panelDataFromFrames(frames: DataFrame[]): PanelData {
+  return {
+    series: frames,
+    state: LoadingState.Done,
+    timeRange: { from: 0 as any, to: 0 as any, raw: { from: 'now-5m', to: 'now' } },
+  };
+}
+
+function lastNumericValue(field: { values: { length: number; get(i: number): unknown } }): number | undefined {
+  for (let i = field.values.length - 1; i >= 0; i--) {
+    const v = field.values.get(i);
+    if (v === null || v === undefined) {
+      continue;
+    }
+    const n = Number(v);
+    if (!Number.isNaN(n)) {
+      return n;
+    }
+  }
+  return undefined;
+}
+
+function hostLabelFromField(field: { labels?: Record<string, string> }): string | undefined {
+  const host =
+    field.labels?.host?.trim() ||
+    field.labels?.__zbx_host_name?.trim() ||
+    field.labels?.hostName?.trim();
+  return host || undefined;
+}
+
+/**
+ * Host -> último valor + cor/texto do mapeamento Grafana (Value mappings / Thresholds).
+ * Query Zabbix crua (time_series); usa field.display quando o painel tem field config.
+ */
+export function extractHostDisplay(data: PanelData): HostDisplayMap {
+  const result: HostDisplayMap = {};
+  if (!data?.series?.length) {
+    return result;
+  }
+
+  for (const frame of data.series) {
+    for (const field of frame.fields ?? []) {
+      if (field.type !== FieldType.number) {
+        continue;
+      }
+      const host = hostLabelFromField(field);
+      if (!host) {
+        continue;
+      }
+      const last = lastNumericValue(field);
+      if (last === undefined) {
+        continue;
+      }
+      const displayed = field.display?.(last);
+      result[host] = {
+        value: last,
+        color: displayed?.color,
+        text: displayed?.text,
+      };
+    }
+  }
+
+  return result;
+}
+
+/** Host -> último valor numérico da Query (atalho sobre extractHostDisplay). */
+export function extractHostStatus(data: PanelData): HostStatusMap {
+  const result: HostStatusMap = {};
+  for (const [host, info] of Object.entries(extractHostDisplay(data))) {
+    result[host] = info.value;
+  }
+  return result;
+}
+
+/** Busca cor/texto mapeados por hostid ou nome (mesmos aliases do status). */
+export function lookupHostDisplay(
+  displayMap: HostDisplayMap | undefined,
+  host: string,
+  metadata?: HostMetadataMap,
+  hostId?: string
+): HostDisplayInfo | undefined {
+  if (!displayMap) {
+    return undefined;
+  }
+  const id = hostId?.trim();
+  if (id && displayMap[id]) {
+    return displayMap[id];
+  }
+  const key = host.trim();
+  if (key && displayMap[key]) {
+    return displayMap[key];
+  }
+  const candidates = new Set<string>();
+  if (key) {
+    candidates.add(key);
+  }
+  if (id) {
+    candidates.add(id);
+    const byId = metadata?.[id];
+    if (byId?.name?.trim()) {
+      candidates.add(byId.name.trim());
+    }
+  }
+  const meta = key ? metadata?.[key] : undefined;
+  if (meta?.name?.trim()) {
+    candidates.add(meta.name.trim());
+  }
+  for (const name of candidates) {
+    if (displayMap[name]) {
+      return displayMap[name];
+    }
+  }
+  if (key) {
+    const lower = key.toLowerCase();
+    for (const [name, info] of Object.entries(displayMap)) {
+      if (name.toLowerCase() === lower) {
+        return info;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Hosts da Query Zabbix crua (labels.host de cada série). */
+export function extractQueryHosts(data: PanelData | DataFrame[] | undefined): string[] {
+  const hosts = new Set<string>();
+  if (!data) {
+    return [];
+  }
+
+  const panelData = Array.isArray(data) ? panelDataFromFrames(data) : data;
+  for (const host of Object.keys(extractHostStatus(panelData))) {
+    hosts.add(host);
+  }
+  for (const frame of panelData.series ?? []) {
+    for (const field of frame.fields ?? []) {
+      const host = hostLabelFromField(field);
+      if (host) {
+        hosts.add(host);
+      }
+    }
+  }
+
+  return [...hosts].sort((a, b) => a.localeCompare(b));
+}
+
+const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip'];
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function pickIpFromLabels(labels: Record<string, string | undefined>): string | undefined {
+  for (const key of IP_LABEL_KEYS) {
+    const v = labels[key]?.trim();
+    if (v && IPV4.test(v)) {
+      return v;
+    }
+  }
+  return undefined;
+}
+
+/** Nome/IP só dos labels da Query Zabbix (sem colunas de transform). */
+export function extractHostMetadataFromData(data: PanelData | DataFrame[] | undefined): HostMetadataMap {
+  const result: HostMetadataMap = {};
+  if (!data) {
+    return result;
+  }
+
+  const panelData = Array.isArray(data) ? panelDataFromFrames(data) : data;
+  for (const frame of panelData.series ?? []) {
+    for (const field of frame.fields ?? []) {
+      const labels = (field.labels ?? {}) as Record<string, string | undefined>;
+      const host = hostLabelFromField(field);
+      if (!host) {
+        continue;
+      }
+      const visible = (labels.__zbx_host_visible_name || labels.host || host).trim();
+      result[host] = {
+        name: visible,
+        ip: pickIpFromLabels(labels) ?? result[host]?.ip,
+        hostid: labels.hostid?.trim() || labels.__zbx_hostid?.trim() || result[host]?.hostid,
+      };
+    }
+  }
+
+  return result;
+}
+
+function findSavedHostNodes(map: TopologyMap, hostName: string, hostId?: string): TopologyNode[] {
+  const key = hostName.trim();
+  const id = hostId?.trim();
+  return map.nodes.filter((n) => {
+    if ((n.type ?? 'host') !== 'host') {
+      return false;
+    }
+    if (id && n.zabbixHostId?.trim() === id) {
+      return true;
+    }
+    return n.zabbixHost?.trim() === key || n.label?.trim() === key || n.id === key;
+  });
+}
+
+/**
+ * Monta o mapa de exibição: hosts da Query Zabbix + layout salvo.
+ * Sem hosts na Query, mantém os hosts configurados no mapa.
+ */
+export function mergeMapWithQueryHosts(
+  map: TopologyMap,
+  queryHosts: string[],
+  hostMetadata: HostMetadataMap = {}
+): TopologyMap {
+  const submaps = map.nodes.filter((n) => n.type === 'submap');
+  const dashboardPickers = map.nodes.filter((n) => n.type === 'dashboard_picker');
+  const savedHosts = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
+
+  const hostNames =
+    queryHosts.length > 0
+      ? queryHosts
+      : savedHosts.map((n) => n.zabbixHost?.trim() || n.label?.trim() || n.id).filter(Boolean);
+
+  const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
+  const visibleHostNames = hostNames.filter((h) => !hidden.has(h));
+
+  const hostNodes: TopologyNode[] = [];
+  const usedSavedIds = new Set<string>();
+
+  visibleHostNames.forEach((hostName, index) => {
+    const meta = hostMetadata[hostName];
+    const savedMatches = findSavedHostNodes(map, hostName, meta?.hostid).filter(
+      (n) => !usedSavedIds.has(n.id)
+    );
+    const label = meta?.name ?? hostName;
+
+    if (savedMatches.length > 0) {
+      for (const saved of savedMatches) {
+        usedSavedIds.add(saved.id);
+        hostNodes.push({
+          ...saved,
+          type: 'host',
+          zabbixHost: hostName,
+          zabbixHostId: meta?.hostid?.trim() || saved.zabbixHostId,
+          label: saved.label ?? label,
+          subtitle: meta?.ip ?? saved.subtitle,
+          icon: saved.icon ?? map.hostIcons?.[hostName],
+        });
+      }
+      return;
+    }
+
+    const cols = 5;
+    hostNodes.push({
+      id: hostToNodeId(hostName),
+      label,
+      subtitle: meta?.ip,
+      zabbixHost: hostName,
+      zabbixHostId: meta?.hostid?.trim() || undefined,
+      type: 'host',
+      icon: map.hostIcons?.[hostName],
+      x: 100 + (index % cols) * 160,
+      y: 100 + Math.floor(index / cols) * 80,
+    });
+  });
+
+  const manualHosts = savedHosts.filter((n) => !n.zabbixHost?.trim() && !usedSavedIds.has(n.id));
+  const staticNodes = map.nodes.filter((n) => n.type === 'static');
+  const networkNodes = map.nodes.filter((n) => n.type === 'network');
+
+  return {
+    ...map,
+    nodes: [...networkNodes, ...hostNodes, ...manualHosts, ...submaps, ...staticNodes, ...dashboardPickers],
+  };
 }
 
 export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Partial<TopologyNode>): TopologyMap {

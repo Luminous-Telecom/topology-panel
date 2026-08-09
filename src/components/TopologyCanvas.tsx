@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import {
+  HostDisplayMap,
   HostMetadataMap,
   HostProblemMap,
   HostStatusMap,
@@ -33,7 +34,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -73,7 +74,11 @@ interface Props {
   map: TopologyMap;
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
+  /** UID do datasource Zabbix da aba Query do painel */
+  zabbixDatasourceUid?: string;
   statusMap: HostStatusMap;
+  /** Cores/textos dos Value mappings / Thresholds da Query */
+  hostDisplay?: HostDisplayMap;
   /** ICMP puro — estatísticas de rede/submapa (sem problemas Zabbix). */
   regionStatusMap?: HostStatusMap;
   /** ICMP carregado ao menos uma vez — evita vermelho/OK falso antes da API Zabbix. */
@@ -332,7 +337,9 @@ function nodeFill(
   options: TopologyPanelOptions,
   statusMap: HostStatusMap,
   hostMetadata?: HostMetadataMap,
-  problemMap: HostProblemMap = {}
+  problemMap: HostProblemMap = {},
+  hostDisplay?: HostDisplayMap,
+  resolveMappedColor?: (color?: unknown) => string | undefined
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -349,14 +356,16 @@ function nodeFill(
   const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
   const raw = lookupHostStatus(statusMap, hostKey, hostMetadata, hostId || undefined);
   const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
+  const mapped = lookupHostDisplay(hostDisplay, hostKey, hostMetadata, hostId || undefined);
+  const mappedColor = resolveMappedColor?.(mapped?.color) || mapped?.color;
 
-  // ICMP 0 (ou perda >= limiar) → offline vermelho na hora (nunca laranja)
+  // ICMP 0 (ou perda >= limiar) → offline (mapeamento ou fallback); nunca laranja
   const icmpDown =
     raw !== null &&
     raw !== undefined &&
     (metric === 'packet_loss' ? raw >= threshold : raw <= 0);
   if (st === 'offline' || icmpDown) {
-    return options.colorOffline;
+    return mappedColor || options.colorOffline;
   }
 
   // Laranja só se online no ICMP e com problema Zabbix
@@ -369,7 +378,7 @@ function nodeFill(
     return options.colorAlert || '#EF6C00';
   }
   if (st === 'online') {
-    return options.colorOnline;
+    return mappedColor || options.colorOnline;
   }
   return options.colorUnknown;
 }
@@ -378,7 +387,9 @@ export function TopologyCanvas({
   map,
   storedMap,
   options,
+  zabbixDatasourceUid,
   statusMap,
+  hostDisplay,
   regionStatusMap,
   icmpReady = false,
   hostMetadata,
@@ -2613,7 +2624,7 @@ export function TopologyCanvas({
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??
-                nodeFill(node, options, statusMap, hostMetadata, problemMap);
+                nodeFill(node, options, statusMap, hostMetadata, problemMap, hostDisplay, resolveColor);
               const fill = resolveColor(fillRaw);
             const regionLabel =
               node.type === 'submap' && regionStats.has(node.id)
@@ -2836,7 +2847,7 @@ export function TopologyCanvas({
       {addHostAt && (
         <ZabbixHostPickerModal
           mode="add"
-          datasourceUid={options.zabbixDatasourceUid}
+          datasourceUid={zabbixDatasourceUid}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon, hostid) =>
@@ -2848,7 +2859,7 @@ export function TopologyCanvas({
       {editZabbixHost && (
         <ZabbixHostPickerModal
           mode="edit"
-          datasourceUid={options.zabbixDatasourceUid}
+          datasourceUid={zabbixDatasourceUid}
           storedMap={storedMap}
           initialVisibleName={editZabbixHost.zabbixHost}
           initialHostId={editZabbixHost.zabbixHostId}
@@ -2910,7 +2921,7 @@ export function TopologyCanvas({
           label={pingTarget.label}
           ip={pingTarget.ip}
           zabbixHost={pingTarget.zabbixHost}
-          datasourceUid={options.zabbixDatasourceUid}
+          datasourceUid={zabbixDatasourceUid}
           onClose={() => setPingTarget(null)}
         />
       )}

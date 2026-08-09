@@ -49,10 +49,10 @@ Mutações → `mapEdits.ts`. Lógica pura → `utils.ts`.
 
 ## Zabbix
 
-- Status **ICMP** via **API Zabbix** (`fetchZabbixHostIcmpStatusMap`) — itens `icmpping`, `icmppingsec`, `icmppingloss`; refresh ~60s
-- **Não depende** da query Grafana para colorir hosts — só precisa do **Datasource UID**
-- Query opcional: descobrir hosts extras / metadados; transform Reduce não é mais obrigatória
-- `mergeMapWithQueryHosts` — múltiplas posições para mesmo host Zabbix
+- Query **crua** (`resultFormat: time_series`, sem Reduce/transform)
+- Status = último valor de cada série; cores via **Thresholds / Value mappings** (`useFieldConfig` + `applyFieldOverrides` + `field.display`)
+- Datasource UID da Query (`resolveZabbixDatasourceUid`) — problemas, metadata, picker, ping
+- **Não** usar `item.get` para colorir; **não** exigir campos host/rtt/loss nas opções
 
 ## Cores do painel
 

@@ -175,11 +175,17 @@ export interface TopologyPanelOptions {
   /** Node appearance */
   nodeFontSize: number;
   showSubtitle: boolean;
-  /** Métrica ICMP via API Zabbix */
+  /**
+   * @deprecated Inferido do item_key da Query (`icmppingsec` / `icmppingloss`).
+   * Mantido só para JSON antigo de dashboard.
+   */
   statusMetric?: TopologyStatusMetric;
   /** Pintar host em cor de alerta quando houver problema ativo no Zabbix */
   useZabbixProblems?: boolean;
-  /** UID do datasource Zabbix (ICMP, IP, problemas) */
+  /**
+   * @deprecated UID vem da aba Query do painel.
+   * Mantido só para JSON antigo de dashboard.
+   */
   zabbixDatasourceUid?: string;
   /** Enable pan with mouse drag */
   enablePan: boolean;
@@ -269,13 +275,11 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorNetworkLabel: '#bdbdbd',
   nodeFontSize: 11,
   showSubtitle: true,
-  statusMetric: 'icmp_rtt',
   enablePan: true,
   enableZoom: true,
   showGrid: false,
   gridSize: 10,
   snapToGrid: true,
-  zabbixDatasourceUid: 'afkagcaezrrpca',
   useZabbixProblems: true,
   toolUsername: '',
   toolPassword: '',
@@ -297,6 +301,15 @@ export const defaultOptions = (): TopologyPanelOptions => ({
 
 /** Host name ou hostid -> last status value (ICMP rtt em segundos, ou perda %) */
 export type HostStatusMap = Record<string, number | null | undefined>;
+
+/** Cor/texto do mapeamento Grafana (Value mappings / Thresholds) por host */
+export interface HostDisplayInfo {
+  value: number;
+  color?: string;
+  text?: string;
+}
+
+export type HostDisplayMap = Record<string, HostDisplayInfo>;
 
 /** Host name ou hostid -> active Zabbix problem count */
 export type HostProblemMap = Record<string, number>;

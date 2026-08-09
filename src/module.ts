@@ -1,10 +1,35 @@
-import { PanelPlugin } from '@grafana/data';
+import {
+  FieldColorModeId,
+  FieldConfigProperty,
+  PanelPlugin,
+  ThresholdsMode,
+} from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
 import { TopologyPanelOptions, defaultOptions } from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
+  .useFieldConfig({
+    standardOptions: {
+      [FieldConfigProperty.Mappings]: {},
+      [FieldConfigProperty.Thresholds]: {
+        defaultValue: {
+          mode: ThresholdsMode.Absolute,
+          steps: [
+            // icmppingsec: 0 = offline; >0 = online
+            { value: null as unknown as number, color: 'semi-dark-red' },
+            { value: 0.0000001, color: 'semi-dark-green' },
+          ],
+        },
+      },
+      [FieldConfigProperty.Color]: {
+        defaultValue: {
+          mode: FieldColorModeId.Thresholds,
+        },
+      },
+    },
+  })
   .setPanelOptions((builder) => {
     builder
       .addCustomEditor({
@@ -12,7 +37,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'map',
         name: 'Layout e links',
         description:
-          'Hosts e layout vêm do mapa salvo. Status ICMP via API Zabbix (aba Query não é necessária).',
+          'Layout e links. Query Zabbix crua (time_series). Cores de status: Thresholds / Value mappings.',
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
@@ -95,29 +120,29 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addColorPicker({
         path: 'colorOnline',
-        name: 'Cor online',
-        description: 'Hex (#2E7D32) ou cor da paleta Grafana — convertida automaticamente no mapa',
+        name: 'Cor online (fallback)',
+        description: 'Usada se Thresholds/Value mappings não definirem cor',
         defaultValue: '#2E7D32',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorOffline',
-        name: 'Cor offline',
-        description: 'Hex (#C62828) ou cor da paleta Grafana — convertida automaticamente no mapa',
+        name: 'Cor offline (fallback)',
+        description: 'Usada se Thresholds/Value mappings não definirem cor',
         defaultValue: '#C62828',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorAlert',
         name: 'Cor alerta',
-        description: 'Host com problema ativo no Zabbix (padrão laranja #EF6C00)',
+        description: 'Host online com problema ativo no Zabbix (padrão laranja #EF6C00)',
         defaultValue: '#EF6C00',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorUnknown',
         name: 'Cor sem gerência',
-        description: 'Hex (#616161) ou cor da paleta Grafana — convertida automaticamente no mapa',
+        description: 'Host sem valor na Query',
         defaultValue: '#616161',
         category: ['Aparência'],
       })
@@ -205,7 +230,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addBooleanSwitch({
         path: 'legendLink',
-        name: 'Cabos',
+        name: 'Cabo',
         defaultValue: false,
         category: ['Legenda'],
       })
@@ -221,32 +246,11 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: false,
         category: ['Legenda'],
       })
-      .addRadio({
-        path: 'statusMetric',
-        name: 'Métrica de status',
-        description: 'ICMP buscado via API Zabbix (icmpping / icmppingsec / icmppingloss)',
-        settings: {
-          options: [
-            { value: 'icmp_rtt', label: 'Tempo de resposta ICMP' },
-            { value: 'packet_loss', label: 'Perda de pacotes' },
-          ],
-        },
-        defaultValue: 'icmp_rtt',
-        category: ['Zabbix'],
-      })
       .addBooleanSwitch({
         path: 'useZabbixProblems',
         name: 'Usar problemas Zabbix',
-        description: 'Hosts com alerta ativo ficam laranja (offline ICMP continua vermelho)',
+        description: 'Hosts online com problema ativo usam a cor de alerta',
         defaultValue: true,
-        category: ['Zabbix'],
-      })
-      .addTextInput({
-        path: 'zabbixDatasourceUid',
-        name: 'Datasource UID',
-        description:
-          'UID do datasource Zabbix — status/problemas atualizam com o auto-refresh do dashboard (canto superior direito)',
-        defaultValue: 'afkagcaezrrpca',
         category: ['Zabbix'],
       })
       .addTextInput({

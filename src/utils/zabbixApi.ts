@@ -518,9 +518,10 @@ function icmpItemsToStatusValue(items: ZabbixIcmpItem[], metric: TopologyStatusM
   }
 
   if (metric === 'packet_loss') {
-    // RTT>0 = respondeu agora (ignora loss ainda atrasado em 100)
-    if (rttSec !== null && rttSec > 0) {
-      return 0;
+    // icmppingsec tem prioridade: >0 = online (ignora loss atrasado em 100);
+    // =0 = offline (não esperar loss chegar em 100 — igual ao gráfico de RTT).
+    if (rttSec !== null) {
+      return rttSec > 0 ? 0 : 100;
     }
     if (lossPct !== null) {
       return lossPct;
@@ -528,9 +529,9 @@ function icmpItemsToStatusValue(items: ZabbixIcmpItem[], metric: TopologyStatusM
     return reachable === null ? undefined : reachable ? 0 : 100;
   }
 
-  // Prioridade: RTT>0 confirma online na hora; senão perda decide; senão icmpping;
-  // por último, sec<=0 sem mais nada ainda conta como offline.
-  if (rttSec !== null && rttSec > 0) {
+  // icmp_rtt: confiar em icmppingsec quando existir (0 = offline, >0 = online).
+  // Antes, RTT=0 caía no loss e, com loss ainda <100, o host ficava verde.
+  if (rttSec !== null) {
     return rttSec;
   }
   if (lossPct !== null) {
@@ -539,7 +540,7 @@ function icmpItemsToStatusValue(items: ZabbixIcmpItem[], metric: TopologyStatusM
   if (reachable !== null) {
     return reachable ? 0.001 : 0;
   }
-  return rttSec !== null ? 0 : undefined;
+  return undefined;
 }
 
 interface ResolvedZabbixHost {
