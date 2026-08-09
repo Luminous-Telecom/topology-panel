@@ -1,0 +1,45 @@
+---
+description: Em todo commit, revisar o diff e descrever as mudanças reais na mensagem
+alwaysApply: true
+---
+
+# Mensagens de commit
+
+Ao criar **qualquer** commit neste projeto, a mensagem deve refletir o que realmente mudou — não genéricos tipo "update", "fix" ou "wip".
+
+## Antes de commitar
+
+Sempre rodar e **ler** o resultado:
+
+1. `git status` — arquivos staged/unstaged/untracked
+2. `git diff` e `git diff --staged` — o que entra no commit
+3. `git log` — estilo das mensagens recentes do repo
+
+Só depois redigir a mensagem com base nesse diff.
+
+## O que a mensagem deve conter
+
+- **O quê** mudou (feature, correção, ajuste de UI, deploy, etc.)
+- **Por quê** / efeito prático, quando não for óbvio pelo “o quê”
+- Escopo concreto (ex.: ícones de topologia, picker de dashboard, painel Grafana)
+
+## Exemplos
+
+```
+# ❌ BAD
+update
+fix bugs
+ajustes
+wip
+
+# ✅ GOOD
+Adiciona modal de seleção de dashboard no painel de topologia
+Corrige status offline dos links após refresh do Zabbix
+Atualiza ícones SVG de OLT e switch no mapa
+```
+
+## Não fazer
+
+- Commitar sem olhar o diff
+- Mensagem que não bate com os arquivos alterados
+- Agrupar mudanças sem relação na mesma mensagem genérica
