@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StandardEditorProps } from '@grafana/data';
 import { css } from '@emotion/css';
-import { Switch, useTheme2, VerticalGroup } from '@grafana/ui';
+import { Stack, Switch, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
 import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils';
 
@@ -62,7 +62,7 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   }
 
   return (
-    <VerticalGroup spacing="xs">
+    <Stack direction="column" gap={0.5}>
         {queryRefs.map(({ refId, hint }) => {
           const reservedForSubmap = submapRefIds.has(refId);
           return (
@@ -96,6 +96,6 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
             </div>
           );
         })}
-    </VerticalGroup>
+    </Stack>
   );
 }

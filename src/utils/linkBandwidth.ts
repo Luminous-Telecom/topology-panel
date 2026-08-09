@@ -65,15 +65,3 @@ export function linkStrokeWidth(
   return width;
 }
 
-/** Ponto médio e ângulo ao longo do segmento real do link (não entre centros dos nós). */
-export function linkSegmentMidpoint(
-  start: { x: number; y: number },
-  end: { x: number; y: number }
-): { x: number; y: number; angle: number } {
-  let angle = (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
-  if (angle > 90 || angle < -90) {
-    angle += 180;
-  }
-  return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2, angle };
-}
-

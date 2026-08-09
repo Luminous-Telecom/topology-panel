@@ -99,30 +99,34 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
       setRunning(true);
       setPingError(null);
 
-      const [scriptResult, icmp] = await Promise.all([
-        executeHostPingScript(datasourceUid, zabbixHost, 'panel'),
-        fetchHostIcmpStatus(datasourceUid, zabbixHost).catch(() => null),
-      ]);
+      try {
+        const [scriptResult, icmp] = await Promise.all([
+          executeHostPingScript(datasourceUid, zabbixHost, 'panel'),
+          fetchHostIcmpStatus(datasourceUid, zabbixHost).catch(() => null),
+        ]);
 
-      if (icmp) {
-        setIcmpStatus(icmp);
-      }
-
-      if (scriptResult.success && scriptResult.output) {
-        appendOutput(`--- ${stamp()} ---\n${scriptResult.output}\n`);
-        setPingError(null);
-      } else if (scriptResult.output) {
-        appendOutput(`${scriptResult.output}\n`);
-        setPingError(scriptResult.error ?? null);
-      } else {
-        setPingError(scriptResult.error ?? null);
-        if (!scriptResult.error) {
-          appendOutput('Ping sem resposta do script Zabbix.\n');
+        if (icmp) {
+          setIcmpStatus(icmp);
         }
-      }
 
-      runningRef.current = false;
-      setRunning(false);
+        if (scriptResult.success && scriptResult.output) {
+          appendOutput(`--- ${stamp()} ---\n${scriptResult.output}\n`);
+          setPingError(null);
+        } else if (scriptResult.output) {
+          appendOutput(`${scriptResult.output}\n`);
+          setPingError(scriptResult.error ?? null);
+        } else {
+          setPingError(scriptResult.error ?? null);
+          if (!scriptResult.error) {
+            appendOutput('Ping sem resposta do script Zabbix.\n');
+          }
+        }
+      } catch (err) {
+        setPingError(err instanceof Error ? err.message : 'Falha ao executar o ping.');
+      } finally {
+        runningRef.current = false;
+        setRunning(false);
+      }
     },
     [appendOutput, datasourceUid, zabbixHost]
   );

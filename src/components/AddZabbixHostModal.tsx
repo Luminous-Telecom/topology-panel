@@ -89,32 +89,43 @@ export function ZabbixHostPickerModal({
     setLoadError(null);
 
     void (async () => {
-      const list = await fetchZabbixGroups(datasourceUid);
-      if (cancelled) {
-        return;
-      }
-      setGroups(list);
-      setLoadingGroups(false);
-      if (!list.length) {
-        setLoadError('Nenhum grupo encontrado no Zabbix.');
-        return;
-      }
+      try {
+        const list = await fetchZabbixGroups(datasourceUid);
+        if (cancelled) {
+          return;
+        }
+        setGroups(list);
+        if (!list.length) {
+          setLoadError('Nenhum grupo encontrado no Zabbix.');
+          return;
+        }
 
-      let preferredId: string | undefined;
-      if (mode === 'edit' && (initialVisibleName || initialHostId)) {
-        const hostGroups = await fetchZabbixGroupsForHost(
-          datasourceUid,
-          initialVisibleName ?? '',
-          initialHostId
-        );
-        if (hostGroups.length) {
-          preferredId = hostGroups[0].groupid;
+        let preferredId: string | undefined;
+        if (mode === 'edit' && (initialVisibleName || initialHostId)) {
+          const hostGroups = await fetchZabbixGroupsForHost(
+            datasourceUid,
+            initialVisibleName ?? '',
+            initialHostId
+          );
+          if (hostGroups.length) {
+            preferredId = hostGroups[0].groupid;
+          }
+        }
+        if (!preferredId && defaultGroup) {
+          preferredId = list.find((g) => g.name === defaultGroup || g.name.endsWith(`/${defaultGroup}`))?.groupid;
+        }
+        if (!cancelled) {
+          setGroupId(preferredId ?? list[0].groupid);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Falha ao carregar grupos do Zabbix.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingGroups(false);
         }
       }
-      if (!preferredId && defaultGroup) {
-        preferredId = list.find((g) => g.name === defaultGroup || g.name.endsWith(`/${defaultGroup}`))?.groupid;
-      }
-      setGroupId(preferredId ?? list[0].groupid);
     })();
 
     return () => {
@@ -130,21 +141,32 @@ export function ZabbixHostPickerModal({
     }
     let cancelled = false;
     setLoadingHosts(true);
-    fetchZabbixHostsInGroup(datasourceUid, groupId).then((list) => {
-      if (cancelled) {
-        return;
-      }
-      setHosts(list);
-      setLoadingHosts(false);
-      if (mode === 'edit') {
-        const match =
-          (initialHostId && list.find((h) => h.hostid === initialHostId)) ||
-          (initialVisibleName && list.find((h) => h.visibleName === initialVisibleName));
-        if (match) {
-          setHostName(match.visibleName);
+    setLoadError(null);
+    fetchZabbixHostsInGroup(datasourceUid, groupId)
+      .then((list) => {
+        if (cancelled) {
+          return;
         }
-      }
-    });
+        setHosts(list);
+        if (mode === 'edit') {
+          const match =
+            (initialHostId && list.find((h) => h.hostid === initialHostId)) ||
+            (initialVisibleName && list.find((h) => h.visibleName === initialVisibleName));
+          if (match) {
+            setHostName(match.visibleName);
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingHosts(false);
+        }
+      });
     return () => {
       cancelled = true;
     };

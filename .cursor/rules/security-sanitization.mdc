@@ -1,0 +1,42 @@
+---
+description: Sanitização de dados vindos de queries/inputs, credenciais e tratamento de erros
+alwaysApply: true
+---
+
+# Segurança — sanitização e dados sensíveis
+
+- **Nunca** use `dangerouslySetInnerHTML` com string vinda de query Zabbix, input de usuário, URL ou
+  qualquer dado fora do bundle. A única exceção hoje é `HostIconImage` (`src/utils/hostIcons.tsx`),
+  que injeta SVG **importado como asset estático em build-time** (`src/img/topology/*.svg`, via
+  `customIcons.ts`) — nunca passe conteúdo de SVG vindo de rede, upload ou texto digitado para
+  `inlineSvgMarkup`/`dangerouslySetInnerHTML`.
+- Todo texto exibido no mapa (label de host, subtítulo/IP, título de dashboard, hint de query) deve
+  ser renderizado como filho JSX normal (`<text>{label}</text>`) — nunca interpolado em HTML/SVG cru
+  via template string. Isso vale mesmo que o valor pareça "interno" (nome de host Zabbix, uid de
+  dashboard): trate como não confiável, pois pode ter sido digitado por qualquer editor do painel.
+- URLs abertas via `window.open`/navegação (`openDashboardUrl`, `runHostTool`, `winboxUrl`,
+  `sshUrl`, `telnetUrl`) devem continuar validando o host com regex de IPv4 (`IPV4`/`IPV4_IN_TEXT`
+  em `hostTools.ts`) e usando `encodeURIComponent` em usuário/senha antes de concatenar na URL.
+  Nunca construa uma dessas URLs a partir de string livre sem validar formato primeiro.
+- `openDashboardUrl` (`DashboardPickerModal.tsx`) valida o uid com allowlist (`[A-Za-z0-9_-]+`) e
+  aplica `encodeURIComponent` no slug antes de montar `/d/:uid/:slug` — uid/slug vêm de campos
+  editáveis no mapa (`submapUid`/`submapSlug`, `dashboardChoices`), nunca são confiáveis o bastante
+  para ir direto no path/query da navegação.
+- `window.open` sempre com `'noopener,noreferrer'` (padrão já usado em `openUrl`/`hostTools.ts`).
+- Credenciais de Tools (`toolUsername`/`toolPassword`) ficam em texto plano no JSON do
+  dashboard/mapa — isso é uma decisão de produto já assumida e comunicada na UI ("Fica salva no JSON
+  do mapa"). Não abrande esse aviso, não remova o `type="password"` do campo, e não adicione nenhum
+  outro canal (log, clipboard automático, export) que exponha essa senha além do necessário para abrir
+  a ferramenta. Se for preciso mudar esse comportamento (ex.: mover para "secure json data" de um
+  datasource), pare e pergunte ao usuário antes de implementar.
+- Nunca logue (`console.log`/`console.error`/`console.warn`) payload de resposta da Zabbix API,
+  credenciais, ou conteúdo de `TopologyMap`. Se precisar depurar, remova o log antes de finalizar a
+  tarefa — não deixe `console.*` no código de produção.
+- Status online/offline vem exclusivamente da aba **Query** do painel (`data.series`, via
+  `resolveNodeStatus` em `utils.ts`). Não chame `item.get` da Zabbix API para colorir hosts — isso é
+  solução paralela e diverge da Query configurada pelo usuário.
+- Erros de chamadas assíncronas (Zabbix API, `fetchGrafanaDashboards`, `fetchDashboardTopologyHosts`)
+  sempre tratados com `try/catch`/`finally`, retornando um valor vazio/seguro (`[]`, `{}`, `null`) mais
+  um estado de erro visível quando fizer sentido para o usuário (ver `PingModal.tsx`,
+  `AddZabbixHostModal.tsx` para o padrão de `loadError`/`loading`). Nunca deixe uma `Promise` rejeitar
+  sem tratamento, nem um estado de `loading` travado em `true` se a chamada falhar.

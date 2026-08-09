@@ -34,11 +34,10 @@ export function isIncludedInParentStats(node: { includeInParentStats?: boolean; 
   return true;
 }
 
-/** Hosts type=host do mapa — prefer hostid (estável), senão nome. */
-export function extractTopologyHostNames(map: TopologyMap): string[] {
-  const seen = new Set<string>();
-  const hosts: string[] = [];
+/** Nós type=host visíveis do mapa (fora da lista hiddenHosts), com nome/hostid já trim(). */
+function visibleHostRefs(map: TopologyMap): Array<{ name?: string; hostId?: string }> {
   const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
+  const refs: Array<{ name?: string; hostId?: string }> = [];
 
   for (const node of map.nodes ?? []) {
     if ((node.type ?? 'host') !== 'host') {
@@ -49,6 +48,18 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
     if (name && hidden.has(name)) {
       continue;
     }
+    refs.push({ name, hostId });
+  }
+
+  return refs;
+}
+
+/** Hosts type=host do mapa — prefer hostid (estável), senão nome. */
+export function extractTopologyHostNames(map: TopologyMap): string[] {
+  const seen = new Set<string>();
+  const hosts: string[] = [];
+
+  for (const { name, hostId } of visibleHostRefs(map)) {
     // Chave estável para stats/ICMP; nome só como fallback (mapas legados)
     const key = hostId || name;
     if (!key) {
@@ -71,17 +82,8 @@ export function extractTopologyHostRefs(map: TopologyMap): { hostIds: string[]; 
   const hostNames: string[] = [];
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
-  const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
 
-  for (const node of map.nodes ?? []) {
-    if ((node.type ?? 'host') !== 'host') {
-      continue;
-    }
-    const name = node.zabbixHost?.trim();
-    const hostId = node.zabbixHostId?.trim();
-    if (name && hidden.has(name)) {
-      continue;
-    }
+  for (const { name, hostId } of visibleHostRefs(map)) {
     if (hostId && !seenIds.has(hostId)) {
       seenIds.add(hostId);
       hostIds.push(hostId);

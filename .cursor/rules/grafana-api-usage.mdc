@@ -1,0 +1,32 @@
+---
+description: Só APIs oficiais do Grafana — sem DOM direto, sem componentes depreciados
+globs: src/**/*
+alwaysApply: false
+---
+
+# Grafana — só APIs oficiais
+
+- **Proibido** manipular o DOM do dashboard fora do próprio painel: sem `document.querySelector`
+  em elementos do chrome do Grafana, sem `document.getElementById` para achar outros painéis. A
+  única exceção documentada é `useDashboardEditMode.ts`, que detecta o modo de edição do dashboard
+  via seletor de `data-testid`/`aria-label` porque o Grafana não expõe esse estado por API — não
+  copie esse padrão para outros casos sem necessidade equivalente.
+- `document.createElement` só é aceitável para elementos efêmeros e desanexados do próprio plugin
+  (ex.: `iframe`/`a` temporários para abrir `winbox://`/`ssh://` em `hostTools.ts`, `canvas` para
+  gerar imagem em memória). Nunca para navegar a árvore de outros painéis/dashboard, nem para mutar
+  `style` de elementos ancestrais fora do painel (scroll parents do dashboard, chrome do Grafana).
+- Toda leitura de dado do Grafana usa `getBackendSrv()` (`@grafana/runtime`) — nunca `fetch`/`XMLHttpRequest`
+  direto. Isso garante header de auth e roteamento correto do proxy de datasource.
+- Navegação entre dashboards usa `openDashboardUrl` (`DashboardPickerModal.tsx`), que já valida o uid
+  com allowlist e `encodeURIComponent` no slug — não implemente outro caminho de navegação com
+  `window.location.href` cru.
+- Toda leitura/escrita de tempo usa `PanelData`/`DateTime`/`getDefaultTimeRange()` de `@grafana/data`.
+  Nunca crie um `TimeRange` "fake" com números crus (`0`, `Date.now()`) — use `getDefaultTimeRange()`
+  quando só o formato importa, ou propague o `timeRange` real do painel.
+- `VerticalGroup`/`HorizontalGroup` (`@grafana/ui`) estão depreciados — use `Stack` (`direction="column"`
+  para o antigo vertical) com `gap` numérico (`0.5`≈xs, `1`≈sm, `2`≈md, `3`≈lg). Não reintroduza os
+  componentes antigos em código novo.
+- Ao adicionar opção nova ao painel (`module.ts`), sempre forneça `defaultValue` e categoria em
+  português, e trate o valor ausente em `defaultOptions()` (`types.ts`) — nunca em cada callsite.
+- Cor vinda das opções do painel só chega ao SVG depois de `resolvePanelColor()` — ver detalhes em
+  `topology-plugin.mdc` (seção "Cores do painel").

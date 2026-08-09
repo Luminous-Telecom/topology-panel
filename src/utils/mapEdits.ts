@@ -14,45 +14,41 @@ export function areNetworksLocked(map: TopologyMap): boolean {
   return map.networksLocked !== false;
 }
 
-export function addSubmapAt(map: TopologyMap, x: number, y: number): TopologyMap {
-  const submaps = map.nodes.filter((n) => n.type === 'submap');
-  const id = `submap-${submaps.length + 1}`;
+/**
+ * Adiciona um nó de um tipo "utilitário" (submapa/rede/estático/seletor) na posição dada.
+ * `idPrefix-N` e `makeLabel` usam a contagem de nós já existentes desse tipo (1-based).
+ */
+function addTypedNodeAt(
+  map: TopologyMap,
+  type: TopologyNode['type'],
+  idPrefix: string,
+  x: number,
+  y: number,
+  makeLabel: (countBefore: number) => string,
+  extra?: Partial<TopologyNode>
+): TopologyMap {
+  const countBefore = map.nodes.filter((n) => n.type === type).length;
   const node: TopologyNode = {
-    id,
-    label: `Submapa ${submaps.length + 1}`,
-    type: 'submap',
+    id: `${idPrefix}-${countBefore + 1}`,
+    label: makeLabel(countBefore),
+    type,
     x: Math.round(x),
     y: Math.round(y),
+    ...extra,
   };
   return { ...map, nodes: [...map.nodes, node] };
+}
+
+export function addSubmapAt(map: TopologyMap, x: number, y: number): TopologyMap {
+  return addTypedNodeAt(map, 'submap', 'submap', x, y, (countBefore) => `Submapa ${countBefore + 1}`);
 }
 
 export function addNetworkAt(map: TopologyMap, x: number, y: number, label = 'Rede'): TopologyMap {
-  const networks = map.nodes.filter((n) => n.type === 'network');
-  const id = `network-${networks.length + 1}`;
-  const node: TopologyNode = {
-    id,
-    label,
-    type: 'network',
-    x: Math.round(x),
-    y: Math.round(y),
-    width: 220,
-    height: 140,
-  };
-  return { ...map, nodes: [...map.nodes, node] };
+  return addTypedNodeAt(map, 'network', 'network', x, y, () => label, { width: 220, height: 140 });
 }
 
 export function addStaticAt(map: TopologyMap, x: number, y: number, label = 'Estático'): TopologyMap {
-  const statics = map.nodes.filter((n) => n.type === 'static');
-  const id = `static-${statics.length + 1}`;
-  const node: TopologyNode = {
-    id,
-    label,
-    type: 'static',
-    x: Math.round(x),
-    y: Math.round(y),
-  };
-  return { ...map, nodes: [...map.nodes, node] };
+  return addTypedNodeAt(map, 'static', 'static', x, y, () => label);
 }
 
 export function addDashboardPickerAt(
@@ -61,17 +57,15 @@ export function addDashboardPickerAt(
   y: number,
   label = 'Dashboards'
 ): TopologyMap {
-  const pickers = map.nodes.filter((n) => n.type === 'dashboard_picker');
-  const id = `dashboard-picker-${pickers.length + 1}`;
-  const node: TopologyNode = {
-    id,
-    label: pickers.length ? `${label} ${pickers.length + 1}` : label,
-    type: 'dashboard_picker',
-    dashboardChoices: [],
-    x: Math.round(x),
-    y: Math.round(y),
-  };
-  return { ...map, nodes: [...map.nodes, node] };
+  return addTypedNodeAt(
+    map,
+    'dashboard_picker',
+    'dashboard-picker',
+    x,
+    y,
+    (countBefore) => (countBefore ? `${label} ${countBefore + 1}` : label),
+    { dashboardChoices: [] }
+  );
 }
 
 export function addLinkToMap(map: TopologyMap, from: string, to: string): TopologyMap {

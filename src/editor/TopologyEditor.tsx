@@ -10,11 +10,12 @@ import {
   InlineSwitch,
   Input,
   Select,
+  Stack,
   TextArea,
-  VerticalGroup,
   useTheme2,
 } from '@grafana/ui';
 import {
+  TopologyLink,
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
@@ -214,7 +215,8 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           return l;
         }
         if (field === 'medium') {
-          return { ...l, medium: value as 'fiber' | 'radio' };
+          const next: TopologyLink = { ...l, medium: value === 'radio' ? 'radio' : 'fiber' };
+          return next;
         }
         if (field === 'bandwidthMbps') {
           const trimmed = value.trim();
@@ -224,7 +226,8 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             return next;
           }
           const [amount, unit] = trimmed.split(':');
-          const mbps = parseBandwidthInput(amount, (unit as LinkBandwidthUnit) || 'gbps');
+          const bandwidthUnit: LinkBandwidthUnit = unit === 'mbps' ? 'mbps' : 'gbps';
+          const mbps = parseBandwidthInput(amount, bandwidthUnit);
           if (!mbps) {
             const next = { ...l };
             delete next.bandwidthMbps;
@@ -232,13 +235,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           }
           return { ...l, bandwidthMbps: mbps };
         }
-        const next = { ...l, [field]: value };
-        if (field === 'from' || field === 'to') {
-          const fromNode = map.nodes.find((n) => n.id === (field === 'from' ? value : l.from));
-          const toNode = map.nodes.find((n) => n.id === (field === 'to' ? value : l.to));
-          if (!l.medium) {
-            next.medium = inferLinkMedium(fromNode, toNode);
-          }
+        const next: TopologyLink = { ...l, [field]: value };
+        const fromNode = map.nodes.find((n) => n.id === (field === 'from' ? value : l.from));
+        const toNode = map.nodes.find((n) => n.id === (field === 'to' ? value : l.to));
+        if (!l.medium) {
+          next.medium = inferLinkMedium(fromNode, toNode);
         }
         return next;
       });
@@ -276,7 +277,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
 
   if (jsonMode) {
     return (
-      <VerticalGroup spacing="md">
+      <Stack direction="column" gap={2}>
         <LockBar locked={locked} onToggle={toggleLock} />
         <Alert title="Importar / exportar topologia" severity="info">
           Cole o JSON completo do mapa (width, height, nodes, links) e clique em Aplicar.
@@ -296,12 +297,12 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         <Button variant="secondary" onClick={() => setJsonMode(false)}>
           Voltar ao editor
         </Button>
-      </VerticalGroup>
+      </Stack>
     );
   }
 
   return (
-    <VerticalGroup spacing="md">
+    <Stack direction="column" gap={2}>
       <LockBar locked={locked} onToggle={toggleLock} />
 
       {locked && (
@@ -322,7 +323,12 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           type="number"
           value={map.width}
           disabled={locked}
-          onChange={(e) => updateMap({ width: Number(e.currentTarget.value) || 1200 })}
+          onChange={(e) => {
+            const width = Number(e.currentTarget.value);
+            if (Number.isFinite(width) && width > 0) {
+              updateMap({ width: Math.round(width) });
+            }
+          }}
         />
       </Field>
       <Field label="Altura do mapa">
@@ -330,7 +336,12 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           type="number"
           value={map.height}
           disabled={locked}
-          onChange={(e) => updateMap({ height: Number(e.currentTarget.value) || 800 })}
+          onChange={(e) => {
+            const height = Number(e.currentTarget.value);
+            if (Number.isFinite(height) && height > 0) {
+              updateMap({ height: Math.round(height) });
+            }
+          }}
         />
       </Field>
 
@@ -338,7 +349,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         label={`Hosts Zabbix (${hostNodes.length})`}
         description="Nome e IP vêm do Zabbix. Posição: arraste no mapa (botão direito para links)."
       >
-        <VerticalGroup spacing="sm">
+        <Stack direction="column" gap={1}>
           {hostNodes.length === 0 && (
             <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
               Configure o <strong>Datasource UID</strong> Zabbix nas opções do painel. O status ICMP é buscado direto na API (itens icmpping*).
@@ -366,11 +377,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
               </div>
             );
           })}
-        </VerticalGroup>
+        </Stack>
       </Field>
 
       <Field label={`Submapas (${submapNodes.length})`} description="Atalhos para outros dashboards">
-        <VerticalGroup spacing="sm">
+        <Stack direction="column" gap={1}>
           {submapNodes.map((node, idx) => {
             const isOpen = openNodes[node.id] ?? false;
             return (
@@ -385,7 +396,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                 isOpen={isOpen}
                 onToggle={(open) => setOpenNodes((prev) => ({ ...prev, [node.id]: open }))}
               >
-                <VerticalGroup spacing="sm">
+                <Stack direction="column" gap={1}>
                   <Field label="ID interno">
                     <Input
                       value={node.id}
@@ -455,21 +466,21 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeSubmap(idx)}>
                     Remover submapa
                   </Button>
-                </VerticalGroup>
+                </Stack>
               </CollapsableSection>
             );
           })}
           <Button onClick={addSubmap} disabled={locked}>
             + Adicionar submapa
           </Button>
-        </VerticalGroup>
+        </Stack>
       </Field>
 
       <Field
         label={`Seletores de dashboards (${dashboardPickerNodes.length})`}
         description="Botão no mapa com lista configurável de dashboards para abrir"
       >
-        <VerticalGroup spacing="sm">
+        <Stack direction="column" gap={1}>
           {dashboardPickerNodes.map((node, idx) => {
             const isOpen = openNodes[node.id] ?? false;
             const count = node.dashboardChoices?.length ?? 0;
@@ -486,7 +497,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                 isOpen={isOpen}
                 onToggle={(open) => setOpenNodes((prev) => ({ ...prev, [node.id]: open }))}
               >
-                <VerticalGroup spacing="sm">
+                <Stack direction="column" gap={1}>
                   <Field label="Nome exibido">
                     <Input
                       value={node.label ?? ''}
@@ -512,18 +523,18 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   >
                     Remover seletor
                   </Button>
-                </VerticalGroup>
+                </Stack>
               </CollapsableSection>
             );
           })}
           <Button onClick={addDashboardPicker} disabled={locked}>
             + Adicionar seletor de dashboards
           </Button>
-        </VerticalGroup>
+        </Stack>
       </Field>
 
       <Field label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = tracejado · Capacidade define espessura e rótulo (Mb/Gb)">
-        <VerticalGroup spacing="sm">
+        <Stack direction="column" gap={1}>
           {map.links.map((link, idx) => {
             const bw = bandwidthToInput(link.bandwidthMbps);
             return (
@@ -534,7 +545,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   options={nodeOptions}
                   value={link.from}
                   disabled={locked}
-                  onChange={(v) => updateLink(idx, 'from', v.value!)}
+                  onChange={(v) => {
+                    if (v.value != null) {
+                      updateLink(idx, 'from', v.value);
+                    }
+                  }}
                 />
               </Field>
               <Field label="Para">
@@ -543,7 +558,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   options={nodeOptions}
                   value={link.to}
                   disabled={locked}
-                  onChange={(v) => updateLink(idx, 'to', v.value!)}
+                  onChange={(v) => {
+                    if (v.value != null) {
+                      updateLink(idx, 'to', v.value);
+                    }
+                  }}
                 />
               </Field>
               <Field label="Meio">
@@ -552,7 +571,11 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   options={mediumOptions}
                   value={link.medium ?? 'fiber'}
                   disabled={locked}
-                  onChange={(v) => updateLink(idx, 'medium', v.value!)}
+                  onChange={(v) => {
+                    if (v.value != null) {
+                      updateLink(idx, 'medium', v.value);
+                    }
+                  }}
                 />
               </Field>
               <Field label="Capacidade">
@@ -592,7 +615,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           <Button onClick={addLink} disabled={locked || map.nodes.length < 2}>
             + Adicionar link
           </Button>
-        </VerticalGroup>
+        </Stack>
       </Field>
 
       <Button
@@ -605,6 +628,6 @@ export function TopologyEditor({ value, onChange, context }: Props) {
       >
         Importar / exportar JSON
       </Button>
-    </VerticalGroup>
+    </Stack>
   );
 }

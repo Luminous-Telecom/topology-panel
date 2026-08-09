@@ -168,6 +168,9 @@ type ContextState = {
   link?: TopologyLink;
 };
 
+/** Dicas de atalhos de seleção somem depois desse tempo, deixando só a ação (Alterar tipo etc.) visível. */
+const SELECTION_TIPS_DURATION_MS = 2000;
+
 function linkKey(link: TopologyLink): string {
   return `${link.from}-${link.to}`;
 }
@@ -474,6 +477,7 @@ export function TopologyCanvas({
   const pinchActiveRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [showSelectionTips, setShowSelectionTips] = useState(false);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [bulkIconEditOpen, setBulkIconEditOpen] = useState(false);
   const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
@@ -951,7 +955,13 @@ export function TopologyCanvas({
     };
 
     let lastWheelTs = -1;
-    const onWheel = (e: WheelEvent) => {
+    // Listener genérico (Event) — attachado em document/el/scrollParents, tipos mistos
+    // não compartilham o overload específico de WheelEvent do addEventListener.
+    const onWheel = (evt: Event) => {
+      if (!(evt instanceof WheelEvent)) {
+        return;
+      }
+      const e = evt;
       if (e.timeStamp === lastWheelTs || !isOverPanel(e)) {
         return;
       }
@@ -1077,7 +1087,7 @@ export function TopologyCanvas({
         startH: layout?.h ?? node.height ?? defaultH,
         moved: false,
       };
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [editable, nodeLayouts]
   );
@@ -1139,7 +1149,7 @@ export function TopologyCanvas({
         moved: false,
         group,
       };
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
   );
@@ -1177,7 +1187,7 @@ export function TopologyCanvas({
           moved: false,
           group,
         };
-        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        e.currentTarget.setPointerCapture(e.pointerId);
       }
     },
     [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
@@ -1740,6 +1750,16 @@ export function TopologyCanvas({
     window.setTimeout(() => setToast(null), 3500);
   }, []);
 
+  useEffect(() => {
+    if (selectedNodeIds.length === 0) {
+      setShowSelectionTips(false);
+      return;
+    }
+    setShowSelectionTips(true);
+    const timer = window.setTimeout(() => setShowSelectionTips(false), SELECTION_TIPS_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [selectedNodeIds]);
+
   const buildToolsMenu = useCallback(
     (node: TopologyNode): ContextMenuItem | null => {
       const ip = hostIp(node);
@@ -2294,7 +2314,7 @@ export function TopologyCanvas({
               >
                 Usuário/senha
               </span>
-              {' · '}
+              {(selectedSubmapNodes.length > 0 || showSelectionTips) && ' · '}
             </>
           )}
           {selectedSubmapNodes.length > 0 && (
@@ -2306,10 +2326,12 @@ export function TopologyCanvas({
               >
                 Editar submapas
               </span>
-              {' · '}
+              {showSelectionTips && ' · '}
             </>
           )}
-          Arraste no fundo para selecionar vários · Shift/Ctrl+arrastar adiciona · Ctrl+clique alterna · Arraste para mover o grupo · Esc limpa · Mão para mover o mapa
+          {showSelectionTips &&
+            (selectedHostNodes.length === 0 && selectedSubmapNodes.length === 0 ? ' ' : '') +
+              'Arraste vazio seleciona · Shift/Ctrl soma · Ctrl+clique alterna · Esc limpa'}
         </TopologyEditHint>
       )}
 
@@ -2621,10 +2643,7 @@ export function TopologyCanvas({
             if (!layout) {
               return null;
             }
-            const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout as typeof layout & {
-              x: number;
-              y: number;
-            };
+            const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout;
               const fillOverride =
                 node.type === 'submap'
                   ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady)
@@ -2634,10 +2653,8 @@ export function TopologyCanvas({
                 (node.fillColor ? node.fillColor : undefined) ??
                 nodeFill(node, options, statusMap, hostMetadata, problemMap, hostDisplay, resolveColor);
               const fill = resolveColor(fillRaw);
-            const regionLabel =
-              node.type === 'submap' && regionStats.has(node.id)
-                ? formatRegionStats(regionStats.get(node.id)!, icmpReady, 'submap')
-                : undefined;
+            const region = node.type === 'submap' ? regionStats.get(node.id) : undefined;
+            const regionLabel = region ? formatRegionStats(region, icmpReady, 'submap') : undefined;
             const labelColor =
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
@@ -2645,8 +2662,8 @@ export function TopologyCanvas({
             const subtitleColor =
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
-                : regionLabel
-                  ? regionStats.get(node.id)!.offline > 0
+                : region
+                  ? region.offline > 0
                     ? isDarkBackground(fill)
                       ? '#ffcdd2'
                       : '#b71c1c'
@@ -2656,8 +2673,8 @@ export function TopologyCanvas({
                   : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
-            const isHostNode = (node.type ?? 'host') === 'host';
-            const hostStatus = isHostNode
+            const nodeIsHost = isHostNode(node);
+            const hostStatus = nodeIsHost
               ? resolveNodeStatus(
                   node,
                   statusMap,
@@ -2666,17 +2683,11 @@ export function TopologyCanvas({
                   hostMetadata
                 )
               : null;
-            const submapOffline =
-              node.type === 'submap' &&
-              Boolean(
-                icmpReady &&
-                  regionStats.get(node.id) &&
-                  !regionStats.get(node.id)!.loadFailed &&
-                  regionStats.get(node.id)!.total > 0 &&
-                  regionStats.get(node.id)!.offline > 0
-              );
+            const submapOffline = Boolean(
+              icmpReady && region && !region.loadFailed && region.total > 0 && region.offline > 0
+            );
             const isOfflineBlink = hostStatus === 'offline' || submapOffline;
-            const hostIcon = isHostNode ? node.icon ?? null : null;
+            const hostIcon = nodeIsHost ? node.icon ?? null : null;
             const textCenterX = x + w / 2;
             const iconX = x + w / 2;
             const iconY = iconCenterY !== undefined ? y + iconCenterY : y + h / 2;

@@ -1,4 +1,4 @@
-import { DataFrame, FieldType, LoadingState, PanelData } from '@grafana/data';
+import { DataFrame, FieldType, LoadingState, PanelData, getDefaultTimeRange } from '@grafana/data';
 import {
   HostDisplayInfo,
   HostDisplayMap,
@@ -195,7 +195,7 @@ function panelDataFromFrames(frames: DataFrame[]): PanelData {
   return {
     series: frames,
     state: LoadingState.Done,
-    timeRange: { from: 0 as any, to: 0 as any, raw: { from: 'now-5m', to: 'now' } },
+    timeRange: getDefaultTimeRange(),
   };
 }
 
@@ -226,7 +226,7 @@ function hostLabelFromField(field: { labels?: Record<string, string> }): string 
  * Query Zabbix crua (time_series); usa field.display quando o painel tem field config.
  */
 /** RefIds (A, B, C…) configurados na aba Query do painel. */
-export function collectQueryRefIdsFromPanelData(data?: PanelData): string[] {
+export function collectQueryRefIdsFromPanelData(data?: PanelData | DataFrame[]): string[] {
   return collectQueryRefInfosFromPanelData(data).map((info) => info.refId);
 }
 
@@ -257,13 +257,14 @@ function zabbixQueryTargetHint(target: Record<string, unknown>): string | undefi
 }
 
 /** Queries do painel com refId visível e resumo opcional (host group etc.). */
-export function collectQueryRefInfosFromPanelData(data?: PanelData): TopologyQueryRefInfo[] {
+export function collectQueryRefInfosFromPanelData(data?: PanelData | DataFrame[]): TopologyQueryRefInfo[] {
   const byRef = new Map<string, TopologyQueryRefInfo>();
   if (!data) {
     return [];
   }
+  const panelData = Array.isArray(data) ? panelDataFromFrames(data) : data;
 
-  for (const target of data.request?.targets ?? []) {
+  for (const target of panelData.request?.targets ?? []) {
     const rec = target as Record<string, unknown> & { refId?: string };
     const refId = rec.refId?.trim().toUpperCase();
     if (!refId) {
@@ -275,7 +276,7 @@ export function collectQueryRefInfosFromPanelData(data?: PanelData): TopologyQue
     });
   }
 
-  for (const frame of data.series ?? []) {
+  for (const frame of panelData.series ?? []) {
     const refId = frame.refId?.trim().toUpperCase();
     if (!refId || byRef.has(refId)) {
       continue;

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
-import { Icon } from '@grafana/ui';
+import { Icon, useTheme2 } from '@grafana/ui';
 import { FaArrowPointer, FaHand } from 'react-icons/fa6';
 import { TopologyNode, TopologyNodeType } from '../types';
+import { resolvePanelColor } from '../utils/panelColors';
 
 export type CanvasTool = 'select' | 'pan';
 
@@ -415,7 +416,7 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
           onMouseEnter={clearCloseTimer}
           onMouseLeave={scheduleClose}
         >
-          {item.children!.map((child) => (
+          {item.children?.map((child) => (
             <div
               key={child.id}
               className={`${styles.item} ${child.disabled ? styles.itemDisabled : ''}`}
@@ -594,22 +595,6 @@ const legendSwatchStyle = css`
 
 export type TopologyLegendItem = { label: string; color: string };
 
-function legendColorCss(color: unknown): string {
-  if (typeof color === 'string') {
-    return color.trim();
-  }
-  if (color && typeof color === 'object') {
-    const obj = color as { fixedColor?: string; color?: string; value?: string };
-    for (const key of ['fixedColor', 'color', 'value'] as const) {
-      const v = obj[key];
-      if (typeof v === 'string' && v.trim()) {
-        return v.trim();
-      }
-    }
-  }
-  return '';
-}
-
 const legendCountdownStyle = css`
   margin-top: 6px;
   padding-top: 8px;
@@ -629,8 +614,9 @@ export function TopologyColorLegend({
   refreshCountdown?: number | null;
   refreshIntervalSec?: number | null;
 }) {
+  const theme = useTheme2();
   const visible = items
-    .map((item) => ({ label: item.label, color: legendColorCss(item.color) }))
+    .map((item) => ({ label: item.label, color: resolvePanelColor(theme, item.color) }))
     .filter((item) => Boolean(item.color));
 
   const countdownLabel =

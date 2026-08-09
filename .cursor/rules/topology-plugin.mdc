@@ -11,13 +11,20 @@ alwaysApply: false
 | Área | Arquivo |
 |------|---------|
 | Render SVG, pan/zoom, links | `components/TopologyCanvas.tsx` |
+| Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` |
 | Opções Grafana | `components/TopologyPanel.tsx`, `module.ts` |
 | Editor JSON/nós/links | `editor/TopologyEditor.tsx` |
 | Mutações do mapa | `utils/mapEdits.ts` |
 | Helpers puros | `utils.ts` |
+| Chamadas à Zabbix API | `utils/zabbixApi.ts` |
 | Tipos | `types.ts` |
+| Modais (`NodeEditModal`, `LinkEditModal`, etc.) | `components/*Modal.tsx` — só UI + validação de formulário; mutação real do mapa fica em `mapEdits.ts` |
 
 Mutações → `mapEdits.ts`. Lógica pura → `utils.ts`.
+
+Componentes de modal seguem sempre o mesmo esqueleto (`Modal` + `Field`/`Input` controlados +
+`Modal.ButtonRow` com "Cancelar" + ação). Siga esse padrão ao criar um modal novo — não invente um
+layout diferente.
 
 ## Tipos principais
 

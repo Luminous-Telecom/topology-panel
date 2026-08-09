@@ -53,12 +53,15 @@ const uidStyle = css`
  * variável bater com o destino (evita redirect: ex. Portalegre → Potiretama
  * quando o current salvo no JSON do dashboard está errado).
  */
+/** UID de dashboard do Grafana: alfanumérico + `_`/`-` (nunca contém `/`, `?`, `#`). */
+const DASHBOARD_UID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 export function openDashboardUrl(uid: string, slug?: string, navVar = 'mapa'): void {
   const safeUid = uid.trim();
-  if (!safeUid) {
+  if (!safeUid || !DASHBOARD_UID_PATTERN.test(safeUid)) {
     return;
   }
-  const pathSlug = (slug?.trim() || safeUid).replace(/^\/+|\/+$/g, '');
+  const pathSlug = encodeURIComponent((slug?.trim() || safeUid).replace(/^\/+|\/+$/g, ''));
   const params = new URLSearchParams();
   const orgMatch = window.location.search.match(/orgId=(\d+)/);
   if (orgMatch) {

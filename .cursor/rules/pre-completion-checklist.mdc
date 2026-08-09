@@ -1,0 +1,12 @@
+---
+description: Checklist final antes de encerrar qualquer tarefa neste plugin
+alwaysApply: true
+---
+
+# Antes de finalizar qualquer tarefa
+
+1. `npm run typecheck` sem erros.
+2. Sem `any`, `@ts-ignore`, `console.log` introduzidos (ver `typescript-quality.mdc`).
+3. Sem duplicação nova — checou a tabela de `anti-duplication.mdc`?
+4. Mudou algo em `src/**`, `package.json`, `.config/webpack/**` ou `tsconfig.json`? Rode
+   `bash scripts/deploy.sh` antes de encerrar (ver `auto-deploy.mdc`).

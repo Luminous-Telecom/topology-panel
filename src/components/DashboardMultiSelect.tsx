@@ -1,12 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { MultiSelect } from '@grafana/ui';
 import { TopologyDashboardChoice } from '../types';
-import {
-  dashboardSelectOptions,
-  fetchGrafanaDashboards,
-  findDashboardOption,
-  GrafanaDashboardOption,
-} from '../utils/grafanaDashboards';
+import { dashboardSelectOptions, findDashboardOption } from '../utils/grafanaDashboards';
+import { useGrafanaDashboards } from '../hooks/useGrafanaDashboards';
 
 interface Props {
   value: TopologyDashboardChoice[];
@@ -17,22 +13,7 @@ interface Props {
 }
 
 export function DashboardMultiSelect({ value, onChange, disabled, tagHint = 'topology,dude' }: Props) {
-  const [dashboards, setDashboards] = useState<GrafanaDashboardOption[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    void fetchGrafanaDashboards().then((list) => {
-      if (!cancelled) {
-        setDashboards(list);
-        setLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { dashboards, loading } = useGrafanaDashboards();
 
   const options = useMemo(() => {
     const base = dashboardSelectOptions(dashboards, tagHint);

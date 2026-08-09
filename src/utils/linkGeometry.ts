@@ -100,6 +100,11 @@ function pathToRoundedD(points: LinkPoint[], radius: number): string {
   return parts.join(' ');
 }
 
+/** Raio de canto (8–16px) para os cotovelos de um link com waypoints, escalado pelo grid. */
+function linkCornerRadius(gridStep: number): number {
+  return Math.min(16, Math.max(8, gridStep * 1.2));
+}
+
 export function computeLinkGeometry(
   from: LinkBox,
   to: LinkBox,
@@ -113,8 +118,7 @@ export function computeLinkGeometry(
       ? nodeEdgeToward(to, wps[wps.length - 1])
       : snapLinkEndpoint(start, nodeEdgeToward(to, start), gridStep);
   const pathPoints = [start, ...wps, end];
-  const cornerRadius = Math.min(16, Math.max(8, gridStep * 1.2));
-  const d = wps.length > 0 ? pathToRoundedD(pathPoints, cornerRadius) : pathToD(pathPoints);
+  const d = wps.length > 0 ? pathToRoundedD(pathPoints, linkCornerRadius(gridStep)) : pathToD(pathPoints);
   return { d, start, end, waypoints: wps, pathPoints };
 }
 
@@ -197,8 +201,7 @@ export function buildLinkPathD(
   offset = 0
 ): string {
   const pts = offset === 0 ? pathPoints : offsetPolyline(pathPoints, offset);
-  const cornerRadius = Math.min(16, Math.max(8, gridStep * 1.2));
-  return hasWaypoints ? pathToRoundedD(pts, cornerRadius) : pathToD(pts);
+  return hasWaypoints ? pathToRoundedD(pts, linkCornerRadius(gridStep)) : pathToD(pts);
 }
 
 function segmentAngle(a: LinkPoint, b: LinkPoint): number {
