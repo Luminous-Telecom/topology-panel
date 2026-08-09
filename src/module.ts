@@ -108,6 +108,13 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Interação'],
       })
       .addBooleanSwitch({
+        path: 'showMinimap',
+        name: 'Mini mapa de visão geral',
+        description: 'Caixa no canto inferior esquerdo; arraste dentro dela para mover o mapa',
+        defaultValue: true,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
         path: 'showSubtitle',
         name: 'Mostrar subtítulo (IP)',
         defaultValue: true,

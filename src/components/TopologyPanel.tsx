@@ -494,6 +494,20 @@ export function TopologyPanel({
     [onOptionsChange]
   );
 
+  const handleShowMinimapChange = useCallback(
+    (show: boolean) => {
+      onOptionsChange({ ...latestOptionsRef.current, showMinimap: show });
+    },
+    [onOptionsChange]
+  );
+
+  const handleShowLegendChange = useCallback(
+    (show: boolean) => {
+      onOptionsChange({ ...latestOptionsRef.current, showLegend: show });
+    },
+    [onOptionsChange]
+  );
+
   if (width < 1 || height < 1) {
     return null;
   }
@@ -525,6 +539,8 @@ export function TopologyPanel({
         refreshIntervalSec={refreshIntervalSec}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
+        onShowMinimapChange={handleShowMinimapChange}
+        onShowLegendChange={handleShowLegendChange}
         onUndo={dashboardEditing ? undo : undefined}
         onRedo={dashboardEditing ? redo : undefined}
         canUndo={dashboardEditing && canUndo}

@@ -60,6 +60,7 @@ import { BulkSubmapEditModal } from './BulkSubmapEditModal';
 import { ZabbixHostPickerModal } from './AddZabbixHostModal';
 import { PingModal } from './PingModal';
 import { LinkEditModal } from './LinkEditModal';
+import { TopologyMinimap } from './TopologyMinimap';
 import { formatLinkBandwidth, linkStrokeWidth } from '../utils/linkBandwidth';
 import {
   buildLinkPathD,
@@ -102,6 +103,8 @@ interface Props {
   refreshIntervalSec?: number | null;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
+  onShowMinimapChange?: (show: boolean) => void;
+  onShowLegendChange?: (show: boolean) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -417,6 +420,8 @@ export function TopologyCanvas({
   refreshIntervalSec = null,
   onMapChange,
   onViewChange,
+  onShowMinimapChange,
+  onShowLegendChange,
   onUndo,
   onRedo,
   canUndo = false,
@@ -439,6 +444,8 @@ export function TopologyCanvas({
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
   const networksLocked = areNetworksLocked(storedMap);
+  const showMinimap = options.showMinimap !== false;
+  const showLegend = options.showLegend !== false;
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2480,6 +2487,10 @@ export function TopologyCanvas({
         onToggleFlow={() => setFlowPaused((p) => !p)}
         isFullscreen={isFullscreen}
         onToggleFullscreen={() => void toggleFullscreen()}
+        showMinimap={showMinimap}
+        onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
+        showLegend={showLegend}
+        onToggleLegend={() => onShowLegendChange?.(!showLegend)}
         showEditControls={canPersist}
         searchNodes={map.nodes}
         searchOpen={searchOpen}
@@ -3045,11 +3056,30 @@ export function TopologyCanvas({
         </g>
       </svg>
 
-      <TopologyColorLegend
-        items={legendItems}
-        refreshCountdown={refreshCountdown}
-        refreshIntervalSec={refreshIntervalSec}
-      />
+      {showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0 && (
+        <TopologyMinimap
+          map={map}
+          nodes={map.nodes}
+          links={validLinks}
+          nodeLayouts={nodeLayouts}
+          view={view}
+          viewport={viewport}
+          onViewChange={setView}
+          colorNetworkFill={options.colorNetworkFill}
+          colorNetworkBorder={options.colorNetworkBorder}
+          colorLink={options.colorLink}
+          colorSubmap={options.colorSubmap}
+          colorStatic={options.colorStatic}
+        />
+      )}
+
+      {showLegend && (
+        <TopologyColorLegend
+          items={legendItems}
+          refreshCountdown={refreshCountdown}
+          refreshIntervalSec={refreshIntervalSec}
+        />
+      )}
 
       {contextMenu && (
         <TopologyContextMenu

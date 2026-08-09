@@ -226,6 +226,8 @@ export interface TopologyPanelOptions {
   toolPassword?: string;
   /** Exibir legenda de cores no mapa */
   showLegend?: boolean;
+  /** Mini mapa de visão geral (arrastar para navegar) */
+  showMinimap?: boolean;
   /** Itens da legenda (quais cores mostrar) */
   legendOnline?: boolean;
   legendOffline?: boolean;
@@ -307,6 +309,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   toolUsername: '',
   toolPassword: '',
   showLegend: true,
+  showMinimap: true,
   legendOnline: true,
   legendOffline: true,
   legendAlert: true,

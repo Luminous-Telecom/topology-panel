@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { Icon, useTheme2 } from '@grafana/ui';
-import { FaArrowPointer, FaCopy, FaHand, FaPaste } from 'react-icons/fa6';
+import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste } from 'react-icons/fa6';
 import { TopologyNode, TopologyNodeType } from '../types';
 import { resolvePanelColor } from '../utils/panelColors';
 
@@ -677,6 +677,10 @@ export function TopologyToolbar({
   onToggleFlow,
   isFullscreen,
   onToggleFullscreen,
+  showMinimap = true,
+  onToggleMinimap,
+  showLegend = true,
+  onToggleLegend,
   showEditControls = true,
   searchNodes,
   searchOpen,
@@ -701,6 +705,10 @@ export function TopologyToolbar({
   onToggleFlow: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  showMinimap?: boolean;
+  onToggleMinimap?: () => void;
+  showLegend?: boolean;
+  onToggleLegend?: () => void;
   showEditControls?: boolean;
   searchNodes: TopologyNode[];
   searchOpen: boolean;
@@ -860,6 +868,26 @@ export function TopologyToolbar({
               onFocusNode={onSearchFocusNode}
             />
           </div>
+          <button
+            type="button"
+            onClick={onToggleLegend}
+            title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+            aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+            aria-pressed={showLegend}
+            style={toolBtnStyle(showLegend)}
+          >
+            <FaListUl size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleMinimap}
+            title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+            aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+            aria-pressed={showMinimap}
+            style={toolBtnStyle(showMinimap)}
+          >
+            <FaMap size={13} />
+          </button>
           <button
             type="button"
             onClick={onToggleFullscreen}
