@@ -34,7 +34,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -809,15 +809,7 @@ export function TopologyCanvas({
     let pinchRaf: number | null = null;
     let pinchPending: TopologyView | null = null;
 
-    const isOverPanel = (e: { clientX: number; clientY: number }) => {
-      const rect = el.getBoundingClientRect();
-      return (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      );
-    };
+    const isOverPanel = (e: Event) => eventTargetsElement(e, el);
 
     const applyZoomAt = (clientX: number, clientY: number, nextScale: number, from: TopologyView) => {
       const rect = el.getBoundingClientRect();
@@ -958,10 +950,12 @@ export function TopologyCanvas({
       };
     };
 
+    let lastWheelTs = -1;
     const onWheel = (e: WheelEvent) => {
-      if (!isOverPanel(e)) {
+      if (e.timeStamp === lastWheelTs || !isOverPanel(e)) {
         return;
       }
+      lastWheelTs = e.timeStamp;
 
       const restoreScroll = freezeScrollPosition();
       e.preventDefault();
@@ -971,6 +965,9 @@ export function TopologyCanvas({
       restoreScroll?.();
       requestAnimationFrame(() => restoreScroll?.());
     };
+
+    const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
+    const wheelTargets = [document, el, ...scrollParents];
 
     const onHoverCheck = (e: PointerEvent) => {
       if (isOverPanel(e)) {
@@ -983,28 +980,25 @@ export function TopologyCanvas({
     const onPointerLeavePanel = () => unlockScroll();
 
     document.addEventListener('pointermove', onHoverCheck, { passive: true });
+    for (const target of wheelTargets) {
+      target.addEventListener('wheel', onWheel, wheelOpts);
+    }
     el.addEventListener('pointerleave', onPointerLeavePanel);
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd);
     el.addEventListener('touchcancel', onTouchEnd);
 
-    for (const sp of scrollParents) {
-      sp.addEventListener('wheel', onWheel, { passive: false, capture: true });
-      sp.addEventListener('wheel', onWheel, { passive: false, capture: false });
-    }
-
     return () => {
       document.removeEventListener('pointermove', onHoverCheck);
+      for (const target of wheelTargets) {
+        target.removeEventListener('wheel', onWheel, wheelOpts);
+      }
       el.removeEventListener('pointerleave', onPointerLeavePanel);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
-      for (const sp of scrollParents) {
-        sp.removeEventListener('wheel', onWheel, { capture: true });
-        sp.removeEventListener('wheel', onWheel, { capture: false });
-      }
       endPinch();
       unlockScroll();
     };
