@@ -115,6 +115,8 @@ interface Props {
 const EDGE_PAN_THRESHOLD = 64;
 /** Velocidade máxima do pan automático (px de tela por segundo). */
 const EDGE_PAN_MAX_SPEED = 720;
+/** Movimento mínimo em px de tela antes de arrastar nó (clique vs drag). */
+const NODE_DRAG_THRESHOLD_PX = 8;
 
 const styles = {
   wrap: css`
@@ -470,6 +472,8 @@ export function TopologyCanvas({
         kind: 'node';
         node: TopologyNode;
         grabOffsetWorld: { x: number; y: number };
+        pointerOx: number;
+        pointerOy: number;
         startX: number;
         startY: number;
         startW: number;
@@ -501,6 +505,7 @@ export function TopologyCanvas({
   const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  const startEdgePanLoopRef = useRef<() => void>(() => {});
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const pasteOffsetRef = useRef(0);
@@ -1303,6 +1308,19 @@ export function TopologyCanvas({
       if (!d || d.kind !== 'node') {
         return;
       }
+      if (!d.moved) {
+        const dragDist = Math.hypot(clientX - d.pointerOx, clientY - d.pointerOy);
+        if (dragDist < NODE_DRAG_THRESHOLD_PX) {
+          return;
+        }
+        d.moved = true;
+        if (options.enablePan && canMoveSelectedNode(d.node, areNetworksLocked(storedMap))) {
+          startEdgePanLoopRef.current();
+        }
+      }
+      if (d.moved && e) {
+        e.preventDefault();
+      }
       const rect = edgePanRect();
       if (!rect) {
         return;
@@ -1330,12 +1348,6 @@ export function TopologyCanvas({
       });
       if (members.length === 0) {
         return;
-      }
-      if (Math.abs(rawPrimaryX - d.startX) > 2 / currentView.scale || Math.abs(rawPrimaryY - d.startY) > 2 / currentView.scale) {
-        d.moved = true;
-      }
-      if (d.moved && e) {
-        e.preventDefault();
       }
       const primary = members.find((m) => m.id === d.node.id) ?? members[0];
       const primarySnapped = snapNodeCenterToGrid(
@@ -1419,14 +1431,14 @@ export function TopologyCanvas({
         })
       );
     },
-    [edgePanRect, gridStep, map.height, map.nodes, map.width, nodeLayouts, storedMap]
+    [edgePanRect, gridStep, map.height, map.nodes, map.width, nodeLayouts, options.enablePan, storedMap]
   );
 
   const runEdgePanFrame = useCallback(
     (timestamp: number) => {
       const d = dragRef.current;
       const ptr = dragPointerRef.current;
-      if (!d || d.kind !== 'node' || !options.enablePan || !ptr) {
+      if (!d || d.kind !== 'node' || !d.moved || !options.enablePan || !ptr) {
         edgePanRafRef.current = null;
         edgePanPrevTsRef.current = null;
         return;
@@ -1468,6 +1480,7 @@ export function TopologyCanvas({
     edgePanPrevTsRef.current = null;
     edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
   }, [runEdgePanFrame]);
+  startEdgePanLoopRef.current = startEdgePanLoop;
 
   const beginNodeDrag = useCallback(
     (
@@ -1497,6 +1510,8 @@ export function TopologyCanvas({
         kind: 'node',
         node,
         grabOffsetWorld: { x: pointerWorld.x - startX, y: pointerWorld.y - startY },
+        pointerOx: e.clientX,
+        pointerOy: e.clientY,
         startX,
         startY,
         startW,
@@ -1505,11 +1520,8 @@ export function TopologyCanvas({
         group,
       };
       wrapRef.current?.setPointerCapture(e.pointerId);
-      if (canMoveSelectedNode(node, networksLocked)) {
-        startEdgePanLoop();
-      }
     },
-    [map.nodes, nodeLayouts, selectedNodeIds, startEdgePanLoop, storedMap]
+    [map.nodes, nodeLayouts, selectedNodeIds, storedMap]
   );
 
   useEffect(() => () => stopEdgePanLoop(), [stopEdgePanLoop]);
