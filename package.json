@@ -1,11 +1,13 @@
 {
   "name": "luminous-topology-panel",
-  "version": "1.4.81",
+  "version": "1.4.83",
   "description": "Topology Panel — Grafana panel for network maps with Zabbix status, links and submaps",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.js --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.js --env development",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "author": "Luminous Telecom",
   "license": "Apache-2.0",
@@ -27,6 +29,7 @@
     "style-loader": "^4.0.0",
     "swc-loader": "^0.2.0",
     "typescript": "^5.5.0",
+    "vitest": "^2.1.0",
     "webpack": "^5.93.0",
     "webpack-cli": "^5.1.0"
   },

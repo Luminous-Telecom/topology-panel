@@ -1,41 +1,63 @@
-export interface EdgeScrollDelta {
-  scrollX: number;
-  scrollY: number;
+export interface EdgePanVelocity {
+  vx: number;
+  vy: number;
 }
 
-/**
- * Deslocamento de pan da view ao arrastar nó/rede contra a borda.
- * Mesma direção do arraste: puxar o host para a direita → mapa vai para a direita.
- */
-export function computeEdgeScrollDelta(
+type EdgePanRect = Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom' | 'width' | 'height'>;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function edgeAxisVelocity(
+  pointer: number,
+  min: number,
+  max: number,
+  threshold: number,
+  maxSpeed: number
+): number {
+  if (threshold <= 0 || maxSpeed <= 0 || max <= min) {
+    return 0;
+  }
+
+  if (pointer < min + threshold) {
+    const t = clamp((min + threshold - pointer) / threshold, 0, 1);
+    return maxSpeed * t * t;
+  }
+
+  if (pointer > max - threshold) {
+    const t = clamp((pointer - (max - threshold)) / threshold, 0, 1);
+    return -maxSpeed * t * t;
+  }
+
+  return 0;
+}
+
+/** Velocidade de auto-pan (px/s). Borda direita → conteúdo desloca para a esquerda. */
+export function computeEdgePanVelocity(
   clientX: number,
   clientY: number,
-  rect: DOMRect,
-  margin: number,
+  rect: EdgePanRect,
+  threshold: number,
   maxSpeed: number
-): EdgeScrollDelta {
-  if (margin <= 0 || maxSpeed <= 0 || rect.width <= 0 || rect.height <= 0) {
-    return { scrollX: 0, scrollY: 0 };
+): EdgePanVelocity {
+  if (threshold <= 0 || maxSpeed <= 0 || rect.width <= 0 || rect.height <= 0) {
+    return { vx: 0, vy: 0 };
   }
 
-  let scrollX = 0;
-  let scrollY = 0;
-  const localX = clientX - rect.left;
-  const localY = clientY - rect.top;
-  const distRight = rect.width - localX;
-  const distBottom = rect.height - localY;
+  return {
+    vx: edgeAxisVelocity(clientX, rect.left, rect.right, threshold, maxSpeed),
+    vy: edgeAxisVelocity(clientY, rect.top, rect.bottom, threshold, maxSpeed),
+  };
+}
 
-  if (distRight < margin) {
-    scrollX = ((margin - distRight) / margin) * maxSpeed;
-  } else if (localX < margin) {
-    scrollX = -((margin - localX) / margin) * maxSpeed;
-  }
-
-  if (distBottom < margin) {
-    scrollY = ((margin - distBottom) / margin) * maxSpeed;
-  } else if (localY < margin) {
-    scrollY = -((margin - localY) / margin) * maxSpeed;
-  }
-
-  return { scrollX, scrollY };
+/** Expõe eixo para testes unitários. */
+export function edgeAxisVelocityForTest(
+  pointer: number,
+  min: number,
+  max: number,
+  threshold: number,
+  maxSpeed: number
+): number {
+  return edgeAxisVelocity(pointer, min, max, threshold, maxSpeed);
 }
