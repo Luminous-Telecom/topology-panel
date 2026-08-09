@@ -525,17 +525,21 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
 
 const hintStyle = css`
   position: absolute;
-  top: 8px;
+  top: 44px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 3;
+  z-index: 2;
   padding: 6px 12px;
   border-radius: 4px;
   background: rgba(21, 101, 192, 0.92);
   color: #fff;
   font-size: 12px;
+  line-height: 1.35;
   pointer-events: none;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
+  max-width: min(560px, calc(100% - 280px));
+  box-sizing: border-box;
 `;
 
 export function TopologyEditHint({ children }: { children: React.ReactNode }) {
@@ -662,7 +666,7 @@ const toolbarStyle = css`
   position: absolute;
   top: 8px;
   right: 36px;
-  z-index: 3;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 6px;

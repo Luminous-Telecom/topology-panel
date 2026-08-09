@@ -444,10 +444,13 @@ export function TopologyCanvas({
     | {
         kind: 'link-waypoint';
         link: TopologyLink;
+        ox: number;
+        oy: number;
         waypointIndex: number;
         waypoints: LinkPoint[];
         moved: boolean;
-        inserted: boolean;
+        /** Inserção só após limiar de arraste — evita dobrar a linha no toque/clique. */
+        pendingInsert: { x: number; y: number; insertIndex: number } | null;
       }
     | null
   >(null);
@@ -1242,10 +1245,9 @@ export function TopologyCanvas({
       const currentWaypoints = resolveLinkWaypoints(link).map((p) => ({ ...p }));
       const geom = computeLinkGeometry(from, to, gridStep, currentWaypoints);
       const point = { x: mapX, y: mapY };
-      const hitRadius = Math.max(10, 14 / view.scale);
+      const hitRadius = Math.max(8, 10 / view.scale);
       let index = waypointIndex;
-      let inserted = false;
-      let waypoints = currentWaypoints;
+      let pendingInsert: { x: number; y: number; insertIndex: number } | null = null;
 
       if (index === undefined) {
         index = currentWaypoints.findIndex((wp) => Math.hypot(wp.x - mapX, wp.y - mapY) <= hitRadius);
@@ -1253,13 +1255,12 @@ export function TopologyCanvas({
 
       if (index < 0) {
         const hit = closestPointOnPolyline(geom.pathPoints, point);
-        if (hit.distance > hitRadius * 1.5) {
+        if (hit.distance > hitRadius * 1.25) {
           return;
         }
-        index = hit.insertIndex;
-        waypoints = [...currentWaypoints];
-        waypoints.splice(index, 0, { x: snapCoord(hit.x), y: snapCoord(hit.y) });
-        inserted = true;
+        // Não insere ainda: o snap na grade no pointerdown já entortava a linha só de tocar.
+        pendingInsert = { x: hit.x, y: hit.y, insertIndex: hit.insertIndex };
+        index = -1;
       }
 
       setSelectedNodeIds([]);
@@ -1267,15 +1268,16 @@ export function TopologyCanvas({
       dragRef.current = {
         kind: 'link-waypoint',
         link,
+        ox: e.clientX,
+        oy: e.clientY,
         waypointIndex: index,
-        waypoints,
+        waypoints: currentWaypoints,
         moved: false,
-        inserted,
+        pendingInsert,
       };
-      setDragPreview({ linkWaypoints: { from: link.from, to: link.to, waypoints } });
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
-    [editable, gridStep, nodeLayouts, resolveLinkWaypoints, snapCoord, view.scale]
+    [editable, gridStep, nodeLayouts, resolveLinkWaypoints, view.scale]
   );
 
   const removeLinkWaypoint = useCallback(
@@ -1496,9 +1498,29 @@ export function TopologyCanvas({
         if (!el) {
           return;
         }
+        // Limiar em px de tela — evita dobrar ao “triscar” ou selecionar o cabo.
+        const dragDist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
+        if (!d.moved) {
+          if (dragDist < 10) {
+            return;
+          }
+          d.moved = true;
+          if (d.pendingInsert) {
+            const insert = d.pendingInsert;
+            d.waypoints = [...d.waypoints];
+            d.waypoints.splice(insert.insertIndex, 0, {
+              x: snapCoord(insert.x),
+              y: snapCoord(insert.y),
+            });
+            d.waypointIndex = insert.insertIndex;
+            d.pendingInsert = null;
+          }
+        }
+        if (d.waypointIndex < 0) {
+          return;
+        }
         const rect = el.getBoundingClientRect();
         const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        d.moved = true;
         const waypoints = d.waypoints.map((wp, i) =>
           i === d.waypointIndex ? { x: snapCoord(x), y: snapCoord(y) } : wp
         );
@@ -1595,7 +1617,7 @@ export function TopologyCanvas({
       }
 
       if (d?.kind === 'link-waypoint') {
-        if (d.moved || d.inserted) {
+        if (d.moved && d.waypointIndex >= 0) {
           persist(updateLinkProps(storedMap, d.link.from, d.link.to, { waypoints: d.waypoints }));
         }
         setDragPreview(null);
@@ -2233,7 +2255,7 @@ export function TopologyCanvas({
           {editable ? (
             <>
               {' '}
-              · Arraste a linha para desviar · Duplo-clique na curva para remover · Botão direito → Linha reta
+              · Arraste para desviar · Duplo-clique na curva remove · Direito → reta
             </>
           ) : (
             <> (clique no fundo para desmarcar)</>
@@ -2944,7 +2966,7 @@ function LinkLineComponent({
   const geom = computeLinkGeometry(from, to, gridStep, waypoints);
   const { d, pathPoints } = geom;
   const hasWaypoints = waypoints.length > 0;
-  const hitWidth = Math.max(14, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 12);
+  const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
   const active = selected || hovered;
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? '10 6' : undefined;
