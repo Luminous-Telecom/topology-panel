@@ -330,6 +330,66 @@ export async function fetchZabbixHostsInGroupNames(
   }
 }
 
+export interface ZabbixHostNodeRef {
+  zabbixHost?: string;
+  zabbixHostId?: string;
+  subtitle?: string;
+  label?: string;
+}
+
+/** Encontra o host Zabbix da lista que corresponde ao nó do mapa (hostid, nome ou IP). */
+export function resolveZabbixHostOptionForNode(
+  list: ZabbixHostOption[],
+  node: ZabbixHostNodeRef
+): ZabbixHostOption | undefined {
+  const hostId = node.zabbixHostId?.trim();
+  if (hostId) {
+    const byId = list.find((host) => host.hostid === hostId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  const candidates = [node.zabbixHost?.trim(), node.label?.trim(), node.subtitle?.trim()].filter(
+    (value): value is string => Boolean(value)
+  );
+
+  for (const candidate of candidates) {
+    const byIp = list.find((host) => host.ip === candidate);
+    if (byIp) {
+      return byIp;
+    }
+    const lower = candidate.toLowerCase();
+    const byName = list.find(
+      (host) =>
+        host.visibleName.toLowerCase() === lower || host.technicalName.toLowerCase() === lower
+    );
+    if (byName) {
+      return byName;
+    }
+  }
+
+  return undefined;
+}
+
+export function zabbixHostPickerOptions(
+  list: ZabbixHostOption[],
+  onMap: { names: Set<string>; hostIds: Set<string> },
+  boundHost?: ZabbixHostOption
+): Array<{ label: string; value: string }> {
+  return list
+    .filter((host) => {
+      if (boundHost && host.hostid === boundHost.hostid) {
+        return true;
+      }
+      return !onMap.hostIds.has(host.hostid) && !onMap.names.has(host.visibleName);
+    })
+    .map((host) => ({
+      label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
+      value: host.visibleName,
+    }));
+}
+
 /** Hosts de um grupo Zabbix (nome visível + IP). */
 export async function fetchZabbixHostsInGroup(
   datasourceUid: string,

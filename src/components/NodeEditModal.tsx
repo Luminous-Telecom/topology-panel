@@ -1,20 +1,72 @@
-import React, { useState } from 'react';
-import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
-import { TopologyDashboardChoice, TopologyHostIcon, TopologyNode, TopologyQueryRefInfo } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal, Select } from '@grafana/ui';
+import {
+  TopologyDashboardChoice,
+  TopologyHostIcon,
+  TopologyMap,
+  TopologyNode,
+  TopologyQueryRefInfo,
+} from '../types';
 import { DashboardMultiSelect } from './DashboardMultiSelect';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
+import { fetchZabbixHostsInGroupNames, resolveZabbixHostOptionForNode, zabbixHostPickerOptions } from '../utils/zabbixApi';
+
+export interface NodeEditSavePayload {
+  patch: Partial<TopologyNode>;
+  rebind?: {
+    visibleName: string;
+    ip?: string;
+    icon: TopologyHostIcon;
+    hostid: string;
+  };
+}
 
 interface Props {
   node: TopologyNode;
   queryRefInfos?: TopologyQueryRefInfo[];
-  onSave: (patch: Partial<TopologyNode>) => void;
+  zabbixDatasourceUid?: string;
+  zabbixGroupNames?: string[];
+  storedMap?: TopologyMap;
+  onSave: (payload: NodeEditSavePayload) => void;
   onClose: () => void;
 }
 
-export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Props) {
+function hostsAlreadyOnMap(map: TopologyMap, exceptName?: string, exceptHostId?: string): {
+  names: Set<string>;
+  hostIds: Set<string>;
+} {
+  const names = new Set<string>();
+  const hostIds = new Set<string>();
+  const skipName = exceptName?.trim();
+  const skipId = exceptHostId?.trim();
+  for (const entry of map.nodes) {
+    if ((entry.type ?? 'host') !== 'host') {
+      continue;
+    }
+    const z = entry.zabbixHost?.trim();
+    const id = entry.zabbixHostId?.trim();
+    if (z && z !== skipName) {
+      names.add(z);
+    }
+    if (id && id !== skipId) {
+      hostIds.add(id);
+    }
+  }
+  return { names, hostIds };
+}
+
+export function NodeEditModal({
+  node,
+  queryRefInfos = [],
+  zabbixDatasourceUid,
+  zabbixGroupNames = [],
+  storedMap,
+  onSave,
+  onClose,
+}: Props) {
   const [label, setLabel] = useState(node.label ?? '');
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
@@ -35,42 +87,223 @@ export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Pro
   const [borderColor, setBorderColor] = useState(node.borderColor ?? '');
   const [toolUsername, setToolUsername] = useState(node.toolUsername ?? '');
   const [toolPassword, setToolPassword] = useState(node.toolPassword ?? '');
+  const [zabbixHosts, setZabbixHosts] = useState<Awaited<ReturnType<typeof fetchZabbixHostsInGroupNames>>>([]);
+  const [zabbixHostName, setZabbixHostName] = useState<string | undefined>(node.zabbixHost?.trim() || undefined);
+  const [loadingZabbixHosts, setLoadingZabbixHosts] = useState(false);
+  const [zabbixLoadError, setZabbixLoadError] = useState<string | null>(null);
 
   const type = node.type ?? 'host';
   const isHost = type === 'host';
+  const isZabbixHost = isHost && Boolean(node.zabbixHost?.trim());
+  const groupNamesKey = zabbixGroupNames.join('\0');
+
+  const onMap = useMemo(() => {
+    if (!storedMap) {
+      return { names: new Set<string>(), hostIds: new Set<string>() };
+    }
+    return hostsAlreadyOnMap(storedMap, node.zabbixHost, node.zabbixHostId);
+  }, [node.zabbixHost, node.zabbixHostId, storedMap]);
+
+  const boundZabbixHost = useMemo(
+    () => resolveZabbixHostOptionForNode(zabbixHosts, node),
+    [node, zabbixHosts]
+  );
+
+  useEffect(() => {
+    if (boundZabbixHost) {
+      setZabbixHostName(boundZabbixHost.visibleName);
+    }
+  }, [boundZabbixHost]);
+
+  useEffect(() => {
+    if (!isZabbixHost || !zabbixDatasourceUid || !storedMap) {
+      return;
+    }
+    if (!zabbixGroupNames.length) {
+      setZabbixLoadError('Configure um host group na query Zabbix do painel (aba Query).');
+      setZabbixHosts([]);
+      setZabbixHostName(undefined);
+      return;
+    }
+    let cancelled = false;
+    setLoadingZabbixHosts(true);
+    setZabbixLoadError(null);
+    fetchZabbixHostsInGroupNames(zabbixDatasourceUid, zabbixGroupNames)
+      .then((list) => {
+        if (cancelled) {
+          return;
+        }
+        if (!list.length) {
+          setZabbixLoadError(`Nenhum host encontrado no grupo Zabbix: ${zabbixGroupNames.join(', ')}.`);
+          setZabbixHosts([]);
+          setZabbixHostName(undefined);
+          return;
+        }
+        setZabbixHosts(list);
+        const match = resolveZabbixHostOptionForNode(list, node);
+        if (match) {
+          setZabbixHostName(match.visibleName);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setZabbixLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
+          setZabbixHosts([]);
+          setZabbixHostName(undefined);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingZabbixHosts(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    groupNamesKey,
+    isZabbixHost,
+    node.zabbixHost,
+    node.zabbixHostId,
+    storedMap,
+    zabbixDatasourceUid,
+    zabbixGroupNames,
+  ]);
+
+  const zabbixHostOptions = useMemo(
+    () => zabbixHostPickerOptions(zabbixHosts, onMap, boundZabbixHost),
+    [boundZabbixHost, onMap, zabbixHosts]
+  );
+
+  const selectedZabbixHost =
+    zabbixHosts.find((host) => host.visibleName === zabbixHostName) ?? boundZabbixHost;
+  const groupHint = zabbixGroupNames.length ? zabbixGroupNames.join(', ') : undefined;
+
   const title =
     type === 'submap'
-      ? 'Submapa'
+      ? 'Propriedades do submapa'
       : type === 'dashboard_picker'
-        ? 'Seletor de dashboards'
+        ? 'Propriedades do seletor'
         : type === 'static'
-          ? 'Estático'
+          ? 'Propriedades do estático'
           : type === 'network'
-            ? 'Rede'
-            : node.zabbixHost
-              ? 'Host Zabbix'
-              : 'Dispositivo';
+            ? 'Propriedades da rede'
+            : 'Propriedades do host';
+
+  const handleSave = () => {
+    if (isZabbixHost) {
+      if (!selectedZabbixHost?.hostid) {
+        return;
+      }
+      const payload: NodeEditSavePayload = {
+        patch: {
+          toolUsername: toolUsername.trim(),
+          toolPassword,
+        },
+      };
+      const hostChanged =
+        selectedZabbixHost.visibleName !== node.zabbixHost?.trim() ||
+        selectedZabbixHost.hostid !== node.zabbixHostId?.trim();
+      if (hostChanged || icon !== node.icon) {
+        payload.rebind = {
+          visibleName: selectedZabbixHost.visibleName,
+          ip: selectedZabbixHost.ip,
+          icon,
+          hostid: selectedZabbixHost.hostid,
+        };
+      }
+      onSave(payload);
+      onClose();
+      return;
+    }
+
+    const patch: Partial<TopologyNode> = {
+      label,
+      subtitle: type === 'dashboard_picker' ? undefined : subtitle,
+      submapUid: type === 'submap' ? submapUid : undefined,
+      submapSlug: type === 'submap' ? submapSlug : undefined,
+      icon: isHost ? icon : undefined,
+    };
+    if (isHost) {
+      patch.toolUsername = toolUsername.trim();
+      patch.toolPassword = toolPassword;
+    }
+    if (type === 'network') {
+      patch.label = label.trim() || node.label;
+      patch.width = Math.max(60, Number(width) || 220);
+      patch.height = Math.max(40, Number(height) || 140);
+      patch.fillColor = fillColor.trim() || undefined;
+      patch.borderColor = borderColor.trim() || undefined;
+    }
+    if (type === 'submap') {
+      patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
+      patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
+      patch.queryRefId = queryRefId.trim().toUpperCase() || undefined;
+      patch.includeInParentStats = includeInParentStats ? undefined : false;
+      patch.showStatusStats = undefined;
+    }
+    if (type === 'dashboard_picker') {
+      patch.dashboardChoices = dashboardChoices.filter((c) => c.uid.trim());
+      patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
+      patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
+      patch.fillColor = fillColor.trim() || undefined;
+    }
+    if (type === 'static') {
+      patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;
+      patch.height = height.trim() ? Math.max(20, Number(height) || 20) : undefined;
+      patch.fontSize = fontSize.trim() ? Math.max(8, Number(fontSize) || 8) : undefined;
+      patch.fillColor = fillColor.trim() || undefined;
+      patch.labelColor = labelColor.trim() || undefined;
+    }
+    onSave({ patch });
+    onClose();
+  };
+
+  const saveDisabled = isZabbixHost && !selectedZabbixHost?.hostid;
 
   return (
     <Modal title={title} isOpen onDismiss={onClose}>
-      {node.zabbixHost && (
-        <Field label="Host Zabbix">
-          <Input value={node.zabbixHost} disabled />
-        </Field>
+      {isZabbixHost && (
+        <>
+          <Field
+            label="Host Zabbix"
+            description={
+              zabbixLoadError ??
+              (groupHint
+                ? `Hosts do grupo ${groupHint}. Vinculado pelo hostid — renomear no Zabbix não quebra o mapa.`
+                : 'Vinculado pelo hostid do Zabbix.')
+            }
+          >
+            <Select
+              options={zabbixHostOptions}
+              value={zabbixHostName}
+              isLoading={loadingZabbixHosts}
+              disabled={!zabbixGroupNames.length || loadingZabbixHosts}
+              onChange={(v) => setZabbixHostName(v.value)}
+              placeholder={
+                loadingZabbixHosts
+                  ? 'Carregando hosts…'
+                  : zabbixHostOptions.length
+                    ? 'Selecione o host'
+                    : 'Nenhum host disponível neste grupo'
+              }
+            />
+          </Field>
+          {selectedZabbixHost?.ip ? (
+            <Field label="IP">
+              <span>{selectedZabbixHost.ip}</span>
+            </Field>
+          ) : null}
+        </>
       )}
-      {!node.zabbixHost && (
+      {!isZabbixHost && type !== 'dashboard_picker' && (
         <Field label="Nome exibido">
           <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
         </Field>
       )}
-      {!node.zabbixHost && type !== 'dashboard_picker' && (
+      {!isZabbixHost && isHost && (
         <Field label="Subtítulo / IP">
           <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
-        </Field>
-      )}
-      {node.zabbixHost && node.subtitle && (
-        <Field label="IP">
-          <Input value={node.subtitle} disabled />
         </Field>
       )}
       {isHost && (
@@ -125,11 +358,7 @@ export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Pro
             label="Consulta Zabbix"
             description="Consulta deste painel cujo host group define o status offline deste submapa"
           >
-            <QueryRefSelect
-              value={queryRefId}
-              queryRefs={queryRefInfos}
-              onChange={setQueryRefId}
-            />
+            <QueryRefSelect value={queryRefId} queryRefs={queryRefInfos} onChange={setQueryRefId} />
           </Field>
           <Field
             label="Incluir submapas internos"
@@ -209,6 +438,9 @@ export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Pro
       )}
       {type === 'network' && (
         <>
+          <Field label="Nome">
+            <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+          </Field>
           <Field label="Largura (px)">
             <Input type="number" value={width || String(node.width ?? 220)} onChange={(e) => setWidth(e.currentTarget.value)} />
           </Field>
@@ -227,52 +459,7 @@ export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Pro
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
-        <Button
-          onClick={() => {
-            const patch: Partial<TopologyNode> = {
-              label: node.zabbixHost ? node.label : label,
-              subtitle: node.zabbixHost ? node.subtitle : type === 'dashboard_picker' ? undefined : subtitle,
-              submapUid: type === 'submap' ? submapUid : undefined,
-              submapSlug: type === 'submap' ? submapSlug : undefined,
-              zabbixHost: node.zabbixHost,
-              icon: isHost ? icon : undefined,
-            };
-            if (isHost) {
-              // Sempre envia as chaves para poder limpar credencial antiga
-              patch.toolUsername = toolUsername.trim();
-              patch.toolPassword = toolPassword;
-            }
-            if (type === 'network') {
-              patch.width = Math.max(60, Number(width) || 220);
-              patch.height = Math.max(40, Number(height) || 140);
-              patch.fillColor = fillColor.trim() || undefined;
-              patch.borderColor = borderColor.trim() || undefined;
-            }
-            if (type === 'submap') {
-              patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
-              patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
-              patch.queryRefId = queryRefId.trim().toUpperCase() || undefined;
-              patch.includeInParentStats = includeInParentStats ? undefined : false;
-              patch.showStatusStats = undefined;
-            }
-            if (type === 'dashboard_picker') {
-              patch.dashboardChoices = dashboardChoices.filter((c) => c.uid.trim());
-              patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
-              patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
-              patch.fillColor = fillColor.trim() || undefined;
-              patch.subtitle = undefined;
-            }
-            if (type === 'static') {
-              patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;
-              patch.height = height.trim() ? Math.max(20, Number(height) || 20) : undefined;
-              patch.fontSize = fontSize.trim() ? Math.max(8, Number(fontSize) || 8) : undefined;
-              patch.fillColor = fillColor.trim() || undefined;
-              patch.labelColor = labelColor.trim() || undefined;
-            }
-            onSave(patch);
-            onClose();
-          }}
-        >
+        <Button disabled={saveDisabled} onClick={handleSave}>
           Salvar
         </Button>
       </Modal.ButtonRow>

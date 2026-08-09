@@ -42,6 +42,7 @@ import { isDarkBackground, subtextOnBackground, textOnBackground } from '../util
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, hostsInsideNetwork, regionFillColor } from '../utils/networkStats';
+import { isNetworkNode } from '../utils/mapBounds';
 import {
   CanvasTool,
   ContextMenuItem,
@@ -53,7 +54,7 @@ import {
 } from './TopologyContextMenu';
 import { DashboardNavButton } from './DashboardNavButton';
 import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
-import { NodeEditModal } from './NodeEditModal';
+import { NodeEditModal, NodeEditSavePayload } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
 import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
 import { BulkSubmapEditModal } from './BulkSubmapEditModal';
@@ -71,6 +72,7 @@ import {
   nearestWaypointIndex,
 } from '../utils/linkGeometry';
 import { LINK_FLOW_DASH, LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
+import { computeEdgePanVelocity } from '../utils/edgePan';
 import {
   copyTopologySelection,
   getTopologyClipboard,
@@ -110,6 +112,11 @@ interface Props {
   canUndo?: boolean;
   canRedo?: boolean;
 }
+
+/** Faixa nas bordas do painel que dispara pan automático ao arrastar nó/rede. */
+const EDGE_PAN_MARGIN = 48;
+/** Velocidade máxima do pan automático (px de tela por frame). */
+const EDGE_PAN_MAX_SPEED = 18;
 
 const styles = {
   wrap: css`
@@ -183,6 +190,19 @@ type ContextState = {
 
 /** Dicas de atalhos de seleção somem depois desse tempo, deixando só a ação (Alterar tipo etc.) visível. */
 const SELECTION_TIPS_DURATION_MS = 2000;
+
+/** Intervalo máximo entre dois cliques para abrir propriedades (pointer capture bloqueia dblclick nativo). */
+const NODE_DOUBLE_TAP_MS = 400;
+
+function nodeSupportsProperties(node: TopologyNode): boolean {
+  return (
+    node.type === 'submap' ||
+    node.type === 'network' ||
+    node.type === 'static' ||
+    node.type === 'dashboard_picker' ||
+    (node.type ?? 'host') === 'host'
+  );
+}
 
 function linkKey(link: TopologyLink): string {
   return `${link.from}-${link.to}`;
@@ -665,11 +685,17 @@ export function TopologyCanvas({
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
   const panRafRef = useRef<number | null>(null);
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
+  /** Pan automático ao arrastar nó/rede perto da borda do painel. */
+  const edgePanRafRef = useRef<number | null>(null);
+  const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
   const pasteOffsetRef = useRef(0);
+  const lastNodeTapRef = useRef<{ nodeId: string; time: number } | null>(null);
   /** True while two-finger pinch zoom is active (blocks single-finger pan). */
   const pinchActiveRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
@@ -686,7 +712,6 @@ export function TopologyCanvas({
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
   const [pickerNode, setPickerNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
-  const [editZabbixHost, setEditZabbixHost] = useState<TopologyNode | null>(null);
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<TopologyLink | null>(null);
   const [editLink, setEditLink] = useState<TopologyLink | null>(null);
@@ -1077,6 +1102,11 @@ export function TopologyCanvas({
       e.preventDefault();
       // Interrompe pan/drag de 1 dedo — pinch assume o gesto.
       dragRef.current = null;
+      if (edgePanRafRef.current != null) {
+        cancelAnimationFrame(edgePanRafRef.current);
+        edgePanRafRef.current = null;
+      }
+      dragPointerRef.current = null;
       if (panRafRef.current != null) {
         cancelAnimationFrame(panRafRef.current);
         panRafRef.current = null;
@@ -1359,9 +1389,6 @@ export function TopologyCanvas({
       if (e.button !== 0) {
         return;
       }
-      if (areNetworksLocked(storedMap)) {
-        return;
-      }
       e.stopPropagation();
       setSelectedLink(null);
 
@@ -1370,9 +1397,26 @@ export function TopologyCanvas({
         return;
       }
 
+      const layout = nodeLayouts.get(node.id);
+      const networksLocked = areNetworksLocked(storedMap);
+
+      if (networksLocked) {
+        dragRef.current = {
+          kind: 'node',
+          node,
+          ox: e.clientX,
+          oy: e.clientY,
+          startX: node.x,
+          startY: node.y,
+          startW: layout?.w ?? node.width ?? DEFAULT_NETWORK_WIDTH,
+          startH: layout?.h ?? node.height ?? DEFAULT_NETWORK_HEIGHT,
+          moved: false,
+        };
+        wrapRef.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+
       if (editable) {
-        const layout = nodeLayouts.get(node.id);
-        const networksLocked = areNetworksLocked(storedMap);
         let group: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }> | undefined;
         if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
           group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
@@ -1556,6 +1600,196 @@ export function TopologyCanvas({
     [beginPan, editable, panTool, view]
   );
 
+  const stopEdgePanLoop = useCallback(() => {
+    if (edgePanRafRef.current != null) {
+      cancelAnimationFrame(edgePanRafRef.current);
+      edgePanRafRef.current = null;
+    }
+    dragPointerRef.current = null;
+  }, []);
+
+  const applyNodeDragMove = useCallback(
+    (clientX: number, clientY: number, e?: React.PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || d.kind !== 'node') {
+        return;
+      }
+      const currentView = viewRef.current;
+      const dx = (clientX - d.ox) / currentView.scale;
+      const dy = (clientY - d.oy) / currentView.scale;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        d.moved = true;
+      }
+      if (d.moved && e) {
+        e.preventDefault();
+      }
+      const networksLocked = areNetworksLocked(storedMap);
+      const rawMembers =
+        d.group && d.group.length > 1
+          ? d.group
+          : [
+              {
+                id: d.node.id,
+                startX: d.startX,
+                startY: d.startY,
+                startW: d.startW,
+                startH: d.startH,
+              },
+            ];
+      const members = rawMembers.filter((m) => {
+        const n = map.nodes.find((node) => node.id === m.id);
+        return Boolean(n && canMoveSelectedNode(n, networksLocked));
+      });
+      if (members.length === 0) {
+        return;
+      }
+      const primary = members.find((m) => m.id === d.node.id) ?? members[0];
+      const primarySnapped = snapNodeCenterToGrid(
+        primary.startX + dx,
+        primary.startY + dy,
+        primary.startW,
+        primary.startH,
+        gridStep
+      );
+      const sdx = primarySnapped.x - primary.startX;
+      const sdy = primarySnapped.y - primary.startY;
+      const positions: Record<string, { x: number; y: number }> = {};
+      for (const member of members) {
+        const snapped = snapNodeCenterToGrid(
+          member.startX + sdx,
+          member.startY + sdy,
+          member.startW,
+          member.startH,
+          gridStep
+        );
+        positions[member.id] = { x: snapped.x, y: snapped.y };
+      }
+
+      const primaryPos = positions[primary.id];
+      if (primaryPos) {
+        const rawPrimaryX = primary.startX + dx;
+        const rawPrimaryY = primary.startY + dy;
+        applyNetworkPullFollow(d, primary, rawPrimaryX, rawPrimaryY, positions, snapCoord, gridStep);
+      }
+
+      dragPositionsRef.current = positions;
+      setDragPreview({ positions });
+
+      if (primaryPos) {
+        const draggedIds = new Set(Object.keys(positions));
+        const guideThreshold = Math.max(6, gridStep * 0.5);
+        const pad = gridStep * 2;
+        const vp = viewportRef.current;
+        let x0 = 0;
+        let y0 = 0;
+        let x1 = map.width;
+        let y1 = map.height;
+        if (vp.w > 0 && vp.h > 0 && currentView.scale > 0) {
+          x0 = Math.min(x0, -currentView.x / currentView.scale);
+          y0 = Math.min(y0, -currentView.y / currentView.scale);
+          x1 = Math.max(x1, (vp.w - currentView.x) / currentView.scale);
+          y1 = Math.max(y1, (vp.h - currentView.y) / currentView.scale);
+        }
+        const bounds = {
+          x0: Math.floor((x0 - pad) / gridStep) * gridStep,
+          y0: Math.floor((y0 - pad) / gridStep) * gridStep,
+          x1: Math.ceil((x1 + pad) / gridStep) * gridStep,
+          y1: Math.ceil((y1 + pad) / gridStep) * gridStep,
+        };
+        const others = map.nodes
+          .filter((n) => !draggedIds.has(n.id))
+          .flatMap((n) => {
+            const layout = nodeLayouts.get(n.id);
+            if (!layout) {
+              return [];
+            }
+            return [
+              {
+                id: n.id,
+                x: layout.x,
+                y: layout.y,
+                w: layout.w,
+                h: layout.h,
+                type: n.type,
+              },
+            ];
+          });
+        setAlignGuides(
+          computeAlignGuides({
+            dragged: {
+              id: primary.id,
+              x: primaryPos.x,
+              y: primaryPos.y,
+              w: primary.startW,
+              h: primary.startH,
+            },
+            others,
+            bounds,
+            threshold: guideThreshold,
+          })
+        );
+      }
+    },
+    [gridStep, map.height, map.nodes, map.width, nodeLayouts, snapCoord, storedMap]
+  );
+
+  const runEdgePanFrame = useCallback(() => {
+    edgePanRafRef.current = null;
+    const d = dragRef.current;
+    const ptr = dragPointerRef.current;
+    const el = wrapRef.current;
+    if (!d || d.kind !== 'node' || !options.enablePan || !ptr || !el) {
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const { vx, vy } = computeEdgePanVelocity(
+      ptr.clientX,
+      ptr.clientY,
+      rect,
+      EDGE_PAN_MARGIN,
+      EDGE_PAN_MAX_SPEED
+    );
+
+    if (vx !== 0 || vy !== 0) {
+      d.ox += vx;
+      d.oy += vy;
+      const v = viewRef.current;
+      const nextView = { ...v, x: v.x + vx, y: v.y + vy };
+      viewRef.current = nextView;
+      setView(nextView);
+      applyNodeDragMove(ptr.clientX, ptr.clientY);
+    }
+
+    if (dragRef.current?.kind === 'node' && dragPointerRef.current && (vx !== 0 || vy !== 0)) {
+      edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
+    }
+  }, [applyNodeDragMove, options.enablePan]);
+
+  const maybeStartEdgePan = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!options.enablePan || edgePanRafRef.current != null) {
+        return;
+      }
+      const el = wrapRef.current;
+      if (!el || dragRef.current?.kind !== 'node') {
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const { vx, vy } = computeEdgePanVelocity(
+        clientX,
+        clientY,
+        rect,
+        EDGE_PAN_MARGIN,
+        EDGE_PAN_MAX_SPEED
+      );
+      if (vx !== 0 || vy !== 0) {
+        edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
+      }
+    },
+    [options.enablePan, runEdgePanFrame]
+  );
+
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (pinchActiveRef.current) {
@@ -1594,119 +1828,9 @@ export function TopologyCanvas({
         return;
       }
       if (d.kind === 'node') {
-        const dx = (e.clientX - d.ox) / view.scale;
-        const dy = (e.clientY - d.oy) / view.scale;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-          d.moved = true;
-        }
-        if (d.moved) {
-          e.preventDefault();
-        }
-        const networksLocked = areNetworksLocked(storedMap);
-        const rawMembers =
-          d.group && d.group.length > 1
-            ? d.group
-            : [
-                {
-                  id: d.node.id,
-                  startX: d.startX,
-                  startY: d.startY,
-                  startW: d.startW,
-                  startH: d.startH,
-                },
-              ];
-        const members = rawMembers.filter((m) => {
-          const n = map.nodes.find((node) => node.id === m.id);
-          return Boolean(n && canMoveSelectedNode(n, networksLocked));
-        });
-        if (members.length === 0) {
-          return;
-        }
-        const primary = members.find((m) => m.id === d.node.id) ?? members[0];
-        const primarySnapped = snapNodeCenterToGrid(
-          primary.startX + dx,
-          primary.startY + dy,
-          primary.startW,
-          primary.startH,
-          gridStep
-        );
-        const sdx = primarySnapped.x - primary.startX;
-        const sdy = primarySnapped.y - primary.startY;
-        const positions: Record<string, { x: number; y: number }> = {};
-        for (const member of members) {
-          const snapped = snapNodeCenterToGrid(
-            member.startX + sdx,
-            member.startY + sdy,
-            member.startW,
-            member.startH,
-            gridStep
-          );
-          positions[member.id] = { x: snapped.x, y: snapped.y };
-        }
-
-        const primaryPos = positions[primary.id];
-        if (primaryPos) {
-          const rawPrimaryX = primary.startX + dx;
-          const rawPrimaryY = primary.startY + dy;
-          applyNetworkPullFollow(d, primary, rawPrimaryX, rawPrimaryY, positions, snapCoord, gridStep);
-        }
-
-        dragPositionsRef.current = positions;
-        setDragPreview({ positions });
-
-        if (primaryPos) {
-          const draggedIds = new Set(Object.keys(positions));
-          const guideThreshold = Math.max(6, gridStep * 0.5);
-          const pad = gridStep * 2;
-          let x0 = 0;
-          let y0 = 0;
-          let x1 = map.width;
-          let y1 = map.height;
-          if (viewport.w > 0 && viewport.h > 0 && view.scale > 0) {
-            x0 = Math.min(x0, -view.x / view.scale);
-            y0 = Math.min(y0, -view.y / view.scale);
-            x1 = Math.max(x1, (viewport.w - view.x) / view.scale);
-            y1 = Math.max(y1, (viewport.h - view.y) / view.scale);
-          }
-          const bounds = {
-            x0: Math.floor((x0 - pad) / gridStep) * gridStep,
-            y0: Math.floor((y0 - pad) / gridStep) * gridStep,
-            x1: Math.ceil((x1 + pad) / gridStep) * gridStep,
-            y1: Math.ceil((y1 + pad) / gridStep) * gridStep,
-          };
-          const others = map.nodes
-            .filter((n) => !draggedIds.has(n.id))
-            .flatMap((n) => {
-              const layout = nodeLayouts.get(n.id);
-              if (!layout) {
-                return [];
-              }
-              return [
-                {
-                  id: n.id,
-                  x: layout.x,
-                  y: layout.y,
-                  w: layout.w,
-                  h: layout.h,
-                  type: n.type,
-                },
-              ];
-            });
-          setAlignGuides(
-            computeAlignGuides({
-              dragged: {
-                id: primary.id,
-                x: primaryPos.x,
-                y: primaryPos.y,
-                w: primary.startW,
-                h: primary.startH,
-              },
-              others,
-              bounds,
-              threshold: guideThreshold,
-            })
-          );
-        }
+        dragPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+        applyNodeDragMove(e.clientX, e.clientY, e);
+        maybeStartEdgePan(e.clientX, e.clientY);
         return;
       }
       if (d.kind === 'resize') {
@@ -1767,12 +1891,34 @@ export function TopologyCanvas({
         setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: x, y1: y });
       }
     },
-    [map.height, map.nodes, map.width, nodeLayouts, snapCoord, storedMap, view, viewport.h, viewport.w, gridStep]
+    [applyNodeDragMove, map.height, map.nodes, map.width, maybeStartEdgePan, nodeLayouts, snapCoord, storedMap, view, viewport.h, viewport.w, gridStep]
   );
 
   const clearDragUi = useCallback(() => {
     setAlignGuides([]);
   }, []);
+
+  const openNodeProperties = useCallback((node: TopologyNode) => {
+    setEditNode(node);
+  }, []);
+
+  const tryDoubleTapOpenProperties = useCallback(
+    (tapNode: TopologyNode): boolean => {
+      if (!editable || linkFromId !== null || !nodeSupportsProperties(tapNode)) {
+        return false;
+      }
+      const now = Date.now();
+      const last = lastNodeTapRef.current;
+      if (last && last.nodeId === tapNode.id && now - last.time <= NODE_DOUBLE_TAP_MS) {
+        lastNodeTapRef.current = null;
+        openNodeProperties(tapNode);
+        return true;
+      }
+      lastNodeTapRef.current = { nodeId: tapNode.id, time: now };
+      return false;
+    },
+    [editable, linkFromId, openNodeProperties]
+  );
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent, node?: TopologyNode) => {
@@ -1781,6 +1927,7 @@ export function TopologyCanvas({
         return;
       }
       dragRef.current = null;
+      stopEdgePanLoop();
       if (panRafRef.current != null) {
         cancelAnimationFrame(panRafRef.current);
         panRafRef.current = null;
@@ -1813,6 +1960,12 @@ export function TopologyCanvas({
         if (d.tapLink) {
           onLinkSelect(d.tapLink);
           return;
+        }
+        if (editable) {
+          const tap = d.tapNode ?? node;
+          if (tap && tryDoubleTapOpenProperties(tap)) {
+            return;
+          }
         }
       }
 
@@ -1898,7 +2051,11 @@ export function TopologyCanvas({
       }
 
       if (tapNode && d?.kind === 'node' && !d.moved && linkFromId === null) {
+        if (tryDoubleTapOpenProperties(tapNode)) {
+          return;
+        }
         if (tapNode.type === 'network' && areNetworksLocked(storedMap)) {
+          lastNodeTapRef.current = null;
           return;
         }
         if (e.ctrlKey || e.metaKey) {
@@ -1917,7 +2074,7 @@ export function TopologyCanvas({
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, storedMap, view]
+    [clearDragUi, completeLink, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, stopEdgePanLoop, storedMap, tryDoubleTapOpenProperties, view]
   );
 
   const onNodeClick = useCallback(
@@ -1937,30 +2094,13 @@ export function TopologyCanvas({
     [completeLink, editable, linkFromId, openDashboardPicker, openSubmap]
   );
 
-  const openHostEditor = useCallback((node: TopologyNode) => {
-    // Propriedades (inclui usuário/senha das Tools) — hosts Zabbix e manuais
-    setEditNode(node);
-  }, []);
-
-  const openZabbixRebind = useCallback((node: TopologyNode) => {
-    if (node.zabbixHost?.trim()) {
-      setEditZabbixHost(node);
-    }
-  }, []);
-
   const onNodeDoubleClick = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
       e.stopPropagation();
       if (editable) {
-        if (
-          node.type === 'submap' ||
-          node.type === 'network' ||
-          node.type === 'static' ||
-          node.type === 'dashboard_picker'
-        ) {
-          setEditNode(node);
-        } else if ((node.type ?? 'host') === 'host') {
-          openHostEditor(node);
+        if (nodeSupportsProperties(node)) {
+          lastNodeTapRef.current = null;
+          openNodeProperties(node);
         }
         return;
       }
@@ -1971,7 +2111,7 @@ export function TopologyCanvas({
         openDashboardPicker(node);
       }
     },
-    [editable, openDashboardPicker, openHostEditor, openSubmap]
+    [editable, openDashboardPicker, openNodeProperties, openSubmap]
   );
 
   useEffect(() => {
@@ -2458,15 +2598,8 @@ export function TopologyCanvas({
           items.push({
             id: 'props',
             label: 'Propriedades',
-            onClick: () => openHostEditor(node),
+            onClick: () => openNodeProperties(node),
           });
-          if (node.zabbixHost?.trim()) {
-            items.push({
-              id: 'rebind-zabbix',
-              label: 'Trocar host Zabbix',
-              onClick: () => openZabbixRebind(node),
-            });
-          }
         }
       }
       if (node.type !== 'network') {
@@ -2521,8 +2654,7 @@ export function TopologyCanvas({
       openBulkCredsEdit,
       openBulkIconEdit,
       openBulkSubmapEdit,
-      openHostEditor,
-      openZabbixRebind,
+      openNodeProperties,
       pasteAt,
       persist,
       selectedHostNodes.length,
@@ -2648,6 +2780,71 @@ export function TopologyCanvas({
     options.colorLinkDownload,
     options.colorLinkUpload,
   ]);
+
+  const resolveMiniNodeFill = useCallback(
+    (node: TopologyNode): string => {
+      if (isNetworkNode(node)) {
+        const stats = regionStats.get(node.id);
+        const fillOverride = regionFillColor(stats, options, 'network', icmpReady);
+        const fillRaw = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
+        return resolveColor(fillRaw);
+      }
+      const fillOverride =
+        node.type === 'submap'
+          ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady)
+          : undefined;
+      const fillRaw =
+        fillOverride ??
+        (node.fillColor ? node.fillColor : undefined) ??
+        nodeFill(node, options, statusMap, hostMetadata, problemMap, hostDisplay, resolveColor);
+      return resolveColor(fillRaw);
+    },
+    [
+      regionStats,
+      options,
+      icmpReady,
+      statusMap,
+      hostMetadata,
+      problemMap,
+      hostDisplay,
+      resolveColor,
+    ]
+  );
+
+  const resolveMiniNetworkStroke = useCallback(
+    (node: TopologyNode): string => {
+      const stats = regionStats.get(node.id);
+      const networkAlert = Boolean(
+        icmpReady &&
+          stats &&
+          !stats.loadFailed &&
+          stats.total > 0 &&
+          stats.offline === 0 &&
+          stats.alert > 0
+      );
+      const networkOnline = Boolean(
+        icmpReady &&
+          stats &&
+          !stats.loadFailed &&
+          stats.total > 0 &&
+          stats.offline === 0 &&
+          stats.alert === 0 &&
+          stats.online > 0
+      );
+      const strokeRaw =
+        stats && stats.offline > 0
+          ? options.colorOffline
+          : networkAlert
+            ? options.colorAlert
+            : networkOnline
+              ? options.colorOnline
+              : node.borderColor ?? options.colorNetworkBorder;
+      return resolveColor(strokeRaw);
+    },
+    [regionStats, options, icmpReady, resolveColor]
+  );
+
+  const miniLinkColor = resolveColor(options.colorLink);
 
   return (
     <div
@@ -2895,7 +3092,7 @@ export function TopologyCanvas({
                   key={node.id}
                   data-node-id={node.id}
                   className={networkOffline ? styles.offlineBlink : undefined}
-                  pointerEvents={networksLocked ? 'none' : 'auto'}
+                  pointerEvents="auto"
                   onPointerDown={(e) => onNetworkPointerDown(e, node)}
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
                   onContextMenu={(e) => handleContextMenu(e, { node })}
@@ -3261,11 +3458,9 @@ export function TopologyCanvas({
           view={view}
           viewport={viewport}
           onViewChange={setView}
-          colorNetworkFill={options.colorNetworkFill}
-          colorNetworkBorder={options.colorNetworkBorder}
-          colorLink={options.colorLink}
-          colorSubmap={options.colorSubmap}
-          colorStatic={options.colorStatic}
+          resolveNodeFill={resolveMiniNodeFill}
+          resolveNetworkStroke={resolveMiniNetworkStroke}
+          linkColor={miniLinkColor}
         />
       )}
 
@@ -3296,8 +3491,28 @@ export function TopologyCanvas({
         <NodeEditModal
           node={editNode}
           queryRefInfos={options.queryRefInfosAvailable ?? []}
+          zabbixDatasourceUid={zabbixDatasourceUid}
+          zabbixGroupNames={zabbixGroupNames}
+          storedMap={storedMap}
           onClose={() => setEditNode(null)}
-          onSave={(patch) => persist(updateStoredNode(storedMap, editNode, patch))}
+          onSave={(payload: NodeEditSavePayload) => {
+            let next = storedMap;
+            if (payload.rebind) {
+              next = rebindZabbixHost(
+                next,
+                editNode.id,
+                payload.rebind.visibleName,
+                payload.rebind.ip,
+                payload.rebind.icon,
+                payload.rebind.hostid
+              );
+            }
+            const savedNode = next.nodes.find((n) => n.id === editNode.id);
+            if (savedNode && Object.keys(payload.patch).length > 0) {
+              next = updateStoredNode(next, savedNode, payload.patch);
+            }
+            persist(next);
+          }}
         />
       )}
 
@@ -3321,22 +3536,6 @@ export function TopologyCanvas({
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon, hostid) =>
             persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon, hostid))
-          }
-        />
-      )}
-
-      {editZabbixHost && (
-        <ZabbixHostPickerModal
-          mode="edit"
-          datasourceUid={zabbixDatasourceUid}
-          zabbixGroupNames={zabbixGroupNames}
-          storedMap={storedMap}
-          initialVisibleName={editZabbixHost.zabbixHost}
-          initialHostId={editZabbixHost.zabbixHostId}
-          initialIcon={editZabbixHost.icon}
-          onClose={() => setEditZabbixHost(null)}
-          onConfirm={(visibleName, ip, icon, hostid) =>
-            persist(rebindZabbixHost(storedMap, editZabbixHost.id, visibleName, ip, icon, hostid))
           }
         />
       )}

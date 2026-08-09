@@ -1,10 +1,8 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { css } from '@emotion/css';
-import { useTheme2 } from '@grafana/ui';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { NodeLayout } from '../utils';
-import { computeTopologyContentBounds, isNetworkNode, layoutCenter } from '../utils/mapBounds';
-import { resolvePanelColor } from '../utils/panelColors';
+import { computeTopologyContentBounds, isNetworkNode } from '../utils/mapBounds';
 
 const MINI_WIDTH = 196;
 const MINI_HEIGHT = 148;
@@ -34,11 +32,9 @@ interface Props {
   view: TopologyView;
   viewport: { w: number; h: number };
   onViewChange: (view: TopologyView) => void;
-  colorNetworkFill: string;
-  colorNetworkBorder: string;
-  colorLink: string;
-  colorSubmap: string;
-  colorStatic: string;
+  resolveNodeFill: (node: TopologyNode) => string;
+  resolveNetworkStroke: (node: TopologyNode) => string;
+  linkColor: string;
 }
 
 function viewCenterOnMapPoint(
@@ -62,14 +58,10 @@ export function TopologyMinimap({
   view,
   viewport,
   onViewChange,
-  colorNetworkFill,
-  colorNetworkBorder,
-  colorLink,
-  colorSubmap,
-  colorStatic,
+  resolveNodeFill,
+  resolveNetworkStroke,
+  linkColor,
 }: Props) {
-  const theme = useTheme2();
-  const resolveColor = useCallback((color: string) => resolvePanelColor(theme, color), [theme]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
@@ -170,12 +162,6 @@ export function TopologyMinimap({
     };
   }, [toMini, view.scale, view.x, view.y, viewport.h, viewport.w]);
 
-  const networkFill = resolveColor(colorNetworkFill);
-  const networkBorder = resolveColor(colorNetworkBorder);
-  const linkStroke = resolveColor(colorLink);
-  const submapFill = resolveColor(colorSubmap);
-  const staticFill = resolveColor(colorStatic);
-
   const networkNodes = nodes.filter((node) => isNetworkNode(node));
   const otherNodes = nodes.filter((node) => !isNetworkNode(node));
 
@@ -206,9 +192,9 @@ export function TopologyMinimap({
               y={topLeft.y}
               width={Math.max(layout.w * miniScale, 2)}
               height={Math.max(layout.h * miniScale, 2)}
-              fill={networkFill}
+              fill={resolveNodeFill(node)}
               fillOpacity={0.35}
-              stroke={networkBorder}
+              stroke={resolveNetworkStroke(node)}
               strokeWidth={0.75}
             />
           );
@@ -228,7 +214,7 @@ export function TopologyMinimap({
               y1={a.y}
               x2={b.x}
               y2={b.y}
-              stroke={linkStroke}
+              stroke={linkColor}
               strokeWidth={0.75}
               strokeOpacity={0.55}
             />
@@ -239,25 +225,17 @@ export function TopologyMinimap({
           if (!layout) {
             return null;
           }
-          const center = layoutCenter(layout);
-          const mini = toMini(center.x, center.y);
-          const fill =
-            node.type === 'submap'
-              ? submapFill
-              : node.type === 'static'
-                ? staticFill
-                : '#90caf9';
-          const size =
-            node.type === 'submap' ? Math.max(4, 5 * miniScale) : Math.max(2.5, 3 * miniScale);
+          const topLeft = toMini(layout.x, layout.y);
+          const fill = resolveNodeFill(node);
           return (
             <rect
               key={`node-${node.id}`}
-              x={mini.x - size / 2}
-              y={mini.y - size / 2}
-              width={size}
-              height={size}
+              x={topLeft.x}
+              y={topLeft.y}
+              width={Math.max(layout.w * miniScale, 2)}
+              height={Math.max(layout.h * miniScale, 2)}
               fill={fill}
-              rx={node.type === 'submap' ? 1 : 0}
+              rx={node.type === 'submap' || node.type === 'dashboard_picker' ? 1 : 0}
             />
           );
         })}

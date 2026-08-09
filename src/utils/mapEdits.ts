@@ -44,7 +44,17 @@ export function addSubmapAt(map: TopologyMap, x: number, y: number): TopologyMap
 }
 
 export function addNetworkAt(map: TopologyMap, x: number, y: number, label = 'Rede'): TopologyMap {
-  return addTypedNodeAt(map, 'network', 'network', x, y, () => label, { width: 220, height: 140 });
+  const countBefore = map.nodes.filter((n) => n.type === 'network').length;
+  const node: TopologyNode = {
+    id: `network-${countBefore + 1}`,
+    label,
+    type: 'network',
+    x: Math.round(x),
+    y: Math.round(y),
+    width: 220,
+    height: 140,
+  };
+  return { ...map, nodes: [node, ...map.nodes] };
 }
 
 export function addStaticAt(map: TopologyMap, x: number, y: number, label = 'Estático'): TopologyMap {
