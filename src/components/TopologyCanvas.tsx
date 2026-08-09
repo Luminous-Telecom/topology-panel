@@ -390,6 +390,7 @@ export function TopologyCanvas({
   const editable = canEditCanvas;
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     setTool(canEditCanvas ? 'select' : 'pan');
@@ -582,7 +583,11 @@ export function TopologyCanvas({
   useEffect(() => {
     const syncFullscreen = () => {
       const el = wrapRef.current;
-      setIsFullscreen(Boolean(el && document.fullscreenElement === el));
+      const fs = Boolean(el && document.fullscreenElement === el);
+      setIsFullscreen(fs);
+      if (fs) {
+        setSearchOpen(false);
+      }
     };
     document.addEventListener('fullscreenchange', syncFullscreen);
     syncFullscreen();
@@ -609,12 +614,52 @@ export function TopologyCanvas({
     }
   }, []);
 
+  const focusNodeOnMap = useCallback(
+    (nodeId: string) => {
+      const layout = nodeLayouts.get(nodeId);
+      const el = wrapRef.current;
+      if (!layout || !el) {
+        return;
+      }
+      const cx = layout.x + layout.w / 2;
+      const cy = layout.y + layout.h / 2;
+      const scale = clamp(Math.max(viewRef.current.scale, 0.55), 0.15, 3);
+      setView({
+        scale,
+        x: el.clientWidth / 2 - cx * scale,
+        y: el.clientHeight / 2 - cy * scale,
+      });
+      setSelectedNodeIds([nodeId]);
+      setSelectedLink(null);
+      setLinkFromId(null);
+      setContextMenu(null);
+      setMarqueeRect(null);
+      setAlignGuides([]);
+    },
+    [nodeLayouts]
+  );
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const inField =
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         (e.target instanceof HTMLElement && e.target.isContentEditable);
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        const el = wrapRef.current;
+        if (el && (searchOpen || el.matches(':hover') || el.contains(document.activeElement))) {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape' && searchOpen) {
+        e.preventDefault();
+        setSearchOpen(false);
+        return;
+      }
 
       if (canPersist && !inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -646,7 +691,7 @@ export function TopologyCanvas({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [canEditCanvas, canPersist, onRedo, onUndo]);
+  }, [canEditCanvas, canPersist, onRedo, onUndo, searchOpen]);
 
   const fitToView = useCallback(() => {
     const el = wrapRef.current;
@@ -2141,6 +2186,10 @@ export function TopologyCanvas({
         isFullscreen={isFullscreen}
         onToggleFullscreen={() => void toggleFullscreen()}
         showEditControls={canPersist}
+        searchNodes={map.nodes}
+        searchOpen={searchOpen}
+        onSearchOpenChange={setSearchOpen}
+        onSearchFocusNode={focusNodeOnMap}
       />
 
       {options.showDashboardNav !== false && (
