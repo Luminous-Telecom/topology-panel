@@ -41,7 +41,7 @@ import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../util
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
-/** Persiste hostid + nome/IP da Query no mapa salvo (migrate + rename). */
+/** Persiste nome/IP da Query no mapa salvo (migrate + rename). */
 function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
   let changed = false;
   const nodes = map.nodes.map((node) => {
@@ -50,7 +50,6 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
     }
     const name = node.zabbixHost?.trim();
     const label = node.label?.trim();
-    const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
     const subtitleIp = node.subtitle?.trim() && isIpv4(node.subtitle) ? node.subtitle.trim() : undefined;
     const entry =
       (name && meta[name]) ||
@@ -58,23 +57,22 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
       (subtitleIp && meta[subtitleIp]) ||
       undefined;
     if (!entry) {
+      if (node.zabbixHostId) {
+        changed = true;
+        const { zabbixHostId: _legacy, ...rest } = node;
+        return rest;
+      }
       return node;
     }
 
-    const nextId = (entry.hostid != null ? String(entry.hostid).trim() : '') || hostId;
     const nextName = entry.name?.trim() || name || label;
     const nextIp = entry.ip?.trim();
-    const nextHostKey =
-      nextName && !isIpv4(nextName)
-        ? nextName
-        : nextIp && isIpv4(nextIp)
-          ? nextIp
-          : name;
+    const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : nextName && !isIpv4(nextName) ? nextName : name;
     const patch: typeof node = { ...node };
     let nodeChanged = false;
 
-    if (nextId && nextId !== hostId) {
-      patch.zabbixHostId = nextId;
+    if (node.zabbixHostId) {
+      patch.zabbixHostId = undefined;
       nodeChanged = true;
     }
     if (nextHostKey && nextHostKey !== name) {

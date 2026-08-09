@@ -671,20 +671,15 @@ export function extractHostMetadataFromData(data: PanelData | DataFrame[] | unde
 function findSavedHostNodes(
   map: TopologyMap,
   hostName: string,
-  hostId?: string,
   hostIp?: string
 ): TopologyNode[] {
   const key = hostName.trim();
-  const id = hostId?.trim();
   const ip = hostIp?.trim();
   return map.nodes.filter((n) => {
     if ((n.type ?? 'host') !== 'host') {
       return false;
     }
     if (ip && (n.subtitle?.trim() === ip || n.zabbixHost?.trim() === ip)) {
-      return true;
-    }
-    if (id && n.zabbixHostId?.trim() === id) {
       return true;
     }
     return n.zabbixHost?.trim() === key || n.label?.trim() === key || n.id === key;
@@ -718,8 +713,8 @@ export function mergeMapWithQueryHosts(
   visibleHostNames.forEach((hostName, index) => {
     const meta = hostMetadata[hostName];
     const ip = meta?.ip?.trim();
-    const hostKey = hostName;
-    const savedMatches = findSavedHostNodes(map, hostName, meta?.hostid, ip).filter(
+    const hostKey = ip && isIpv4(ip) ? ip : hostName;
+    const savedMatches = findSavedHostNodes(map, hostName, ip).filter(
       (n) => !usedSavedIds.has(n.id)
     );
     const label = meta?.name ?? hostName;
@@ -731,10 +726,10 @@ export function mergeMapWithQueryHosts(
           ...saved,
           type: 'host',
           zabbixHost: hostKey,
-          zabbixHostId: meta?.hostid?.trim() || saved.zabbixHostId,
           label: saved.label ?? label,
           subtitle: ip ?? (isIpv4(saved.subtitle?.trim() ?? '') ? saved.subtitle : undefined),
           icon: saved.icon ?? map.hostIcons?.[hostKey] ?? map.hostIcons?.[hostName],
+          zabbixHostId: undefined,
         });
       }
       return;
@@ -746,7 +741,6 @@ export function mergeMapWithQueryHosts(
       label,
       subtitle: ip,
       zabbixHost: hostKey,
-      zabbixHostId: meta?.hostid?.trim() || undefined,
       type: 'host',
       icon: map.hostIcons?.[hostKey] ?? map.hostIcons?.[hostName],
       x: 100 + (index % cols) * 160,
@@ -766,7 +760,6 @@ export function mergeMapWithQueryHosts(
 
 export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Partial<TopologyNode>): TopologyMap {
   const key = zabbixHost.trim();
-  const hostId = patch.zabbixHostId?.trim();
   const layoutPatch: Partial<TopologyNode> = {};
   if (patch.x !== undefined) {
     layoutPatch.x = patch.x;
@@ -792,9 +785,6 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   if (patch.subtitle !== undefined) {
     layoutPatch.subtitle = patch.subtitle;
   }
-  if (patch.zabbixHostId !== undefined) {
-    layoutPatch.zabbixHostId = patch.zabbixHostId?.trim() || undefined;
-  }
   if ('toolUsername' in patch) {
     layoutPatch.toolUsername = patch.toolUsername?.trim() || undefined;
   }
@@ -808,10 +798,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
 
   const nodes = [...map.nodes];
   let idx = -1;
-  if (hostId) {
-    idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHostId?.trim() === hostId);
-  }
-  if (idx < 0 && isIpv4(key)) {
+  if (isIpv4(key)) {
     idx = nodes.findIndex(
       (n) =>
         (n.type ?? 'host') === 'host' &&
@@ -828,7 +815,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
       ...layoutPatch,
       zabbixHost: key,
       type: 'host',
-      zabbixHostId: hostId || nodes[idx].zabbixHostId,
+      zabbixHostId: undefined,
     };
     if ('toolUsername' in patch && !merged.toolUsername) {
       delete merged.toolUsername;
@@ -844,7 +831,6 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
     nodes.push({
       id: hostToNodeId(key),
       zabbixHost: key,
-      zabbixHostId: hostId,
       type: 'host',
       x: 100,
       y: 100,
@@ -890,30 +876,20 @@ export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMa
   if ((node.type ?? 'host') !== 'host' || !metadata) {
     return node;
   }
-  const hostId = node.zabbixHostId?.trim();
   const name = node.zabbixHost?.trim();
   const ip = resolveHostIp(node, metadata);
   const entry =
     (ip && metadata?.[ip]) ||
-    (hostId && metadata?.[hostId]) ||
     (name ? metadata?.[name] : undefined);
   if (!entry?.name?.trim()) {
     return node;
   }
   const nextName = entry.name.trim();
   const nextIp = entry.ip?.trim();
-  const nextId = entry.hostid?.trim() || hostId;
-  const nextHostKey =
-    nextName && !isIpv4(nextName)
-      ? nextName
-      : nextIp && isIpv4(nextIp)
-        ? nextIp
-        : name;
+  const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : name;
   if (
     nextName === (node.label?.trim() || name) &&
-    nextName === name &&
     (nextIp || '') === (node.subtitle?.trim() || '') &&
-    nextId === hostId &&
     nextHostKey === name
   ) {
     return node;
@@ -922,8 +898,8 @@ export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMa
     ...node,
     label: nextName,
     zabbixHost: nextHostKey || nextName,
-    zabbixHostId: nextId || node.zabbixHostId,
     subtitle: nextIp || node.subtitle,
+    zabbixHostId: undefined,
   };
 }
 

@@ -12,15 +12,19 @@ import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
-import { fetchZabbixHostsInGroupNames, resolveZabbixHostOptionForNode, zabbixHostPickerOptions } from '../utils/zabbixApi';
+import { isIpv4, resolveHostIp } from '../utils';
+import {
+  fetchZabbixHostsInGroupNames,
+  resolveZabbixHostOptionForNode,
+  zabbixHostPickerOptions,
+} from '../utils/zabbixApi';
 
 export interface NodeEditSavePayload {
   patch: Partial<TopologyNode>;
   rebind?: {
     visibleName: string;
-    ip?: string;
+    ip: string;
     icon: TopologyHostIcon;
-    hostid: string;
   };
 }
 
@@ -34,28 +38,40 @@ interface Props {
   onClose: () => void;
 }
 
-function hostsAlreadyOnMap(map: TopologyMap, exceptName?: string, exceptHostId?: string): {
+function hostsAlreadyOnMap(map: TopologyMap, exceptIp?: string, exceptName?: string): {
+  ips: Set<string>;
   names: Set<string>;
-  hostIds: Set<string>;
 } {
+  const ips = new Set<string>();
   const names = new Set<string>();
-  const hostIds = new Set<string>();
+  const skipIp = exceptIp?.trim();
   const skipName = exceptName?.trim();
-  const skipId = exceptHostId?.trim();
   for (const entry of map.nodes) {
     if ((entry.type ?? 'host') !== 'host') {
       continue;
     }
+    const ip = resolveHostIp(entry);
+    if (ip && ip !== skipIp) {
+      ips.add(ip);
+    }
     const z = entry.zabbixHost?.trim();
-    const id = entry.zabbixHostId?.trim();
-    if (z && z !== skipName) {
+    if (z && !isIpv4(z) && z !== skipName) {
       names.add(z);
     }
-    if (id && id !== skipId) {
-      hostIds.add(id);
+    const label = entry.label?.trim();
+    if (label && label !== skipName && label !== z) {
+      names.add(label);
     }
   }
-  return { names, hostIds };
+  return { ips, names };
+}
+
+function hostSelectValue(node: TopologyNode): string | undefined {
+  const ip = resolveHostIp(node);
+  if (ip) {
+    return ip;
+  }
+  return node.zabbixHost?.trim() || node.label?.trim() || undefined;
 }
 
 export function NodeEditModal({
@@ -88,7 +104,7 @@ export function NodeEditModal({
   const [toolUsername, setToolUsername] = useState(node.toolUsername ?? '');
   const [toolPassword, setToolPassword] = useState(node.toolPassword ?? '');
   const [zabbixHosts, setZabbixHosts] = useState<Awaited<ReturnType<typeof fetchZabbixHostsInGroupNames>>>([]);
-  const [zabbixHostName, setZabbixHostName] = useState<string | undefined>(node.zabbixHost?.trim() || undefined);
+  const [selectedHostKey, setSelectedHostKey] = useState<string | undefined>(hostSelectValue(node));
   const [loadingZabbixHosts, setLoadingZabbixHosts] = useState(false);
   const [zabbixLoadError, setZabbixLoadError] = useState<string | null>(null);
 
@@ -96,24 +112,19 @@ export function NodeEditModal({
   const isHost = type === 'host';
   const isZabbixHost = isHost && Boolean(node.zabbixHost?.trim());
   const groupNamesKey = zabbixGroupNames.join('\0');
+  const nodeIp = resolveHostIp(node);
 
   const onMap = useMemo(() => {
     if (!storedMap) {
-      return { names: new Set<string>(), hostIds: new Set<string>() };
+      return { ips: new Set<string>(), names: new Set<string>() };
     }
-    return hostsAlreadyOnMap(storedMap, node.zabbixHost, node.zabbixHostId);
-  }, [node.zabbixHost, node.zabbixHostId, storedMap]);
+    return hostsAlreadyOnMap(storedMap, nodeIp, node.zabbixHost);
+  }, [node.zabbixHost, nodeIp, storedMap]);
 
   const boundZabbixHost = useMemo(
     () => resolveZabbixHostOptionForNode(zabbixHosts, node),
     [node, zabbixHosts]
   );
-
-  useEffect(() => {
-    if (boundZabbixHost) {
-      setZabbixHostName(boundZabbixHost.visibleName);
-    }
-  }, [boundZabbixHost]);
 
   useEffect(() => {
     if (!isZabbixHost || !zabbixDatasourceUid || !storedMap) {
@@ -122,7 +133,7 @@ export function NodeEditModal({
     if (!zabbixGroupNames.length) {
       setZabbixLoadError('Configure um host group na query Zabbix do painel (aba Query).');
       setZabbixHosts([]);
-      setZabbixHostName(undefined);
+      setSelectedHostKey(undefined);
       return;
     }
     let cancelled = false;
@@ -136,20 +147,20 @@ export function NodeEditModal({
         if (!list.length) {
           setZabbixLoadError(`Nenhum host encontrado no grupo Zabbix: ${zabbixGroupNames.join(', ')}.`);
           setZabbixHosts([]);
-          setZabbixHostName(undefined);
+          setSelectedHostKey(undefined);
           return;
         }
         setZabbixHosts(list);
         const match = resolveZabbixHostOptionForNode(list, node);
         if (match) {
-          setZabbixHostName(match.visibleName);
+          setSelectedHostKey(match.ip ?? match.visibleName);
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           setZabbixLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
           setZabbixHosts([]);
-          setZabbixHostName(undefined);
+          setSelectedHostKey(undefined);
         }
       })
       .finally(() => {
@@ -163,8 +174,7 @@ export function NodeEditModal({
   }, [
     groupNamesKey,
     isZabbixHost,
-    node.zabbixHost,
-    node.zabbixHostId,
+    node,
     storedMap,
     zabbixDatasourceUid,
     zabbixGroupNames,
@@ -176,7 +186,8 @@ export function NodeEditModal({
   );
 
   const selectedZabbixHost =
-    zabbixHosts.find((host) => host.visibleName === zabbixHostName) ?? boundZabbixHost;
+    zabbixHosts.find((host) => host.ip === selectedHostKey || host.visibleName === selectedHostKey) ??
+    boundZabbixHost;
   const groupHint = zabbixGroupNames.length ? zabbixGroupNames.join(', ') : undefined;
 
   const title =
@@ -192,7 +203,8 @@ export function NodeEditModal({
 
   const handleSave = () => {
     if (isZabbixHost) {
-      if (!selectedZabbixHost?.hostid) {
+      const ip = selectedZabbixHost?.ip?.trim();
+      if (!selectedZabbixHost || !ip || !isIpv4(ip)) {
         return;
       }
       const payload: NodeEditSavePayload = {
@@ -202,14 +214,13 @@ export function NodeEditModal({
         },
       };
       const hostChanged =
-        selectedZabbixHost.visibleName !== node.zabbixHost?.trim() ||
-        selectedZabbixHost.hostid !== node.zabbixHostId?.trim();
+        ip !== nodeIp ||
+        selectedZabbixHost.visibleName !== (node.label?.trim() || node.zabbixHost?.trim());
       if (hostChanged || icon !== node.icon) {
         payload.rebind = {
           visibleName: selectedZabbixHost.visibleName,
-          ip: selectedZabbixHost.ip,
+          ip,
           icon,
-          hostid: selectedZabbixHost.hostid,
         };
       }
       onSave(payload);
@@ -259,7 +270,8 @@ export function NodeEditModal({
     onClose();
   };
 
-  const saveDisabled = isZabbixHost && !selectedZabbixHost?.hostid;
+  const saveDisabled =
+    isZabbixHost && (!selectedZabbixHost?.ip || !isIpv4(selectedZabbixHost.ip));
 
   return (
     <Modal title={title} isOpen onDismiss={onClose}>
@@ -270,16 +282,16 @@ export function NodeEditModal({
             description={
               zabbixLoadError ??
               (groupHint
-                ? `Hosts do grupo ${groupHint}. Vinculado pelo hostid — renomear no Zabbix não quebra o mapa.`
-                : 'Vinculado pelo hostid do Zabbix.')
+                ? `Hosts do grupo ${groupHint}. Vinculado pelo IP da interface principal.`
+                : 'Vinculado pelo IP da interface principal no Zabbix.')
             }
           >
             <Select
               options={zabbixHostOptions}
-              value={zabbixHostName}
+              value={selectedHostKey}
               isLoading={loadingZabbixHosts}
               disabled={!zabbixGroupNames.length || loadingZabbixHosts}
-              onChange={(v) => setZabbixHostName(v.value)}
+              onChange={(v) => setSelectedHostKey(v.value)}
               placeholder={
                 loadingZabbixHosts
                   ? 'Carregando hosts…'

@@ -100,7 +100,7 @@ export function countRegionStats(
     const hasAlert =
       lookupProblemCount(
         problemMap,
-        { zabbixHost: key, zabbixHostId: meta?.hostid, label: meta?.name },
+        { zabbixHost: key, subtitle: meta?.ip, label: meta?.name },
         options?.hostMetadata
       ) > 0;
 

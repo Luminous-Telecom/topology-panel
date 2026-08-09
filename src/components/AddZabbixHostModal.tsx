@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
+import { isIpv4, resolveHostIp } from '../utils';
 import { fetchZabbixHostsInGroupNames, ZabbixHostOption } from '../utils/zabbixApi';
 
 interface Props {
@@ -12,36 +13,36 @@ interface Props {
   storedMap: TopologyMap;
   /** Host Zabbix atual (modo editar) */
   initialVisibleName?: string;
-  /** hostid Zabbix atual (modo editar) */
-  initialHostId?: string;
+  /** IP Zabbix atual (modo editar) */
+  initialIp?: string;
   /** Ícone atual (modo editar) */
   initialIcon?: TopologyHostIcon;
-  onConfirm: (visibleName: string, ip: string | undefined, icon: TopologyHostIcon, hostid: string) => void;
+  onConfirm: (visibleName: string, ip: string, icon: TopologyHostIcon) => void;
   onClose: () => void;
 }
 
-function hostsAlreadyOnMap(map: TopologyMap, exceptName?: string, exceptHostId?: string): {
+function hostsAlreadyOnMap(map: TopologyMap, exceptIp?: string, exceptName?: string): {
+  ips: Set<string>;
   names: Set<string>;
-  hostIds: Set<string>;
 } {
+  const ips = new Set<string>();
   const names = new Set<string>();
-  const hostIds = new Set<string>();
+  const skipIp = exceptIp?.trim();
   const skipName = exceptName?.trim();
-  const skipId = exceptHostId?.trim();
   for (const node of map.nodes) {
     if ((node.type ?? 'host') !== 'host') {
       continue;
     }
+    const ip = resolveHostIp(node);
+    if (ip && ip !== skipIp) {
+      ips.add(ip);
+    }
     const z = node.zabbixHost?.trim();
-    const id = node.zabbixHostId?.trim();
-    if (z && z !== skipName) {
+    if (z && !isIpv4(z) && z !== skipName) {
       names.add(z);
     }
-    if (id && id !== skipId) {
-      hostIds.add(id);
-    }
   }
-  return { names, hostIds };
+  return { ips, names };
 }
 
 export function ZabbixHostPickerModal({
@@ -50,13 +51,13 @@ export function ZabbixHostPickerModal({
   zabbixGroupNames = [],
   storedMap,
   initialVisibleName,
-  initialHostId,
+  initialIp,
   initialIcon,
   onConfirm,
   onClose,
 }: Props) {
   const [hosts, setHosts] = useState<ZabbixHostOption[]>([]);
-  const [hostName, setHostName] = useState<string | undefined>();
+  const [hostKey, setHostKey] = useState<string | undefined>();
   const [icon, setIcon] = useState<TopologyHostIcon>(initialIcon ?? 'network');
   const [loadingHosts, setLoadingHosts] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -67,23 +68,23 @@ export function ZabbixHostPickerModal({
     () =>
       hostsAlreadyOnMap(
         storedMap,
-        mode === 'edit' ? initialVisibleName : undefined,
-        mode === 'edit' ? initialHostId : undefined
+        mode === 'edit' ? initialIp : undefined,
+        mode === 'edit' ? initialVisibleName : undefined
       ),
-    [storedMap, mode, initialVisibleName, initialHostId]
+    [storedMap, mode, initialVisibleName, initialIp]
   );
 
   useEffect(() => {
     if (!datasourceUid) {
       setLoadError('Configure o UID do datasource Zabbix nas opções do painel.');
       setHosts([]);
-      setHostName(undefined);
+      setHostKey(undefined);
       return;
     }
     if (!zabbixGroupNames.length) {
       setLoadError('Configure um host group na query Zabbix do painel (aba Query).');
       setHosts([]);
-      setHostName(undefined);
+      setHostKey(undefined);
       return;
     }
     let cancelled = false;
@@ -97,16 +98,17 @@ export function ZabbixHostPickerModal({
         if (!list.length) {
           setLoadError(`Nenhum host encontrado no grupo Zabbix: ${zabbixGroupNames.join(', ')}.`);
           setHosts([]);
-          setHostName(undefined);
+          setHostKey(undefined);
           return;
         }
         setHosts(list);
         if (mode === 'edit') {
+          const ip = initialIp?.trim();
           const match =
-            (initialHostId && list.find((host) => host.hostid === initialHostId)) ||
+            (ip && isIpv4(ip) && list.find((host) => host.ip === ip)) ||
             (initialVisibleName && list.find((host) => host.visibleName === initialVisibleName));
           if (match) {
-            setHostName(match.visibleName);
+            setHostKey(match.ip ?? match.visibleName);
           }
         }
       })
@@ -114,7 +116,7 @@ export function ZabbixHostPickerModal({
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
           setHosts([]);
-          setHostName(undefined);
+          setHostKey(undefined);
         }
       })
       .finally(() => {
@@ -125,17 +127,22 @@ export function ZabbixHostPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, groupNamesKey, mode, initialVisibleName, initialHostId, zabbixGroupNames]);
+  }, [datasourceUid, groupNamesKey, mode, initialVisibleName, initialIp, zabbixGroupNames]);
 
   const hostOptions = hosts
-    .filter((host) => !onMap.hostIds.has(host.hostid) && !onMap.names.has(host.visibleName))
+    .filter((host) => {
+      if (host.ip && onMap.ips.has(host.ip)) {
+        return false;
+      }
+      return !onMap.names.has(host.visibleName);
+    })
     .map((host) => ({
       label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
-      value: host.visibleName,
+      value: host.ip ?? host.visibleName,
     }));
 
-  const selectedHost = hosts.find((host) => host.visibleName === hostName);
-  const canConfirm = Boolean(hostName && selectedHost?.hostid);
+  const selectedHost = hosts.find((host) => host.ip === hostKey || host.visibleName === hostKey);
+  const canConfirm = Boolean(selectedHost?.ip && isIpv4(selectedHost.ip));
   const title = mode === 'edit' ? 'Editar host Zabbix' : 'Adicionar host Zabbix';
   const confirmLabel = mode === 'edit' ? 'Salvar' : 'Adicionar';
   const groupHint = zabbixGroupNames.length ? zabbixGroupNames.join(', ') : undefined;
@@ -151,16 +158,16 @@ export function ZabbixHostPickerModal({
             description={
               loadError ??
               (groupHint
-                ? `Hosts do grupo ${groupHint} (query Zabbix). Vinculado pelo hostid — renomear não quebra o mapa.`
-                : 'Vinculado pelo hostid do Zabbix (renomear não quebra o mapa)')
+                ? `Hosts do grupo ${groupHint} (query Zabbix). Vinculado pelo IP da interface principal.`
+                : 'Vinculado pelo IP da interface principal no Zabbix.')
             }
           >
             <Select
               options={hostOptions}
-              value={hostName}
+              value={hostKey}
               isLoading={loadingHosts}
               disabled={!zabbixGroupNames.length || loadingHosts}
-              onChange={(v) => setHostName(v.value)}
+              onChange={(v) => setHostKey(v.value)}
               placeholder={
                 loadingHosts
                   ? 'Carregando hosts…'
@@ -187,8 +194,9 @@ export function ZabbixHostPickerModal({
         <Button
           disabled={!canConfirm}
           onClick={() => {
-            if (selectedHost?.hostid) {
-              onConfirm(selectedHost.visibleName, selectedHost.ip, icon, selectedHost.hostid);
+            const ip = selectedHost?.ip?.trim();
+            if (selectedHost && ip && isIpv4(ip)) {
+              onConfirm(selectedHost.visibleName, ip, icon);
               onClose();
             }
           }}

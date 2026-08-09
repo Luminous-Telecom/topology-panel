@@ -1,5 +1,5 @@
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
-import { inferLinkMedium, upsertHostLayout } from '../utils';
+import { inferLinkMedium, isIpv4, upsertHostLayout } from '../utils';
 
 export function toggleMapLock(map: TopologyMap): TopologyMap {
   return { ...map, locked: !map.locked };
@@ -345,29 +345,28 @@ export function addManualDeviceAt(map: TopologyMap, x: number, y: number, label 
   return { ...map, nodes: [...map.nodes, node] };
 }
 
-/** Adiciona host Zabbix pelo hostid (vínculo estável) + nome visível. */
+/** Adiciona host Zabbix pelo IP da interface principal + nome visível. */
 export function addZabbixHostAt(
   map: TopologyMap,
   x: number,
   y: number,
   visibleName: string,
-  ip?: string,
-  icon?: TopologyNode['icon'],
-  zabbixHostId?: string
+  ip: string,
+  icon?: TopologyNode['icon']
 ): TopologyMap {
-  const key = visibleName.trim();
-  if (!key) {
+  const ipKey = ip.trim();
+  if (!isIpv4(ipKey)) {
     return map;
   }
-  const hiddenHosts = map.hiddenHosts?.filter((h) => h.trim() !== key);
-  const next = upsertHostLayout(map, key, {
+  const label = visibleName.trim() || ipKey;
+  const hiddenHosts = map.hiddenHosts?.filter((h) => h.trim() !== ipKey && h.trim() !== label);
+  const next = upsertHostLayout(map, ipKey, {
     x: Math.round(x),
     y: Math.round(y),
-    label: key,
-    subtitle: ip?.trim() || undefined,
+    label,
+    subtitle: ipKey,
     type: 'host',
     icon,
-    zabbixHostId: zabbixHostId?.trim() || undefined,
   });
   return {
     ...next,
@@ -380,39 +379,42 @@ export function rebindZabbixHost(
   map: TopologyMap,
   nodeId: string,
   newVisibleName: string,
-  ip?: string,
-  icon?: TopologyNode['icon'],
-  zabbixHostId?: string
+  ip: string,
+  icon?: TopologyNode['icon']
 ): TopologyMap {
   const node = map.nodes.find((n) => n.id === nodeId);
   if (!node) {
     return map;
   }
-  const oldKey = node.zabbixHost?.trim();
-  const newKey = newVisibleName.trim();
-  if (!newKey) {
+  const ipKey = ip.trim();
+  if (!isIpv4(ipKey)) {
     return map;
   }
+  const oldIp = node.subtitle?.trim();
+  const oldKey = node.zabbixHost?.trim();
+  const label = newVisibleName.trim() || ipKey;
 
   let nodes = map.nodes;
-  if (oldKey && oldKey !== newKey) {
+  if (oldKey && oldKey !== ipKey) {
     nodes = nodes.filter(
       (n) => !((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === oldKey && n.id === nodeId)
     );
   }
 
-  const hiddenHosts = map.hiddenHosts?.filter((h) => h.trim() !== newKey);
-  const next = upsertHostLayout({ ...map, nodes }, newKey, {
+  const hiddenHosts = map.hiddenHosts?.filter((h) => {
+    const key = h.trim();
+    return key !== ipKey && key !== label && key !== oldKey && key !== oldIp;
+  });
+  const next = upsertHostLayout({ ...map, nodes }, ipKey, {
     id: nodeId,
     x: node.x,
     y: node.y,
     width: node.width,
     height: node.height,
-    label: newKey,
-    subtitle: ip?.trim() || node.subtitle,
+    label,
+    subtitle: ipKey,
     type: 'host',
     icon: icon ?? node.icon,
-    zabbixHostId: zabbixHostId?.trim() || undefined,
   });
 
   return {

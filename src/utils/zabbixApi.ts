@@ -24,7 +24,7 @@ const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const ZABBIX_HOST_MONITORED = 0;
 
 /** hostid / ids do Zabbix podem vir como number no JSON — normaliza p/ string. */
-function asZabbixId(value: unknown): string {
+export function asZabbixId(value: unknown): string {
   if (value == null) {
     return '';
   }
@@ -332,32 +332,41 @@ export async function fetchZabbixHostsInGroupNames(
 
 export interface ZabbixHostNodeRef {
   zabbixHost?: string;
-  zabbixHostId?: string;
   subtitle?: string;
   label?: string;
 }
 
-/** Encontra o host Zabbix da lista que corresponde ao nó do mapa (hostid, nome ou IP). */
+function nodeIpCandidates(node: ZabbixHostNodeRef): string[] {
+  const out: string[] = [];
+  const add = (value?: string) => {
+    const trimmed = value?.trim();
+    if (!trimmed || !IPV4.test(trimmed) || out.includes(trimmed)) {
+      return;
+    }
+    out.push(trimmed);
+  };
+  add(node.subtitle);
+  add(node.zabbixHost);
+  return out;
+}
+
+/** Encontra o host Zabbix da lista que corresponde ao nó do mapa (IP, depois nome). */
 export function resolveZabbixHostOptionForNode(
   list: ZabbixHostOption[],
   node: ZabbixHostNodeRef
 ): ZabbixHostOption | undefined {
-  const hostId = node.zabbixHostId?.trim();
-  if (hostId) {
-    const byId = list.find((host) => host.hostid === hostId);
-    if (byId) {
-      return byId;
+  for (const ip of nodeIpCandidates(node)) {
+    const byIp = list.find((host) => host.ip === ip);
+    if (byIp) {
+      return byIp;
     }
   }
 
-  const candidates = [node.zabbixHost?.trim(), node.label?.trim(), node.subtitle?.trim()].filter(
-    (value): value is string => Boolean(value)
-  );
-
-  for (const candidate of candidates) {
-    const byIp = list.find((host) => host.ip === candidate);
-    if (byIp) {
-      return byIp;
+  const name = node.zabbixHost?.trim();
+  const label = node.label?.trim();
+  for (const candidate of [name, label]) {
+    if (!candidate || IPV4.test(candidate)) {
+      continue;
     }
     const lower = candidate.toLowerCase();
     const byName = list.find(
@@ -374,19 +383,22 @@ export function resolveZabbixHostOptionForNode(
 
 export function zabbixHostPickerOptions(
   list: ZabbixHostOption[],
-  onMap: { names: Set<string>; hostIds: Set<string> },
+  onMap: { ips: Set<string>; names: Set<string> },
   boundHost?: ZabbixHostOption
 ): Array<{ label: string; value: string }> {
   return list
     .filter((host) => {
-      if (boundHost && host.hostid === boundHost.hostid) {
+      if (boundHost?.ip && host.ip === boundHost.ip) {
         return true;
       }
-      return !onMap.hostIds.has(host.hostid) && !onMap.names.has(host.visibleName);
+      if (host.ip && onMap.ips.has(host.ip)) {
+        return false;
+      }
+      return !onMap.names.has(host.visibleName);
     })
     .map((host) => ({
       label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
-      value: host.visibleName,
+      value: host.ip ?? host.visibleName,
     }));
 }
 

@@ -49,13 +49,12 @@ export interface TopologyNode {
   /** Optional second line (IP or description) */
   subtitle?: string;
   /**
-   * Zabbix hostid (vínculo estável — sobrevive a rename).
-   * Preferir este campo para status/problemas; zabbixHost fica como nome em cache.
+   * @deprecated Legado — não gravado; vínculo do host é pelo IP (`subtitle` / `zabbixHost`).
    */
   zabbixHostId?: string;
   /**
-   * Nome visível do host no Zabbix (cache para exibição / mapas legados).
-   * Atualizado automaticamente quando o nome muda no Zabbix.
+   * Chave do host no mapa — preferencialmente o IP da interface principal.
+   * Nome visível do Zabbix fica em `label`.
    */
   zabbixHost?: string;
   type?: TopologyNodeType;

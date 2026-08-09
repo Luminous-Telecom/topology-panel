@@ -349,11 +349,9 @@ function nodeFill(
   }
   const metric = effectiveStatusMetric(options);
   const threshold = offlineThresholdForMetric(metric);
-  const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
   const lookupRef: HostLookupRef = {
     zabbixHost: node.zabbixHost,
     subtitle: node.subtitle,
-    zabbixHostId: hostId || undefined,
     label: node.label,
   };
   const raw = lookupHostStatus(statusMap, lookupRef, hostMetadata);
@@ -374,7 +372,7 @@ function nodeFill(
   if (
     st === 'online' &&
     options.useZabbixProblems !== false &&
-    (lookupRef.zabbixHost || hostId) &&
+    lookupRef.zabbixHost &&
     lookupProblemCount(problemMap, lookupRef, hostMetadata) > 0
   ) {
     return options.colorAlert || '#EF6C00';
@@ -1705,9 +1703,13 @@ export function TopologyCanvas({
     setAlignGuides([]);
   }, []);
 
-  const openNodeProperties = useCallback((node: TopologyNode) => {
-    setEditNode(node);
-  }, []);
+  const openNodeProperties = useCallback(
+    (node: TopologyNode) => {
+      const stored = storedMap.nodes.find((n) => n.id === node.id);
+      setEditNode(stored ?? node);
+    },
+    [storedMap]
+  );
 
   const tryDoubleTapOpenProperties = useCallback(
     (tapNode: TopologyNode): boolean => {
@@ -3226,8 +3228,7 @@ export function TopologyCanvas({
                 editNode.id,
                 payload.rebind.visibleName,
                 payload.rebind.ip,
-                payload.rebind.icon,
-                payload.rebind.hostid
+                payload.rebind.icon
               );
             }
             const savedNode = next.nodes.find((n) => n.id === editNode.id);
@@ -3257,8 +3258,8 @@ export function TopologyCanvas({
           zabbixGroupNames={zabbixGroupNames}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
-          onConfirm={(visibleName, ip, icon, hostid) =>
-            persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon, hostid))
+          onConfirm={(visibleName, ip, icon) =>
+            persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon))
           }
         />
       )}
