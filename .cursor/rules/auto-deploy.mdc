@@ -16,11 +16,11 @@ Após **qualquer** alteração no código do plugin, **o agent executa o deploy*
 
 ## O agent deve
 
-1. Rodar **`bash scripts/deploy.sh`** via terminal (Shell tool) — build + upload + restart no Grafana de testes.
+1. Rodar **`bash scripts/deploy.sh`** via terminal (Shell tool) — build + upload + restart nos dois Grafana.
 2. Aguardar conclusão com sucesso.
 3. Só então encerrar a resposta ao usuário.
 
-Credenciais em `.env` (`GRAFANA_SSH_PASS`) — nunca commitar.
+Credenciais em `.env` (`GRAFANA_SSH_PASS`, `GRAFANA_SSH_PASS_PROD`) — nunca commitar.
 
 ## Não fazer
 
@@ -31,5 +31,5 @@ Credenciais em `.env` (`GRAFANA_SSH_PASS`) — nunca commitar.
 
 ## Referência
 
-- Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-topology-panel/`
-- Testar: https://monitoramento.luminoustelecom.com.br/d/dude-dc/dc?orgId=2
+- Testes: `45.5.147.20:2224` → https://monitoramento.luminoustelecom.com.br/d/dude-dc/dc?orgId=2
+- Produção: `45.5.147.7:22` → `/var/lib/grafana/plugins/luminous-topology-panel/`

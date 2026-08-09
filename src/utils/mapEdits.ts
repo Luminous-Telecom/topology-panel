@@ -108,6 +108,17 @@ export function removeNodeFromMap(
   return { ...map, nodes, links, hiddenHosts };
 }
 
+/** Remove vários nós de uma vez (links conectados e hiddenHosts incluídos). */
+export function removeNodesFromMap(map: TopologyMap, nodesToRemove: TopologyNode[]): TopologyMap {
+  if (!nodesToRemove.length) {
+    return map;
+  }
+  return nodesToRemove.reduce(
+    (next, node) => removeNodeFromMap(next, node.id, { zabbixHost: node.zabbixHost, type: node.type }),
+    map
+  );
+}
+
 export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Partial<TopologyNode>): TopologyMap {
   if ((node.type ?? 'host') === 'host' && node.zabbixHost) {
     return upsertHostLayout(map, node.zabbixHost, { ...patch, id: node.id });
