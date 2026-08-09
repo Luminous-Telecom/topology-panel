@@ -2836,6 +2836,7 @@ export function TopologyCanvas({
       {editNode && (
         <NodeEditModal
           node={editNode}
+          queryRefInfos={options.queryRefInfosAvailable ?? []}
           onClose={() => setEditNode(null)}
           onSave={(patch) => persist(updateStoredNode(storedMap, editNode, patch))}
         />

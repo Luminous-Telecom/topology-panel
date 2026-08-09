@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
-import { TopologyDashboardChoice, TopologyHostIcon, TopologyNode } from '../types';
+import { TopologyDashboardChoice, TopologyHostIcon, TopologyNode, TopologyQueryRefInfo } from '../types';
 import { DashboardMultiSelect } from './DashboardMultiSelect';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
+import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 
 interface Props {
   node: TopologyNode;
+  queryRefInfos?: TopologyQueryRefInfo[];
   onSave: (patch: Partial<TopologyNode>) => void;
   onClose: () => void;
 }
 
-export function NodeEditModal({ node, onSave, onClose }: Props) {
+export function NodeEditModal({ node, queryRefInfos = [], onSave, onClose }: Props) {
   const [label, setLabel] = useState(node.label ?? '');
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
@@ -120,13 +122,13 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
             />
           </Field>
           <Field
-            label="Query Zabbix (refId)"
-            description="RefId da query deste painel (ex.: B) com o host group desta rede. Status offline vem dessa query; hosts não aparecem no mapa pai."
+            label="Consulta Zabbix"
+            description="Consulta deste painel cujo host group define o status offline deste submapa"
           >
-            <Input
+            <QueryRefSelect
               value={queryRefId}
-              onChange={(e) => setQueryRefId(e.currentTarget.value.toUpperCase())}
-              placeholder="Ex.: B"
+              queryRefs={queryRefInfos}
+              onChange={setQueryRefId}
             />
           </Field>
           <Field
@@ -249,7 +251,7 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
             if (type === 'submap') {
               patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
               patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
-              patch.queryRefId = queryRefId.trim() || undefined;
+              patch.queryRefId = queryRefId.trim().toUpperCase() || undefined;
               patch.includeInParentStats = includeInParentStats ? undefined : false;
               patch.showStatusStats = undefined;
             }

@@ -25,6 +25,7 @@ import {
 import { inferLinkMedium } from '../utils';
 import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
+import { QueryRefSelect } from '../components/QueryRefSelect';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
 type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
@@ -66,6 +67,7 @@ function LockBar({ locked, onToggle }: { locked: boolean; onToggle: () => void }
 export function TopologyEditor({ value, onChange, context }: Props) {
   const theme = useTheme2();
   const map = value ?? defaultTopologyMap();
+  const queryRefInfos = context.options.queryRefInfosAvailable ?? [];
   const locked = Boolean(map.locked);
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonText, setJsonText] = useState(() => topologyToJson(map));
@@ -414,15 +416,15 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     />
                   </Field>
                   <Field
-                    label="Query Zabbix (refId)"
-                    description="RefId da query deste painel (ex.: B) com o host group desta rede"
+                    label="Consulta Zabbix"
+                    description="Host group desta consulta alimenta o status offline do submapa"
                   >
-                    <Input
+                    <QueryRefSelect
                       value={node.queryRefId ?? ''}
+                      queryRefs={queryRefInfos}
                       disabled={locked}
-                      placeholder="Ex.: B"
-                      onChange={(e) =>
-                        updateSubmap(idx, { queryRefId: e.currentTarget.value.trim().toUpperCase() || undefined })
+                      onChange={(refId) =>
+                        updateSubmap(idx, { queryRefId: refId.trim().toUpperCase() || undefined })
                       }
                     />
                   </Field>
