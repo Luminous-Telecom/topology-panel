@@ -230,30 +230,70 @@ export function collectQueryRefIdsFromPanelData(data?: PanelData | DataFrame[]):
   return collectQueryRefInfosFromPanelData(data).map((info) => info.refId);
 }
 
-function zabbixQueryTargetHint(target: Record<string, unknown>): string | undefined {
-  const pick = (obj: unknown, prefix: string): string | undefined => {
-    if (!obj || typeof obj !== 'object') {
-      return undefined;
-    }
-    const rec = obj as Record<string, unknown>;
-    const filter = typeof rec.filter === 'string' ? rec.filter.trim() : '';
-    if (filter) {
-      return `${prefix}: ${filter}`;
-    }
-    const name = typeof rec.name === 'string' ? rec.name.trim() : '';
-    if (name) {
-      return `${prefix}: ${name}`;
-    }
+function zabbixQueryScopeName(obj: unknown): string | undefined {
+  if (!obj || typeof obj !== 'object') {
     return undefined;
-  };
+  }
+  const rec = obj as Record<string, unknown>;
+  const filter = typeof rec.filter === 'string' ? rec.filter.trim() : '';
+  if (filter) {
+    return filter;
+  }
+  const name = typeof rec.name === 'string' ? rec.name.trim() : '';
+  if (name) {
+    return name;
+  }
+  return undefined;
+}
 
+function zabbixQueryScopeHint(obj: unknown, prefix: string): string | undefined {
+  const scopeName = zabbixQueryScopeName(obj);
+  if (!scopeName) {
+    return undefined;
+  }
+  return `${prefix}: ${scopeName}`;
+}
+
+function zabbixQueryTargetHint(target: Record<string, unknown>): string | undefined {
   return (
-    pick(target.group, 'Grupo') ||
-    pick(target.host, 'Host') ||
-    pick(target.hosts, 'Hosts') ||
-    pick(target.application, 'App') ||
-    pick(target.item, 'Item')
+    zabbixQueryScopeHint(target.group, 'Grupo') ||
+    zabbixQueryScopeHint(target.host, 'Host') ||
+    zabbixQueryScopeHint(target.hosts, 'Hosts') ||
+    zabbixQueryScopeHint(target.application, 'App') ||
+    zabbixQueryScopeHint(target.item, 'Item')
   );
+}
+
+/** Nome do host group configurado na query Zabbix (aba Query). */
+export function zabbixQueryGroupName(target: Record<string, unknown>): string | undefined {
+  return zabbixQueryScopeName(target.group);
+}
+
+/** Host groups das queries Zabbix do painel (filtra por displayQueryRefIds quando definido). */
+export function resolveZabbixGroupNamesFromPanelData(
+  data: PanelData | undefined,
+  displayQueryRefIds: string[] = []
+): string[] {
+  if (!data?.request?.targets?.length) {
+    return [];
+  }
+  const preferred = new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean));
+  const names = new Set<string>();
+  for (const target of data.request.targets) {
+    const rec = target as Record<string, unknown> & { refId?: string };
+    const refId = rec.refId?.trim().toUpperCase();
+    if (!refId) {
+      continue;
+    }
+    if (preferred.size > 0 && !preferred.has(refId)) {
+      continue;
+    }
+    const groupName = zabbixQueryGroupName(rec);
+    if (groupName) {
+      names.add(groupName);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /** Queries do painel com refId visível e resumo opcional (host group etc.). */

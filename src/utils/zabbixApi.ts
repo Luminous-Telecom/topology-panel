@@ -224,6 +224,53 @@ export async function fetchZabbixGroups(datasourceUid: string): Promise<ZabbixGr
   }
 }
 
+/** Hosts dos grupos Zabbix indicados pelo nome (deduplicados por hostid). */
+export async function fetchZabbixHostsInGroupNames(
+  datasourceUid: string,
+  groupNames: string[]
+): Promise<ZabbixHostOption[]> {
+  if (!datasourceUid || !groupNames.length) {
+    return [];
+  }
+  const uniqueNames = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
+  if (!uniqueNames.length) {
+    return [];
+  }
+  try {
+    const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
+      filter: { name: uniqueNames },
+      output: ['groupid'],
+    });
+    const groupIds = (groups ?? []).map((group) => group.groupid).filter(Boolean);
+    if (!groupIds.length) {
+      return [];
+    }
+    const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+      groupids: groupIds,
+      output: ['hostid', 'host', 'name'],
+      selectInterfaces: ['ip', 'main', 'type'],
+      sortfield: 'name',
+    });
+    const byId = new Map<string, ZabbixHostOption>();
+    for (const host of hosts ?? []) {
+      const hostid = asZabbixId(host.hostid);
+      const visibleName = host.name?.trim() || host.host?.trim() || '';
+      if (!hostid || !visibleName || byId.has(hostid)) {
+        continue;
+      }
+      byId.set(hostid, {
+        hostid,
+        visibleName,
+        technicalName: host.host?.trim() || host.name?.trim() || '',
+        ip: pickMainIp(host.interfaces),
+      });
+    }
+    return [...byId.values()].sort((a, b) => a.visibleName.localeCompare(b.visibleName));
+  } catch {
+    return [];
+  }
+}
+
 /** Hosts de um grupo Zabbix (nome visível + IP). */
 export async function fetchZabbixHostsInGroup(
   datasourceUid: string,

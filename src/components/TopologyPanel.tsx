@@ -26,6 +26,7 @@ import {
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
   resolveZabbixDatasourceUid,
+  resolveZabbixGroupNamesFromPanelData,
   sameQueryRefInfos,
   sameStringList,
 } from '../utils';
@@ -233,6 +234,11 @@ export function TopologyPanel({
   );
 
   const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(mappedData), [mappedData]);
+
+  const zabbixGroupNames = useMemo(
+    () => resolveZabbixGroupNamesFromPanelData(mappedData, displayQueryRefIds),
+    [mappedData, displayQueryRefIds]
+  );
 
   const zabbixDatasourceUidRef = useRef(zabbixDatasourceUid);
   zabbixDatasourceUidRef.current = zabbixDatasourceUid;
@@ -507,6 +513,7 @@ export function TopologyPanel({
         storedMap={resolvedOptions.map}
         options={resolvedOptions}
         zabbixDatasourceUid={zabbixDatasourceUid}
+        zabbixGroupNames={zabbixGroupNames}
         statusMap={statusMap}
         hostDisplay={hostDisplay}
         regionStatusMap={statusMap}

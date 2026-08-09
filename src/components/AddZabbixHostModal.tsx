@@ -2,18 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
-import {
-  fetchZabbixGroups,
-  fetchZabbixGroupsForHost,
-  fetchZabbixHostsInGroup,
-  ZabbixGroupOption,
-  ZabbixHostOption,
-} from '../utils/zabbixApi';
+import { fetchZabbixHostsInGroupNames, ZabbixHostOption } from '../utils/zabbixApi';
 
 interface Props {
   mode: 'add' | 'edit';
   datasourceUid?: string;
-  defaultGroup?: string;
+  /** Host groups definidos na aba Query do painel */
+  zabbixGroupNames?: string[];
   storedMap: TopologyMap;
   /** Host Zabbix atual (modo editar) */
   initialVisibleName?: string;
@@ -52,7 +47,7 @@ function hostsAlreadyOnMap(map: TopologyMap, exceptName?: string, exceptHostId?:
 export function ZabbixHostPickerModal({
   mode,
   datasourceUid,
-  defaultGroup,
+  zabbixGroupNames = [],
   storedMap,
   initialVisibleName,
   initialHostId,
@@ -60,14 +55,13 @@ export function ZabbixHostPickerModal({
   onConfirm,
   onClose,
 }: Props) {
-  const [groups, setGroups] = useState<ZabbixGroupOption[]>([]);
   const [hosts, setHosts] = useState<ZabbixHostOption[]>([]);
-  const [groupId, setGroupId] = useState<string | undefined>();
   const [hostName, setHostName] = useState<string | undefined>();
   const [icon, setIcon] = useState<TopologyHostIcon>(initialIcon ?? 'network');
-  const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingHosts, setLoadingHosts] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const groupNamesKey = zabbixGroupNames.join('\0');
 
   const onMap = useMemo(
     () =>
@@ -82,59 +76,12 @@ export function ZabbixHostPickerModal({
   useEffect(() => {
     if (!datasourceUid) {
       setLoadError('Configure o UID do datasource Zabbix nas opções do painel.');
+      setHosts([]);
+      setHostName(undefined);
       return;
     }
-    let cancelled = false;
-    setLoadingGroups(true);
-    setLoadError(null);
-
-    void (async () => {
-      try {
-        const list = await fetchZabbixGroups(datasourceUid);
-        if (cancelled) {
-          return;
-        }
-        setGroups(list);
-        if (!list.length) {
-          setLoadError('Nenhum grupo encontrado no Zabbix.');
-          return;
-        }
-
-        let preferredId: string | undefined;
-        if (mode === 'edit' && (initialVisibleName || initialHostId)) {
-          const hostGroups = await fetchZabbixGroupsForHost(
-            datasourceUid,
-            initialVisibleName ?? '',
-            initialHostId
-          );
-          if (hostGroups.length) {
-            preferredId = hostGroups[0].groupid;
-          }
-        }
-        if (!preferredId && defaultGroup) {
-          preferredId = list.find((g) => g.name === defaultGroup || g.name.endsWith(`/${defaultGroup}`))?.groupid;
-        }
-        if (!cancelled) {
-          setGroupId(preferredId ?? list[0].groupid);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : 'Falha ao carregar grupos do Zabbix.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingGroups(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [datasourceUid, defaultGroup, mode, initialVisibleName, initialHostId]);
-
-  useEffect(() => {
-    if (!datasourceUid || !groupId) {
+    if (!zabbixGroupNames.length) {
+      setLoadError('Configure um host group na query Zabbix do painel (aba Query).');
       setHosts([]);
       setHostName(undefined);
       return;
@@ -142,16 +89,22 @@ export function ZabbixHostPickerModal({
     let cancelled = false;
     setLoadingHosts(true);
     setLoadError(null);
-    fetchZabbixHostsInGroup(datasourceUid, groupId)
+    fetchZabbixHostsInGroupNames(datasourceUid, zabbixGroupNames)
       .then((list) => {
         if (cancelled) {
+          return;
+        }
+        if (!list.length) {
+          setLoadError(`Nenhum host encontrado no grupo Zabbix: ${zabbixGroupNames.join(', ')}.`);
+          setHosts([]);
+          setHostName(undefined);
           return;
         }
         setHosts(list);
         if (mode === 'edit') {
           const match =
-            (initialHostId && list.find((h) => h.hostid === initialHostId)) ||
-            (initialVisibleName && list.find((h) => h.visibleName === initialVisibleName));
+            (initialHostId && list.find((host) => host.hostid === initialHostId)) ||
+            (initialVisibleName && list.find((host) => host.visibleName === initialVisibleName));
           if (match) {
             setHostName(match.visibleName);
           }
@@ -160,6 +113,8 @@ export function ZabbixHostPickerModal({
       .catch((err: unknown) => {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
+          setHosts([]);
+          setHostName(undefined);
         }
       })
       .finally(() => {
@@ -170,20 +125,20 @@ export function ZabbixHostPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, groupId, mode, initialVisibleName, initialHostId]);
+  }, [datasourceUid, groupNamesKey, mode, initialVisibleName, initialHostId, zabbixGroupNames]);
 
-  const groupOptions = groups.map((g) => ({ label: g.name, value: g.groupid }));
   const hostOptions = hosts
-    .filter((h) => !onMap.hostIds.has(h.hostid) && !onMap.names.has(h.visibleName))
-    .map((h) => ({
-      label: h.ip ? `${h.visibleName} (${h.ip})` : h.visibleName,
-      value: h.visibleName,
+    .filter((host) => !onMap.hostIds.has(host.hostid) && !onMap.names.has(host.visibleName))
+    .map((host) => ({
+      label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
+      value: host.visibleName,
     }));
 
-  const selectedHost = hosts.find((h) => h.visibleName === hostName);
+  const selectedHost = hosts.find((host) => host.visibleName === hostName);
   const canConfirm = Boolean(hostName && selectedHost?.hostid);
   const title = mode === 'edit' ? 'Editar host Zabbix' : 'Adicionar host Zabbix';
   const confirmLabel = mode === 'edit' ? 'Salvar' : 'Adicionar';
+  const groupHint = zabbixGroupNames.length ? zabbixGroupNames.join(', ') : undefined;
 
   return (
     <Modal title={title} isOpen onDismiss={onClose}>
@@ -191,24 +146,20 @@ export function ZabbixHostPickerModal({
         <p>Configure o datasource Zabbix nas opções do painel.</p>
       ) : (
         <>
-          <Field label="Grupo Zabbix">
-            <Select
-              options={groupOptions}
-              value={groupId}
-              isLoading={loadingGroups}
-              onChange={(v) => {
-                setGroupId(v.value);
-                setHostName(undefined);
-              }}
-              placeholder="Selecione o grupo"
-            />
-          </Field>
-          <Field label="Host" description={loadError ?? 'Vinculado pelo hostid do Zabbix (renomear não quebra o mapa)'}>
+          <Field
+            label="Host"
+            description={
+              loadError ??
+              (groupHint
+                ? `Hosts do grupo ${groupHint} (query Zabbix). Vinculado pelo hostid — renomear não quebra o mapa.`
+                : 'Vinculado pelo hostid do Zabbix (renomear não quebra o mapa)')
+            }
+          >
             <Select
               options={hostOptions}
               value={hostName}
               isLoading={loadingHosts}
-              disabled={!groupId || loadingHosts}
+              disabled={!zabbixGroupNames.length || loadingHosts}
               onChange={(v) => setHostName(v.value)}
               placeholder={
                 loadingHosts

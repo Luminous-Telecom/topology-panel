@@ -83,6 +83,8 @@ interface Props {
   options: TopologyPanelOptions;
   /** UID do datasource Zabbix da aba Query do painel */
   zabbixDatasourceUid?: string;
+  /** Host groups definidos na query Zabbix do painel */
+  zabbixGroupNames?: string[];
   statusMap: HostStatusMap;
   /** Cores/textos dos Value mappings / Thresholds da Query */
   hostDisplay?: HostDisplayMap;
@@ -398,6 +400,7 @@ export function TopologyCanvas({
   storedMap,
   options,
   zabbixDatasourceUid,
+  zabbixGroupNames = [],
   statusMap,
   hostDisplay,
   regionStatusMap,
@@ -3012,6 +3015,7 @@ export function TopologyCanvas({
         <ZabbixHostPickerModal
           mode="add"
           datasourceUid={zabbixDatasourceUid}
+          zabbixGroupNames={zabbixGroupNames}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon, hostid) =>
@@ -3024,6 +3028,7 @@ export function TopologyCanvas({
         <ZabbixHostPickerModal
           mode="edit"
           datasourceUid={zabbixDatasourceUid}
+          zabbixGroupNames={zabbixGroupNames}
           storedMap={storedMap}
           initialVisibleName={editZabbixHost.zabbixHost}
           initialHostId={editZabbixHost.zabbixHostId}
