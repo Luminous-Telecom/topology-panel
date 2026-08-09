@@ -41,6 +41,7 @@ import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
 import {
   ContextMenuItem,
+  TopologyColorLegend,
   TopologyContextMenu,
   TopologyEditHint,
   TopologyToast,
@@ -216,16 +217,16 @@ function buildDragGroupMembers(
     .filter((n): n is TopologyNode => Boolean(n && canMoveSelectedNode(n, networksLocked)))
     .map((n) => {
       const memberLayout = nodeLayouts.get(n.id);
-      const fallbackW =
+      const defaultW =
         n.type === 'network' ? DEFAULT_NETWORK_WIDTH : n.type === 'static' ? DEFAULT_STATIC_WIDTH : 48;
-      const fallbackH =
+      const defaultH =
         n.type === 'network' ? DEFAULT_NETWORK_HEIGHT : n.type === 'static' ? DEFAULT_STATIC_HEIGHT : 28;
       return {
         id: n.id,
         startX: n.x,
         startY: n.y,
-        startW: memberLayout?.w ?? n.width ?? fallbackW,
-        startH: memberLayout?.h ?? n.height ?? fallbackH,
+        startW: memberLayout?.w ?? n.width ?? defaultW,
+        startH: memberLayout?.h ?? n.height ?? defaultH,
       };
     });
 }
@@ -324,7 +325,7 @@ function nodeFill(
     return options.colorSubmap;
   }
   if (node.type === 'static') {
-    return node.fillColor || options.colorStatic || options.colorUnknown;
+    return node.fillColor || options.colorStatic;
   }
   const st = resolveNodeStatus(
     node,
@@ -376,7 +377,16 @@ export function TopologyCanvas({
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
   const dragRef = useRef<
-    | { kind: 'pan'; ox: number; oy: number; nx: number; ny: number; moved: boolean; tapNode?: TopologyNode }
+    | {
+        kind: 'pan';
+        ox: number;
+        oy: number;
+        nx: number;
+        ny: number;
+        moved: boolean;
+        tapNode?: TopologyNode;
+        tapLink?: TopologyLink;
+      }
     | {
         kind: 'node';
         node: TopologyNode;
@@ -980,7 +990,7 @@ export function TopologyCanvas({
   );
 
   const beginPan = useCallback(
-    (e: React.PointerEvent, tapNode?: TopologyNode) => {
+    (e: React.PointerEvent, tapNode?: TopologyNode, tapLink?: TopologyLink) => {
       if (pinchActiveRef.current) {
         return;
       }
@@ -997,6 +1007,7 @@ export function TopologyCanvas({
         ny: view.y,
         moved: false,
         tapNode,
+        tapLink,
       };
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
@@ -1414,6 +1425,11 @@ export function TopologyCanvas({
           openSubmap(tap);
           return;
         }
+        // Tap no cabo: mesma situação — captura no wrap mata o click.
+        if (d.tapLink) {
+          onLinkSelect(d.tapLink);
+          return;
+        }
       }
 
       if (d?.kind === 'marquee') {
@@ -1501,7 +1517,7 @@ export function TopologyCanvas({
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, openSubmap, persist, storedMap, view]
+    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openSubmap, persist, storedMap, view]
   );
 
   const onNodeClick = useCallback(
@@ -1572,7 +1588,7 @@ export function TopologyCanvas({
           onClick: () => {
             if (tool.id === 'ping') {
               setPingTarget({
-                label: node.label ?? node.zabbixHost ?? ip,
+                label: node.label?.trim() ?? '',
                 ip,
                 zabbixHost: node.zabbixHost,
               });
@@ -1889,13 +1905,65 @@ export function TopologyCanvas({
     if (!selectedLink) {
       return null;
     }
-    const from = nodeLayouts.get(selectedLink.from);
-    const to = nodeLayouts.get(selectedLink.to);
-    if (!from || !to) {
+    const fromNode = map.nodes.find((n) => n.id === selectedLink.from);
+    const toNode = map.nodes.find((n) => n.id === selectedLink.to);
+    const fromLabel = (fromNode?.label ?? nodeLayouts.get(selectedLink.from)?.label)?.trim();
+    const toLabel = (toNode?.label ?? nodeLayouts.get(selectedLink.to)?.label)?.trim();
+    if (!fromLabel || !toLabel) {
       return null;
     }
-    return { from: from.label, to: to.label, medium: resolveLinkMedium(selectedLink) };
-  }, [nodeLayouts, selectedLink]);
+    return { from: fromLabel, to: toLabel, medium: resolveLinkMedium(selectedLink) };
+  }, [map.nodes, nodeLayouts, selectedLink]);
+
+  const legendItems = useMemo(() => {
+    if (options.showLegend === false) {
+      return [];
+    }
+    const items: Array<{ label: string; color: string }> = [];
+    if (options.legendOnline !== false) {
+      items.push({ label: 'Online', color: options.colorOnline });
+    }
+    if (options.legendOffline !== false) {
+      items.push({ label: 'Offline', color: options.colorOffline });
+    }
+    if (options.legendUnknown !== false) {
+      items.push({ label: 'Sem gerência', color: options.colorUnknown });
+    }
+    if (options.legendStatic) {
+      items.push({ label: 'Estático', color: options.colorStatic });
+    }
+    if (options.legendSubmap) {
+      items.push({ label: 'Submapa', color: options.colorSubmap });
+    }
+    if (options.legendLink) {
+      items.push({ label: 'Cabos', color: options.colorLink });
+    }
+    if (options.legendDownload) {
+      items.push({ label: 'Download (origem)', color: options.colorLinkDownload });
+    }
+    if (options.legendUpload) {
+      items.push({ label: 'Upload (destino)', color: options.colorLinkUpload });
+    }
+    return items;
+  }, [
+    options.showLegend,
+    options.legendOnline,
+    options.legendOffline,
+    options.legendUnknown,
+    options.legendStatic,
+    options.legendSubmap,
+    options.legendLink,
+    options.legendDownload,
+    options.legendUpload,
+    options.colorOnline,
+    options.colorOffline,
+    options.colorUnknown,
+    options.colorStatic,
+    options.colorSubmap,
+    options.colorLink,
+    options.colorLinkDownload,
+    options.colorLinkUpload,
+  ]);
 
   return (
     <div
@@ -1932,8 +2000,8 @@ export function TopologyCanvas({
 
       {selectedLinkLabels && (
         <TopologyEditHint>
-          Link ({selectedLinkLabels.medium === 'radio' ? 'Rádio' : 'Fibra'}):{' '}
-          <strong>{selectedLinkLabels.from}</strong> → <strong>{selectedLinkLabels.to}</strong>
+          Cabo ({selectedLinkLabels.medium === 'radio' ? 'Rádio' : 'Fibra'}): origem{' '}
+          <strong>{selectedLinkLabels.from}</strong> → destino <strong>{selectedLinkLabels.to}</strong>
           {editable ? (
             <>
               {' '}
@@ -2077,7 +2145,7 @@ export function TopologyCanvas({
               const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs) + titlePadX * 2));
               const titleX = x + (w - titleW) / 2;
               const titleY = y + titleMargin;
-              const titleFill = resolveColor(options.colorStatic || options.colorUnknown);
+              const titleFill = resolveColor(options.colorStatic);
               const titleText = textOnBackground(titleFill);
 
               const networkOffline =
@@ -2193,7 +2261,12 @@ export function TopologyCanvas({
               onContextMenu={(e) => handleContextMenu(e, { link })}
               onPathPointerDown={(e) => {
                 if (!editable) {
-                  beginPan(e);
+                  // Pan no cabo; se for só tap, onPointerUp seleciona o link (click morre com capture).
+                  if (options.enablePan) {
+                    beginPan(e, undefined, link);
+                  } else {
+                    onLinkSelect(link);
+                  }
                   return;
                 }
                 const el = wrapRef.current;
@@ -2429,6 +2502,8 @@ export function TopologyCanvas({
         </g>
       </svg>
 
+      <TopologyColorLegend items={legendItems} />
+
       {contextMenu && (
         <TopologyContextMenu
           x={contextMenu.screenX}
@@ -2590,8 +2665,8 @@ function LinkLineComponent({
     : hovered
       ? 'url(#link-arrow-end-hover)'
       : 'url(#link-arrow-end)';
-  const downloadColor = options.colorLinkDownload ?? '#4FC3F7';
-  const uploadColor = options.colorLinkUpload ?? '#FFB74D';
+  const downloadColor = options.colorLinkDownload;
+  const uploadColor = options.colorLinkUpload;
   const flowStroke = Math.max(1.5, strokeWidth - 1);
 
   return (
@@ -2613,7 +2688,8 @@ function LinkLineComponent({
         }}
         onClick={(e) => {
           e.stopPropagation();
-          if (!editable) {
+          // Seleção quando pan está desligado (sem pointer capture).
+          if (!editable && !options.enablePan) {
             onSelect();
           }
         }}

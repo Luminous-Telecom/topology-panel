@@ -7,6 +7,7 @@ import {
   Field,
   Icon,
   IconButton,
+  InlineSwitch,
   Input,
   Select,
   TextArea,
@@ -28,7 +29,7 @@ import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../uti
 type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
 
 function nodeTitle(node: TopologyNode): string {
-  return node.label?.trim() || node.id;
+  return node.label?.trim() ?? '';
 }
 
 function LockBar({ locked, onToggle }: { locked: boolean; onToggle: () => void }) {
@@ -110,7 +111,19 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         return;
       }
       updateMap({
-        nodes: map.nodes.map((n) => (n.id === target.id ? { ...n, ...patch } : n)),
+        nodes: map.nodes.map((n) => {
+          if (n.id !== target.id) {
+            return n;
+          }
+          const next: TopologyNode = { ...n, ...patch };
+          if (Object.prototype.hasOwnProperty.call(patch, 'includeInParentStats') && patch.includeInParentStats === undefined) {
+            delete next.includeInParentStats;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, 'showStatusStats') && patch.showStatusStats === undefined) {
+            delete next.showStatusStats;
+          }
+          return next;
+        }),
       });
     },
     [map.nodes, submapNodes, updateMap]
@@ -199,7 +212,10 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     setJsonMode(false);
   }, [jsonText, onChange]);
 
-  const nodeOptions = map.nodes.map((n) => ({ label: `${n.label || n.id} (${n.id})`, value: n.id }));
+  const nodeOptions = map.nodes.map((n) => ({
+    label: n.label?.trim() ? `${n.label.trim()} (${n.id})` : n.id,
+    value: n.id,
+  }));
   const mediumOptions = [
     { label: 'Fibra (linha contínua)', value: 'fiber' },
     { label: 'Rádio (linha tracejada)', value: 'radio' },
@@ -276,10 +292,9 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             </div>
           )}
           {hostNodes.map((node) => {
-            const hostKey = node.zabbixHost?.trim() || node.label?.trim() || node.id;
             return (
               <div
-                key={hostKey}
+                key={node.id}
                 style={{
                   fontSize: 13,
                   padding: '6px 8px',
@@ -288,7 +303,10 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   border: `1px solid ${theme.colors.border.weak}`,
                 }}
               >
-                <div>{node.label ?? hostKey}</div>
+                <div>{node.label?.trim()}</div>
+                {node.zabbixHost?.trim() ? (
+                  <div style={{ color: theme.colors.text.secondary, fontSize: 12 }}>{node.zabbixHost.trim()}</div>
+                ) : null}
                 {node.subtitle ? (
                   <div style={{ color: theme.colors.text.secondary, fontSize: 12 }}>{node.subtitle}</div>
                 ) : null}
@@ -340,6 +358,26 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                         updateSubmap(idx, {
                           submapUid: uid || undefined,
                           submapSlug: slug || uid || undefined,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Incluir submapas internos"
+                    description="Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)"
+                  >
+                    <InlineSwitch
+                      label={
+                        node.includeInParentStats !== false && node.showStatusStats !== false
+                          ? 'Ativado'
+                          : 'Desativado'
+                      }
+                      value={node.includeInParentStats !== false && node.showStatusStats !== false}
+                      disabled={locked}
+                      onChange={(e) =>
+                        updateSubmap(idx, {
+                          includeInParentStats: e.currentTarget.checked ? undefined : false,
+                          showStatusStats: undefined,
                         })
                       }
                     />

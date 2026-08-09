@@ -321,6 +321,90 @@ export function TopologyEditHint({ children }: { children: React.ReactNode }) {
   return <div className={hintStyle}>{children}</div>;
 }
 
+const legendStyle = css`
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  min-width: 132px;
+`;
+
+const legendTitleStyle = css`
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 2px;
+`;
+
+const legendItemStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #fff;
+  line-height: 1.2;
+  white-space: nowrap;
+`;
+
+const legendSwatchStyle = css`
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-sizing: border-box;
+`;
+
+export type TopologyLegendItem = { label: string; color: string };
+
+function legendColorCss(color: unknown): string {
+  if (typeof color === 'string') {
+    return color.trim();
+  }
+  if (color && typeof color === 'object') {
+    const obj = color as { fixedColor?: string; color?: string; value?: string };
+    for (const key of ['fixedColor', 'color', 'value'] as const) {
+      const v = obj[key];
+      if (typeof v === 'string' && v.trim()) {
+        return v.trim();
+      }
+    }
+  }
+  return '';
+}
+
+export function TopologyColorLegend({ items }: { items: TopologyLegendItem[] }) {
+  const visible = items
+    .map((item) => ({ label: item.label, color: legendColorCss(item.color) }))
+    .filter((item) => Boolean(item.color));
+  if (visible.length === 0) {
+    return null;
+  }
+  return (
+    <div className={legendStyle} aria-label="Legenda de cores">
+      <div className={legendTitleStyle}>Legenda</div>
+      {visible.map((item) => (
+        <div key={item.label} className={legendItemStyle}>
+          <span className={legendSwatchStyle} style={{ background: item.color }} />
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const toolbarStyle = css`
   position: absolute;
   top: 8px;
@@ -374,6 +458,10 @@ export function TopologyToolbar({
     opacity: disabled ? 0.55 : 1,
   });
 
+  if (isFullscreen && !showEditControls) {
+    return null;
+  }
+
   return (
     <div className={toolbarStyle}>
       {showEditControls && (
@@ -422,28 +510,32 @@ export function TopologyToolbar({
           </button>
         </>
       )}
-      <button
-        type="button"
-        onClick={onToggleFlow}
-        title={
-          flowPaused
-            ? 'Retomar animação de tráfego nas linhas'
-            : 'Pausar animação de tráfego nas linhas'
-        }
-        style={btnStyle(!flowPaused, flowPaused)}
-      >
-        <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
-        {flowPaused ? 'Tráfego pausado' : 'Pausar tráfego'}
-      </button>
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        title={isFullscreen ? 'Sair da tela cheia (Esc)' : 'Abrir mapa em tela cheia'}
-        style={btnStyle(isFullscreen)}
-      >
-        <Icon name={isFullscreen ? 'compress-arrows' : 'expand-arrows-alt'} size="sm" />
-        {isFullscreen ? 'Sair tela cheia' : 'Tela cheia'}
-      </button>
+      {!isFullscreen && (
+        <>
+          <button
+            type="button"
+            onClick={onToggleFlow}
+            title={
+              flowPaused
+                ? 'Retomar animação de tráfego nas linhas'
+                : 'Pausar animação de tráfego nas linhas'
+            }
+            style={btnStyle(!flowPaused, flowPaused)}
+          >
+            <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
+            {flowPaused ? 'Tráfego pausado' : 'Pausar tráfego'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            title="Abrir mapa em tela cheia"
+            style={btnStyle(false)}
+          >
+            <Icon name="expand-arrows-alt" size="sm" />
+            Tela cheia
+          </button>
+        </>
+      )}
     </div>
   );
 }

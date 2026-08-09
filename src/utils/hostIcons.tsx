@@ -94,7 +94,7 @@ export const HOST_ICON_ORDER: TopologyHostIcon[] = [
   'network',
 ];
 
-/** Fallback react-icons só para tipos legados (mapas antigos). */
+/** Ícones react-icons só para tipos legados (mapas antigos). */
 const LEGACY_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, IconType>> = {
   web: FaGlobe,
   proxmox: SiProxmox,
@@ -137,7 +137,7 @@ export function isPassiveCustomIcon(icon: TopologyHostIcon): boolean {
   return PASSIVE_CUSTOM_ICONS.includes(icon);
 }
 
-export function hostIconColor(icon: TopologyHostIcon, fallback = PASSIVE_ICON_COLOR): string {
+export function hostIconColor(icon: TopologyHostIcon): string {
   if (isCustomAssetIcon(icon)) {
     return isPassiveCustomIcon(icon) ? PASSIVE_ICON_COLOR : MANAGED_ICON_COLOR;
   }
@@ -147,7 +147,14 @@ export function hostIconColor(icon: TopologyHostIcon, fallback = PASSIVE_ICON_CO
   if (isNetworkHostIcon(icon) || icon === 'switch_unmanaged') {
     return PASSIVE_ICON_COLOR;
   }
-  return BRAND_ICON_COLORS[icon] ?? fallback;
+  const brand = BRAND_ICON_COLORS[icon];
+  if (brand) {
+    return brand;
+  }
+  if (LEGACY_ICON_COMPONENTS[icon]) {
+    return PASSIVE_ICON_COLOR;
+  }
+  throw new Error(`Cor de ícone não definida: ${icon}`);
 }
 
 export function hostIconSelectOptions(): Array<{ label: string; value: TopologyHostIcon }> {
@@ -216,8 +223,11 @@ export function HostIconImage({ icon, size = 20, color, className, onMap = false
     );
   }
 
-  const Icon = LEGACY_ICON_COMPONENTS[icon] ?? LEGACY_ICON_COMPONENTS.host ?? FaDesktop;
-  const fill = color ?? hostIconColor(icon, 'currentColor');
+  const Icon = LEGACY_ICON_COMPONENTS[icon];
+  if (!Icon) {
+    return null;
+  }
+  const fill = color ?? hostIconColor(icon);
   return <Icon size={size} color={fill} className={className} aria-hidden />;
 }
 

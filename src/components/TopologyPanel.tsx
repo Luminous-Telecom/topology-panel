@@ -9,7 +9,7 @@ import {
   mergeStatusWithProblems,
 } from '../utils';
 import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
-import { fetchDashboardTopologyHosts } from '../utils/submapHosts';
+import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
@@ -34,7 +34,7 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     const merged = {
       ...defaultOptions(),
       ...options,
-      map: options.map ?? { width: 1200, height: 800, nodes: [], links: [] },
+      ...(options.map ? { map: options.map } : {}),
     };
     return resolvePanelOptionsColors(merged, theme);
   }, [options, theme]);
@@ -47,7 +47,7 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     const merged = {
       ...defaultOptions(),
       ...options,
-      map: options.map ?? { width: 1200, height: 800, nodes: [], links: [] },
+      ...(options.map ? { map: options.map } : {}),
     };
     const { options: normalized, changed } = normalizeStoredPanelColors(merged, theme);
     if (changed) {
@@ -80,6 +80,15 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
   }, [resolvedOptions.map.nodes]);
 
+  /** Inclui o flag para refetch ao ligar/desligar status do submapa. */
+  const submapFetchKey = useMemo(
+    () =>
+      submapNodes
+        .map((n) => `${n.id}\0${n.submapUid}\0${isIncludedInParentStats(n) ? '1' : '0'}`)
+        .join('\n'),
+    [submapNodes]
+  );
+
   useEffect(() => {
     if (!submapNodes.length) {
       setSubmapHosts({});
@@ -92,7 +101,10 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
       const entries = await Promise.all(
         submapNodes.map(async (node) => {
           try {
-            const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim());
+            // Desativado: só hosts diretos do dashboard (ignora submapas internos)
+            const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim(), {
+              includeNested: isIncludedInParentStats(node),
+            });
             return [node.id, hosts] as const;
           } catch {
             return [node.id, null] as const;
@@ -108,7 +120,9 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     return () => {
       cancelled = true;
     };
-  }, [submapNodes]);
+    // submapFetchKey cobre uid + includeInParentStats; submapNodes traz os nós
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submapFetchKey]);
 
   useEffect(() => {
     const uid = resolvedOptions.zabbixDatasourceUid;

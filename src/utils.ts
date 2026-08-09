@@ -264,13 +264,13 @@ export function snapNodeCenterToGrid(
 
 const RADIO_HOST_PATTERN = /LITEAP|WI2BE|LITE.?AP|PTMP|PTP|AIRFIBER|NANOBEAM|RADIO/i;
 
-function nodeDisplayName(node?: TopologyNode): string {
-  return (node?.zabbixHost || node?.label || '').trim();
+function nodeRadioHints(node?: TopologyNode): string {
+  return [node?.zabbixHost?.trim(), node?.label?.trim()].filter(Boolean).join(' ');
 }
 
 /** Infer link medium from endpoint host names (LiteAP, Wi2BE, etc.). */
 export function inferLinkMedium(from?: TopologyNode, to?: TopologyNode): TopologyLinkMedium {
-  if (RADIO_HOST_PATTERN.test(nodeDisplayName(from)) || RADIO_HOST_PATTERN.test(nodeDisplayName(to))) {
+  if (RADIO_HOST_PATTERN.test(nodeRadioHints(from)) || RADIO_HOST_PATTERN.test(nodeRadioHints(to))) {
     return 'radio';
   }
   return 'fiber';
@@ -355,7 +355,7 @@ export function computeNodeLayout(
   if (node.type === 'submap') {
     const pad = 8;
     const lineGap = 4;
-    const label = (node.label || node.id).trim();
+    const label = (node.label ?? '').trim();
     const sub = node.subtitle?.trim();
     const hasTwoLines = Boolean(sub);
     const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
@@ -391,7 +391,7 @@ export function computeNodeLayout(
   const padX = 10;
   const padY = 6;
   const lineGap = 3;
-  const label = (node.label || node.id).trim();
+  const label = (node.label ?? '').trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
   const showIcon =
     node.type !== 'submap' && node.type !== 'static' && node.type !== 'network' && Boolean(node.icon);
@@ -434,7 +434,7 @@ export function computeStaticLayout(
   const padX = 10;
   const padY = 6;
   const lineGap = 3;
-  const label = (node.label || node.id).trim();
+  const label = (node.label ?? '').trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
 
   const contentW = Math.max(textWidth(label, labelFontSize), sub ? textWidth(sub, subFontSize) : 0);
@@ -462,7 +462,7 @@ export function computeNetworkLayout(
   const pad = 8;
   const w = node.width ?? DEFAULT_NETWORK_WIDTH;
   const h = node.height ?? DEFAULT_NETWORK_HEIGHT;
-  const label = (node.label || node.id).trim();
+  const label = (node.label ?? '').trim();
   return {
     w,
     h,

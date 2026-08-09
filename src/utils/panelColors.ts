@@ -51,7 +51,7 @@ function themesToTry(primary: GrafanaTheme2): GrafanaTheme2[] {
   return out;
 }
 
-/** Resolve nome da paleta Grafana usando tema ativo + fallbacks oficiais do Grafana. */
+/** Resolve nome da paleta Grafana usando o tema ativo e temas oficiais do Grafana. */
 function resolveNamedColor(theme: GrafanaTheme2, name: string): string {
   for (const candidate of themesToTry(theme)) {
     const viz = candidate.visualization;
@@ -103,7 +103,7 @@ export function resolvePanelOptionsColors(
     colorOnline: resolve(options.colorOnline),
     colorOffline: resolve(options.colorOffline),
     colorUnknown: resolve(options.colorUnknown),
-    colorStatic: resolve(options.colorStatic ?? options.colorUnknown),
+    colorStatic: resolve(options.colorStatic),
     colorSubmap: resolve(options.colorSubmap),
     colorLink: resolve(options.colorLink),
     colorLinkDownload: resolve(options.colorLinkDownload),

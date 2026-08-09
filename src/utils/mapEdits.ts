@@ -106,7 +106,16 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
     }
     const next: TopologyNode = { ...n, ...patch };
     // Limpa campos opcionais enviados como undefined (ex.: cor padrão do painel)
-    for (const key of ['fillColor', 'labelColor', 'borderColor', 'width', 'height', 'fontSize'] as const) {
+    for (const key of [
+      'fillColor',
+      'labelColor',
+      'borderColor',
+      'width',
+      'height',
+      'fontSize',
+      'includeInParentStats',
+      'showStatusStats',
+    ] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key] === undefined) {
         delete next[key];
       }

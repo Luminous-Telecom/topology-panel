@@ -48,7 +48,7 @@ export function useDashboardEditMode(): boolean {
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Fallback leve — MutationObserver cobre a maioria dos casos
+    // Reforço periódico — MutationObserver cobre a maioria dos casos
     const interval = window.setInterval(sync, 1500);
 
     return () => {

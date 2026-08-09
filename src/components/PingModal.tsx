@@ -115,7 +115,10 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         appendOutput(`${scriptResult.output}\n`);
         setPingError(scriptResult.error ?? null);
       } else {
-        setPingError(scriptResult.error ?? 'Não foi possível executar o ping.');
+        setPingError(scriptResult.error ?? null);
+        if (!scriptResult.error) {
+          appendOutput('Ping sem resposta do script Zabbix.\n');
+        }
       }
 
       runningRef.current = false;

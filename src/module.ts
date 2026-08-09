@@ -76,7 +76,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addColorPicker({
         path: 'colorUnknown',
-        name: 'Cor sem dados',
+        name: 'Cor sem gerência',
         description: 'Hex (#616161) ou cor da paleta Grafana — convertida automaticamente no mapa',
         defaultValue: '#616161',
         category: ['Aparência'],
@@ -96,29 +96,84 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addColorPicker({
         path: 'colorLink',
-        name: 'Cor base dos links',
+        name: 'Cor base dos cabos',
         defaultValue: '#78909C',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorLinkDownload',
-        name: 'Cor download (→ destino)',
-        description: 'Faixa animada no sentido da seta',
+        name: 'Cor download (→ origem)',
+        description: 'Faixa animada no sentido da origem',
         defaultValue: '#4FC3F7',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorLinkUpload',
-        name: 'Cor upload (← origem)',
-        description: 'Faixa animada no sentido oposto',
+        name: 'Cor upload (→ destino)',
+        description: 'Faixa animada no sentido do destino (seta)',
         defaultValue: '#FFB74D',
         category: ['Aparência'],
       })
       .addNumberInput({
         path: 'colorLinkWidth',
-        name: 'Espessura dos links',
+        name: 'Espessura dos cabos',
         defaultValue: 2,
         category: ['Aparência'],
+      })
+      .addBooleanSwitch({
+        path: 'showLegend',
+        name: 'Mostrar legenda',
+        description: 'Exibe a caixa de legenda na lateral direita do mapa',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendOnline',
+        name: 'Online',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendOffline',
+        name: 'Offline',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendUnknown',
+        name: 'Sem gerência',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendStatic',
+        name: 'Estático',
+        defaultValue: false,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendSubmap',
+        name: 'Submapa',
+        defaultValue: false,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendLink',
+        name: 'Cabos',
+        defaultValue: false,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendDownload',
+        name: 'Download (origem)',
+        defaultValue: false,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendUpload',
+        name: 'Upload (destino)',
+        defaultValue: false,
+        category: ['Legenda'],
       })
       .addRadio({
         path: 'statusMetric',

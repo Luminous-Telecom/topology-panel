@@ -15,8 +15,10 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let paused = false;
 
   const apply = () => {
-    const downloadOffset = String(-offset);
-    const uploadOffset = String(offset);
+    // Path vai origem → destino: offset positivo sobe no path (→ destino / upload),
+    // negativo desce (→ origem / download).
+    const downloadOffset = String(offset);
+    const uploadOffset = String(-offset);
     root.querySelectorAll('[data-link-flow="download"]').forEach((el) => {
       el.setAttribute('stroke-dashoffset', downloadOffset);
     });

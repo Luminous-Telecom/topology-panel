@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, ColorPickerInput, Field, Input, Modal } from '@grafana/ui';
+import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
 import { TopologyHostIcon, TopologyNode } from '../types';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { HostIconPicker } from './HostIconPicker';
@@ -16,6 +16,9 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
   const [submapSlug, setSubmapSlug] = useState(node.submapSlug ?? '');
+  const [includeInParentStats, setIncludeInParentStats] = useState(
+    node.includeInParentStats !== false && node.showStatusStats !== false
+  );
   const [icon, setIcon] = useState<TopologyHostIcon>(node.icon ?? 'network');
   const [width, setWidth] = useState(node.width !== undefined ? String(node.width) : '');
   const [height, setHeight] = useState(node.height !== undefined ? String(node.height) : '');
@@ -109,6 +112,16 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
               }}
             />
           </Field>
+          <Field
+            label="Incluir submapas internos"
+            description="Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)"
+          >
+            <InlineSwitch
+              label={includeInParentStats ? 'Ativado' : 'Desativado'}
+              value={includeInParentStats}
+              onChange={(e) => setIncludeInParentStats(e.currentTarget.checked)}
+            />
+          </Field>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">
             <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
           </Field>
@@ -190,6 +203,10 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
             if (type === 'submap') {
               patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
               patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
+              // Só persiste false; true/omitido = inclui no pai (padrão)
+              patch.includeInParentStats = includeInParentStats ? undefined : false;
+              // Limpa flag legada se existir
+              patch.showStatusStats = undefined;
             }
             if (type === 'static') {
               patch.width = width.trim() ? Math.max(24, Number(width) || 24) : undefined;

@@ -51,6 +51,14 @@ export interface TopologyNode {
   submapUid?: string;
   /** Optional dashboard slug override */
   submapSlug?: string;
+  /**
+   * Quando false: conta só hosts diretos do dashboard linkado (ignora submapas internos)
+   * e este submapa não entra na contagem de mapas pai.
+   * Padrão: true (inclui submapas internos no status).
+   */
+  includeInParentStats?: boolean;
+  /** @deprecated Use includeInParentStats */
+  showStatusStats?: boolean;
   x: number;
   y: number;
   width?: number;
@@ -137,9 +145,9 @@ export interface TopologyPanelOptions {
   colorStatic: string;
   colorSubmap: string;
   colorLink: string;
-  /** Animação download (sentido destino / seta) */
+  /** Animação download (sentido origem) */
   colorLinkDownload: string;
-  /** Animação upload (sentido origem) */
+  /** Animação upload (sentido destino / seta) */
   colorLinkUpload: string;
   colorLinkWidth: number;
   /** Retângulos de rede (agrupamento) */
@@ -169,6 +177,17 @@ export interface TopologyPanelOptions {
   toolUsername?: string;
   /** Senha padrão para Winbox / SSH / Telnet (fica no JSON do dashboard) */
   toolPassword?: string;
+  /** Exibir legenda de cores no mapa */
+  showLegend?: boolean;
+  /** Itens da legenda (quais cores mostrar) */
+  legendOnline?: boolean;
+  legendOffline?: boolean;
+  legendUnknown?: boolean;
+  legendStatic?: boolean;
+  legendSubmap?: boolean;
+  legendLink?: boolean;
+  legendDownload?: boolean;
+  legendUpload?: boolean;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -227,6 +246,15 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   useZabbixProblems: true,
   toolUsername: '',
   toolPassword: '',
+  showLegend: true,
+  legendOnline: true,
+  legendOffline: true,
+  legendUnknown: true,
+  legendStatic: false,
+  legendSubmap: false,
+  legendLink: false,
+  legendDownload: false,
+  legendUpload: false,
 });
 
 /** Host name -> last status value (ICMP rtt em segundos, ou perda %) */

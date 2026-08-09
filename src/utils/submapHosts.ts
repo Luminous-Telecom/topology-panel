@@ -20,6 +20,20 @@ type DashboardTopologyResponse = {
   };
 };
 
+const MAX_SUBMAP_DEPTH = 8;
+
+/** Submapa entra na contagem do mapa pai? (padrão: sim) */
+export function isIncludedInParentStats(node: { includeInParentStats?: boolean; showStatusStats?: boolean }): boolean {
+  if (node.includeInParentStats === false) {
+    return false;
+  }
+  // Legado: showStatusStats=false significava excluir do pai
+  if (node.includeInParentStats === undefined && node.showStatusStats === false) {
+    return false;
+  }
+  return true;
+}
+
 /** Hosts type=host do mapa (mesma regra do build_dashboard.py / map_stats_hosts). */
 export function extractTopologyHostNames(map: TopologyMap): string[] {
   const seen = new Set<string>();
@@ -45,6 +59,54 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
   return hosts;
 }
 
+/**
+ * UIDs de dashboards linkados por nós submapa neste mapa.
+ * Ignora submapas com includeInParentStats=false (não contaminam o status do pai).
+ */
+export function extractNestedSubmapUids(map: TopologyMap): string[] {
+  const seen = new Set<string>();
+  const uids: string[] = [];
+
+  for (const node of map.nodes ?? []) {
+    if (node.type !== 'submap') {
+      continue;
+    }
+    if (!isIncludedInParentStats(node)) {
+      continue;
+    }
+    const uid = node.submapUid?.trim();
+    if (!uid || seen.has(uid)) {
+      continue;
+    }
+    seen.add(uid);
+    uids.push(uid);
+  }
+
+  return uids;
+}
+
+function mergeHostNames(lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const hosts: string[] = [];
+
+  for (const list of lists) {
+    for (const raw of list) {
+      const name = raw.trim();
+      if (!name) {
+        continue;
+      }
+      const key = name.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      hosts.push(name);
+    }
+  }
+
+  return hosts;
+}
+
 /** Extrai mapa da topologia de um dashboard (API v1 panels ou v2 elements/vizConfig). */
 function extractMapFromDashboardResponse(response: DashboardTopologyResponse): TopologyMap | undefined {
   for (const panel of response?.dashboard?.panels ?? []) {
@@ -63,17 +125,88 @@ function extractMapFromDashboardResponse(response: DashboardTopologyResponse): T
   return undefined;
 }
 
-/** Carrega hosts da topologia do dashboard linkado (submapUid). */
-export async function fetchDashboardTopologyHosts(dashboardUid: string): Promise<string[]> {
+async function fetchDashboardMap(dashboardUid: string): Promise<TopologyMap | undefined> {
+  const response = await getBackendSrv().get<DashboardTopologyResponse>(
+    `/api/dashboards/uid/${encodeURIComponent(dashboardUid)}`
+  );
+  return extractMapFromDashboardResponse(response);
+}
+
+/**
+ * Carrega hosts da topologia do dashboard linkado (submapUid).
+ * Com includeNested=true (padrão), desce em submapas internos (respeitando includeInParentStats).
+ * Com includeNested=false, só hosts diretos do mapa.
+ */
+export async function fetchDashboardTopologyHosts(
+  dashboardUid: string,
+  options?: {
+    ancestors?: Set<string>;
+    cache?: Map<string, Promise<string[]>>;
+    depth?: number;
+    /** false = só hosts do mapa, sem descer em submapas internos */
+    includeNested?: boolean;
+  }
+): Promise<string[]> {
   const uid = dashboardUid.trim();
   if (!uid) {
     return [];
   }
 
-  const response = await getBackendSrv().get<DashboardTopologyResponse>(
-    `/api/dashboards/uid/${encodeURIComponent(uid)}`
-  );
+  const includeNested = options?.includeNested !== false;
+  const ancestors = options?.ancestors ?? new Set<string>();
+  if (ancestors.has(uid)) {
+    return [];
+  }
 
-  const map = extractMapFromDashboardResponse(response);
-  return map ? extractTopologyHostNames(map) : [];
+  const depth = options?.depth ?? 0;
+  if (depth > MAX_SUBMAP_DEPTH) {
+    return [];
+  }
+
+  const cache = options?.cache ?? new Map<string, Promise<string[]>>();
+  const cacheKey = includeNested ? uid : `${uid}::direct`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const nextAncestors = new Set(ancestors);
+  nextAncestors.add(uid);
+
+  const promise = (async () => {
+    const map = await fetchDashboardMap(uid);
+    if (!map) {
+      return [];
+    }
+
+    const direct = extractTopologyHostNames(map);
+    if (!includeNested) {
+      return direct;
+    }
+
+    const nestedUids = extractNestedSubmapUids(map);
+    if (!nestedUids.length) {
+      return direct;
+    }
+
+    const nestedLists = await Promise.all(
+      nestedUids.map(async (nestedUid) => {
+        try {
+          return await fetchDashboardTopologyHosts(nestedUid, {
+            ancestors: nextAncestors,
+            cache,
+            depth: depth + 1,
+            includeNested: true,
+          });
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    return mergeHostNames([direct, ...nestedLists]);
+  })();
+
+  cache.set(cacheKey, promise);
+  return promise;
 }

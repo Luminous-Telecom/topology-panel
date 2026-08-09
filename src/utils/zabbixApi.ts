@@ -144,7 +144,7 @@ export async function fetchZabbixHostMetadata(
       await fetchByGroup(datasourceUid, groupName, names, result);
     }
   } catch {
-    // metadados virão só da query / fallback do layout salvo
+    // Sem metadados da API: mantém o que já veio no layout/query
   }
 
   return result;
@@ -251,7 +251,7 @@ export async function fetchZabbixGroupHostNamesMap(
       })
     );
   } catch {
-    // fallback: estatísticas só por hosts no mapa
+    // Sem grupos Zabbix: estatísticas usam só hosts já presentes no mapa
   }
 
   return result;
@@ -419,11 +419,11 @@ export async function fetchZabbixHostProblems(
           }
         }
       } catch {
-        // fallback: só perda de pacotes da query
+        // Sem events.get: mantém contagem só via problem.get
       }
     }
   } catch {
-    // fallback: só perda de pacotes da query
+    // Sem problemas Zabbix: mapa segue só com ICMP
   }
 
   return result;
