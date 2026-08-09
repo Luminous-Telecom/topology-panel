@@ -376,7 +376,7 @@ export function TopologyCanvas({
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
   const dragRef = useRef<
-    | { kind: 'pan'; ox: number; oy: number; nx: number; ny: number }
+    | { kind: 'pan'; ox: number; oy: number; nx: number; ny: number; moved: boolean; tapNode?: TopologyNode }
     | {
         kind: 'node';
         node: TopologyNode;
@@ -980,16 +980,24 @@ export function TopologyCanvas({
   );
 
   const beginPan = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent, tapNode?: TopologyNode) => {
       if (pinchActiveRef.current) {
         return;
       }
       if (!options.enablePan) {
         return;
       }
-      e.preventDefault();
+      // Não chamar preventDefault no pointerdown — isso cancela click/dblclick (abrir submapa).
       e.stopPropagation();
-      dragRef.current = { kind: 'pan', ox: e.clientX, oy: e.clientY, nx: view.x, ny: view.y };
+      dragRef.current = {
+        kind: 'pan',
+        ox: e.clientX,
+        oy: e.clientY,
+        nx: view.x,
+        ny: view.y,
+        moved: false,
+        tapNode,
+      };
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
     [options.enablePan, view.x, view.y]
@@ -1001,7 +1009,7 @@ export function TopologyCanvas({
       // Em visualização, hosts/submapas cobrem o canvas — sem pan aqui o mobile fica “preso”.
       if (!editable || node.type === 'network') {
         if (!editable && e.button === 0) {
-          beginPan(e);
+          beginPan(e, node);
         }
         return;
       }
@@ -1202,7 +1210,13 @@ export function TopologyCanvas({
       }
       if (d.kind === 'pan') {
         // Evita scroll do dashboard no meio do gesto (especialmente mobile).
-        e.preventDefault();
+        const dist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
+        if (dist > 4) {
+          d.moved = true;
+        }
+        if (d.moved) {
+          e.preventDefault();
+        }
         const nextX = d.nx + (e.clientX - d.ox);
         const nextY = d.ny + (e.clientY - d.oy);
         panPendingRef.current = { x: nextX, y: nextY };
@@ -1211,6 +1225,10 @@ export function TopologyCanvas({
             panRafRef.current = null;
             const pending = panPendingRef.current;
             if (!pending || dragRef.current?.kind !== 'pan' || pinchActiveRef.current) {
+              return;
+            }
+            // Só aplica pan depois de sair do limiar de clique/tap.
+            if (!dragRef.current.moved) {
               return;
             }
             setView((v) => ({ ...v, x: pending.x, y: pending.y }));
@@ -1376,7 +1394,7 @@ export function TopologyCanvas({
         cancelAnimationFrame(panRafRef.current);
         panRafRef.current = null;
       }
-      if (d?.kind === 'pan' && panPendingRef.current) {
+      if (d?.kind === 'pan' && d.moved && panPendingRef.current) {
         const pending = panPendingRef.current;
         panPendingRef.current = null;
         setView((v) => ({ ...v, x: pending.x, y: pending.y }));
@@ -1387,6 +1405,15 @@ export function TopologyCanvas({
         wrapRef.current?.releasePointerCapture(e.pointerId);
       } catch {
         /* already released */
+      }
+
+      // Tap em submapa (visualização): pointer capture no wrap mata o click nativo.
+      if (d?.kind === 'pan' && !d.moved) {
+        const tap = d.tapNode ?? node;
+        if (!editable && tap?.type === 'submap') {
+          openSubmap(tap);
+          return;
+        }
       }
 
       if (d?.kind === 'marquee') {
@@ -1474,7 +1501,7 @@ export function TopologyCanvas({
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, dragPreview, linkFromId, map.nodes, nodeLayouts, persist, storedMap, view]
+    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, openSubmap, persist, storedMap, view]
   );
 
   const onNodeClick = useCallback(
