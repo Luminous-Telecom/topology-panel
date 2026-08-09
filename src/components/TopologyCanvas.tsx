@@ -444,6 +444,8 @@ export function TopologyCanvas({
   const showLegend = options.showLegend !== false;
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
   const [searchOpen, setSearchOpen] = useState(false);
   const [clipboardReady, setClipboardReady] = useState(() => hasTopologyClipboard());
 
@@ -1254,7 +1256,7 @@ export function TopologyCanvas({
       if (e.button !== 0 || e.target !== e.currentTarget) {
         return;
       }
-      if (panTool) {
+      if (toolRef.current === 'pan') {
         setSelectedNodeIds([]);
         setSelectedLink(null);
         setContextMenu(null);
@@ -1283,7 +1285,7 @@ export function TopologyCanvas({
       setSelectedLink(null);
       setContextMenu(null);
     },
-    [beginPan, editable, panTool, view]
+    [beginPan, editable, view]
   );
 
   const stopEdgePanLoop = useCallback(() => {
@@ -1511,7 +1513,7 @@ export function TopologyCanvas({
   const onNodePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
       e.stopPropagation();
-      if (panTool) {
+      if (toolRef.current === 'pan') {
         if (e.button === 0) {
           beginPan(e, node);
         }
@@ -1523,7 +1525,7 @@ export function TopologyCanvas({
       const layout = nodeLayouts.get(node.id);
       beginNodeDrag(e, node, layout?.w ?? node.width ?? 48, layout?.h ?? node.height ?? 28);
     },
-    [beginNodeDrag, beginPan, editable, nodeLayouts, panTool]
+    [beginNodeDrag, beginPan, editable, nodeLayouts]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -1535,7 +1537,7 @@ export function TopologyCanvas({
       e.stopPropagation();
       setSelectedLink(null);
 
-      if (panTool) {
+      if (toolRef.current === 'pan') {
         beginPan(e, node);
         return;
       }
@@ -1544,7 +1546,7 @@ export function TopologyCanvas({
       const networksLocked = areNetworksLocked(storedMap);
 
       if (networksLocked) {
-        if (!panTool && editable) {
+        if (editable) {
           const el = wrapRef.current;
           if (el) {
             const rect = el.getBoundingClientRect();
@@ -1564,7 +1566,7 @@ export function TopologyCanvas({
         );
       }
     },
-    [beginMarquee, beginNodeDrag, beginPan, editable, nodeLayouts, panTool, storedMap, view]
+    [beginMarquee, beginNodeDrag, beginPan, editable, nodeLayouts, storedMap, view]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -1574,7 +1576,7 @@ export function TopologyCanvas({
       }
       setSelectedLink(null);
       setContextMenu(null);
-      if (panTool) {
+      if (toolRef.current === 'pan') {
         setSelectedNodeIds([]);
         beginPan(e);
         return;
