@@ -1,5 +1,5 @@
-import { TopologyLink, TopologyLinkMedium, TopologyMap, TopologyNode } from '../types';
-import { hostToNodeId, inferLinkMedium, upsertHostLayout } from '../utils';
+import { TopologyLink, TopologyMap, TopologyNode } from '../types';
+import { inferLinkMedium, upsertHostLayout } from '../utils';
 
 export function toggleMapLock(map: TopologyMap): TopologyMap {
   return { ...map, locked: !map.locked };
@@ -190,6 +190,41 @@ export function updateHostsIconBulk(
   return next;
 }
 
+/** Aplica largura/altura e flag de submapas internos a vários submapas. */
+export function updateSubmapsBulk(
+  map: TopologyMap,
+  selectedNodes: TopologyNode[],
+  patch: {
+    width?: number;
+    height?: number;
+    includeInParentStats: boolean;
+  }
+): TopologyMap {
+  let next = map;
+  for (const node of selectedNodes) {
+    if (node.type !== 'submap') {
+      continue;
+    }
+    const stored = next.nodes.find((n) => n.id === node.id);
+    if (!stored || stored.type !== 'submap') {
+      continue;
+    }
+    const nodePatch: Partial<TopologyNode> = {
+      // Só persiste false; true/omitido = inclui no pai (padrão)
+      includeInParentStats: patch.includeInParentStats ? undefined : false,
+      showStatusStats: undefined,
+    };
+    if (patch.width !== undefined) {
+      nodePatch.width = patch.width;
+    }
+    if (patch.height !== undefined) {
+      nodePatch.height = patch.height;
+    }
+    next = updateStoredNode(next, stored, nodePatch);
+  }
+  return next;
+}
+
 /** Aplica usuário/senha Tools a vários hosts de uma vez. */
 export function updateHostsCredentialsBulk(
   map: TopologyMap,
@@ -350,23 +385,6 @@ export function rebindZabbixHost(
   };
 }
 
-export function findNodeById(map: TopologyMap, nodeId: string): TopologyNode | undefined {
-  return map.nodes.find((n) => n.id === nodeId);
-}
-
-export function removeLinkFromMap(map: TopologyMap, index: number): TopologyMap {
-  return { ...map, links: map.links.filter((_, i) => i !== index) };
-}
-
-export function updateLinkMedium(
-  map: TopologyMap,
-  from: string,
-  to: string,
-  medium: TopologyLinkMedium
-): TopologyMap {
-  return updateLinkProps(map, from, to, { medium });
-}
-
 export function updateLinkProps(
   map: TopologyMap,
   from: string,
@@ -396,18 +414,4 @@ export function removeLinkByEndpoints(map: TopologyMap, from: string, to: string
     ...map,
     links: map.links.filter((l) => !((l.from === from && l.to === to) || (l.from === to && l.to === from))),
   };
-}
-
-export function linkAtNodes(links: TopologyLink[], nodeId: string): number[] {
-  return links.reduce<number[]>((acc, link, i) => {
-    if (link.from === nodeId || link.to === nodeId) {
-      acc.push(i);
-    }
-    return acc;
-  }, []);
-}
-
-export function ensureHostId(map: TopologyMap, zabbixHost: string): string {
-  const saved = map.nodes.find((n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === zabbixHost.trim());
-  return saved?.id ?? hostToNodeId(zabbixHost);
 }

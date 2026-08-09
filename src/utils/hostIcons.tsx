@@ -2,7 +2,7 @@ import React from 'react';
 import { IconType } from 'react-icons';
 import { FaDesktop, FaGlobe, FaLinux, FaWindows } from 'react-icons/fa6';
 import { SiProxmox, SiVmware } from 'react-icons/si';
-import { TopologyHostIcon, TopologyNode } from '../types';
+import { TopologyHostIcon } from '../types';
 import {
   CUSTOM_ICON_SVGS,
   inlineSvgMarkup,
@@ -155,14 +155,6 @@ export function hostIconColor(icon: TopologyHostIcon): string {
     return PASSIVE_ICON_COLOR;
   }
   throw new Error(`Cor de ícone não definida: ${icon}`);
-}
-
-export function hostIconSelectOptions(): Array<{ label: string; value: TopologyHostIcon }> {
-  return HOST_ICON_ORDER.map((id) => ({ label: HOST_ICON_LABELS[id], value: id }));
-}
-
-export function resolveHostIcon(node: Pick<TopologyNode, 'icon'>): TopologyHostIcon | null {
-  return node.icon ?? null;
 }
 
 interface IconImageProps {

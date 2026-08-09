@@ -203,6 +203,3 @@ export function ZabbixHostPickerModal({
     </Modal>
   );
 }
-
-/** @deprecated use ZabbixHostPickerModal */
-export const AddZabbixHostModal = ZabbixHostPickerModal;

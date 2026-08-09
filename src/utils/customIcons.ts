@@ -37,23 +37,8 @@ export function isCustomAssetIcon(icon: TopologyHostIcon): boolean {
 /** Só switch não gerenciável — silhueta branca no mapa. */
 export const PASSIVE_CUSTOM_ICONS: TopologyHostIcon[] = ['switch_unmanaged'];
 
-/** @deprecated lista legada — não usar no render */
-export const GRAY_DUDE_CUSTOM_ICONS: TopologyHostIcon[] = [
-  'bras',
-  'switch_managed',
-  'switch_unmanaged',
-  'access_point',
-  'bridge',
-  'server',
-  'network',
-  'host',
-];
-
 /** Silhueta branca sobre o fundo colorido do nó. */
 export const PASSIVE_ICON_FILTER = 'brightness(0) invert(1)';
-
-/** @deprecated use PASSIVE_ICON_FILTER */
-export const SWITCH_UNMANAGED_ICON_FILTER = PASSIVE_ICON_FILTER;
 
 /** Ajusta SVG importado para render inline com tamanho fixo. */
 export function inlineSvgMarkup(svg: string, size: number, widthScale = 1): string {

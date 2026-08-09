@@ -77,14 +77,3 @@ export function linkSegmentMidpoint(
   return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2, angle };
 }
 
-/** @deprecated Use linkSegmentMidpoint com os pontos reais do path. */
-export function linkMidpoint(
-  from: { x: number; y: number; w: number; h: number },
-  to: { x: number; y: number; w: number; h: number }
-): { x: number; y: number; angle: number } {
-  const fx = from.x + from.w / 2;
-  const fy = from.y + from.h / 2;
-  const tx = to.x + to.w / 2;
-  const ty = to.y + to.h / 2;
-  return linkSegmentMidpoint({ x: fx, y: fy }, { x: tx, y: ty });
-}

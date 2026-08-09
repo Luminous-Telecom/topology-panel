@@ -69,12 +69,8 @@ export interface TopologyNode {
   borderColor?: string;
   /** Cor do texto (type=static) */
   labelColor?: string;
-  /** Grupo Zabbix para contagem dinâmica de hosts (network/submap) */
-  zabbixGroupFilter?: string;
   /** Rede pai explícita (type=host) — alternativa à detecção por posição */
   networkId?: string;
-  /** Hosts do mapa da cidade usados na contagem do overview */
-  statsHosts?: string[];
   /** Tamanho da fonte (type=static) */
   fontSize?: number;
   /** Usuário para Tools (Winbox / SSH / Telnet) — sobrescreve o padrão do painel */
@@ -262,19 +258,6 @@ export type HostStatusMap = Record<string, number | null | undefined>;
 
 /** Host name -> active Zabbix problem count */
 export type HostProblemMap = Record<string, number>;
-
-export function nodeDimensions(node: TopologyNode): { w: number; h: number } {
-  return { w: node.width ?? 120, h: node.height ?? 40 };
-}
-
-export function nodeCenter(node: TopologyNode): { cx: number; cy: number } {
-  const { w, h } = nodeDimensions(node);
-  return { cx: node.x + w / 2, cy: node.y + h / 2 };
-}
-
-export function nodeById(map: TopologyMap): Map<string, TopologyNode> {
-  return new Map(map.nodes.map((n) => [n.id, n]));
-}
 
 export function parseTopologyJson(raw: string): TopologyMap | null {
   try {

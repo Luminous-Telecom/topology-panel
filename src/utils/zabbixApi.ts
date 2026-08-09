@@ -204,59 +204,6 @@ export async function fetchZabbixHostsInGroup(
   }
 }
 
-/** Nomes visíveis dos hosts por filtro de grupo (para estatísticas de rede/submapa). */
-export async function fetchZabbixGroupHostNamesMap(
-  datasourceUid: string,
-  groupNames: string[]
-): Promise<Record<string, string[]>> {
-  const result: Record<string, string[]> = {};
-  if (!datasourceUid || !groupNames.length) {
-    return result;
-  }
-
-  const wanted = [...new Set(groupNames.map((g) => g.trim()).filter(Boolean))];
-  if (!wanted.length) {
-    return result;
-  }
-
-  try {
-    const groups = await zabbixCall<ZabbixHostGroup[]>(datasourceUid, 'hostgroup.get', {
-      filter: { name: wanted },
-      output: ['groupid', 'name'],
-    });
-    const byName = new Map((groups ?? []).map((g) => [g.name, g.groupid]));
-
-    await Promise.all(
-      wanted.map(async (groupName) => {
-        const groupId = byName.get(groupName);
-        if (!groupId) {
-          result[groupName] = [];
-          return;
-        }
-        const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
-          groupids: [groupId],
-          output: ['host', 'name'],
-        });
-        const names = new Set<string>();
-        for (const h of hosts ?? []) {
-          const visible = h.name?.trim();
-          const technical = h.host?.trim();
-          if (visible) {
-            names.add(visible);
-          } else if (technical) {
-            names.add(technical);
-          }
-        }
-        result[groupName] = [...names];
-      })
-    );
-  } catch {
-    // Sem grupos Zabbix: estatísticas usam só hosts já presentes no mapa
-  }
-
-  return result;
-}
-
 /** Grupos Zabbix aos quais um host pertence (para edição). */
 export async function fetchZabbixGroupsForHost(
   datasourceUid: string,

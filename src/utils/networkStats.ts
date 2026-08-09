@@ -2,11 +2,9 @@ import { HostMetadataMap, HostProblemMap, HostStatusMap, TopologyNode, TopologyP
 import {
   effectiveStatusMetric,
   NodeLayout,
-  lookupHostStatus,
   lookupProblemCount,
   offlineThresholdForMetric,
   resolveNodeStatus,
-  resolveStatusFromValue,
 } from '../utils';
 
 export interface RegionHostStats {
@@ -16,7 +14,7 @@ export interface RegionHostStats {
   alert: number;
   online: number;
   unknown: number;
-  /** Falha ao carregar hosts do dashboard filho (não usar statsHosts embutido). */
+  /** Falha ao carregar hosts do dashboard filho. */
   loadFailed?: boolean;
 }
 
@@ -53,19 +51,6 @@ function hostStatusKey(node: TopologyNode): string | undefined {
   return key || undefined;
 }
 
-function classifyHost(
-  name: string,
-  statusMap: HostStatusMap,
-  threshold: number,
-  metric: TopologyStatusMetric
-): 'online' | 'offline' | 'unknown' {
-  const v = lookupHostStatus(statusMap, name);
-  if (v === null || v === undefined) {
-    return 'unknown';
-  }
-  return resolveStatusFromValue(v, threshold, metric);
-}
-
 /** Status agregado da região — só ICMP (parado = sem resposta), não alertas Zabbix. */
 function resolveRegionHostStatus(
   host: string,
@@ -86,12 +71,9 @@ export function countRegionStats(
   statusMap: HostStatusMap,
   threshold: number,
   options?: {
-    topologyStats?: boolean;
     metric?: TopologyStatusMetric;
     hostMetadata?: HostMetadataMap;
     problemMap?: HostProblemMap;
-    /** Overview/submapa: ignora hosts sem ICMP na contagem de parados (não reduz o total). */
-    monitoredOnly?: boolean;
   }
 ): RegionHostStats {
   let offline = 0;
@@ -109,14 +91,7 @@ export function countRegionStats(
     }
     seen.add(key.toLowerCase());
 
-    const st = options?.topologyStats
-      ? resolveRegionHostStatus(key, statusMap, threshold, metric, options.hostMetadata)
-      : classifyHost(key, statusMap, threshold, metric);
-
-    if (options?.monitoredOnly && st === 'unknown') {
-      continue;
-    }
-
+    const st = resolveRegionHostStatus(key, statusMap, threshold, metric, options?.hostMetadata);
     const hasAlert = lookupProblemCount(problemMap, key) > 0;
 
     if (st === 'offline') {
@@ -134,9 +109,8 @@ export function countRegionStats(
       unknown++;
     }
   }
-  const configuredTotal = seen.size;
   return {
-    total: configuredTotal,
+    total: seen.size,
     offline,
     alert,
     online,
@@ -182,7 +156,7 @@ export function buildRegionStatsMap(
   const metric = effectiveStatusMetric(options);
   const threshold = offlineThresholdForMetric(metric);
   const problems = options.useZabbixProblems === false ? {} : problemMap;
-  const baseStatsOptions = { topologyStats: true, metric, hostMetadata, problemMap: problems };
+  const baseStatsOptions = { metric, hostMetadata, problemMap: problems };
 
   for (const node of nodes) {
     if (node.type === 'submap') {

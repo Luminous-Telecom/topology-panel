@@ -26,15 +26,15 @@ import {
   removeNodeFromMap,
   toggleMapLock,
   toggleNetworksLock,
-  updateLinkMedium,
   updateLinkProps,
   updateStoredNode,
   updateHostsIconBulk,
   updateHostsCredentialsBulk,
+  updateSubmapsBulk,
 } from '../utils/mapEdits';
 import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
-import { HostIconGlyph, hostIconRenderSize, resolveHostIcon } from '../utils/hostIcons';
+import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
@@ -50,6 +50,7 @@ import {
 import { NodeEditModal } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
 import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
+import { BulkSubmapEditModal } from './BulkSubmapEditModal';
 import { ZabbixHostPickerModal } from './AddZabbixHostModal';
 import { PingModal } from './PingModal';
 import { LinkEditModal } from './LinkEditModal';
@@ -160,17 +161,12 @@ function isHostNode(node: TopologyNode): boolean {
   return (node.type ?? 'host') === 'host';
 }
 
-/** Nós que entram na seleção múltipla (marquee / Ctrl+clique). */
-function isSelectableNode(node: TopologyNode): boolean {
-  const t = node.type ?? 'host';
-  return t === 'host' || t === 'submap' || t === 'static' || t === 'network';
+function isSubmapNode(node: TopologyNode): boolean {
+  return node.type === 'submap';
 }
 
 function canMoveSelectedNode(node: TopologyNode, networksLocked: boolean): boolean {
-  if (node.type === 'network') {
-    return !networksLocked;
-  }
-  return isSelectableNode(node);
+  return node.type === 'network' ? !networksLocked : true;
 }
 
 function selectionHintLabel(nodes: TopologyNode[]): string {
@@ -327,11 +323,12 @@ function nodeFill(
   if (node.type === 'static') {
     return node.fillColor || options.colorStatic;
   }
+  const metric = effectiveStatusMetric(options);
   const st = resolveNodeStatus(
     node,
     statusMap,
-    offlineThresholdForMetric(effectiveStatusMetric(options)),
-    effectiveStatusMetric(options),
+    offlineThresholdForMetric(metric),
+    metric,
     hostMetadata
   );
   if (st === 'online') {
@@ -425,6 +422,8 @@ export function TopologyCanvas({
   const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
   const [bulkCredsEditOpen, setBulkCredsEditOpen] = useState(false);
   const [bulkCredsTargets, setBulkCredsTargets] = useState<TopologyNode[]>([]);
+  const [bulkSubmapEditOpen, setBulkSubmapEditOpen] = useState(false);
+  const [bulkSubmapTargets, setBulkSubmapTargets] = useState<TopologyNode[]>([]);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
@@ -459,7 +458,7 @@ export function TopologyCanvas({
     [gridStep, options.snapToGrid]
   );
 
-  const nodeLayouts = useMemo(() => {
+  const { nodeLayouts, regionStats } = useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
       const movePreview = dragPreview?.positions?.[node.id];
@@ -509,42 +508,16 @@ export function TopologyCanvas({
       layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
     }
 
-    return layouts;
+    return { nodeLayouts: layouts, regionStats: stats };
   }, [map.nodes, layoutOpts, dragPreview, regionStatusMap, statusMap, options, submapHosts, hostMetadata, icmpReady, problemMap]);
 
-  const linkableNodeIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const node of map.nodes) {
-      if (node.type !== 'network') {
-        ids.add(node.id);
-      }
-    }
-    return ids;
-  }, [map.nodes]);
-
   const validLinks = useMemo(() => {
-    return map.links.filter(
-      (l) =>
-        linkableNodeIds.has(l.from) &&
-        linkableNodeIds.has(l.to) &&
-        nodeLayouts.has(l.from) &&
-        nodeLayouts.has(l.to)
-    );
-  }, [map.links, linkableNodeIds, nodeLayouts]);
-
-  const regionStats = useMemo(
-    () =>
-      buildRegionStatsMap(
-        map.nodes,
-        nodeLayouts,
-        regionStatusMap ?? statusMap,
-        options,
-        submapHosts,
-        hostMetadata,
-        problemMap
-      ),
-    [map.nodes, nodeLayouts, regionStatusMap, statusMap, options, submapHosts, hostMetadata, problemMap]
-  );
+    return map.links.filter((l) => {
+      const from = nodeLayouts.get(l.from);
+      const to = nodeLayouts.get(l.to);
+      return from && to && from.type !== 'network' && to.type !== 'network';
+    });
+  }, [map.links, nodeLayouts]);
 
   const persist = useCallback(
     (next: TopologyMap) => {
@@ -1442,9 +1415,6 @@ export function TopologyCanvas({
           if (sel.w > 4 || sel.h > 4) {
             const ids: string[] = [];
             for (const n of map.nodes) {
-              if (!isSelectableNode(n)) {
-                continue;
-              }
               const layout = nodeLayouts.get(n.id);
               if (!layout) {
                 continue;
@@ -1500,7 +1470,7 @@ export function TopologyCanvas({
         return;
       }
 
-      if (node && d?.kind === 'node' && !d.moved && linkFromId === null && isSelectableNode(node)) {
+      if (node && d?.kind === 'node' && !d.moved && linkFromId === null) {
         if (e.ctrlKey || e.metaKey) {
           setSelectedNodeIds((prev) => {
             const next = new Set(prev);
@@ -1629,7 +1599,7 @@ export function TopologyCanvas({
         return;
       }
 
-      if (node && isSelectableNode(node) && !selectedNodeIds.includes(node.id)) {
+      if (node && !selectedNodeIds.includes(node.id)) {
         if (selectedNodeIds.length === 0 || !(e.shiftKey || e.ctrlKey || e.metaKey)) {
           setSelectedNodeIds([node.id]);
         } else {
@@ -1655,46 +1625,74 @@ export function TopologyCanvas({
     [canEditCanvas, canPersist, map.locked, selectedNodeIds, showToast, view]
   );
 
+  const selectedHostNodes = useMemo(
+    () =>
+      selectedNodeIds
+        .map((id) => map.nodes.find((n) => n.id === id))
+        .filter((n): n is TopologyNode => Boolean(n && isHostNode(n))),
+    [map.nodes, selectedNodeIds]
+  );
+
+  const selectedSubmapNodes = useMemo(
+    () =>
+      selectedNodeIds
+        .map((id) => map.nodes.find((n) => n.id === id))
+        .filter((n): n is TopologyNode => Boolean(n && isSubmapNode(n))),
+    [map.nodes, selectedNodeIds]
+  );
+
   const openBulkIconEdit = useCallback(() => {
-    const selected = selectedNodeIds
-      .map((id) => map.nodes.find((n) => n.id === id))
-      .filter((n): n is TopologyNode => Boolean(n && isHostNode(n)));
-    if (!selected.length) {
+    if (!selectedHostNodes.length) {
       showToast('Nenhum host válido na seleção');
       return;
     }
-    setBulkIconTargets(selected);
+    setBulkIconTargets(selectedHostNodes);
     setContextMenu(null);
     setBulkIconEditOpen(true);
-  }, [map.nodes, selectedNodeIds, showToast]);
+  }, [selectedHostNodes, showToast]);
 
   const openBulkCredsEdit = useCallback(() => {
-    const selected = selectedNodeIds
-      .map((id) => map.nodes.find((n) => n.id === id))
-      .filter((n): n is TopologyNode => Boolean(n && isHostNode(n)));
-    if (!selected.length) {
+    if (!selectedHostNodes.length) {
       showToast('Nenhum host válido na seleção');
       return;
     }
-    setBulkCredsTargets(selected);
+    setBulkCredsTargets(selectedHostNodes);
     setContextMenu(null);
     setBulkCredsEditOpen(true);
-  }, [map.nodes, selectedNodeIds, showToast]);
+  }, [selectedHostNodes, showToast]);
+
+  const openBulkSubmapEdit = useCallback(() => {
+    if (!selectedSubmapNodes.length) {
+      showToast('Nenhum submapa válido na seleção');
+      return;
+    }
+    setBulkSubmapTargets(selectedSubmapNodes);
+    setContextMenu(null);
+    setBulkSubmapEditOpen(true);
+  }, [selectedSubmapNodes, showToast]);
 
   const canvasMenuItems = useCallback((): ContextMenuItem[] => {
     const { mapX, mapY } = contextMenu ?? { mapX: 0, mapY: 0 };
     const items: ContextMenuItem[] = [];
 
-    if (selectedNodeIds.length >= 1) {
+    if (selectedHostNodes.length >= 1) {
       items.push({
         id: 'bulk-icon',
-        label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
+        label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
         onClick: openBulkIconEdit,
       });
       items.push({
         id: 'bulk-creds',
-        label: `Usuário / senha Tools (${selectedNodeIds.length} hosts)`,
+        label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
         onClick: openBulkCredsEdit,
+      });
+    }
+
+    if (selectedSubmapNodes.length >= 1) {
+      items.push({
+        id: 'bulk-submap',
+        label: `Editar submapas (${selectedSubmapNodes.length})`,
+        onClick: openBulkSubmapEdit,
       });
     }
 
@@ -1735,7 +1733,17 @@ export function TopologyCanvas({
     );
 
     return items;
-  }, [contextMenu, openBulkCredsEdit, openBulkIconEdit, persist, selectedNodeIds.length, snapCoord, storedMap]);
+  }, [
+    contextMenu,
+    openBulkCredsEdit,
+    openBulkIconEdit,
+    openBulkSubmapEdit,
+    persist,
+    selectedHostNodes.length,
+    selectedSubmapNodes.length,
+    snapCoord,
+    storedMap,
+  ]);
 
   const linkMenuItems = useCallback(
     (link: TopologyLink): ContextMenuItem[] => {
@@ -1760,12 +1768,12 @@ export function TopologyCanvas({
         {
           id: 'link-fiber',
           label: medium === 'fiber' ? '✓ Fibra (linha contínua)' : 'Marcar como fibra',
-          onClick: () => persist(updateLinkMedium(storedMap, link.from, link.to, 'fiber')),
+          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'fiber' })),
         },
         {
           id: 'link-radio',
           label: medium === 'radio' ? '✓ Rádio (linha tracejada)' : 'Marcar como rádio',
-          onClick: () => persist(updateLinkMedium(storedMap, link.from, link.to, 'radio')),
+          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'radio' })),
         },
         {
           id: 'delete-link',
@@ -1790,16 +1798,24 @@ export function TopologyCanvas({
         return items;
       }
 
-      if (selectedNodeIds.length >= 1 && selectedNodeIds.includes(node.id) && isHostNode(node)) {
+      if (selectedNodeIds.includes(node.id) && isHostNode(node) && selectedHostNodes.length >= 1) {
         items.push({
           id: 'bulk-icon',
-          label: `Alterar tipo / ícone (${selectedNodeIds.length} hosts)`,
+          label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
           onClick: openBulkIconEdit,
         });
         items.push({
           id: 'bulk-creds',
-          label: `Usuário / senha Tools (${selectedNodeIds.length} hosts)`,
+          label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
           onClick: openBulkCredsEdit,
+        });
+      }
+
+      if (selectedNodeIds.includes(node.id) && isSubmapNode(node) && selectedSubmapNodes.length >= 1) {
+        items.push({
+          id: 'bulk-submap',
+          label: `Editar submapas (${selectedSubmapNodes.length})`,
+          onClick: openBulkSubmapEdit,
         });
       }
 
@@ -1852,7 +1868,21 @@ export function TopologyCanvas({
       });
       return items;
     },
-    [beginLinkFrom, buildToolsMenu, editable, openBulkCredsEdit, openBulkIconEdit, openHostEditor, openZabbixRebind, persist, selectedNodeIds, storedMap]
+    [
+      beginLinkFrom,
+      buildToolsMenu,
+      editable,
+      openBulkCredsEdit,
+      openBulkIconEdit,
+      openBulkSubmapEdit,
+      openHostEditor,
+      openZabbixRebind,
+      persist,
+      selectedHostNodes.length,
+      selectedNodeIds,
+      selectedSubmapNodes.length,
+      storedMap,
+    ]
   );
 
   const showEmptyHint = map.nodes.length === 0;
@@ -2023,10 +2053,7 @@ export function TopologyCanvas({
         <TopologyEditHint>
           <strong>{selectionHintLabel(selectedNodeIds.map((id) => map.nodes.find((n) => n.id === id)).filter((n): n is TopologyNode => Boolean(n)))}</strong>
           {' selecionado(s).'}
-          {selectedNodeIds.some((id) => {
-            const n = map.nodes.find((node) => node.id === id);
-            return n && isHostNode(n);
-          }) && (
+          {selectedHostNodes.length > 0 && (
             <>
               {' '}
               <span
@@ -2041,6 +2068,18 @@ export function TopologyCanvas({
                 onClick={openBulkCredsEdit}
               >
                 Usuário/senha
+              </span>
+              {' · '}
+            </>
+          )}
+          {selectedSubmapNodes.length > 0 && (
+            <>
+              {' '}
+              <span
+                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                onClick={openBulkSubmapEdit}
+              >
+                Editar submapas
               </span>
               {' · '}
             </>
@@ -2385,7 +2424,7 @@ export function TopologyCanvas({
                   regionStats.get(node.id)!.offline > 0
               );
             const isOfflineBlink = hostStatus === 'offline' || submapOffline;
-            const hostIcon = isHostNode ? resolveHostIcon(node) : null;
+            const hostIcon = isHostNode ? node.icon ?? null : null;
             const textCenterX = x + w / 2;
             const iconX = x + w / 2;
             const iconY = iconCenterY !== undefined ? y + iconCenterY : y + h / 2;
@@ -2579,6 +2618,21 @@ export function TopologyCanvas({
             persist(updateHostsCredentialsBulk(storedMap, bulkCredsTargets, creds));
             showToast(`Credenciais aplicadas a ${bulkCredsTargets.length} hosts`);
             setBulkCredsTargets([]);
+          }}
+        />
+      )}
+
+      {bulkSubmapEditOpen && bulkSubmapTargets.length >= 1 && (
+        <BulkSubmapEditModal
+          count={bulkSubmapTargets.length}
+          onClose={() => {
+            setBulkSubmapEditOpen(false);
+            setBulkSubmapTargets([]);
+          }}
+          onSave={(patch) => {
+            persist(updateSubmapsBulk(storedMap, bulkSubmapTargets, patch));
+            showToast(`Submapas atualizados (${bulkSubmapTargets.length})`);
+            setBulkSubmapTargets([]);
           }}
         />
       )}

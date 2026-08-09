@@ -296,10 +296,6 @@ export function findScrollParents(el: HTMLElement | null): HTMLElement[] {
   return result;
 }
 
-export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  return findScrollParents(el)[0] ?? null;
-}
-
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 export function measureTextWidth(text: string, fontSize: number): number {
@@ -318,10 +314,6 @@ export function measureTextWidth(text: string, fontSize: number): number {
   }
   measureCtx.font = `${fontSize}px Inter, Helvetica, Arial, sans-serif`;
   return measureCtx.measureText(text).width;
-}
-
-function textWidth(text: string, fontSize: number): number {
-  return measureTextWidth(text, fontSize);
 }
 
 export interface NodeLayout {
@@ -358,7 +350,7 @@ export function computeNodeLayout(
     const label = (node.label ?? '').trim();
     const sub = node.subtitle?.trim();
     const hasTwoLines = Boolean(sub);
-    const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
+    const contentW = Math.max(measureTextWidth(label, fontSize), sub ? measureTextWidth(sub, subFontSize) : 0);
     const w = node.width ?? Math.max(Math.ceil(contentW + pad * 2), 80);
     const autoMinH = hasTwoLines
       ? pad * 2 + fontSize + lineGap + subFontSize
@@ -399,7 +391,7 @@ export function computeNodeLayout(
   const iconSize = iconDims.h;
   const iconRowHeight = showIcon ? iconSize + HOST_ICON_GAP : 0;
 
-  const contentW = Math.max(textWidth(label, fontSize), sub ? textWidth(sub, subFontSize) : 0);
+  const contentW = Math.max(measureTextWidth(label, fontSize), sub ? measureTextWidth(sub, subFontSize) : 0);
   const w = Math.max(Math.ceil(contentW + padX * 2), showIcon ? iconDims.w + padX * 2 : 48);
   const textBlockH = sub ? fontSize + lineGap + subFontSize : fontSize;
   const h = Math.max(Math.ceil(padY * 2 + iconRowHeight + textBlockH), showIcon ? iconSize + 32 : 24);
@@ -437,7 +429,7 @@ export function computeStaticLayout(
   const label = (node.label ?? '').trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
 
-  const contentW = Math.max(textWidth(label, labelFontSize), sub ? textWidth(sub, subFontSize) : 0);
+  const contentW = Math.max(measureTextWidth(label, labelFontSize), sub ? measureTextWidth(sub, subFontSize) : 0);
   const autoW = Math.max(Math.ceil(contentW + padX * 2), 48);
   const autoH = sub
     ? Math.max(Math.ceil(padY * 2 + labelFontSize + lineGap + subFontSize), 28)

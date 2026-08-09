@@ -223,19 +223,16 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
   }, [hostMetadata, icmpStatusMap, mapHostNames]);
 
   const statusMap = useMemo(() => {
-    const display: HostStatusMap = {};
-    for (const host of mapHostNames) {
-      const v = lookupHostStatus(icmpStatusMap, host, hostMetadata);
-      if (v !== null && v !== undefined) {
-        display[host] = v;
-      }
-    }
-
     if (resolvedOptions.useZabbixProblems === false) {
-      return display;
+      return icmpStatusForRegions;
     }
-    return mergeStatusWithProblems(display, problemMap, mapHostNames, effectiveStatusMetric(resolvedOptions));
-  }, [hostMetadata, icmpStatusMap, mapHostNames, problemMap, resolvedOptions]);
+    return mergeStatusWithProblems(
+      icmpStatusForRegions,
+      problemMap,
+      mapHostNames,
+      effectiveStatusMetric(resolvedOptions)
+    );
+  }, [icmpStatusForRegions, mapHostNames, problemMap, resolvedOptions]);
 
   const applyMap = useCallback(
     (map: TopologyMap) => {
