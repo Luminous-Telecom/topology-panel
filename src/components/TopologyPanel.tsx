@@ -6,7 +6,6 @@ import { HostMetadataMap, HostProblemMap, HostStatusMap, TopologyMap, TopologyPa
 import {
   effectiveStatusMetric,
   lookupHostStatus,
-  mergeStatusWithProblems,
 } from '../utils';
 import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
@@ -225,18 +224,7 @@ export function TopologyPanel({ options, width, height, onOptionsChange }: Props
     return display;
   }, [hostMetadata, icmpStatusMap, mapHostNames]);
 
-  const statusMap = useMemo(() => {
-    if (resolvedOptions.useZabbixProblems === false) {
-      return icmpStatusForRegions;
-    }
-    return mergeStatusWithProblems(
-      icmpStatusForRegions,
-      problemMap,
-      mapHostNames,
-      effectiveStatusMetric(resolvedOptions)
-    );
-  }, [icmpStatusForRegions, mapHostNames, problemMap, resolvedOptions]);
-
+  const statusMap = icmpStatusForRegions;
   const applyMap = useCallback(
     (map: TopologyMap) => {
       onOptionsChange({ ...latestOptionsRef.current, map });

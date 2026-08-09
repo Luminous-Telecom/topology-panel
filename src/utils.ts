@@ -97,44 +97,6 @@ export function lookupProblemCount(problemMap: HostProblemMap, host: string): nu
   return 0;
 }
 
-/** Combina ICMP com problemas ativos do Zabbix (cor do host no mapa). */
-export function mergeStatusWithProblems(
-  statusMap: HostStatusMap,
-  problemMap: HostProblemMap,
-  mapHostNames: string[],
-  metric: TopologyStatusMetric = 'icmp_rtt'
-): HostStatusMap {
-  const merged: HostStatusMap = { ...statusMap };
-  const threshold = offlineThresholdForMetric(metric);
-  const offlineValue = metric === 'packet_loss' ? Math.max(threshold, 100) : 0;
-
-  const markOffline = (host: string) => {
-    const key = host.trim();
-    if (!key) {
-      return;
-    }
-    if (metric === 'packet_loss') {
-      merged[key] = Math.max(Number(merged[key] ?? 0), offlineValue);
-    } else {
-      merged[key] = 0;
-    }
-  };
-
-  for (const [host, count] of Object.entries(problemMap)) {
-    if (count > 0) {
-      markOffline(host);
-    }
-  }
-
-  for (const host of mapHostNames) {
-    if (lookupProblemCount(problemMap, host) > 0) {
-      markOffline(host);
-    }
-  }
-
-  return merged;
-}
-
 export function hostToNodeId(host: string): string {
   return host
     .toLowerCase()

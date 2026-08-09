@@ -148,6 +148,8 @@ export interface TopologyPanelOptions {
   /** Colors */
   colorOnline: string;
   colorOffline: string;
+  /** Host online com problema ativo no Zabbix */
+  colorAlert: string;
   colorUnknown: string;
   /** Cor padrão dos rótulos estáticos */
   colorStatic: string;
@@ -167,7 +169,7 @@ export interface TopologyPanelOptions {
   showSubtitle: boolean;
   /** Métrica ICMP via API Zabbix */
   statusMetric?: TopologyStatusMetric;
-  /** Marcar host offline quando houver problema ativo no Zabbix */
+  /** Pintar host em cor de alerta quando houver problema ativo no Zabbix */
   useZabbixProblems?: boolean;
   /** UID do datasource Zabbix (ICMP, IP, problemas) */
   zabbixDatasourceUid?: string;
@@ -190,6 +192,7 @@ export interface TopologyPanelOptions {
   /** Itens da legenda (quais cores mostrar) */
   legendOnline?: boolean;
   legendOffline?: boolean;
+  legendAlert?: boolean;
   legendUnknown?: boolean;
   legendStatic?: boolean;
   legendSubmap?: boolean;
@@ -245,6 +248,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
   colorOnline: '#2E7D32',
   colorOffline: '#C62828',
+  colorAlert: '#EF6C00',
   colorUnknown: '#616161',
   colorStatic: '#616161',
   colorSubmap: '#1565C0',
@@ -270,6 +274,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   showLegend: true,
   legendOnline: true,
   legendOffline: true,
+  legendAlert: true,
   legendUnknown: true,
   legendStatic: false,
   legendSubmap: false,

@@ -5,6 +5,7 @@ import { TopologyPanelOptions } from '../types';
 export const PANEL_COLOR_OPTION_KEYS = [
   'colorOnline',
   'colorOffline',
+  'colorAlert',
   'colorUnknown',
   'colorStatic',
   'colorSubmap',
@@ -102,6 +103,7 @@ export function resolvePanelOptionsColors(
     ...options,
     colorOnline: resolve(options.colorOnline),
     colorOffline: resolve(options.colorOffline),
+    colorAlert: resolve(options.colorAlert),
     colorUnknown: resolve(options.colorUnknown),
     colorStatic: resolve(options.colorStatic),
     colorSubmap: resolve(options.colorSubmap),

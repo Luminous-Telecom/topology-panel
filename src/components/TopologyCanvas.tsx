@@ -33,7 +33,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, findScrollParents, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -327,7 +327,8 @@ function nodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
   statusMap: HostStatusMap,
-  hostMetadata?: HostMetadataMap
+  hostMetadata?: HostMetadataMap,
+  problemMap: HostProblemMap = {}
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -346,11 +347,20 @@ function nodeFill(
     metric,
     hostMetadata
   );
-  if (st === 'online') {
-    return options.colorOnline;
-  }
+  // Offline ICMP tem prioridade sobre alerta Zabbix
   if (st === 'offline') {
     return options.colorOffline;
+  }
+  const hostKey = node.zabbixHost?.trim();
+  if (
+    options.useZabbixProblems !== false &&
+    hostKey &&
+    lookupProblemCount(problemMap, hostKey) > 0
+  ) {
+    return options.colorAlert || '#EF6C00';
+  }
+  if (st === 'online') {
+    return options.colorOnline;
   }
   return options.colorUnknown;
 }
@@ -2114,6 +2124,9 @@ export function TopologyCanvas({
     if (options.legendOffline !== false) {
       items.push({ label: 'Offline', color: options.colorOffline });
     }
+    if (options.legendAlert !== false) {
+      items.push({ label: 'Alerta', color: options.colorAlert || '#EF6C00' });
+    }
     if (options.legendUnknown !== false) {
       items.push({ label: 'Sem gerência', color: options.colorUnknown });
     }
@@ -2137,6 +2150,7 @@ export function TopologyCanvas({
     options.showLegend,
     options.legendOnline,
     options.legendOffline,
+    options.legendAlert,
     options.legendUnknown,
     options.legendStatic,
     options.legendSubmap,
@@ -2145,6 +2159,7 @@ export function TopologyCanvas({
     options.legendUpload,
     options.colorOnline,
     options.colorOffline,
+    options.colorAlert,
     options.colorUnknown,
     options.colorStatic,
     options.colorSubmap,
@@ -2553,7 +2568,7 @@ export function TopologyCanvas({
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??
-                nodeFill(node, options, statusMap, hostMetadata);
+                nodeFill(node, options, statusMap, hostMetadata, problemMap);
               const fill = resolveColor(fillRaw);
             const regionLabel =
               node.type === 'submap' && regionStats.has(node.id)

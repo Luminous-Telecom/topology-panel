@@ -108,6 +108,13 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Aparência'],
       })
       .addColorPicker({
+        path: 'colorAlert',
+        name: 'Cor alerta',
+        description: 'Host com problema ativo no Zabbix (padrão laranja #EF6C00)',
+        defaultValue: '#EF6C00',
+        category: ['Aparência'],
+      })
+      .addColorPicker({
         path: 'colorUnknown',
         name: 'Cor sem gerência',
         description: 'Hex (#616161) ou cor da paleta Grafana — convertida automaticamente no mapa',
@@ -173,6 +180,12 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Legenda'],
       })
       .addBooleanSwitch({
+        path: 'legendAlert',
+        name: 'Alerta',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
         path: 'legendUnknown',
         name: 'Sem gerência',
         defaultValue: true,
@@ -224,7 +237,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'useZabbixProblems',
         name: 'Usar problemas Zabbix',
-        description: 'Hosts com alerta ativo ficam vermelhos (overview usa só ICMP)',
+        description: 'Hosts com alerta ativo ficam laranja (offline ICMP continua vermelho)',
         defaultValue: true,
         category: ['Zabbix'],
       })
