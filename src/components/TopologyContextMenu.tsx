@@ -833,6 +833,16 @@ export function TopologyToolbar({
             <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
             {networksLocked ? 'Redes travadas' : 'Redes livres'}
           </button>
+          <button
+            type="button"
+            onClick={onToggleMinimap}
+            title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+            aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+            aria-pressed={showMinimap}
+            style={toolBtnStyle(showMinimap)}
+          >
+            <FaMap size={13} />
+          </button>
         </>
       )}
       {!isFullscreen && (
@@ -877,16 +887,6 @@ export function TopologyToolbar({
             style={toolBtnStyle(showLegend)}
           >
             <FaListUl size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={onToggleMinimap}
-            title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
-            aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
-            aria-pressed={showMinimap}
-            style={toolBtnStyle(showMinimap)}
-          >
-            <FaMap size={13} />
           </button>
           <button
             type="button"

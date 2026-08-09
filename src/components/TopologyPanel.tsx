@@ -26,7 +26,6 @@ import {
   isIpv4,
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
-  resolveHostLookupKey,
   resolveZabbixDatasourceUid,
   resolveZabbixGroupNamesFromPanelData,
   sameQueryRefInfos,
@@ -50,19 +49,27 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
       return node;
     }
     const name = node.zabbixHost?.trim();
+    const label = node.label?.trim();
     const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
+    const subtitleIp = node.subtitle?.trim() && isIpv4(node.subtitle) ? node.subtitle.trim() : undefined;
     const entry =
       (name && meta[name]) ||
-      (hostId && meta[hostId]) ||
-      (node.subtitle?.trim() && isIpv4(node.subtitle) ? meta[node.subtitle.trim()] : undefined);
+      (label && meta[label]) ||
+      (subtitleIp && meta[subtitleIp]) ||
+      undefined;
     if (!entry) {
       return node;
     }
 
     const nextId = (entry.hostid != null ? String(entry.hostid).trim() : '') || hostId;
-    const nextName = entry.name?.trim() || name;
+    const nextName = entry.name?.trim() || name || label;
     const nextIp = entry.ip?.trim();
-    const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : name;
+    const nextHostKey =
+      nextName && !isIpv4(nextName)
+        ? nextName
+        : nextIp && isIpv4(nextIp)
+          ? nextIp
+          : name;
     const patch: typeof node = { ...node };
     let nodeChanged = false;
 

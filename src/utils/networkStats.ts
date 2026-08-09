@@ -67,7 +67,7 @@ function resolveRegionHostStatus(
   if (!key) {
     return 'unknown';
   }
-  return resolveNodeStatus({ zabbixHost: key, zabbixHostId: key, type: 'host' }, statusMap, threshold, metric, hostMetadata);
+  return resolveNodeStatus({ zabbixHost: key, type: 'host' }, statusMap, threshold, metric, hostMetadata);
 }
 
 export function countRegionStats(
@@ -97,7 +97,12 @@ export function countRegionStats(
 
     const st = resolveRegionHostStatus(key, statusMap, threshold, metric, options?.hostMetadata);
     const meta = options?.hostMetadata?.[key];
-    const hasAlert = lookupProblemCount(problemMap, key, meta?.hostid, options?.hostMetadata) > 0;
+    const hasAlert =
+      lookupProblemCount(
+        problemMap,
+        { zabbixHost: key, zabbixHostId: meta?.hostid, label: meta?.name },
+        options?.hostMetadata
+      ) > 0;
 
     if (st === 'offline') {
       offline++;

@@ -35,7 +35,7 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveHostLookupKey, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, HostLookupRef, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
@@ -530,11 +530,16 @@ function nodeFill(
   }
   const metric = effectiveStatusMetric(options);
   const threshold = offlineThresholdForMetric(metric);
-  const lookupKey = resolveHostLookupKey(node, hostMetadata) ?? '';
   const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
-  const raw = lookupHostStatus(statusMap, lookupKey, hostMetadata, hostId || undefined);
+  const lookupRef: HostLookupRef = {
+    zabbixHost: node.zabbixHost,
+    subtitle: node.subtitle,
+    zabbixHostId: hostId || undefined,
+    label: node.label,
+  };
+  const raw = lookupHostStatus(statusMap, lookupRef, hostMetadata);
   const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
-  const mapped = lookupHostDisplay(hostDisplay, lookupKey, hostMetadata, hostId || undefined);
+  const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   const mappedColor = resolveMappedColor?.(mapped?.color) || mapped?.color;
 
   // ICMP 0 (ou perda >= limiar) → offline (mapeamento ou fallback); nunca laranja
@@ -550,8 +555,8 @@ function nodeFill(
   if (
     st === 'online' &&
     options.useZabbixProblems !== false &&
-    (lookupKey || hostId) &&
-    lookupProblemCount(problemMap, lookupKey, hostId || undefined, hostMetadata) > 0
+    (lookupRef.zabbixHost || hostId) &&
+    lookupProblemCount(problemMap, lookupRef, hostMetadata) > 0
   ) {
     return options.colorAlert || '#EF6C00';
   }
@@ -954,7 +959,11 @@ export function TopologyCanvas({
       return;
     }
     const onResize = () => {
-      setViewport({ w: el.clientWidth, h: el.clientHeight });
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) {
+        setViewport({ w, h });
+      }
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(el);
@@ -3243,7 +3252,7 @@ export function TopologyCanvas({
         </g>
       </svg>
 
-      {showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0 && (
+      {canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0 && (
         <TopologyMinimap
           map={map}
           nodes={map.nodes}

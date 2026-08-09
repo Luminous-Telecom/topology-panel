@@ -55,22 +55,35 @@ export function resolveHostIp(
   return undefined;
 }
 
-/** Chave para status/stats: IP primeiro, depois nome visível — não hostid numérico. */
+/** Referência de host para casar Query (nome) com mapa (nome/IP/subtitle). */
+export interface HostLookupRef {
+  zabbixHost?: string;
+  subtitle?: string;
+  zabbixHostId?: string;
+  label?: string;
+}
+
+/** Chave primária de exibição — nome visível quando existir (Query usa labels.host). */
 export function resolveHostLookupKey(
-  node: { zabbixHost?: string; subtitle?: string; zabbixHostId?: string },
+  node: HostLookupRef,
   metadata?: HostMetadataMap
 ): string | undefined {
+  const name = node.zabbixHost?.trim();
+  if (name && !isIpv4(name)) {
+    return name;
+  }
   const ip = resolveHostIp(node, metadata);
   if (ip) {
     return ip;
   }
-  const name = node.zabbixHost?.trim();
   return name || undefined;
 }
 
-function collectHostLookupCandidates(host: string, metadata?: HostMetadataMap, hostId?: string): string[] {
-  const key = host.trim();
-  const id = hostId?.trim();
+function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostMetadataMap): string[] {
+  const zabbixHost = ref.zabbixHost?.trim();
+  const label = ref.label?.trim();
+  const hostId = ref.zabbixHostId?.trim();
+  const subtitleIp = hostIpFromNode(ref);
   const out: string[] = [];
   const add = (value?: string) => {
     const trimmed = value?.trim();
@@ -80,30 +93,67 @@ function collectHostLookupCandidates(host: string, metadata?: HostMetadataMap, h
     out.push(trimmed);
   };
 
-  if (key && isIpv4(key)) {
-    add(key);
+  // Nome visível primeiro — bate com labels.host da Query Zabbix.
+  if (zabbixHost && !isIpv4(zabbixHost)) {
+    add(zabbixHost);
   }
-  const metaByKey = key ? metadata?.[key] : undefined;
-  if (metaByKey?.ip) {
-    add(metaByKey.ip);
+  if (label && label !== zabbixHost) {
+    add(label);
   }
-  if (id) {
-    const metaById = metadata?.[id];
-    if (metaById?.ip) {
-      add(metaById.ip);
+
+  const metaByHost = zabbixHost ? metadata?.[zabbixHost] : undefined;
+  if (metaByHost?.name) {
+    add(metaByHost.name);
+  }
+  if (metaByHost?.ip && isIpv4(metaByHost.ip)) {
+    add(metaByHost.ip);
+  }
+
+  if (label) {
+    const metaByLabel = metadata?.[label];
+    if (metaByLabel?.name) {
+      add(metaByLabel.name);
     }
-    if (metaById?.name) {
-      add(metaById.name);
+    if (metaByLabel?.ip && isIpv4(metaByLabel.ip)) {
+      add(metaByLabel.ip);
     }
   }
-  if (key) {
-    add(key);
+
+  if (zabbixHost && isIpv4(zabbixHost)) {
+    add(zabbixHost);
+  }
+  if (subtitleIp) {
+    add(subtitleIp);
+    const metaByIp = metadata?.[subtitleIp];
+    if (metaByIp?.name) {
+      add(metaByIp.name);
+    }
+  }
+
+  if (hostId) {
+    const metaById = metadata?.[hostId];
+    if (metaById && (!zabbixHost || metaById.name?.trim() === zabbixHost || metaById.hostid === hostId)) {
+      if (metaById.name) {
+        add(metaById.name);
+      }
+      if (metaById.ip && isIpv4(metaById.ip)) {
+        add(metaById.ip);
+      }
+    }
+  }
+
+  if (zabbixHost && !isIpv4(zabbixHost)) {
     for (const entry of Object.values(metadata ?? {})) {
-      if (entry.name?.trim() === key && entry.ip) {
+      if (entry.name?.trim() === zabbixHost && entry.ip && isIpv4(entry.ip)) {
+        add(entry.ip);
+      }
+      if (subtitleIp && entry.ip === subtitleIp && entry.name?.trim() === zabbixHost) {
+        add(entry.name);
         add(entry.ip);
       }
     }
   }
+
   return out;
 }
 
@@ -176,29 +226,27 @@ export function resolveStatusFromValue(
   return v <= 0 ? 'offline' : 'online';
 }
 
-/** Busca valor de status por IP, nome visível/técnico (case-insensitive + aliases do metadata). */
+/** Busca valor de status por nome/IP (aliases do mapa + metadata da Query). */
 export function lookupHostStatus(
   statusMap: HostStatusMap,
-  host: string,
-  metadata?: HostMetadataMap,
-  hostId?: string
+  ref: HostLookupRef,
+  metadata?: HostMetadataMap
 ): number | null | undefined {
-  const key = host.trim();
-  if (!key && !hostId?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
     return undefined;
   }
 
-  for (const name of collectHostLookupCandidates(key, metadata, hostId)) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
     const v = statusMap[name];
     if (v !== null && v !== undefined) {
       return v;
     }
   }
 
-  if (key) {
-    const lower = key.toLowerCase();
-    for (const [name, v] of Object.entries(statusMap)) {
-      if (v !== null && v !== undefined && name.toLowerCase() === lower) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
+    const lower = name.toLowerCase();
+    for (const [key, v] of Object.entries(statusMap)) {
+      if (v !== null && v !== undefined && key.toLowerCase() === lower) {
         return v;
       }
     }
@@ -209,24 +257,22 @@ export function lookupHostStatus(
 
 export function lookupProblemCount(
   problemMap: HostProblemMap,
-  host: string,
-  hostId?: string,
+  ref: HostLookupRef,
   metadata?: HostMetadataMap
 ): number {
-  const key = host.trim();
-  if (!key && !hostId?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
     return 0;
   }
-  for (const name of collectHostLookupCandidates(key, metadata, hostId)) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
     const count = problemMap[name] ?? 0;
     if (count > 0) {
       return count;
     }
   }
-  if (key) {
-    const lower = key.toLowerCase();
-    for (const [name, count] of Object.entries(problemMap)) {
-      if (count > 0 && name.toLowerCase() === lower) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
+    const lower = name.toLowerCase();
+    for (const [key, count] of Object.entries(problemMap)) {
+      if (count > 0 && key.toLowerCase() === lower) {
         return count;
       }
     }
@@ -525,27 +571,25 @@ export function extractHostStatus(data: PanelData): HostStatusMap {
 /** Busca cor/texto mapeados por IP ou nome (mesmos aliases do status). */
 export function lookupHostDisplay(
   displayMap: HostDisplayMap | undefined,
-  host: string,
-  metadata?: HostMetadataMap,
-  hostId?: string
+  ref: HostLookupRef,
+  metadata?: HostMetadataMap
 ): HostDisplayInfo | undefined {
   if (!displayMap) {
     return undefined;
   }
-  const key = host.trim();
-  if (!key && !hostId?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
     return undefined;
   }
-  for (const name of collectHostLookupCandidates(key, metadata, hostId)) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
     const info = displayMap[name];
     if (info) {
       return info;
     }
   }
-  if (key) {
-    const lower = key.toLowerCase();
-    for (const [name, info] of Object.entries(displayMap)) {
-      if (name.toLowerCase() === lower) {
+  for (const name of collectHostLookupCandidates(ref, metadata)) {
+    const lower = name.toLowerCase();
+    for (const [key, info] of Object.entries(displayMap)) {
+      if (key.toLowerCase() === lower) {
         return info;
       }
     }
@@ -614,6 +658,10 @@ export function extractHostMetadataFromData(data: PanelData | DataFrame[] | unde
       if (ip && isIpv4(ip)) {
         result[ip] = entry;
       }
+      const hostid = entry.hostid?.trim();
+      if (hostid) {
+        result[hostid] = entry;
+      }
     }
   }
 
@@ -670,7 +718,7 @@ export function mergeMapWithQueryHosts(
   visibleHostNames.forEach((hostName, index) => {
     const meta = hostMetadata[hostName];
     const ip = meta?.ip?.trim();
-    const hostKey = ip && isIpv4(ip) ? ip : hostName;
+    const hostKey = hostName;
     const savedMatches = findSavedHostNodes(map, hostName, meta?.hostid, ip).filter(
       (n) => !usedSavedIds.has(n.id)
     );
@@ -685,7 +733,7 @@ export function mergeMapWithQueryHosts(
           zabbixHost: hostKey,
           zabbixHostId: meta?.hostid?.trim() || saved.zabbixHostId,
           label: saved.label ?? label,
-          subtitle: ip ?? saved.subtitle,
+          subtitle: ip ?? (isIpv4(saved.subtitle?.trim() ?? '') ? saved.subtitle : undefined),
           icon: saved.icon ?? map.hostIcons?.[hostKey] ?? map.hostIcons?.[hostName],
         });
       }
@@ -807,7 +855,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
 }
 
 export function resolveNodeStatus(
-  node: { zabbixHost?: string; zabbixHostId?: string; type?: string },
+  node: HostLookupRef & { type?: string },
   statusMap: HostStatusMap,
   threshold: number,
   metric: TopologyStatusMetric = 'icmp_rtt',
@@ -821,12 +869,10 @@ export function resolveNodeStatus(
   ) {
     return 'unknown';
   }
-  const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
-  const lookupKey = resolveHostLookupKey(node, metadata);
-  if (!lookupKey) {
+  if (!resolveHostLookupKey(node, metadata)) {
     return 'unknown';
   }
-  const v = lookupHostStatus(statusMap, lookupKey, metadata, hostId || undefined);
+  const v = lookupHostStatus(statusMap, node, metadata);
   if (v === null || v === undefined) {
     return 'unknown';
   }
@@ -851,7 +897,12 @@ export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMa
   const nextName = entry.name.trim();
   const nextIp = entry.ip?.trim();
   const nextId = entry.hostid?.trim() || hostId;
-  const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : name;
+  const nextHostKey =
+    nextName && !isIpv4(nextName)
+      ? nextName
+      : nextIp && isIpv4(nextIp)
+        ? nextIp
+        : name;
   if (
     nextName === (node.label?.trim() || name) &&
     nextName === name &&
