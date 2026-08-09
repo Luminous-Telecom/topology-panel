@@ -25,7 +25,6 @@ import {
   clientToMapCoords,
   moveStoredNodesBulk,
   removeLinkByEndpoints,
-  removeNodeFromMap,
   removeNodesFromMap,
   toggleMapLock,
   toggleNetworksLock,
@@ -1471,7 +1470,14 @@ export function TopologyCanvas({
   }, [runEdgePanFrame]);
 
   const beginNodeDrag = useCallback(
-    (e: React.PointerEvent, node: TopologyNode, startW: number, startH: number) => {
+    (
+      e: React.PointerEvent,
+      node: TopologyNode,
+      startX: number,
+      startY: number,
+      startW: number,
+      startH: number
+    ) => {
       e.preventDefault();
       const el = wrapRef.current;
       if (!el) {
@@ -1490,9 +1496,9 @@ export function TopologyCanvas({
       dragRef.current = {
         kind: 'node',
         node,
-        grabOffsetWorld: { x: pointerWorld.x - node.x, y: pointerWorld.y - node.y },
-        startX: node.x,
-        startY: node.y,
+        grabOffsetWorld: { x: pointerWorld.x - startX, y: pointerWorld.y - startY },
+        startX,
+        startY,
         startW,
         startH,
         moved: false,
@@ -1521,7 +1527,16 @@ export function TopologyCanvas({
         return;
       }
       const layout = nodeLayouts.get(node.id);
-      beginNodeDrag(e, node, layout?.w ?? node.width ?? 48, layout?.h ?? node.height ?? 28);
+      const startX = layout?.x ?? node.x;
+      const startY = layout?.y ?? node.y;
+      beginNodeDrag(
+        e,
+        node,
+        startX,
+        startY,
+        layout?.w ?? node.width ?? 48,
+        layout?.h ?? node.height ?? 28
+      );
     },
     [beginNodeDrag, beginPan, editable, nodeLayouts]
   );
@@ -1559,6 +1574,8 @@ export function TopologyCanvas({
         beginNodeDrag(
           e,
           node,
+          layout?.x ?? node.x,
+          layout?.y ?? node.y,
           layout?.w ?? node.width ?? DEFAULT_NETWORK_WIDTH,
           layout?.h ?? node.height ?? DEFAULT_NETWORK_HEIGHT
         );
@@ -2033,14 +2050,32 @@ export function TopologyCanvas({
     [map.nodes, selectedNodeIds]
   );
 
+  const clearNodeDragUi = useCallback(() => {
+    dragPositionsRef.current = null;
+    setDragPreview(null);
+    clearDragUi();
+  }, [clearDragUi]);
+
+  const removeNodesFromCanvas = useCallback(
+    (nodesToRemove: TopologyNode[]) => {
+      if (!nodesToRemove.length) {
+        return;
+      }
+      const removedIds = new Set(nodesToRemove.map((n) => n.id));
+      persist(removeNodesFromMap(storedMap, nodesToRemove));
+      setSelectedNodeIds((prev) => prev.filter((id) => !removedIds.has(id)));
+      clearNodeDragUi();
+      setContextMenu(null);
+    },
+    [clearNodeDragUi, persist, storedMap]
+  );
+
   const deleteSelectedNodes = useCallback(() => {
     if (!selectedNodes.length) {
       return;
     }
-    persist(removeNodesFromMap(storedMap, selectedNodes));
-    setSelectedNodeIds([]);
-    setContextMenu(null);
-  }, [persist, selectedNodes, storedMap]);
+    removeNodesFromCanvas(selectedNodes);
+  }, [removeNodesFromCanvas, selectedNodes]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2436,9 +2471,14 @@ export function TopologyCanvas({
           label: deleteLabel,
           variant: 'delete',
           onClick: () =>
-            persist(
-              removeNodeFromMap(storedMap, node.id, { zabbixHost: node.zabbixHost, type: node.type })
-            ),
+            removeNodesFromCanvas([
+              {
+                ...node,
+                zabbixHost: node.zabbixHost,
+                subtitle: node.subtitle,
+                label: node.label,
+              },
+            ]),
         });
       }
       return items;
@@ -2455,13 +2495,12 @@ export function TopologyCanvas({
       openBulkSubmapEdit,
       openNodeProperties,
       pasteAt,
-      persist,
+      removeNodesFromCanvas,
       selectedHostNodes.length,
       selectedNodeIds,
       selectedNodes.length,
       selectedSubmapNodes.length,
       snapCoord,
-      storedMap,
     ]
   );
 

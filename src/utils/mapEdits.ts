@@ -1,5 +1,11 @@
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
-import { inferLinkMedium, isIpv4, upsertHostLayout } from '../utils';
+import {
+  collectHostHiddenKeys,
+  inferLinkMedium,
+  isIpv4,
+  resolveHostLayoutKey,
+  upsertHostLayout,
+} from '../utils';
 
 export function toggleMapLock(map: TopologyMap): TopologyMap {
   return { ...map, locked: !map.locked };
@@ -97,7 +103,12 @@ export function addLinkToMap(map: TopologyMap, from: string, to: string): Topolo
 export function removeNodeFromMap(
   map: TopologyMap,
   nodeId: string,
-  opts?: { zabbixHost?: string; type?: TopologyNode['type'] }
+  opts?: {
+    zabbixHost?: string;
+    subtitle?: string;
+    label?: string;
+    type?: TopologyNode['type'];
+  }
 ): TopologyMap {
   const node = map.nodes.find((n) => n.id === nodeId);
   const nodes = map.nodes.filter((n) => n.id !== nodeId);
@@ -105,13 +116,17 @@ export function removeNodeFromMap(
 
   let hiddenHosts = map.hiddenHosts ? [...map.hiddenHosts] : undefined;
   const nodeType = node?.type ?? opts?.type ?? 'host';
-  const hostKey = (node?.zabbixHost ?? opts?.zabbixHost)?.trim();
 
   // Hosts só da query Zabbix não estão em map.nodes — hiddenHosts evita reaparecer.
-  if (nodeType === 'host' && hostKey) {
-    hiddenHosts = hiddenHosts ?? [];
-    if (!hiddenHosts.includes(hostKey)) {
-      hiddenHosts.push(hostKey);
+  if (nodeType === 'host') {
+    const hideKeys = collectHostHiddenKeys(node, opts);
+    if (hideKeys.length) {
+      hiddenHosts = hiddenHosts ?? [];
+      for (const key of hideKeys) {
+        if (!hiddenHosts.includes(key)) {
+          hiddenHosts.push(key);
+        }
+      }
     }
   }
 
@@ -124,14 +139,23 @@ export function removeNodesFromMap(map: TopologyMap, nodesToRemove: TopologyNode
     return map;
   }
   return nodesToRemove.reduce(
-    (next, node) => removeNodeFromMap(next, node.id, { zabbixHost: node.zabbixHost, type: node.type }),
+    (next, node) =>
+      removeNodeFromMap(next, node.id, {
+        zabbixHost: node.zabbixHost,
+        subtitle: node.subtitle,
+        label: node.label,
+        type: node.type,
+      }),
     map
   );
 }
 
 export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Partial<TopologyNode>): TopologyMap {
-  if ((node.type ?? 'host') === 'host' && node.zabbixHost) {
-    return upsertHostLayout(map, node.zabbixHost, { ...patch, id: node.id });
+  if ((node.type ?? 'host') === 'host') {
+    const key = resolveHostLayoutKey(node);
+    if (key) {
+      return upsertHostLayout(map, key, { ...patch, id: node.id });
+    }
   }
 
   const nodes = map.nodes.map((n) => {

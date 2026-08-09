@@ -289,6 +289,54 @@ export function hostToNodeId(host: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/** Chave de layout no mapa salvo — IP quando existir, senão zabbixHost. */
+export function resolveHostLayoutKey(node: Pick<TopologyNode, 'zabbixHost' | 'subtitle'>): string | undefined {
+  const ip = resolveHostIp(node);
+  if (ip) {
+    return ip;
+  }
+  return node.zabbixHost?.trim() || undefined;
+}
+
+/** Aliases do host para hiddenHosts (IP, nome visível, chave da Query). */
+export function collectHostHiddenKeys(
+  node?: Pick<TopologyNode, 'zabbixHost' | 'subtitle' | 'label'>,
+  opts?: Pick<TopologyNode, 'zabbixHost' | 'subtitle' | 'label'>
+): string[] {
+  const keys = new Set<string>();
+  const add = (value?: string) => {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      keys.add(trimmed);
+    }
+  };
+  add(node?.zabbixHost ?? opts?.zabbixHost);
+  add(node?.subtitle ?? opts?.subtitle);
+  add(node?.label ?? opts?.label);
+  const ip = resolveHostIp({
+    zabbixHost: node?.zabbixHost ?? opts?.zabbixHost,
+    subtitle: node?.subtitle ?? opts?.subtitle,
+  });
+  if (ip) {
+    keys.add(ip);
+  }
+  return [...keys];
+}
+
+/** Host da Query oculto pelo usuário (hiddenHosts pode ter IP ou nome). */
+export function isQueryHostHidden(
+  hostName: string,
+  meta: HostMetadataMap[string] | undefined,
+  hidden: Set<string>
+): boolean {
+  const candidates = collectHostHiddenKeys({
+    zabbixHost: hostName,
+    label: meta?.name,
+    subtitle: meta?.ip,
+  });
+  return candidates.some((key) => hidden.has(key));
+}
+
 function panelDataFromFrames(frames: DataFrame[]): PanelData {
   return {
     series: frames,
@@ -705,7 +753,7 @@ export function mergeMapWithQueryHosts(
       : savedHosts.map((n) => n.zabbixHost?.trim() || n.label?.trim() || n.id).filter(Boolean);
 
   const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
-  const visibleHostNames = hostNames.filter((h) => !hidden.has(h));
+  const visibleHostNames = hostNames.filter((h) => !isQueryHostHidden(h, hostMetadata[h], hidden));
 
   const hostNodes: TopologyNode[] = [];
   const usedSavedIds = new Set<string>();
