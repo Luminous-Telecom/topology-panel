@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
+import { FaArrowPointer, FaHand } from 'react-icons/fa6';
+
+export type CanvasTool = 'select' | 'pan';
 
 export interface ContextMenuItem {
   id: string;
@@ -416,6 +419,8 @@ const toolbarStyle = css`
 `;
 
 export function TopologyToolbar({
+  tool,
+  onToolChange,
   locked,
   networksLocked,
   canUndo,
@@ -430,6 +435,8 @@ export function TopologyToolbar({
   onToggleFullscreen,
   showEditControls = true,
 }: {
+  tool: CanvasTool;
+  onToolChange: (tool: CanvasTool) => void;
   locked?: boolean;
   networksLocked?: boolean;
   canUndo?: boolean;
@@ -458,12 +465,37 @@ export function TopologyToolbar({
     opacity: disabled ? 0.55 : 1,
   });
 
-  if (isFullscreen && !showEditControls) {
-    return null;
-  }
+  const toolBtnStyle = (active: boolean): React.CSSProperties => ({
+    ...btnStyle(active),
+    padding: '4px 8px',
+    minWidth: 30,
+    justifyContent: 'center',
+  });
 
   return (
     <div className={toolbarStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button
+          type="button"
+          onClick={() => onToolChange('select')}
+          title="Selecionar (seta)"
+          aria-label="Selecionar"
+          aria-pressed={tool === 'select'}
+          style={toolBtnStyle(tool === 'select')}
+        >
+          <FaArrowPointer size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToolChange('pan')}
+          title="Arrastar mapa (mão)"
+          aria-label="Arrastar mapa"
+          aria-pressed={tool === 'pan'}
+          style={toolBtnStyle(tool === 'pan')}
+        >
+          <FaHand size={13} />
+        </button>
+      </div>
       {showEditControls && (
         <>
           <button

@@ -41,6 +41,7 @@ import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
 import {
+  CanvasTool,
   ContextMenuItem,
   TopologyColorLegend,
   TopologyContextMenu,
@@ -95,12 +96,8 @@ const styles = {
     overflow: hidden;
     position: relative;
     background: #111217;
-    cursor: grab;
     overscroll-behavior: none;
     touch-action: none;
-    &:active {
-      cursor: grabbing;
-    }
     &:fullscreen {
       width: 100vw;
       height: 100vh;
@@ -112,10 +109,16 @@ const styles = {
       background: #111217;
     }
   `,
-  wrapEditing: css`
+  wrapSelect: css`
     cursor: default;
     &:active {
       cursor: default;
+    }
+  `,
+  wrapPan: css`
+    cursor: grab;
+    &:active {
+      cursor: grabbing;
     }
   `,
   svg: css`
@@ -385,6 +388,12 @@ export function TopologyCanvas({
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
+  const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
+  const panTool = tool === 'pan';
+
+  useEffect(() => {
+    setTool(canEditCanvas ? 'select' : 'pan');
+  }, [canEditCanvas]);
   const dragRef = useRef<
     | {
         kind: 'pan';
@@ -409,7 +418,7 @@ export function TopologyCanvas({
         group?: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }>;
       }
     | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
-    | { kind: 'marquee'; mapX0: number; mapY0: number }
+    | { kind: 'marquee'; mapX0: number; mapY0: number; additive?: boolean }
     | {
         kind: 'link-waypoint';
         link: TopologyLink;
@@ -1026,11 +1035,15 @@ export function TopologyCanvas({
   const onNodePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
       e.stopPropagation();
-      // Em visualização, hosts/submapas cobrem o canvas — sem pan aqui o mobile fica “preso”.
-      if (!editable || node.type === 'network') {
-        if (!editable && e.button === 0) {
+      // Ferramenta mão: arrasta o mapa (tap em submapa/seletor ainda abre no pointerup).
+      if (panTool) {
+        if (e.button === 0) {
           beginPan(e, node);
         }
+        return;
+      }
+      // Em visualização com seta: deixa o click nativo (submapa / seletor).
+      if (!editable || node.type === 'network') {
         return;
       }
       const layout = nodeLayouts.get(node.id);
@@ -1053,7 +1066,7 @@ export function TopologyCanvas({
       };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
-    [beginPan, editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
+    [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -1064,6 +1077,11 @@ export function TopologyCanvas({
       }
       e.stopPropagation();
       setSelectedLink(null);
+
+      if (panTool) {
+        beginPan(e, node);
+        return;
+      }
 
       if (editable) {
         const layout = nodeLayouts.get(node.id);
@@ -1085,12 +1103,9 @@ export function TopologyCanvas({
           group,
         };
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
-        return;
       }
-
-      beginPan(e);
     },
-    [beginPan, editable, map.nodes, nodeLayouts, selectedNodeIds, storedMap]
+    [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -1099,7 +1114,14 @@ export function TopologyCanvas({
         return;
       }
       setSelectedLink(null);
-      if (e.shiftKey && editable) {
+      setContextMenu(null);
+      if (panTool) {
+        setSelectedNodeIds([]);
+        beginPan(e);
+        return;
+      }
+      // Seta: arrastar no fundo = caixa de seleção (como mouse de seleção múltipla).
+      if (editable) {
         e.stopPropagation();
         const el = wrapRef.current;
         if (!el) {
@@ -1107,17 +1129,18 @@ export function TopologyCanvas({
         }
         const rect = el.getBoundingClientRect();
         const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        dragRef.current = { kind: 'marquee', mapX0: x, mapY0: y };
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!additive) {
+          setSelectedNodeIds([]);
+        }
+        dragRef.current = { kind: 'marquee', mapX0: x, mapY0: y, additive };
         setMarqueeRect({ x0: x, y0: y, x1: x, y1: y });
         wrapRef.current?.setPointerCapture(e.pointerId);
         return;
       }
       setSelectedNodeIds([]);
-      setSelectedLink(null);
-      setContextMenu(null);
-      beginPan(e);
     },
-    [beginPan, editable, view]
+    [beginPan, editable, panTool, view]
   );
 
   const onLinkSelect = useCallback((link: TopologyLink) => {
@@ -1214,9 +1237,36 @@ export function TopologyCanvas({
       if (e.button !== 0 || e.target !== e.currentTarget) {
         return;
       }
-      beginPan(e);
+      if (panTool) {
+        setSelectedNodeIds([]);
+        setSelectedLink(null);
+        setContextMenu(null);
+        beginPan(e);
+        return;
+      }
+      if (editable) {
+        const el = wrapRef.current;
+        if (!el) {
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+        setSelectedLink(null);
+        setContextMenu(null);
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!additive) {
+          setSelectedNodeIds([]);
+        }
+        dragRef.current = { kind: 'marquee', mapX0: x, mapY0: y, additive };
+        setMarqueeRect({ x0: x, y0: y, x1: x, y1: y });
+        wrapRef.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+      setSelectedNodeIds([]);
+      setSelectedLink(null);
+      setContextMenu(null);
     },
-    [beginPan]
+    [beginPan, editable, panTool, view]
   );
 
   const onPointerMove = useCallback(
@@ -1467,7 +1517,11 @@ export function TopologyCanvas({
                 ids.push(n.id);
               }
             }
-            setSelectedNodeIds(ids);
+            if (d.additive) {
+              setSelectedNodeIds((prev) => [...new Set([...prev, ...ids])]);
+            } else {
+              setSelectedNodeIds(ids);
+            }
           }
         }
         return;
@@ -2057,7 +2111,7 @@ export function TopologyCanvas({
   return (
     <div
       ref={wrapRef}
-      className={`${styles.wrap} ${editable ? styles.wrapEditing : ''}`}
+      className={`${styles.wrap} ${panTool ? styles.wrapPan : styles.wrapSelect}`}
       onPointerDown={onWrapPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => onPointerUp(e)}
@@ -2072,6 +2126,8 @@ export function TopologyCanvas({
       onContextMenu={(e) => handleContextMenu(e)}
     >
       <TopologyToolbar
+        tool={tool}
+        onToolChange={setTool}
         locked={Boolean(map.locked)}
         networksLocked={areNetworksLocked(storedMap)}
         canUndo={canUndo}
@@ -2150,7 +2206,7 @@ export function TopologyCanvas({
               {' · '}
             </>
           )}
-          Shift+arrastar no fundo para caixa de seleção · Ctrl+clique alterna · Arraste para mover o grupo · Esc limpa
+          Arraste no fundo para selecionar vários · Shift/Ctrl+arrastar adiciona · Ctrl+clique alterna · Arraste para mover o grupo · Esc limpa · Mão para mover o mapa
         </TopologyEditHint>
       )}
 
@@ -2170,7 +2226,7 @@ export function TopologyCanvas({
             width={gridBounds.x1 - gridBounds.x0}
             height={gridBounds.y1 - gridBounds.y0}
             fill="transparent"
-            style={{ cursor: options.enablePan ? 'grab' : 'default' }}
+            style={{ cursor: panTool && options.enablePan ? 'grab' : 'default' }}
             onPointerDown={onCanvasPointerDown}
             onContextMenu={(e) => handleContextMenu(e)}
           />
@@ -2267,12 +2323,13 @@ export function TopologyCanvas({
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
                   onContextMenu={(e) => handleContextMenu(e, { node })}
                   style={{
-                    cursor:
-                      editable && !areNetworksLocked(storedMap)
+                    cursor: panTool
+                      ? options.enablePan
+                        ? 'grab'
+                        : 'default'
+                      : editable && !areNetworksLocked(storedMap)
                         ? 'move'
-                        : options.enablePan
-                          ? 'grab'
-                          : 'default',
+                        : 'default',
                   }}
                 >
                   <rect
@@ -2359,15 +2416,16 @@ export function TopologyCanvas({
               nodeLayouts={nodeLayouts}
               options={options}
               editable={editable}
+              panTool={panTool}
               selected={Boolean(selectedLink && linkKey(selectedLink) === linkKey(link))}
               hovered={hoveredLinkKey === linkKey(link)}
               onSelect={() => onLinkSelect(link)}
               onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
               onContextMenu={(e) => handleContextMenu(e, { link })}
               onPathPointerDown={(e) => {
-                if (!editable) {
-                  // Pan no cabo; se for só tap, onPointerUp seleciona o link (click morre com capture).
-                  if (options.enablePan) {
+                if (panTool || !editable) {
+                  // Mão: pan no cabo; seta em visualização: só seleciona.
+                  if (panTool && options.enablePan) {
                     beginPan(e, undefined, link);
                   } else {
                     onLinkSelect(link);
@@ -2513,15 +2571,19 @@ export function TopologyCanvas({
                 onMouseEnter={() => setLinkHoverId(node.id)}
                 onMouseLeave={() => setLinkHoverId(null)}
                 style={{
-                  cursor: editable
-                    ? linkFromId !== null
-                      ? 'crosshair'
-                      : 'move'
-                    : (node.type ?? 'host') === 'host' && hostIp(node)
-                      ? 'context-menu'
-                      : node.type === 'submap' || node.type === 'dashboard_picker'
-                        ? 'pointer'
-                        : 'default',
+                  cursor: panTool
+                    ? options.enablePan
+                      ? 'grab'
+                      : 'default'
+                    : editable
+                      ? linkFromId !== null
+                        ? 'crosshair'
+                        : 'move'
+                      : (node.type ?? 'host') === 'host' && hostIp(node)
+                        ? 'context-menu'
+                        : node.type === 'submap' || node.type === 'dashboard_picker'
+                          ? 'pointer'
+                          : 'default',
                 }}
               >
                 <rect
@@ -2758,6 +2820,7 @@ function LinkLineComponent({
   nodeLayouts,
   options,
   editable,
+  panTool,
   selected,
   hovered,
   onSelect,
@@ -2771,6 +2834,7 @@ function LinkLineComponent({
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
   editable: boolean;
+  panTool: boolean;
   selected: boolean;
   hovered: boolean;
   onSelect: () => void;
@@ -2827,15 +2891,15 @@ function LinkLineComponent({
         strokeWidth={hitWidth}
         fill="none"
         pointerEvents="stroke"
-        style={{ cursor: editable ? 'grab' : 'pointer' }}
+        style={{ cursor: panTool ? 'grab' : 'pointer' }}
         onPointerDown={(e) => {
           e.stopPropagation();
           onPathPointerDown(e);
         }}
         onClick={(e) => {
           e.stopPropagation();
-          // Seleção quando pan está desligado (sem pointer capture).
-          if (!editable && !options.enablePan) {
+          // Seleção quando a mão não captura o ponteiro.
+          if (!panTool && !editable) {
             onSelect();
           }
         }}
@@ -2923,7 +2987,12 @@ function LinkLineComponent({
 }
 
 const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
-  if (prev.selected !== next.selected || prev.hovered !== next.hovered || prev.editable !== next.editable) {
+  if (
+    prev.selected !== next.selected ||
+    prev.hovered !== next.hovered ||
+    prev.editable !== next.editable ||
+    prev.panTool !== next.panTool
+  ) {
     return false;
   }
   if (prev.link.from !== next.link.from || prev.link.to !== next.link.to) {
