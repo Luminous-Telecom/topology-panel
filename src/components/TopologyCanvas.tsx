@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import {
@@ -41,7 +42,7 @@ import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, hostsInsideNetwork, regionFillColor } from '../utils/networkStats';
+import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
 import { isNetworkNode } from '../utils/mapBounds';
 import {
   CanvasTool,
@@ -72,7 +73,7 @@ import {
   nearestWaypointIndex,
 } from '../utils/linkGeometry';
 import { LINK_FLOW_DASH, LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
-import { computeEdgePanVelocity } from '../utils/edgePan';
+import { computeEdgeScrollDelta } from '../utils/edgePan';
 import {
   copyTopologySelection,
   getTopologyClipboard,
@@ -261,164 +262,6 @@ function selectionHintLabel(nodes: TopologyNode[]): string {
 
 function deleteNodesMenuLabel(count: number): string {
   return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
-}
-
-type DragParentNetwork = {
-  id: string;
-  startX: number;
-  startY: number;
-  startW: number;
-  startH: number;
-  coHosts: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }>;
-};
-
-/** Deslocamento da rede quando o host “empurra” a borda — efeito The Dude. */
-function computeNetworkPullDelta(
-  rawHostX: number,
-  rawHostY: number,
-  hostW: number,
-  hostH: number,
-  netStartX: number,
-  netStartY: number,
-  netW: number,
-  netH: number
-): { dx: number; dy: number } {
-  let dx = 0;
-  let dy = 0;
-  if (rawHostX < netStartX) {
-    dx = rawHostX - netStartX;
-  } else if (rawHostX + hostW > netStartX + netW) {
-    dx = rawHostX + hostW - (netStartX + netW);
-  }
-  if (rawHostY < netStartY) {
-    dy = rawHostY - netStartY;
-  } else if (rawHostY + hostH > netStartY + netH) {
-    dy = rawHostY + hostH - (netStartY + netH);
-  }
-  return { dx, dy };
-}
-
-function findHostParentNetwork(
-  host: TopologyNode,
-  map: TopologyMap,
-  nodeLayouts: Map<string, NodeLayout & TopologyNode>
-): { network: TopologyNode; layout: NodeLayout & TopologyNode } | null {
-  if ((host.type ?? 'host') !== 'host') {
-    return null;
-  }
-  const hostLayout = nodeLayouts.get(host.id);
-  if (!hostLayout) {
-    return null;
-  }
-  for (const network of map.nodes) {
-    if (network.type !== 'network') {
-      continue;
-    }
-    const netLayout = nodeLayouts.get(network.id);
-    if (!netLayout) {
-      continue;
-    }
-    if (host.networkId?.trim() === network.id) {
-      return { network, layout: netLayout };
-    }
-    if (
-      rectsOverlap(
-        hostLayout.x,
-        hostLayout.y,
-        hostLayout.w,
-        hostLayout.h,
-        netLayout.x,
-        netLayout.y,
-        netLayout.w,
-        netLayout.h
-      )
-    ) {
-      return { network, layout: netLayout };
-    }
-  }
-  return null;
-}
-
-function buildParentNetworkDrag(
-  host: TopologyNode,
-  map: TopologyMap,
-  nodeLayouts: Map<string, NodeLayout & TopologyNode>,
-  dragIds: Set<string>
-): DragParentNetwork | undefined {
-  const parent = findHostParentNetwork(host, map, nodeLayouts);
-  if (!parent) {
-    return undefined;
-  }
-  const hostNodes = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
-  const inside = hostsInsideNetwork(parent.network.id, parent.layout, hostNodes, nodeLayouts);
-  const coHosts = inside
-    .filter((h) => !dragIds.has(h.id))
-    .map((h) => {
-      const layout = nodeLayouts.get(h.id);
-      const startW = layout?.w ?? h.width ?? 48;
-      const startH = layout?.h ?? h.height ?? 28;
-      return {
-        id: h.id,
-        startX: h.x,
-        startY: h.y,
-        startW,
-        startH,
-      };
-    });
-  return {
-    id: parent.network.id,
-    startX: parent.layout.x,
-    startY: parent.layout.y,
-    startW: parent.layout.w,
-    startH: parent.layout.h,
-    coHosts,
-  };
-}
-
-function applyNetworkPullFollow(
-  drag: {
-    parentNetwork?: DragParentNetwork;
-  },
-  primary: { startW: number; startH: number },
-  rawPrimaryX: number,
-  rawPrimaryY: number,
-  positions: Record<string, { x: number; y: number }>,
-  snapCorner: (n: number) => number,
-  gridStep: number
-): void {
-  const pn = drag.parentNetwork;
-  if (!pn) {
-    return;
-  }
-  const pull = computeNetworkPullDelta(
-    rawPrimaryX,
-    rawPrimaryY,
-    primary.startW,
-    primary.startH,
-    pn.startX,
-    pn.startY,
-    pn.startW,
-    pn.startH
-  );
-  if (pull.dx === 0 && pull.dy === 0) {
-    return;
-  }
-  positions[pn.id] = {
-    x: snapCorner(pn.startX + pull.dx),
-    y: snapCorner(pn.startY + pull.dy),
-  };
-  for (const co of pn.coHosts) {
-    if (positions[co.id]) {
-      continue;
-    }
-    positions[co.id] = snapNodeCenterToGrid(
-      co.startX + pull.dx,
-      co.startY + pull.dy,
-      co.startW,
-      co.startH,
-      gridStep
-    );
-  }
 }
 
 function buildDragGroupMembers(
@@ -613,6 +456,7 @@ export function TopologyCanvas({
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const linkFlowRef = useRef<LinkFlowController | null>(null);
   const savedView = options.view;
   const [view, setView] = useState<TopologyView>(() =>
@@ -620,6 +464,19 @@ export function TopologyCanvas({
       ? savedView
       : { x: 0, y: 0, scale: 1 }
   );
+  const viewRef = useRef(view);
+  const commitView = useCallback((next: TopologyView | ((prev: TopologyView) => TopologyView)) => {
+    if (typeof next === 'function') {
+      setView((prev) => {
+        const resolved = next(prev);
+        viewRef.current = resolved;
+        return resolved;
+      });
+      return;
+    }
+    viewRef.current = next;
+    setView(next);
+  }, []);
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const [flowPaused, setFlowPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -665,7 +522,6 @@ export function TopologyCanvas({
         startH: number;
         moved: boolean;
         group?: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }>;
-        parentNetwork?: DragParentNetwork;
       }
     | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
     | { kind: 'marquee'; mapX0: number; mapY0: number; additive?: boolean }
@@ -690,8 +546,6 @@ export function TopologyCanvas({
   const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
-  const viewRef = useRef(view);
-  viewRef.current = view;
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const pasteOffsetRef = useRef(0);
@@ -934,7 +788,7 @@ export function TopologyCanvas({
       const cx = layout.x + layout.w / 2;
       const cy = layout.y + layout.h / 2;
       const scale = clamp(Math.max(viewRef.current.scale, 0.55), 0.15, 3);
-      setView({
+      commitView({
         scale,
         x: el.clientWidth / 2 - cx * scale,
         y: el.clientHeight / 2 - cy * scale,
@@ -946,7 +800,7 @@ export function TopologyCanvas({
       setMarqueeRect(null);
       setAlignGuides([]);
     },
-    [nodeLayouts]
+    [commitView, nodeLayouts]
   );
 
   const fitToView = useCallback(() => {
@@ -958,12 +812,12 @@ export function TopologyCanvas({
     const sx = (el.clientWidth - pad * 2) / map.width;
     const sy = (el.clientHeight - pad * 2) / map.height;
     const scale = clamp(Math.min(sx, sy), 0.15, 2);
-    setView({
+    commitView({
       scale,
       x: (el.clientWidth - map.width * scale) / 2,
       y: (el.clientHeight - map.height * scale) / 2,
     });
-  }, [map.width, map.height]);
+  }, [commitView, map.width, map.height]);
 
   const didInitialFitRef = useRef(false);
   useEffect(() => {
@@ -971,12 +825,12 @@ export function TopologyCanvas({
       return;
     }
     if (savedView && typeof savedView.scale === 'number') {
-      setView(savedView);
+      commitView(savedView);
     } else {
       fitToView();
     }
     didInitialFitRef.current = true;
-  }, [fitToView, map.width, map.height, savedView]);
+  }, [commitView, fitToView, map.width, map.height, savedView]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -1048,7 +902,7 @@ export function TopologyCanvas({
     };
 
     const applyZoom = (clientX: number, clientY: number, deltaY: number) => {
-      setView((v) => {
+      commitView((v) => {
         const delta = deltaY > 0 ? 0.9 : 1.1;
         return applyZoomAt(clientX, clientY, v.scale * delta, v);
       });
@@ -1061,8 +915,7 @@ export function TopologyCanvas({
       }
       const next = pinchPending;
       pinchPending = null;
-      setView(next);
-      viewRef.current = next;
+      commitView(next);
     };
 
     const touchPair = (touches: TouchList) => {
@@ -1237,7 +1090,7 @@ export function TopologyCanvas({
       endPinch();
       unlockScroll();
     };
-  }, [options.enableZoom, map.nodes.length]);
+  }, [commitView, options.enableZoom, map.nodes.length]);
 
   const openSubmap = useCallback((node: TopologyNode) => {
     if (node.type !== 'submap' || !node.submapUid) {
@@ -1362,8 +1215,6 @@ export function TopologyCanvas({
       if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
         group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
       }
-      const dragIds = new Set<string>([node.id, ...(group?.map((m) => m.id) ?? [])]);
-      const parentNetwork = buildParentNetworkDrag(node, map, nodeLayouts, dragIds);
       dragPositionsRef.current = null;
       dragRef.current = {
         kind: 'node',
@@ -1376,7 +1227,6 @@ export function TopologyCanvas({
         startH: layout?.h ?? node.height ?? 28,
         moved: false,
         group,
-        parentNetwork,
       };
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
@@ -1401,18 +1251,7 @@ export function TopologyCanvas({
       const networksLocked = areNetworksLocked(storedMap);
 
       if (networksLocked) {
-        dragRef.current = {
-          kind: 'node',
-          node,
-          ox: e.clientX,
-          oy: e.clientY,
-          startX: node.x,
-          startY: node.y,
-          startW: layout?.w ?? node.width ?? DEFAULT_NETWORK_WIDTH,
-          startH: layout?.h ?? node.height ?? DEFAULT_NETWORK_HEIGHT,
-          moved: false,
-        };
-        wrapRef.current?.setPointerCapture(e.pointerId);
+        beginPan(e, node);
         return;
       }
 
@@ -1666,11 +1505,6 @@ export function TopologyCanvas({
       }
 
       const primaryPos = positions[primary.id];
-      if (primaryPos) {
-        const rawPrimaryX = primary.startX + dx;
-        const rawPrimaryY = primary.startY + dy;
-        applyNetworkPullFollow(d, primary, rawPrimaryX, rawPrimaryY, positions, snapCoord, gridStep);
-      }
 
       dragPositionsRef.current = positions;
       setDragPreview({ positions });
@@ -1733,17 +1567,24 @@ export function TopologyCanvas({
     [gridStep, map.height, map.nodes, map.width, nodeLayouts, snapCoord, storedMap]
   );
 
+  const edgePanRect = useCallback((): DOMRect | null => {
+    return svgRef.current?.getBoundingClientRect() ?? wrapRef.current?.getBoundingClientRect() ?? null;
+  }, []);
+
   const runEdgePanFrame = useCallback(() => {
     edgePanRafRef.current = null;
     const d = dragRef.current;
     const ptr = dragPointerRef.current;
-    const el = wrapRef.current;
-    if (!d || d.kind !== 'node' || !options.enablePan || !ptr || !el) {
+    if (!d || d.kind !== 'node' || !options.enablePan || !ptr) {
       return;
     }
 
-    const rect = el.getBoundingClientRect();
-    const { vx, vy } = computeEdgePanVelocity(
+    const rect = edgePanRect();
+    if (!rect) {
+      return;
+    }
+
+    const { scrollX, scrollY } = computeEdgeScrollDelta(
       ptr.clientX,
       ptr.clientY,
       rect,
@@ -1751,43 +1592,46 @@ export function TopologyCanvas({
       EDGE_PAN_MAX_SPEED
     );
 
-    if (vx !== 0 || vy !== 0) {
-      d.ox += vx;
-      d.oy += vy;
+    if (scrollX !== 0 || scrollY !== 0) {
+      d.ox += scrollX;
+      d.oy += scrollY;
       const v = viewRef.current;
-      const nextView = { ...v, x: v.x + vx, y: v.y + vy };
-      viewRef.current = nextView;
-      setView(nextView);
-      applyNodeDragMove(ptr.clientX, ptr.clientY);
+      const nextView = { ...v, x: v.x + scrollX, y: v.y + scrollY };
+      flushSync(() => {
+        commitView(nextView);
+        applyNodeDragMove(ptr.clientX, ptr.clientY);
+      });
     }
 
-    if (dragRef.current?.kind === 'node' && dragPointerRef.current && (vx !== 0 || vy !== 0)) {
+    if (dragRef.current?.kind === 'node' && dragPointerRef.current && (scrollX !== 0 || scrollY !== 0)) {
       edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
     }
-  }, [applyNodeDragMove, options.enablePan]);
+  }, [applyNodeDragMove, commitView, edgePanRect, options.enablePan]);
 
   const maybeStartEdgePan = useCallback(
     (clientX: number, clientY: number) => {
       if (!options.enablePan || edgePanRafRef.current != null) {
         return;
       }
-      const el = wrapRef.current;
-      if (!el || dragRef.current?.kind !== 'node') {
+      if (dragRef.current?.kind !== 'node') {
         return;
       }
-      const rect = el.getBoundingClientRect();
-      const { vx, vy } = computeEdgePanVelocity(
+      const rect = edgePanRect();
+      if (!rect) {
+        return;
+      }
+      const { scrollX, scrollY } = computeEdgeScrollDelta(
         clientX,
         clientY,
         rect,
         EDGE_PAN_MARGIN,
         EDGE_PAN_MAX_SPEED
       );
-      if (vx !== 0 || vy !== 0) {
+      if (scrollX !== 0 || scrollY !== 0) {
         edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
       }
     },
-    [options.enablePan, runEdgePanFrame]
+    [edgePanRect, options.enablePan, runEdgePanFrame]
   );
 
   const onPointerMove = useCallback(
@@ -1822,7 +1666,7 @@ export function TopologyCanvas({
             if (!dragRef.current.moved) {
               return;
             }
-            setView((v) => ({ ...v, x: pending.x, y: pending.y }));
+            commitView((v) => ({ ...v, x: pending.x, y: pending.y }));
           });
         }
         return;
@@ -1891,7 +1735,7 @@ export function TopologyCanvas({
         setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: x, y1: y });
       }
     },
-    [applyNodeDragMove, map.height, map.nodes, map.width, maybeStartEdgePan, nodeLayouts, snapCoord, storedMap, view, viewport.h, viewport.w, gridStep]
+    [applyNodeDragMove, commitView, maybeStartEdgePan, nodeLayouts, snapCoord, storedMap, view, viewport.h, viewport.w, gridStep]
   );
 
   const clearDragUi = useCallback(() => {
@@ -1935,7 +1779,7 @@ export function TopologyCanvas({
       if (d?.kind === 'pan' && d.moved && panPendingRef.current) {
         const pending = panPendingRef.current;
         panPendingRef.current = null;
-        setView((v) => ({ ...v, x: pending.x, y: pending.y }));
+        commitView((v) => ({ ...v, x: pending.x, y: pending.y }));
       } else {
         panPendingRef.current = null;
       }
@@ -2074,7 +1918,7 @@ export function TopologyCanvas({
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, stopEdgePanLoop, storedMap, tryDoubleTapOpenProperties, view]
+    [clearDragUi, commitView, completeLink, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, stopEdgePanLoop, storedMap, tryDoubleTapOpenProperties, view]
   );
 
   const onNodeClick = useCallback(
@@ -2969,7 +2813,7 @@ export function TopologyCanvas({
         </div>
       )}
 
-      <svg className={styles.svg} width="100%" height="100%" onContextMenu={(e) => handleContextMenu(e)}>
+      <svg ref={svgRef} className={styles.svg} width="100%" height="100%" onContextMenu={(e) => handleContextMenu(e)}>
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
           <LinkMarkers colorLink={options.colorLink} />
           <rect
@@ -3457,7 +3301,7 @@ export function TopologyCanvas({
           nodeLayouts={nodeLayouts}
           view={view}
           viewport={viewport}
-          onViewChange={setView}
+          onViewChange={commitView}
           resolveNodeFill={resolveMiniNodeFill}
           resolveNetworkStroke={resolveMiniNetworkStroke}
           linkColor={miniLinkColor}

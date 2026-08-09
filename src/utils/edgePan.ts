@@ -1,38 +1,41 @@
-export interface EdgePanVelocity {
-  vx: number;
-  vy: number;
+export interface EdgeScrollDelta {
+  scrollX: number;
+  scrollY: number;
 }
 
-/** Velocidade de pan (px de tela por frame) quando o ponteiro está na faixa de borda. */
-export function computeEdgePanVelocity(
+/**
+ * Deslocamento de pan da view ao arrastar nó/rede contra a borda.
+ * Mesma direção do arraste: puxar o host para a direita → mapa vai para a direita.
+ */
+export function computeEdgeScrollDelta(
   clientX: number,
   clientY: number,
   rect: DOMRect,
   margin: number,
   maxSpeed: number
-): EdgePanVelocity {
+): EdgeScrollDelta {
   if (margin <= 0 || maxSpeed <= 0 || rect.width <= 0 || rect.height <= 0) {
-    return { vx: 0, vy: 0 };
+    return { scrollX: 0, scrollY: 0 };
   }
 
-  let vx = 0;
-  let vy = 0;
+  let scrollX = 0;
+  let scrollY = 0;
   const localX = clientX - rect.left;
   const localY = clientY - rect.top;
   const distRight = rect.width - localX;
   const distBottom = rect.height - localY;
 
-  if (localX < margin) {
-    vx = -((margin - localX) / margin) * maxSpeed;
-  } else if (distRight < margin) {
-    vx = ((margin - distRight) / margin) * maxSpeed;
+  if (distRight < margin) {
+    scrollX = ((margin - distRight) / margin) * maxSpeed;
+  } else if (localX < margin) {
+    scrollX = -((margin - localX) / margin) * maxSpeed;
   }
 
-  if (localY < margin) {
-    vy = -((margin - localY) / margin) * maxSpeed;
-  } else if (distBottom < margin) {
-    vy = ((margin - distBottom) / margin) * maxSpeed;
+  if (distBottom < margin) {
+    scrollY = ((margin - distBottom) / margin) * maxSpeed;
+  } else if (localY < margin) {
+    scrollY = -((margin - localY) / margin) * maxSpeed;
   }
 
-  return { vx, vy };
+  return { scrollX, scrollY };
 }

@@ -139,9 +139,6 @@ export function hostsInsideNetwork(
   nodeLayouts: Map<string, NodeLayout & TopologyNode>
 ): TopologyNode[] {
   return hostNodes.filter((host) => {
-    if (host.networkId?.trim() === networkId) {
-      return true;
-    }
     const layout = nodeLayouts.get(host.id);
     if (!layout) {
       return false;

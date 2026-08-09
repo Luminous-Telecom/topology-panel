@@ -28,20 +28,20 @@ Não commitar credenciais, `.env` ou senhas em scripts.
 
 1. Bump **`src/plugin.json`** e **`package.json`** (mesma versão)
 2. `npm run build`
-3. **Deploy obrigatório para testes** (ver abaixo)
+3. **Deploy obrigatório** (ver abaixo)
 4. Commit/push só código do plugin
 
 ## Deploy — SEMPRE após mudanças no plugin
 
-**Toda alteração em `src/` deve ser buildada e deployada** no Grafana de testes antes de encerrar a tarefa.
+**Toda alteração em `src/` deve ser buildada e deployada** no Grafana de produção antes de encerrar a tarefa.
 
 ```bash
 bash scripts/deploy.sh
 ```
 
-- Servidor: `45.5.147.20:2224` → `/var/lib/grafana/plugins/luminous-topology-panel/`
-- Senha via `.env` (`GRAFANA_SSH_PASS`) — nunca commitar
-- Testar: https://monitoramento.luminoustelecom.com.br/d/dude-dc/dc?orgId=2
+- Servidor: `45.5.147.7:22` → `/var/lib/grafana/plugins/luminous-topology-panel/`
+- Senha via `.env` (`GRAFANA_SSH_PASS_PROD`) — nunca commitar
+- Testar: http://45.5.147.7:3000
 - **O agent executa o deploy** — ver regra `auto-deploy.mdc`
 
 ## UI e idioma

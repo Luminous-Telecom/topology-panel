@@ -802,6 +802,9 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
     layoutPatch.toolPassword =
       patch.toolPassword != null && patch.toolPassword !== '' ? patch.toolPassword : undefined;
   }
+  if ('networkId' in patch) {
+    layoutPatch.networkId = patch.networkId?.trim() || undefined;
+  }
 
   const nodes = [...map.nodes];
   let idx = -1;
@@ -832,6 +835,9 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
     }
     if ('toolPassword' in patch && !merged.toolPassword) {
       delete merged.toolPassword;
+    }
+    if ('networkId' in patch && !merged.networkId) {
+      delete merged.networkId;
     }
     nodes[idx] = merged;
   } else {

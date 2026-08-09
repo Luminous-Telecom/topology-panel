@@ -36,5 +36,5 @@ Heurística (nome do host): `LITEAP`, `WI2BE`, `PTP`, `PTMP`, `AIRFIBER`, `RADIO
 
 ## Deploy interno
 
-- Plugin: `scripts/deploy.sh` ou tar para `45.5.147.20:2224`
-- Upload dashboard: LAN `192.168.100.18:3000` (credenciais via env vars)
+- Plugin: `scripts/deploy.sh` ou tar para `45.5.147.7:22`
+- Upload dashboard: `http://45.5.147.7:3000` (credenciais via env vars)

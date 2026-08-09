@@ -150,6 +150,7 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
       'includeInParentStats',
       'showStatusStats',
       'dashboardChoices',
+      'networkId',
     ] as const) {
       if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key] === undefined) {
         delete next[key];
@@ -301,7 +302,11 @@ export function updateHostsCredentialsBulk(
 }
 
 export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, y: number): TopologyMap {
-  return updateStoredNode(map, node, { x: Math.round(x), y: Math.round(y) });
+  const patch: Partial<TopologyNode> = { x: Math.round(x), y: Math.round(y) };
+  if ((node.type ?? 'host') === 'host' && node.networkId) {
+    patch.networkId = undefined;
+  }
+  return updateStoredNode(map, node, patch);
 }
 
 /** Move vários nós de uma vez (arraste em grupo). */
