@@ -34,34 +34,43 @@ export function isIncludedInParentStats(node: { includeInParentStats?: boolean; 
   return true;
 }
 
-/** Nós type=host visíveis do mapa (fora da lista hiddenHosts), com nome/hostid já trim(). */
-function visibleHostRefs(map: TopologyMap): Array<{ name?: string; hostId?: string }> {
+/** Nós type=host visíveis do mapa (fora da lista hiddenHosts), com nome/IP já trim(). */
+function visibleHostRefs(map: TopologyMap): Array<{ name?: string; ip?: string }> {
   const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
-  const refs: Array<{ name?: string; hostId?: string }> = [];
+  const refs: Array<{ name?: string; ip?: string }> = [];
 
   for (const node of map.nodes ?? []) {
     if ((node.type ?? 'host') !== 'host') {
       continue;
     }
     const name = node.zabbixHost?.trim();
-    const hostId = node.zabbixHostId?.trim();
+    const subtitle = node.subtitle?.trim();
+    const ip =
+      subtitle && /^\d{1,3}(\.\d{1,3}){3}$/.test(subtitle)
+        ? subtitle
+        : name && /^\d{1,3}(\.\d{1,3}){3}$/.test(name)
+          ? name
+          : undefined;
+    const hiddenKey = ip ?? name;
+    if (hiddenKey && hidden.has(hiddenKey)) {
+      continue;
+    }
     if (name && hidden.has(name)) {
       continue;
     }
-    refs.push({ name, hostId });
+    refs.push({ name, ip });
   }
 
   return refs;
 }
 
-/** Hosts type=host do mapa — prefer hostid (estável), senão nome. */
+/** Hosts type=host do mapa — prefer IP, senão nome (não hostid). */
 export function extractTopologyHostNames(map: TopologyMap): string[] {
   const seen = new Set<string>();
   const hosts: string[] = [];
 
-  for (const { name, hostId } of visibleHostRefs(map)) {
-    // Chave estável para stats/ICMP; nome só como fallback (mapas legados)
-    const key = hostId || name;
+  for (const { name, ip } of visibleHostRefs(map)) {
+    const key = ip ?? name;
     if (!key) {
       continue;
     }
@@ -76,25 +85,25 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
   return hosts;
 }
 
-/** Extrai hostids e nomes separados (para API Zabbix). */
+/** Extrai IPs e nomes separados (para API Zabbix). */
 export function extractTopologyHostRefs(map: TopologyMap): { hostIds: string[]; hostNames: string[] } {
-  const hostIds: string[] = [];
   const hostNames: string[] = [];
-  const seenIds = new Set<string>();
   const seenNames = new Set<string>();
 
-  for (const { name, hostId } of visibleHostRefs(map)) {
-    if (hostId && !seenIds.has(hostId)) {
-      seenIds.add(hostId);
-      hostIds.push(hostId);
+  for (const { name, ip } of visibleHostRefs(map)) {
+    const key = ip ?? name;
+    if (!key) {
+      continue;
     }
-    if (name && !seenNames.has(name.toLowerCase())) {
-      seenNames.add(name.toLowerCase());
-      hostNames.push(name);
+    const dedupe = key.toLowerCase();
+    if (seenNames.has(dedupe)) {
+      continue;
     }
+    seenNames.add(dedupe);
+    hostNames.push(key);
   }
 
-  return { hostIds, hostNames };
+  return { hostIds: [], hostNames };
 }
 
 /**

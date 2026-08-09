@@ -23,14 +23,16 @@ import {
   extractHostDisplay,
   extractHostDisplayByRefId,
   extractHostMetadataFromData,
+  isIpv4,
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
+  resolveHostLookupKey,
   resolveZabbixDatasourceUid,
   resolveZabbixGroupNamesFromPanelData,
   sameQueryRefInfos,
   sameStringList,
 } from '../utils';
-import { fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
+import { fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
@@ -40,8 +42,8 @@ import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../util
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
-/** Persiste hostid + nome/IP atuais do Zabbix no mapa (migrate + rename). */
-function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
+/** Persiste hostid + nome/IP da Query no mapa salvo (migrate + rename). */
+function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
   let changed = false;
   const nodes = map.nodes.map((node) => {
     if ((node.type ?? 'host') !== 'host') {
@@ -49,7 +51,10 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
     }
     const name = node.zabbixHost?.trim();
     const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
-    const entry = (hostId && meta[hostId]) || (name ? meta[name] : undefined);
+    const entry =
+      (name && meta[name]) ||
+      (hostId && meta[hostId]) ||
+      (node.subtitle?.trim() && isIpv4(node.subtitle) ? meta[node.subtitle.trim()] : undefined);
     if (!entry) {
       return node;
     }
@@ -57,6 +62,7 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
     const nextId = (entry.hostid != null ? String(entry.hostid).trim() : '') || hostId;
     const nextName = entry.name?.trim() || name;
     const nextIp = entry.ip?.trim();
+    const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : name;
     const patch: typeof node = { ...node };
     let nodeChanged = false;
 
@@ -64,8 +70,8 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
       patch.zabbixHostId = nextId;
       nodeChanged = true;
     }
-    if (nextName && nextName !== name) {
-      patch.zabbixHost = nextName;
+    if (nextHostKey && nextHostKey !== name) {
+      patch.zabbixHost = nextHostKey;
       nodeChanged = true;
     }
     if (nextName && nextName !== (node.label?.trim() || '')) {
@@ -123,7 +129,6 @@ export function TopologyPanel({
   const dashboardEditing = useDashboardEditMode();
   useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
 
-  const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
   const [problemMap, setProblemMap] = useState<HostProblemMap>({});
   /** Hosts lidos do JSON do dashboard filho (submapas sem queryRefId). */
   const [fetchedSubmapHosts, setFetchedSubmapHosts] = useState<
@@ -223,10 +228,7 @@ export function TopologyPanel({
     return map;
   }, [hostDisplay]);
 
-  const hostMetadata = useMemo(
-    () => ({ ...dataMeta, ...fetchedMeta }),
-    [dataMeta, fetchedMeta]
-  );
+  const hostMetadata = dataMeta;
 
   const displayMap = useMemo(
     () => mergeMapWithQueryHosts(resolvedOptions.map, displayQueryHosts, hostMetadata),
@@ -281,30 +283,30 @@ export function TopologyPanel({
   }, [options, theme, onOptionsChange]);
 
   const mapHostRefs = useMemo(() => {
-    const hostIds = new Set<string>();
     const hostNames = new Set<string>();
     const addHost = (raw: string) => {
       const key = raw.trim();
       if (!key) {
         return;
       }
-      if (/^\d+$/.test(key)) {
-        hostIds.add(key);
-      } else {
-        hostNames.add(key);
-      }
+      hostNames.add(key);
     };
     for (const node of displayMap.nodes) {
       if ((node.type ?? 'host') !== 'host') {
         continue;
       }
-      const id = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
-      const name = node.zabbixHost?.trim();
-      if (id) {
-        hostIds.add(id);
+      const subtitle = node.subtitle?.trim();
+      if (subtitle && isIpv4(subtitle)) {
+        addHost(subtitle);
+        continue;
       }
-      if (name) {
-        hostNames.add(name);
+      const hostKey = node.zabbixHost?.trim();
+      if (hostKey && isIpv4(hostKey)) {
+        addHost(hostKey);
+        continue;
+      }
+      if (hostKey) {
+        addHost(hostKey);
       }
     }
     for (const host of displayQueryHosts) {
@@ -319,7 +321,7 @@ export function TopologyPanel({
       }
     }
     return {
-      hostIds: [...hostIds].sort(),
+      hostIds: [] as string[],
       hostNames: [...hostNames].sort(),
     };
   }, [displayMap.nodes, displayQueryHosts, submapHosts]);
@@ -450,33 +452,14 @@ export function TopologyPanel({
   }, [legacySubmapFetchKey]);
 
   useEffect(() => {
-    const uid = zabbixDatasourceUid;
-    if (!uid || (!mapHostRefs.hostIds.length && !mapHostRefs.hostNames.length)) {
-      setFetchedMeta({});
+    if (!onOptionsChange || !Object.keys(dataMeta).length) {
       return;
     }
-    let cancelled = false;
-    void fetchZabbixHostMetadata(uid, undefined, mapHostRefs.hostNames, mapHostRefs.hostIds).then(
-      (meta) => {
-        if (!cancelled) {
-          setFetchedMeta(meta);
-        }
-      }
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [mapHostRefsKey, mapHostRefs.hostIds, mapHostRefs.hostNames, zabbixDatasourceUid, refreshTick]);
-
-  useEffect(() => {
-    if (!onOptionsChange || !Object.keys(fetchedMeta).length) {
-      return;
-    }
-    const synced = syncMapWithZabbixMeta(latestOptionsRef.current.map, fetchedMeta);
+    const synced = syncMapWithQueryMeta(latestOptionsRef.current.map, dataMeta);
     if (synced) {
       onOptionsChange({ ...latestOptionsRef.current, map: synced });
     }
-  }, [fetchedMeta, onOptionsChange]);
+  }, [dataMeta, onOptionsChange]);
 
   const applyMap = useCallback(
     (map: TopologyMap) => {

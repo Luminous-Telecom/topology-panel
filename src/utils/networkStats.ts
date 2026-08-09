@@ -4,6 +4,7 @@ import {
   NodeLayout,
   lookupProblemCount,
   offlineThresholdForMetric,
+  resolveHostLookupKey,
   resolveNodeStatus,
 } from '../utils';
 
@@ -50,13 +51,8 @@ export function formatRegionStats(
   return `${stats.total} hosts · OK`;
 }
 
-function hostStatusKey(node: TopologyNode): string | undefined {
-  const hostId = node.zabbixHostId?.trim();
-  if (hostId) {
-    return hostId;
-  }
-  const key = node.zabbixHost?.trim();
-  return key || undefined;
+function hostStatusKey(node: TopologyNode, metadata?: HostMetadataMap): string | undefined {
+  return resolveHostLookupKey(node, metadata);
 }
 
 /** Status agregado da região — só ICMP (parado = sem resposta), não alertas Zabbix. */
@@ -101,7 +97,7 @@ export function countRegionStats(
 
     const st = resolveRegionHostStatus(key, statusMap, threshold, metric, options?.hostMetadata);
     const meta = options?.hostMetadata?.[key];
-    const hasAlert = lookupProblemCount(problemMap, key, meta?.hostid) > 0;
+    const hasAlert = lookupProblemCount(problemMap, key, meta?.hostid, options?.hostMetadata) > 0;
 
     if (st === 'offline') {
       offline++;
@@ -193,7 +189,7 @@ export function buildRegionStatsMap(
     }
 
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
-    const names = inside.map((h) => hostStatusKey(h)).filter(Boolean) as string[];
+    const names = inside.map((h) => hostStatusKey(h, hostMetadata)).filter(Boolean) as string[];
     result.set(node.id, countRegionStats(names, statusMap, threshold, baseStatsOptions));
   }
 

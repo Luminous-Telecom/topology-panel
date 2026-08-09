@@ -35,13 +35,13 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveHostLookupKey, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
+import { buildRegionStatsMap, formatRegionStats, hostsInsideNetwork, regionFillColor } from '../utils/networkStats';
 import {
   CanvasTool,
   ContextMenuItem,
@@ -243,6 +243,164 @@ function deleteNodesMenuLabel(count: number): string {
   return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
 }
 
+type DragParentNetwork = {
+  id: string;
+  startX: number;
+  startY: number;
+  startW: number;
+  startH: number;
+  coHosts: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }>;
+};
+
+/** Deslocamento da rede quando o host “empurra” a borda — efeito The Dude. */
+function computeNetworkPullDelta(
+  rawHostX: number,
+  rawHostY: number,
+  hostW: number,
+  hostH: number,
+  netStartX: number,
+  netStartY: number,
+  netW: number,
+  netH: number
+): { dx: number; dy: number } {
+  let dx = 0;
+  let dy = 0;
+  if (rawHostX < netStartX) {
+    dx = rawHostX - netStartX;
+  } else if (rawHostX + hostW > netStartX + netW) {
+    dx = rawHostX + hostW - (netStartX + netW);
+  }
+  if (rawHostY < netStartY) {
+    dy = rawHostY - netStartY;
+  } else if (rawHostY + hostH > netStartY + netH) {
+    dy = rawHostY + hostH - (netStartY + netH);
+  }
+  return { dx, dy };
+}
+
+function findHostParentNetwork(
+  host: TopologyNode,
+  map: TopologyMap,
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>
+): { network: TopologyNode; layout: NodeLayout & TopologyNode } | null {
+  if ((host.type ?? 'host') !== 'host') {
+    return null;
+  }
+  const hostLayout = nodeLayouts.get(host.id);
+  if (!hostLayout) {
+    return null;
+  }
+  for (const network of map.nodes) {
+    if (network.type !== 'network') {
+      continue;
+    }
+    const netLayout = nodeLayouts.get(network.id);
+    if (!netLayout) {
+      continue;
+    }
+    if (host.networkId?.trim() === network.id) {
+      return { network, layout: netLayout };
+    }
+    if (
+      rectsOverlap(
+        hostLayout.x,
+        hostLayout.y,
+        hostLayout.w,
+        hostLayout.h,
+        netLayout.x,
+        netLayout.y,
+        netLayout.w,
+        netLayout.h
+      )
+    ) {
+      return { network, layout: netLayout };
+    }
+  }
+  return null;
+}
+
+function buildParentNetworkDrag(
+  host: TopologyNode,
+  map: TopologyMap,
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>,
+  dragIds: Set<string>
+): DragParentNetwork | undefined {
+  const parent = findHostParentNetwork(host, map, nodeLayouts);
+  if (!parent) {
+    return undefined;
+  }
+  const hostNodes = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
+  const inside = hostsInsideNetwork(parent.network.id, parent.layout, hostNodes, nodeLayouts);
+  const coHosts = inside
+    .filter((h) => !dragIds.has(h.id))
+    .map((h) => {
+      const layout = nodeLayouts.get(h.id);
+      const startW = layout?.w ?? h.width ?? 48;
+      const startH = layout?.h ?? h.height ?? 28;
+      return {
+        id: h.id,
+        startX: h.x,
+        startY: h.y,
+        startW,
+        startH,
+      };
+    });
+  return {
+    id: parent.network.id,
+    startX: parent.layout.x,
+    startY: parent.layout.y,
+    startW: parent.layout.w,
+    startH: parent.layout.h,
+    coHosts,
+  };
+}
+
+function applyNetworkPullFollow(
+  drag: {
+    parentNetwork?: DragParentNetwork;
+  },
+  primary: { startW: number; startH: number },
+  rawPrimaryX: number,
+  rawPrimaryY: number,
+  positions: Record<string, { x: number; y: number }>,
+  snapCorner: (n: number) => number,
+  gridStep: number
+): void {
+  const pn = drag.parentNetwork;
+  if (!pn) {
+    return;
+  }
+  const pull = computeNetworkPullDelta(
+    rawPrimaryX,
+    rawPrimaryY,
+    primary.startW,
+    primary.startH,
+    pn.startX,
+    pn.startY,
+    pn.startW,
+    pn.startH
+  );
+  if (pull.dx === 0 && pull.dy === 0) {
+    return;
+  }
+  positions[pn.id] = {
+    x: snapCorner(pn.startX + pull.dx),
+    y: snapCorner(pn.startY + pull.dy),
+  };
+  for (const co of pn.coHosts) {
+    if (positions[co.id]) {
+      continue;
+    }
+    positions[co.id] = snapNodeCenterToGrid(
+      co.startX + pull.dx,
+      co.startY + pull.dy,
+      co.startW,
+      co.startH,
+      gridStep
+    );
+  }
+}
+
 function buildDragGroupMembers(
   selectedNodeIds: string[],
   nodes: TopologyNode[],
@@ -372,11 +530,11 @@ function nodeFill(
   }
   const metric = effectiveStatusMetric(options);
   const threshold = offlineThresholdForMetric(metric);
-  const hostKey = node.zabbixHost?.trim() ?? '';
+  const lookupKey = resolveHostLookupKey(node, hostMetadata) ?? '';
   const hostId = node.zabbixHostId != null ? String(node.zabbixHostId).trim() : '';
-  const raw = lookupHostStatus(statusMap, hostKey, hostMetadata, hostId || undefined);
+  const raw = lookupHostStatus(statusMap, lookupKey, hostMetadata, hostId || undefined);
   const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
-  const mapped = lookupHostDisplay(hostDisplay, hostKey, hostMetadata, hostId || undefined);
+  const mapped = lookupHostDisplay(hostDisplay, lookupKey, hostMetadata, hostId || undefined);
   const mappedColor = resolveMappedColor?.(mapped?.color) || mapped?.color;
 
   // ICMP 0 (ou perda >= limiar) → offline (mapeamento ou fallback); nunca laranja
@@ -392,8 +550,8 @@ function nodeFill(
   if (
     st === 'online' &&
     options.useZabbixProblems !== false &&
-    (hostId || hostKey) &&
-    lookupProblemCount(problemMap, hostKey, hostId || undefined) > 0
+    (lookupKey || hostId) &&
+    lookupProblemCount(problemMap, lookupKey, hostId || undefined, hostMetadata) > 0
   ) {
     return options.colorAlert || '#EF6C00';
   }
@@ -482,6 +640,7 @@ export function TopologyCanvas({
         startH: number;
         moved: boolean;
         group?: Array<{ id: string; startX: number; startY: number; startW: number; startH: number }>;
+        parentNetwork?: DragParentNetwork;
       }
     | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
     | { kind: 'marquee'; mapX0: number; mapY0: number; additive?: boolean }
@@ -501,6 +660,8 @@ export function TopologyCanvas({
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
   const panRafRef = useRef<number | null>(null);
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
+  /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
+  const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
   const pasteOffsetRef = useRef(0);
@@ -1162,6 +1323,9 @@ export function TopologyCanvas({
       if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
         group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
       }
+      const dragIds = new Set<string>([node.id, ...(group?.map((m) => m.id) ?? [])]);
+      const parentNetwork = buildParentNetworkDrag(node, map, nodeLayouts, dragIds);
+      dragPositionsRef.current = null;
       dragRef.current = {
         kind: 'node',
         node,
@@ -1173,8 +1337,9 @@ export function TopologyCanvas({
         startH: layout?.h ?? node.height ?? 28,
         moved: false,
         group,
+        parentNetwork,
       };
-      e.currentTarget.setPointerCapture(e.pointerId);
+      wrapRef.current?.setPointerCapture(e.pointerId);
     },
     [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
   );
@@ -1203,6 +1368,7 @@ export function TopologyCanvas({
         if (selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id)) {
           group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
         }
+        dragPositionsRef.current = null;
         dragRef.current = {
           kind: 'node',
           node,
@@ -1215,7 +1381,7 @@ export function TopologyCanvas({
           moved: false,
           group,
         };
-        e.currentTarget.setPointerCapture(e.pointerId);
+        wrapRef.current?.setPointerCapture(e.pointerId);
       }
     },
     [beginPan, editable, map.nodes, nodeLayouts, panTool, selectedNodeIds, storedMap]
@@ -1424,6 +1590,9 @@ export function TopologyCanvas({
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           d.moved = true;
         }
+        if (d.moved) {
+          e.preventDefault();
+        }
         const networksLocked = areNetworksLocked(storedMap);
         const rawMembers =
           d.group && d.group.length > 1
@@ -1465,9 +1634,17 @@ export function TopologyCanvas({
           );
           positions[member.id] = { x: snapped.x, y: snapped.y };
         }
-        setDragPreview({ positions });
 
         const primaryPos = positions[primary.id];
+        if (primaryPos) {
+          const rawPrimaryX = primary.startX + dx;
+          const rawPrimaryY = primary.startY + dy;
+          applyNetworkPullFollow(d, primary, rawPrimaryX, rawPrimaryY, positions, snapCoord, gridStep);
+        }
+
+        dragPositionsRef.current = positions;
+        setDragPreview({ positions });
+
         if (primaryPos) {
           const draggedIds = new Set(Object.keys(positions));
           const guideThreshold = Math.max(6, gridStep * 0.5);
@@ -1591,6 +1768,9 @@ export function TopologyCanvas({
   const onPointerUp = useCallback(
     (e: React.PointerEvent, node?: TopologyNode) => {
       const d = dragRef.current;
+      if (!d) {
+        return;
+      }
       dragRef.current = null;
       if (panRafRef.current != null) {
         cancelAnimationFrame(panRafRef.current);
@@ -1670,16 +1850,23 @@ export function TopologyCanvas({
         return;
       }
 
-      if (d?.kind === 'node' && dragPreview?.positions && d.moved) {
-        const moves = Object.entries(dragPreview.positions).map(([nodeId, pos]) => ({
-          nodeId,
-          x: pos.x,
-          y: pos.y,
-        }));
-        persist(moveStoredNodesBulk(storedMap, moves));
+      if (d?.kind === 'node' && d.moved) {
+        const positions = dragPositionsRef.current;
+        if (positions) {
+          const moves = Object.entries(positions).map(([nodeId, pos]) => ({
+            nodeId,
+            x: pos.x,
+            y: pos.y,
+          }));
+          persist(
+            moveStoredNodesBulk(storedMap, moves, (nodeId) => map.nodes.find((n) => n.id === nodeId))
+          );
+        }
+        dragPositionsRef.current = null;
         setDragPreview(null);
         clearDragUi();
       } else if (d?.kind === 'node') {
+        dragPositionsRef.current = null;
         setDragPreview(null);
         clearDragUi();
       }
@@ -1694,32 +1881,34 @@ export function TopologyCanvas({
         setDragPreview(null);
       }
 
-      if (node && d?.kind === 'node' && !d.moved && linkFromId !== null) {
-        completeLink(node.id);
+      const tapNode = d?.kind === 'node' ? d.node : node;
+
+      if (tapNode && d?.kind === 'node' && !d.moved && linkFromId !== null) {
+        completeLink(tapNode.id);
         return;
       }
 
-      if (node && d?.kind === 'node' && !d.moved && linkFromId === null) {
-        if (node.type === 'network' && areNetworksLocked(storedMap)) {
+      if (tapNode && d?.kind === 'node' && !d.moved && linkFromId === null) {
+        if (tapNode.type === 'network' && areNetworksLocked(storedMap)) {
           return;
         }
         if (e.ctrlKey || e.metaKey) {
           setSelectedNodeIds((prev) => {
             const next = new Set(prev);
-            if (next.has(node.id)) {
-              next.delete(node.id);
+            if (next.has(tapNode.id)) {
+              next.delete(tapNode.id);
             } else {
-              next.add(node.id);
+              next.add(tapNode.id);
             }
             return [...next];
           });
         } else {
-          setSelectedNodeIds([node.id]);
+          setSelectedNodeIds([tapNode.id]);
         }
         setSelectedLink(null);
       }
     },
-    [clearDragUi, completeLink, dragPreview, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, storedMap, view]
+    [clearDragUi, completeLink, editable, linkFromId, map.nodes, nodeLayouts, onLinkSelect, openDashboardPicker, openSubmap, persist, storedMap, view]
   );
 
   const onNodeClick = useCallback(
@@ -2699,7 +2888,6 @@ export function TopologyCanvas({
                   className={networkOffline ? styles.offlineBlink : undefined}
                   pointerEvents={networksLocked ? 'none' : 'auto'}
                   onPointerDown={(e) => onNetworkPointerDown(e, node)}
-                  onPointerUp={(e) => onPointerUp(e, node)}
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
                   onContextMenu={(e) => handleContextMenu(e, { node })}
                   style={{
@@ -2936,7 +3124,6 @@ export function TopologyCanvas({
                 data-node-id={node.id}
                 className={isOfflineBlink ? styles.offlineBlink : undefined}
                 onPointerDown={(e) => onNodePointerDown(e, node)}
-                onPointerUp={(e) => onPointerUp(e, node)}
                 onClick={(e) => onNodeClick(e, node)}
                 onDoubleClick={(e) => onNodeDoubleClick(e, node)}
                 onContextMenu={(e) => handleContextMenu(e, { node })}

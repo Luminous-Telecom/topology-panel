@@ -297,14 +297,16 @@ export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, 
 /** Move vários nós de uma vez (arraste em grupo). */
 export function moveStoredNodesBulk(
   map: TopologyMap,
-  moves: Array<{ nodeId: string; x: number; y: number }>
+  moves: Array<{ nodeId: string; x: number; y: number }>,
+  resolveNode?: (nodeId: string) => TopologyNode | undefined
 ): TopologyMap {
   let next = map;
   for (const { nodeId, x, y } of moves) {
-    const node = next.nodes.find((n) => n.id === nodeId);
-    if (node) {
-      next = moveStoredNode(next, node, x, y);
+    const node = next.nodes.find((n) => n.id === nodeId) ?? resolveNode?.(nodeId);
+    if (!node) {
+      continue;
     }
+    next = moveStoredNode(next, node, x, y);
   }
   return next;
 }

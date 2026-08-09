@@ -19,6 +19,7 @@ interface ZabbixHost {
 }
 
 const BATCH_SIZE = 50;
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 /** Zabbix host.status — 0 monitorado, 1 desativado (não entra em ICMP/stats). */
 const ZABBIX_HOST_MONITORED = 0;
 
@@ -71,6 +72,59 @@ function addHostMeta(result: HostMetadataMap, h: ZabbixHost): void {
   }
   if (technical) {
     result[technical] = entry;
+  }
+  if (ip && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+    result[ip] = entry;
+  }
+}
+
+/** host.get com filter.ip — hostinterface.get não é permitido pelo proxy do datasource Grafana. */
+async function fetchHostsByInterfaceIp(
+  datasourceUid: string,
+  ips: string[],
+  withInterfaces = true
+): Promise<ZabbixHost[]> {
+  const missing = ips.map((ip) => ip.trim()).filter((ip) => IPV4.test(ip));
+  if (!missing.length) {
+    return [];
+  }
+  const hosts: ZabbixHost[] = [];
+  for (const batch of chunk(missing, BATCH_SIZE)) {
+    try {
+      const params: {
+        filter: { ip: string[]; status: number };
+        output: string[];
+        selectInterfaces?: string[];
+      } = {
+        filter: { ip: batch, status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+      };
+      if (withInterfaces) {
+        params.selectInterfaces = ['ip', 'main', 'type'];
+      }
+      const batchHosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', params);
+      for (const h of batchHosts ?? []) {
+        hosts.push(h);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+  return hosts;
+}
+
+async function fetchByInterfaceIp(
+  datasourceUid: string,
+  ips: string[],
+  result: HostMetadataMap
+): Promise<void> {
+  const missing = ips.filter((ip) => IPV4.test(ip.trim()) && !result[ip.trim()]?.name);
+  if (!missing.length) {
+    return;
+  }
+  const hosts = await fetchHostsByInterfaceIp(datasourceUid, missing);
+  for (const h of hosts) {
+    addHostMeta(result, h);
   }
 }
 
@@ -156,8 +210,13 @@ export async function fetchZabbixHostMetadata(
 
   const names = hostNames.map((h) => h.trim()).filter(Boolean);
   const ids = [...new Set(hostIds.map((h) => h.trim()).filter(Boolean))];
+  const ips = names.filter((n) => IPV4.test(n));
+  const namesOnly = names.filter((n) => !IPV4.test(n));
 
   try {
+    if (ips.length) {
+      await fetchByInterfaceIp(datasourceUid, ips, result);
+    }
     for (const batch of chunk(ids, BATCH_SIZE)) {
       const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
         hostids: batch,
@@ -168,10 +227,10 @@ export async function fetchZabbixHostMetadata(
         addHostMeta(result, h);
       }
     }
-    if (names.length) {
-      await fetchByVisibleNames(datasourceUid, names, result);
+    if (namesOnly.length) {
+      await fetchByVisibleNames(datasourceUid, namesOnly, result);
       // Fallback por nome técnico
-      const stillMissing = names.filter((n) => !result[n.trim()]);
+      const stillMissing = namesOnly.filter((n) => !result[n.trim()]);
       for (const batch of chunk(stillMissing, BATCH_SIZE)) {
         const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
           filter: { host: batch, status: ZABBIX_HOST_MONITORED },
@@ -183,7 +242,7 @@ export async function fetchZabbixHostMetadata(
         }
       }
       if (groupName) {
-        await fetchByGroup(datasourceUid, groupName, names, result);
+        await fetchByGroup(datasourceUid, groupName, namesOnly, result);
       }
     }
   } catch {
@@ -348,6 +407,35 @@ interface ZabbixHostRef {
   hostid: string;
   host?: string;
   name?: string;
+  ip?: string;
+}
+
+function hostRefFromZabbixHost(h: ZabbixHost): ZabbixHostRef | undefined {
+  const hostid = asZabbixId(h.hostid);
+  if (!hostid) {
+    return undefined;
+  }
+  return {
+    hostid,
+    host: h.host,
+    name: h.name,
+    ip: pickMainIp(h.interfaces),
+  };
+}
+
+function mergeHostRef(merged: Map<string, ZabbixHostRef>, h: ZabbixHost): void {
+  const ref = hostRefFromZabbixHost(h);
+  if (!ref) {
+    return;
+  }
+  const existing = merged.get(ref.hostid);
+  if (existing) {
+    existing.host = existing.host || ref.host;
+    existing.name = existing.name || ref.name;
+    existing.ip = existing.ip || ref.ip;
+    return;
+  }
+  merged.set(ref.hostid, { ...ref });
 }
 
 interface ZabbixTriggerProblem {
@@ -355,7 +443,7 @@ interface ZabbixTriggerProblem {
   hosts?: ZabbixProblemHost[];
 }
 
-function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost): void {
+function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost, ip?: string): void {
   const hostid = asZabbixId(h.hostid);
   const visible = h.name?.trim();
   const technical = h.host?.trim();
@@ -372,6 +460,10 @@ function addProblemHost(result: HostProblemMap, h: ZabbixProblemHost): void {
   if (technical) {
     bump(technical);
   }
+  const ipKey = ip?.trim();
+  if (ipKey && IPV4.test(ipKey)) {
+    bump(ipKey);
+  }
 }
 
 async function fetchHostIdsForProblems(
@@ -385,15 +477,13 @@ async function fetchHostIdsForProblems(
   const ids = [...new Set((hostIds ?? []).map((h) => asZabbixId(h)).filter(Boolean))];
   if (ids.length) {
     for (const batch of chunk(ids, BATCH_SIZE)) {
-      const hosts = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
+      const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
         hostids: batch,
         output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
       });
       for (const h of hosts ?? []) {
-        const id = asZabbixId(h.hostid);
-        if (id) {
-          merged.set(id, { hostid: id, host: h.host, name: h.name });
-        }
+        mergeHostRef(merged, h);
       }
     }
   }
@@ -421,18 +511,26 @@ async function fetchHostIdsForProblems(
 
   if (hostNames?.length) {
     const names = hostNames.map((h) => h.trim()).filter(Boolean);
-    const byVisible = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
-      filter: { name: names, status: ZABBIX_HOST_MONITORED },
-      output: ['hostid', 'host', 'name'],
-    });
-    const byTechnical = await zabbixCall<ZabbixHostRef[]>(datasourceUid, 'host.get', {
-      filter: { host: names, status: ZABBIX_HOST_MONITORED },
-      output: ['hostid', 'host', 'name'],
-    });
-    for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
-      const id = asZabbixId(h.hostid);
-      if (id) {
-        merged.set(id, { hostid: id, host: h.host, name: h.name });
+    const ips = names.filter((n) => IPV4.test(n));
+    const namesOnly = names.filter((n) => !IPV4.test(n));
+
+    for (const h of await fetchHostsByInterfaceIp(datasourceUid, ips)) {
+      mergeHostRef(merged, h);
+    }
+
+    if (namesOnly.length) {
+      const byVisible = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        filter: { name: namesOnly, status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
+      });
+      const byTechnical = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        filter: { host: namesOnly, status: ZABBIX_HOST_MONITORED },
+        output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
+      });
+      for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
+        mergeHostRef(merged, h);
       }
     }
   }
@@ -471,7 +569,7 @@ export async function fetchZabbixHostProblems(
         const id = asZabbixId(h.hostid);
         const ref = id ? hostById.get(id) : undefined;
         if (ref) {
-          addProblemHost(result, { hostid: ref.hostid, name: ref.name, host: ref.host });
+          addProblemHost(result, { hostid: ref.hostid, name: ref.name, host: ref.host }, ref.ip);
         }
       }
     };
@@ -594,6 +692,7 @@ interface ResolvedZabbixHost {
   hostid: string;
   visible?: string;
   technical?: string;
+  ip?: string;
 }
 
 async function resolveZabbixHostsBatch(
@@ -602,55 +701,60 @@ async function resolveZabbixHostsBatch(
   hostIds: string[] = []
 ): Promise<ResolvedZabbixHost[]> {
   const names = [...new Set(hostNames.map((h) => h.trim()).filter(Boolean))];
+  const ips = names.filter((n) => IPV4.test(n));
+  const namesOnly = names.filter((n) => !IPV4.test(n));
   const ids = [...new Set(hostIds.map((h) => asZabbixId(h)).filter(Boolean))];
   const byId = new Map<string, ResolvedZabbixHost>();
+
+  const absorbResolved = (h: ZabbixHost) => {
+    const hostid = asZabbixId(h.hostid);
+    if (!hostid) {
+      return;
+    }
+    const visible = h.name?.trim();
+    const technical = h.host?.trim();
+    const ip = pickMainIp(h.interfaces);
+    const existing = byId.get(hostid);
+    if (existing) {
+      existing.visible = existing.visible || visible;
+      existing.technical = existing.technical || technical;
+      existing.ip = existing.ip || ip;
+      return;
+    }
+    byId.set(hostid, { hostid, visible, technical, ip });
+  };
 
   for (const batch of chunk(ids, BATCH_SIZE)) {
     const hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
       hostids: batch,
       output: ['hostid', 'host', 'name'],
+      selectInterfaces: ['ip', 'main', 'type'],
     });
     for (const h of hosts ?? []) {
-      const hostid = asZabbixId(h.hostid);
-      if (!hostid) {
-        continue;
-      }
-      byId.set(hostid, {
-        hostid,
-        visible: h.name?.trim(),
-        technical: h.host?.trim(),
-      });
+      absorbResolved(h);
     }
   }
 
-  for (const batch of chunk(names, BATCH_SIZE)) {
+  for (const h of await fetchHostsByInterfaceIp(datasourceUid, ips)) {
+    absorbResolved(h);
+  }
+
+  for (const batch of chunk(namesOnly, BATCH_SIZE)) {
     const [byVisible, byTechnical] = await Promise.all([
       zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
         filter: { name: batch, status: ZABBIX_HOST_MONITORED },
         output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
       }),
       zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
         filter: { host: batch, status: ZABBIX_HOST_MONITORED },
         output: ['hostid', 'host', 'name'],
+        selectInterfaces: ['ip', 'main', 'type'],
       }),
     ]);
 
     for (const h of [...(byVisible ?? []), ...(byTechnical ?? [])]) {
-      const hostid = asZabbixId(h.hostid);
-      if (!hostid) {
-        continue;
-      }
-      const existing = byId.get(hostid);
-      if (existing) {
-        existing.visible = existing.visible || h.name?.trim();
-        existing.technical = existing.technical || h.host?.trim();
-      } else {
-        byId.set(hostid, {
-          hostid,
-          visible: h.name?.trim(),
-          technical: h.host?.trim(),
-        });
-      }
+      absorbResolved(h);
     }
   }
 
@@ -711,6 +815,9 @@ export async function fetchZabbixHostIcmpStatusMap(
       if (host.technical) {
         result[host.technical] = value;
       }
+      if (host.ip && IPV4.test(host.ip)) {
+        result[host.ip] = value;
+      }
     }
   } catch {
     // mantém mapa parcial/vazio
@@ -729,6 +836,13 @@ async function resolveZabbixHostId(datasourceUid: string, hostName: string): Pro
   const name = hostName.trim();
   if (!name) {
     return undefined;
+  }
+  if (IPV4.test(name)) {
+    const byIp = await fetchHostsByInterfaceIp(datasourceUid, [name], false);
+    const ipHostId = asZabbixId(byIp[0]?.hostid);
+    if (ipHostId) {
+      return ipHostId;
+    }
   }
   let hosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
     filter: { name: [name] },
