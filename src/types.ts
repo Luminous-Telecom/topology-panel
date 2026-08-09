@@ -196,6 +196,19 @@ export interface TopologyPanelOptions {
   legendLink?: boolean;
   legendDownload?: boolean;
   legendUpload?: boolean;
+  /**
+   * Nome da variável Grafana na barra do painel de controle (ex.: mapa → $mapa / var-mapa).
+   * Configure as opções em: Dashboard → Configurações → Variáveis.
+   */
+  dashboardNavVariable?: string;
+  /**
+   * Seletor extra no canto do mapa (opcional). Preferir a variável Grafana do dashboard.
+   */
+  showDashboardNav?: boolean;
+  /** Rótulo do botão do seletor no mapa (só se showDashboardNav) */
+  dashboardNavLabel?: string;
+  /** Dashboards do botão no mapa (só se showDashboardNav) */
+  dashboardNavChoices?: TopologyDashboardChoice[];
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -263,6 +276,10 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   legendLink: false,
   legendDownload: false,
   legendUpload: false,
+  dashboardNavVariable: 'mapa',
+  showDashboardNav: false,
+  dashboardNavLabel: 'Dashboards',
+  dashboardNavChoices: [],
 });
 
 /** Host name -> last status value (ICMP rtt em segundos, ou perda %) */

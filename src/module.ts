@@ -1,5 +1,6 @@
 import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
+import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
 import { TopologyPanelOptions, defaultOptions } from './types';
 
@@ -15,6 +16,38 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
+      })
+      .addBooleanSwitch({
+        path: 'showDashboardNav',
+        name: 'Botão extra no mapa',
+        description:
+          'Opcional. O select principal é a variável Grafana na barra do painel de controle (Configurações → Variáveis → mapa)',
+        defaultValue: false,
+        category: ['Navegação'],
+      })
+      .addTextInput({
+        path: 'dashboardNavVariable',
+        name: 'Nome da variável Grafana',
+        description: 'Variável na barra do dashboard (ex.: mapa). Ao trocar, abre o dashboard do valor (UID).',
+        defaultValue: 'mapa',
+        category: ['Navegação'],
+      })
+      .addTextInput({
+        path: 'dashboardNavLabel',
+        name: 'Rótulo do botão no mapa',
+        defaultValue: 'Dashboards',
+        category: ['Navegação'],
+        showIf: (opts) => opts.showDashboardNav === true,
+      })
+      .addCustomEditor({
+        id: 'dashboardNavChoices',
+        path: 'dashboardNavChoices',
+        name: 'Dashboards do botão no mapa',
+        description: 'Só para o botão opcional no canvas. A lista da variável Grafana é editada em Configurações → Variáveis.',
+        editor: DashboardNavChoicesEditor,
+        category: ['Navegação'],
+        defaultValue: [],
+        showIf: (opts) => opts.showDashboardNav === true,
       })
       .addBooleanSwitch({
         path: 'showGrid',

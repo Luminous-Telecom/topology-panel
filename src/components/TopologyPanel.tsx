@@ -12,6 +12,7 @@ import { fetchZabbixHostIcmpStatusMap, fetchZabbixHostMetadata, fetchZabbixHostP
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
+import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
@@ -22,6 +23,8 @@ const ICMP_REFRESH_MS = 60_000;
 export function TopologyPanel({ options, width, height, onOptionsChange }: Props) {
   const theme = useTheme2();
   const dashboardEditing = useDashboardEditMode();
+  /** Variável Grafana `$mapa` na barra do painel de controle → navega entre dashboards */
+  useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
   const [icmpStatusMap, setIcmpStatusMap] = useState<HostStatusMap>({});
   const [icmpFetchDone, setIcmpFetchDone] = useState(false);

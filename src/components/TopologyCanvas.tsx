@@ -48,6 +48,7 @@ import {
   TopologyToast,
   TopologyToolbar,
 } from './TopologyContextMenu';
+import { DashboardNavButton } from './DashboardNavButton';
 import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
 import { NodeEditModal } from './NodeEditModal';
 import { BulkHostIconModal } from './BulkHostIconModal';
@@ -2085,6 +2086,13 @@ export function TopologyCanvas({
         onToggleFullscreen={() => void toggleFullscreen()}
         showEditControls={canPersist}
       />
+
+      {options.showDashboardNav !== false && (
+        <DashboardNavButton
+          label={options.dashboardNavLabel?.trim() || 'Dashboards'}
+          choices={options.dashboardNavChoices ?? []}
+        />
+      )}
 
       {selectedLinkLabels && (
         <TopologyEditHint>
