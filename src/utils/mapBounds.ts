@@ -56,3 +56,25 @@ export function layoutCenter(layout: LayoutBox): { x: number; y: number } {
 export function isNetworkNode(node: TopologyNode): boolean {
   return node.type === 'network';
 }
+
+export function pointInLayoutBox(px: number, py: number, layout: LayoutBox): boolean {
+  return px >= layout.x && px <= layout.x + layout.w && py >= layout.y && py <= layout.y + layout.h;
+}
+
+/** Rede cujo retângulo contém o ponto (ordem inversa — rede “por cima” vence). */
+export function findNetworkAtMapPoint(
+  mapX: number,
+  mapY: number,
+  nodes: TopologyNode[],
+  nodeLayouts: Map<string, LayoutBox>
+): TopologyNode | undefined {
+  const networks = nodes.filter(isNetworkNode);
+  for (let i = networks.length - 1; i >= 0; i -= 1) {
+    const node = networks[i];
+    const layout = nodeLayouts.get(node.id);
+    if (layout && pointInLayoutBox(mapX, mapY, layout)) {
+      return node;
+    }
+  }
+  return undefined;
+}

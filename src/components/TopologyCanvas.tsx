@@ -48,7 +48,6 @@ import {
   ContextMenuItem,
   TopologyColorLegend,
   TopologyContextMenu,
-  TopologyEditHint,
   TopologyToast,
   TopologyToolbar,
 } from './TopologyContextMenu';
@@ -188,9 +187,6 @@ type ContextState = {
   link?: TopologyLink;
 };
 
-/** Dicas de atalhos de seleção somem depois desse tempo, deixando só a ação (Alterar tipo etc.) visível. */
-const SELECTION_TIPS_DURATION_MS = 2000;
-
 /** Intervalo máximo entre dois cliques para abrir propriedades (pointer capture bloqueia dblclick nativo). */
 const NODE_DOUBLE_TAP_MS = 400;
 
@@ -218,45 +214,6 @@ function isSubmapNode(node: TopologyNode): boolean {
 
 function canMoveSelectedNode(node: TopologyNode, networksLocked: boolean): boolean {
   return node.type === 'network' ? !networksLocked : true;
-}
-
-function selectionHintLabel(nodes: TopologyNode[]): string {
-  let hosts = 0;
-  let submaps = 0;
-  let networks = 0;
-  let statics = 0;
-  let pickers = 0;
-  for (const n of nodes) {
-    const t = n.type ?? 'host';
-    if (t === 'submap') {
-      submaps++;
-    } else if (t === 'network') {
-      networks++;
-    } else if (t === 'static') {
-      statics++;
-    } else if (t === 'dashboard_picker') {
-      pickers++;
-    } else {
-      hosts++;
-    }
-  }
-  const parts: string[] = [];
-  if (hosts) {
-    parts.push(`${hosts} host${hosts > 1 ? 's' : ''}`);
-  }
-  if (submaps) {
-    parts.push(`${submaps} submapa${submaps > 1 ? 's' : ''}`);
-  }
-  if (pickers) {
-    parts.push(`${pickers} seletor${pickers > 1 ? 'es' : ''}`);
-  }
-  if (networks) {
-    parts.push(`${networks} rede${networks > 1 ? 's' : ''}`);
-  }
-  if (statics) {
-    parts.push(`${statics} estático${statics > 1 ? 's' : ''}`);
-  }
-  return parts.length ? parts.join(' · ') : `${nodes.length} item(ns)`;
 }
 
 function deleteNodesMenuLabel(count: number): string {
@@ -553,7 +510,6 @@ export function TopologyCanvas({
   const pinchActiveRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [showSelectionTips, setShowSelectionTips] = useState(false);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [bulkIconEditOpen, setBulkIconEditOpen] = useState(false);
   const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
@@ -1194,40 +1150,16 @@ export function TopologyCanvas({
     [options.enablePan, view.x, view.y]
   );
 
-  const onCanvasPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (e.button !== 0) {
-        return;
-      }
-      setSelectedLink(null);
-      setContextMenu(null);
-      if (panTool) {
-        setSelectedNodeIds([]);
-        beginPan(e);
-        return;
-      }
-      // Seta: arrastar no fundo = caixa de seleção (como mouse de seleção múltipla).
-      if (editable) {
-        e.stopPropagation();
-        const el = wrapRef.current;
-        if (!el) {
-          return;
-        }
-        const rect = el.getBoundingClientRect();
-        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        if (!additive) {
-          setSelectedNodeIds([]);
-        }
-        dragRef.current = { kind: 'marquee', mapX0: x, mapY0: y, additive };
-        setMarqueeRect({ x0: x, y0: y, x1: x, y1: y });
-        wrapRef.current?.setPointerCapture(e.pointerId);
-        return;
-      }
+  const beginMarquee = useCallback((e: React.PointerEvent, mapX: number, mapY: number) => {
+    e.stopPropagation();
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!additive) {
       setSelectedNodeIds([]);
-    },
-    [beginPan, editable, panTool, view]
-  );
+    }
+    dragRef.current = { kind: 'marquee', mapX0: mapX, mapY0: mapY, additive };
+    setMarqueeRect({ x0: mapX, y0: mapY, x1: mapX, y1: mapY });
+    wrapRef.current?.setPointerCapture(e.pointerId);
+  }, []);
 
   const onLinkSelect = useCallback((link: TopologyLink) => {
     setSelectedNodeIds([]);
@@ -1380,12 +1312,6 @@ export function TopologyCanvas({
       const pointerWorld = clientToMapCoords(clientX, clientY, rect, currentView);
       const rawPrimaryX = pointerWorld.x - d.grabOffsetWorld.x;
       const rawPrimaryY = pointerWorld.y - d.grabOffsetWorld.y;
-      if (Math.abs(rawPrimaryX - d.startX) > 2 / currentView.scale || Math.abs(rawPrimaryY - d.startY) > 2 / currentView.scale) {
-        d.moved = true;
-      }
-      if (d.moved && e) {
-        e.preventDefault();
-      }
       const networksLocked = areNetworksLocked(storedMap);
       const rawMembers =
         d.group && d.group.length > 1
@@ -1405,6 +1331,12 @@ export function TopologyCanvas({
       });
       if (members.length === 0) {
         return;
+      }
+      if (Math.abs(rawPrimaryX - d.startX) > 2 / currentView.scale || Math.abs(rawPrimaryY - d.startY) > 2 / currentView.scale) {
+        d.moved = true;
+      }
+      if (d.moved && e) {
+        e.preventDefault();
       }
       const primary = members.find((m) => m.id === d.node.id) ?? members[0];
       const primarySnapped = snapNodeCenterToGrid(
@@ -1567,7 +1499,9 @@ export function TopologyCanvas({
         group,
       };
       wrapRef.current?.setPointerCapture(e.pointerId);
-      startEdgePanLoop();
+      if (canMoveSelectedNode(node, networksLocked)) {
+        startEdgePanLoop();
+      }
     },
     [map.nodes, nodeLayouts, selectedNodeIds, startEdgePanLoop, storedMap]
   );
@@ -1610,7 +1544,14 @@ export function TopologyCanvas({
       const networksLocked = areNetworksLocked(storedMap);
 
       if (networksLocked) {
-        beginPan(e, node);
+        if (!panTool && editable) {
+          const el = wrapRef.current;
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+            beginMarquee(e, x, y);
+          }
+        }
         return;
       }
 
@@ -1623,7 +1564,36 @@ export function TopologyCanvas({
         );
       }
     },
-    [beginNodeDrag, beginPan, editable, nodeLayouts, panTool, storedMap]
+    [beginMarquee, beginNodeDrag, beginPan, editable, nodeLayouts, panTool, storedMap, view]
+  );
+
+  const onCanvasPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) {
+        return;
+      }
+      setSelectedLink(null);
+      setContextMenu(null);
+      if (panTool) {
+        setSelectedNodeIds([]);
+        beginPan(e);
+        return;
+      }
+      // Seta: arrastar no fundo = caixa de seleção (como mouse de seleção múltipla).
+      if (editable) {
+        e.stopPropagation();
+        const el = wrapRef.current;
+        if (!el) {
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+        beginMarquee(e, x, y);
+        return;
+      }
+      setSelectedNodeIds([]);
+    },
+    [beginMarquee, beginPan, editable, view]
   );
 
   const onPointerMove = useCallback(
@@ -1893,10 +1863,6 @@ export function TopologyCanvas({
         if (tryDoubleTapOpenProperties(tapNode)) {
           return;
         }
-        if (tapNode.type === 'network' && areNetworksLocked(storedMap)) {
-          lastNodeTapRef.current = null;
-          return;
-        }
         if (e.ctrlKey || e.metaKey) {
           setSelectedNodeIds((prev) => {
             const next = new Set(prev);
@@ -1952,16 +1918,6 @@ export function TopologyCanvas({
     },
     [editable, openDashboardPicker, openNodeProperties, openSubmap]
   );
-
-  useEffect(() => {
-    if (selectedNodeIds.length === 0) {
-      setShowSelectionTips(false);
-      return;
-    }
-    setShowSelectionTips(true);
-    const timer = window.setTimeout(() => setShowSelectionTips(false), SELECTION_TIPS_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [selectedNodeIds]);
 
   const buildToolsMenu = useCallback(
     (node: TopologyNode): ContextMenuItem | null => {
@@ -2551,20 +2507,6 @@ export function TopologyCanvas({
     [gridStep, majorGridEvery]
   );
 
-  const selectedLinkLabels = useMemo(() => {
-    if (!selectedLink) {
-      return null;
-    }
-    const fromNode = map.nodes.find((n) => n.id === selectedLink.from);
-    const toNode = map.nodes.find((n) => n.id === selectedLink.to);
-    const fromLabel = (fromNode?.label ?? nodeLayouts.get(selectedLink.from)?.label)?.trim();
-    const toLabel = (toNode?.label ?? nodeLayouts.get(selectedLink.to)?.label)?.trim();
-    if (!fromLabel || !toLabel) {
-      return null;
-    }
-    return { from: fromLabel, to: toLabel, medium: resolveLinkMedium(selectedLink) };
-  }, [map.nodes, nodeLayouts, selectedLink]);
-
   const legendItems = useMemo(() => {
     if (options.showLegend === false) {
       return [];
@@ -2739,68 +2681,6 @@ export function TopologyCanvas({
           label={options.dashboardNavLabel?.trim() || 'Dashboards'}
           choices={options.dashboardNavChoices ?? []}
         />
-      )}
-
-      {selectedLinkLabels && (
-        <TopologyEditHint>
-          Cabo ({selectedLinkLabels.medium === 'radio' ? 'Rádio' : 'Fibra'}): origem{' '}
-          <strong>{selectedLinkLabels.from}</strong> → destino <strong>{selectedLinkLabels.to}</strong>
-          {editable ? (
-            <>
-              {' '}
-              · Arraste para desviar · Duplo-clique na curva remove · Direito → reta
-            </>
-          ) : (
-            <> (clique no fundo para desmarcar)</>
-          )}
-        </TopologyEditHint>
-      )}
-
-      {linkFromId !== null && editable && (
-        <TopologyEditHint>
-          {linkFromId === '' ? 'Clique no primeiro host do link' : 'Clique no host de destino (Esc cancela)'}
-        </TopologyEditHint>
-      )}
-
-      {editable && selectedNodeIds.length > 0 && (
-        <TopologyEditHint>
-          <strong>{selectionHintLabel(selectedNodeIds.map((id) => map.nodes.find((n) => n.id === id)).filter((n): n is TopologyNode => Boolean(n)))}</strong>
-          {' selecionado(s).'}
-          {selectedHostNodes.length > 0 && (
-            <>
-              {' '}
-              <span
-                style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                onClick={openBulkIconEdit}
-              >
-                Alterar tipo
-              </span>
-              {' · '}
-              <span
-                style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                onClick={openBulkCredsEdit}
-              >
-                Usuário/senha
-              </span>
-              {(selectedSubmapNodes.length > 0 || showSelectionTips) && ' · '}
-            </>
-          )}
-          {selectedSubmapNodes.length > 0 && (
-            <>
-              {' '}
-              <span
-                style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                onClick={openBulkSubmapEdit}
-              >
-                Editar submapas
-              </span>
-              {showSelectionTips && ' · '}
-            </>
-          )}
-          {showSelectionTips &&
-            (selectedHostNodes.length === 0 && selectedSubmapNodes.length === 0 ? ' ' : '') +
-              'Arraste vazio seleciona · Shift/Ctrl soma · Ctrl+clique alterna · Ctrl+C/V copiar/colar · Del excluir · Esc limpa'}
-        </TopologyEditHint>
       )}
 
       {editable && showEmptyHint && (
