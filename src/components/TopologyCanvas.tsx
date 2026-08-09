@@ -2391,6 +2391,15 @@ export function TopologyCanvas({
               const fill = resolveColor(fillRaw);
               const networkOffline =
                 Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
+              const networkAlert =
+                Boolean(
+                  icmpReady &&
+                    stats &&
+                    !stats.loadFailed &&
+                    stats.total > 0 &&
+                    stats.offline === 0 &&
+                    stats.alert > 0
+                );
               const networkOnline =
                 Boolean(
                   icmpReady &&
@@ -2398,16 +2407,19 @@ export function TopologyCanvas({
                     !stats.loadFailed &&
                     stats.total > 0 &&
                     stats.offline === 0 &&
-                    (stats.online > 0 || stats.alert > 0)
+                    stats.alert === 0 &&
+                    stats.online > 0
                 );
               const strokeRaw =
                 stats && stats.offline > 0
                   ? options.colorOffline
-                  : networkOnline
-                    ? options.colorOnline
-                    : node.borderColor ?? options.colorNetworkBorder;
+                  : networkAlert
+                    ? options.colorAlert
+                    : networkOnline
+                      ? options.colorOnline
+                      : node.borderColor ?? options.colorNetworkBorder;
               const stroke = resolveColor(strokeRaw);
-              const strokeOpacity = networkOffline ? 1 : networkOnline ? 0.35 : 0.85;
+              const strokeOpacity = networkOffline ? 1 : networkAlert ? 0.85 : networkOnline ? 0.35 : 0.85;
               const statsLabel = stats ? formatRegionStats(stats, icmpReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
@@ -2487,7 +2499,9 @@ export function TopologyCanvas({
                       y={statsY}
                       textAnchor="start"
                       dominantBaseline="middle"
-                      fill={stats!.offline > 0 ? '#ffcdd2' : '#c8e6c9'}
+                      fill={
+                        stats!.offline > 0 ? '#ffcdd2' : stats!.alert > 0 ? '#ffcc80' : '#c8e6c9'
+                      }
                       fontSize={statsFontSize}
                       fontFamily="Inter, Helvetica, Arial, sans-serif"
                       pointerEvents="none"

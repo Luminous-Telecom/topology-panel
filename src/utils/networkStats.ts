@@ -43,6 +43,10 @@ export function formatRegionStats(
     const n = stats.offline;
     return `${n} parado${n > 1 ? 's' : ''} · ${stats.total} hosts`;
   }
+  if (stats.alert > 0) {
+    const n = stats.alert;
+    return `${n} alerta${n > 1 ? 's' : ''} · ${stats.total} hosts`;
+  }
   return `${stats.total} hosts · OK`;
 }
 
@@ -198,7 +202,7 @@ export function buildRegionStatsMap(
 
 export function regionFillColor(
   stats: RegionHostStats | undefined,
-  options: Pick<TopologyPanelOptions, 'colorOnline' | 'colorOffline' | 'colorSubmap' | 'colorNetworkFill'>,
+  options: Pick<TopologyPanelOptions, 'colorOnline' | 'colorOffline' | 'colorAlert' | 'colorSubmap' | 'colorNetworkFill'>,
   kind: 'network' | 'submap',
   icmpReady = true
 ): string | undefined {
@@ -221,7 +225,10 @@ export function regionFillColor(
   if (stats.offline > 0) {
     return 'rgba(198,40,40,0.22)';
   }
-  if (stats.online > 0 || stats.alert > 0) {
+  if (stats.alert > 0) {
+    return 'rgba(239,108,0,0.18)';
+  }
+  if (stats.online > 0) {
     return 'rgba(46,125,50,0.07)';
   }
   return options.colorNetworkFill;
