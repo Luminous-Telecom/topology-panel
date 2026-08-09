@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { Icon, useTheme2 } from '@grafana/ui';
-import { FaArrowPointer, FaHand } from 'react-icons/fa6';
+import { FaArrowPointer, FaCopy, FaHand, FaPaste } from 'react-icons/fa6';
 import { TopologyNode, TopologyNodeType } from '../types';
 import { resolvePanelColor } from '../utils/panelColors';
 
@@ -665,8 +665,12 @@ export function TopologyToolbar({
   networksLocked,
   canUndo,
   canRedo,
+  canCopy,
+  canPaste,
   onUndo,
   onRedo,
+  onCopy,
+  onPaste,
   onToggleLock,
   onToggleNetworksLock,
   flowPaused,
@@ -685,8 +689,12 @@ export function TopologyToolbar({
   networksLocked?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
+  canCopy?: boolean;
+  canPaste?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
   onToggleLock?: () => void;
   onToggleNetworksLock?: () => void;
   flowPaused: boolean;
@@ -711,6 +719,13 @@ export function TopologyToolbar({
     fontSize: 11,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
+  });
+
+  const iconBtnStyle = (disabled = false): React.CSSProperties => ({
+    ...btnStyle(false, false, disabled),
+    padding: '4px 8px',
+    minWidth: 30,
+    justifyContent: 'center',
   });
 
   const toolBtnStyle = (active: boolean): React.CSSProperties => ({
@@ -753,20 +768,40 @@ export function TopologyToolbar({
             disabled={!canUndo}
             onClick={onUndo}
             title="Desfazer (Ctrl+Z)"
-            style={btnStyle(false, false, !canUndo)}
+            aria-label="Desfazer"
+            style={iconBtnStyle(!canUndo)}
           >
             <Icon name="arrow-left" size="sm" />
-            Desfazer
           </button>
           <button
             type="button"
             disabled={!canRedo}
             onClick={onRedo}
             title="Refazer (Ctrl+Shift+Z)"
-            style={btnStyle(false, false, !canRedo)}
+            aria-label="Refazer"
+            style={iconBtnStyle(!canRedo)}
           >
             <Icon name="arrow-right" size="sm" />
-            Refazer
+          </button>
+          <button
+            type="button"
+            disabled={!canCopy}
+            onClick={onCopy}
+            title="Copiar seleção (Ctrl+C)"
+            aria-label="Copiar seleção"
+            style={iconBtnStyle(!canCopy)}
+          >
+            <FaCopy size={13} />
+          </button>
+          <button
+            type="button"
+            disabled={!canPaste}
+            onClick={onPaste}
+            title="Colar (Ctrl+V)"
+            aria-label="Colar"
+            style={iconBtnStyle(!canPaste)}
+          >
+            <FaPaste size={13} />
           </button>
           <button
             type="button"

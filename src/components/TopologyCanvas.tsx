@@ -69,6 +69,13 @@ import {
   nearestWaypointIndex,
 } from '../utils/linkGeometry';
 import { LINK_FLOW_DASH, LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
+import {
+  copyTopologySelection,
+  getTopologyClipboard,
+  hasTopologyClipboard,
+  pasteTopologySelection,
+  subscribeTopologyClipboard,
+} from '../utils/topologyClipboard';
 
 interface Props {
   map: TopologyMap;
@@ -426,6 +433,13 @@ export function TopologyCanvas({
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
   const [searchOpen, setSearchOpen] = useState(false);
+  const [clipboardReady, setClipboardReady] = useState(() => hasTopologyClipboard());
+
+  useEffect(() => {
+    const sync = () => setClipboardReady(hasTopologyClipboard());
+    sync();
+    return subscribeTopologyClipboard(sync);
+  }, []);
 
   useEffect(() => {
     setTool(canEditCanvas ? 'select' : 'pan');
@@ -473,6 +487,7 @@ export function TopologyCanvas({
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const pasteOffsetRef = useRef(0);
   /** True while two-finger pinch zoom is active (blocks single-finger pan). */
   const pinchActiveRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
@@ -589,6 +604,54 @@ export function TopologyCanvas({
     [onMapChange]
   );
 
+  const showToast = useCallback((message: string | undefined) => {
+    if (!message) {
+      return;
+    }
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const copySelection = useCallback(() => {
+    const payload = copyTopologySelection(map, storedMap, selectedNodeIds, selectedLink);
+    if (!payload) {
+      showToast('Nada selecionado para copiar');
+      return;
+    }
+    pasteOffsetRef.current = 0;
+    const linkHint = payload.links.length > 0 ? ` · ${payload.links.length} link(s)` : '';
+    showToast(`${payload.nodes.length} elemento(s) copiado(s)${linkHint}`);
+  }, [map, selectedLink, selectedNodeIds, showToast, storedMap]);
+
+  const pasteAt = useCallback(
+    (anchorX: number, anchorY: number) => {
+      const payload = getTopologyClipboard();
+      if (!payload) {
+        showToast('Nada copiado — selecione e use Ctrl+C primeiro');
+        return;
+      }
+      const offset = pasteOffsetRef.current;
+      pasteOffsetRef.current += 1;
+      const result = pasteTopologySelection(storedMap, payload, anchorX, anchorY, snapCoord, offset);
+      persist(result.map);
+      setSelectedNodeIds(result.pastedNodeIds);
+      setSelectedLink(null);
+      setContextMenu(null);
+      showToast(`${result.pastedNodeIds.length} elemento(s) colado(s)`);
+    },
+    [persist, showToast, snapCoord, storedMap]
+  );
+
+  const pasteAtViewCenter = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) {
+      return;
+    }
+    const x = (el.clientWidth / 2 - view.x) / view.scale;
+    const y = (el.clientHeight / 2 - view.y) / view.scale;
+    pasteAt(x, y);
+  }, [pasteAt, view.scale, view.x, view.y]);
+
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) {
@@ -678,60 +741,6 @@ export function TopologyCanvas({
     },
     [nodeLayouts]
   );
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const inField =
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target instanceof HTMLElement && e.target.isContentEditable);
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        const el = wrapRef.current;
-        if (el && (searchOpen || el.matches(':hover') || el.contains(document.activeElement))) {
-          e.preventDefault();
-          setSearchOpen(true);
-        }
-        return;
-      }
-
-      if (e.key === 'Escape' && searchOpen) {
-        e.preventDefault();
-        setSearchOpen(false);
-        return;
-      }
-
-      if (canPersist && !inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        onUndo?.();
-        return;
-      }
-      if (
-        canPersist &&
-        !inField &&
-        (e.ctrlKey || e.metaKey) &&
-        (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))
-      ) {
-        e.preventDefault();
-        onRedo?.();
-        return;
-      }
-
-      if (!canEditCanvas) {
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        setLinkFromId(null);
-        setContextMenu(null);
-        setSelectedNodeIds([]);
-        setMarqueeRect(null);
-        setAlignGuides([]);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [canEditCanvas, canPersist, onRedo, onUndo, searchOpen]);
 
   const fitToView = useCallback(() => {
     const el = wrapRef.current;
@@ -1742,13 +1751,89 @@ export function TopologyCanvas({
     [editable, openDashboardPicker, openHostEditor, openSubmap]
   );
 
-  const showToast = useCallback((message: string | undefined) => {
-    if (!message) {
-      return;
-    }
-    setToast(message);
-    window.setTimeout(() => setToast(null), 3500);
-  }, []);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const inField =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable);
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        const el = wrapRef.current;
+        if (el && (searchOpen || el.matches(':hover') || el.contains(document.activeElement))) {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape' && searchOpen) {
+        e.preventDefault();
+        setSearchOpen(false);
+        return;
+      }
+
+      if (canPersist && !inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        onUndo?.();
+        return;
+      }
+      if (
+        canPersist &&
+        !inField &&
+        (e.ctrlKey || e.metaKey) &&
+        (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))
+      ) {
+        e.preventDefault();
+        onRedo?.();
+        return;
+      }
+
+      const el = wrapRef.current;
+      const panelActive = Boolean(el && (el.matches(':hover') || el.contains(document.activeElement)));
+
+      if (canEditCanvas && !inField && panelActive) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+          if (selectedNodeIds.length > 0 || selectedLink) {
+            e.preventDefault();
+            copySelection();
+          }
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+          if (hasTopologyClipboard()) {
+            e.preventDefault();
+            pasteAtViewCenter();
+          }
+          return;
+        }
+      }
+
+      if (!canEditCanvas) {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setLinkFromId(null);
+        setContextMenu(null);
+        setSelectedNodeIds([]);
+        setMarqueeRect(null);
+        setAlignGuides([]);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [
+    canEditCanvas,
+    canPersist,
+    copySelection,
+    onRedo,
+    onUndo,
+    pasteAtViewCenter,
+    searchOpen,
+    selectedLink,
+    selectedNodeIds,
+  ]);
 
   useEffect(() => {
     if (selectedNodeIds.length === 0) {
@@ -1894,6 +1979,28 @@ export function TopologyCanvas({
     const { mapX, mapY } = contextMenu ?? { mapX: 0, mapY: 0 };
     const items: ContextMenuItem[] = [];
 
+    if (selectedNodeIds.length > 0 || selectedLink) {
+      items.push({
+        id: 'copy-selection',
+        label:
+          selectedNodeIds.length > 1
+            ? `Copiar seleção (${selectedNodeIds.length})`
+            : 'Copiar seleção',
+        onClick: () => {
+          setContextMenu(null);
+          copySelection();
+        },
+      });
+    }
+
+    if (hasTopologyClipboard()) {
+      items.push({
+        id: 'paste-here',
+        label: 'Colar aqui',
+        onClick: () => pasteAt(snapCoord(mapX), snapCoord(mapY)),
+      });
+    }
+
     if (selectedHostNodes.length >= 1) {
       items.push({
         id: 'bulk-icon',
@@ -1959,11 +2066,15 @@ export function TopologyCanvas({
     return items;
   }, [
     contextMenu,
+    copySelection,
     openBulkCredsEdit,
     openBulkIconEdit,
     openBulkSubmapEdit,
+    pasteAt,
     persist,
     selectedHostNodes.length,
+    selectedLink,
+    selectedNodeIds,
     selectedSubmapNodes.length,
     snapCoord,
     storedMap,
@@ -2020,6 +2131,31 @@ export function TopologyCanvas({
 
       if (!editable) {
         return items;
+      }
+
+      if (selectedNodeIds.length > 0) {
+        items.push({
+          id: 'copy-selection',
+          label:
+            selectedNodeIds.length > 1
+              ? `Copiar seleção (${selectedNodeIds.length})`
+              : 'Copiar seleção',
+          onClick: () => {
+            setContextMenu(null);
+            copySelection();
+          },
+        });
+      }
+
+      if (hasTopologyClipboard()) {
+        items.push({
+          id: 'paste-here',
+          label: 'Colar',
+          onClick: () => {
+            const anchor = contextMenu ?? { mapX: node.x, mapY: node.y };
+            pasteAt(snapCoord(anchor.mapX), snapCoord(anchor.mapY));
+          },
+        });
       }
 
       if (selectedNodeIds.includes(node.id) && isHostNode(node) && selectedHostNodes.length >= 1) {
@@ -2098,16 +2234,20 @@ export function TopologyCanvas({
     [
       beginLinkFrom,
       buildToolsMenu,
+      contextMenu,
+      copySelection,
       editable,
       openBulkCredsEdit,
       openBulkIconEdit,
       openBulkSubmapEdit,
       openHostEditor,
       openZabbixRebind,
+      pasteAt,
       persist,
       selectedHostNodes.length,
       selectedNodeIds,
       selectedSubmapNodes.length,
+      snapCoord,
       storedMap,
     ]
   );
@@ -2251,8 +2391,12 @@ export function TopologyCanvas({
         networksLocked={areNetworksLocked(storedMap)}
         canUndo={canUndo}
         canRedo={canRedo}
+        canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
+        canPaste={canEditCanvas && clipboardReady}
         onUndo={onUndo}
         onRedo={onRedo}
+        onCopy={copySelection}
+        onPaste={pasteAtViewCenter}
         onToggleLock={() => persist(toggleMapLock(storedMap))}
         onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
         flowPaused={flowPaused}
@@ -2331,7 +2475,7 @@ export function TopologyCanvas({
           )}
           {showSelectionTips &&
             (selectedHostNodes.length === 0 && selectedSubmapNodes.length === 0 ? ' ' : '') +
-              'Arraste vazio seleciona · Shift/Ctrl soma · Ctrl+clique alterna · Esc limpa'}
+              'Arraste vazio seleciona · Shift/Ctrl soma · Ctrl+clique alterna · Ctrl+C/V copiar/colar · Esc limpa'}
         </TopologyEditHint>
       )}
 
