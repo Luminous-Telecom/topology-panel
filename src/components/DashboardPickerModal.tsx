@@ -48,14 +48,25 @@ const uidStyle = css`
   margin-top: 2px;
 `;
 
-export function openDashboardUrl(uid: string, slug?: string): void {
+/**
+ * Navega para um dashboard. Sempre envia var-mapa=<uid> para o valor da
+ * variável bater com o destino (evita redirect: ex. Portalegre → Potiretama
+ * quando o current salvo no JSON do dashboard está errado).
+ */
+export function openDashboardUrl(uid: string, slug?: string, navVar = 'mapa'): void {
   const safeUid = uid.trim();
   if (!safeUid) {
     return;
   }
   const pathSlug = (slug?.trim() || safeUid).replace(/^\/+|\/+$/g, '');
-  const orgMatch = window.location.search.match(/orgId=\d+/);
-  const qs = orgMatch ? `?${orgMatch[0]}` : '';
+  const params = new URLSearchParams();
+  const orgMatch = window.location.search.match(/orgId=(\d+)/);
+  if (orgMatch) {
+    params.set('orgId', orgMatch[1]);
+  }
+  const varName = navVar.trim() || 'mapa';
+  params.set(`var-${varName}`, safeUid);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   window.location.href = `/d/${safeUid}/${pathSlug}${qs}`;
 }
 
