@@ -2362,13 +2362,25 @@ export function TopologyCanvas({
                 (node.fillColor ? node.fillColor : undefined) ??
                 options.colorNetworkFill;
               const fill = resolveColor(fillRaw);
+              const networkOffline =
+                Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
+              const networkOnline =
+                Boolean(
+                  icmpReady &&
+                    stats &&
+                    !stats.loadFailed &&
+                    stats.total > 0 &&
+                    stats.offline === 0 &&
+                    (stats.online > 0 || stats.alert > 0)
+                );
               const strokeRaw =
                 stats && stats.offline > 0
                   ? options.colorOffline
-                  : stats && stats.online > 0
+                  : networkOnline
                     ? options.colorOnline
                     : node.borderColor ?? options.colorNetworkBorder;
               const stroke = resolveColor(strokeRaw);
+              const strokeOpacity = networkOffline ? 1 : networkOnline ? 0.35 : 0.85;
               const statsLabel = stats ? formatRegionStats(stats, icmpReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
@@ -2385,8 +2397,6 @@ export function TopologyCanvas({
               const titleFill = resolveColor(options.colorStatic);
               const titleText = textOnBackground(titleFill);
 
-              const networkOffline =
-                Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
               const isSelected = selectedNodeIds.includes(node.id);
 
               return (
@@ -2418,6 +2428,7 @@ export function TopologyCanvas({
                     fill={fill}
                     stroke={isSelected ? '#4FC3F7' : stroke}
                     strokeWidth={isSelected ? 3 : 1.5}
+                    strokeOpacity={isSelected ? 1 : strokeOpacity}
                   />
                   <rect
                     x={titleX}

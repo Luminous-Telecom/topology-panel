@@ -222,7 +222,7 @@ export function regionFillColor(
     return 'rgba(198,40,40,0.22)';
   }
   if (stats.online > 0 || stats.alert > 0) {
-    return 'rgba(46,125,50,0.18)';
+    return 'rgba(46,125,50,0.07)';
   }
   return options.colorNetworkFill;
 }

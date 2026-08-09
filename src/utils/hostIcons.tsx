@@ -18,6 +18,7 @@ export const HOST_ICON_GAP = 6;
 /** Escala horizontal — equipamentos rack/chassis mais largos que altos. */
 export const HOST_ICON_WIDTH_SCALE: Partial<Record<TopologyHostIcon, number>> = {
   olt: 2,
+  dvr: 1.35,
 };
 
 /** Escala por tipo — switches e equipamentos largos um pouco maiores no mapa. */
@@ -25,9 +26,12 @@ export const HOST_ICON_SIZE_SCALE: Partial<Record<TopologyHostIcon, number>> = {
   switch_managed: 1.45,
   switch_unmanaged: 1.45,
   camera: 1.3,
+  dvr: 1.25,
+  power: 1.25,
   bras: 1.25,
   router: 1.2,
   vpn: 1.2,
+  vpn_server: 1.2,
   network: 1.15,
   access_point: 1.2,
 };
@@ -54,6 +58,7 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
   load_balancer: 'Load balancer',
   firewall: 'Firewall',
   vpn: 'Concentrador BNG',
+  vpn_server: 'Servidor VPN',
   olt: 'OLT',
   onu: 'ONU / modem',
   fiber: 'Fibra óptica',
@@ -63,6 +68,7 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
   satellite: 'Satélite',
   mesh: 'Mesh / rede',
   camera: 'Câmera',
+  dvr: 'DVR / NVR',
   bridge: 'Bridge',
   power: 'Energia',
   server: 'Servidor',
@@ -79,15 +85,14 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
 
 export const HOST_ICON_ORDER: TopologyHostIcon[] = [
   'router',
-  'bras',
   'switch_managed',
   'switch_unmanaged',
   'firewall',
-  'vpn',
+  'vpn_server',
   'olt',
   'access_point',
-  'mesh',
   'camera',
+  'dvr',
   'bridge',
   'power',
   'server',
@@ -118,9 +123,11 @@ export const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
   'switch_managed',
   'firewall',
   'vpn',
+  'vpn_server',
   'olt',
   'server',
   'access_point',
+  'dvr',
 ];
 
 /** Cor padrão dos ícones gerenciáveis no mapa. */

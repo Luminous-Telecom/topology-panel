@@ -235,6 +235,35 @@ export const CloudIcon: FC<NetIconProps> = (props) => (
   </NetIcon>
 );
 
+/** Servidor VPN — rack com cadeado. */
+export const VpnServerIcon: FC<NetIconProps> = (props) => (
+  <NetIcon {...props}>
+    <rect x="3.5" y="2.5" width="17" height="6" rx="1.5" {...S} />
+    <rect x="3.5" y="10" width="17" height="6" rx="1.5" {...S} />
+    <circle cx="6.5" cy="5.5" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="6.5" cy="13" r="0.9" fill="currentColor" stroke="none" />
+    <path d="M9.5 5.5h9M9.5 13h7" {...S} strokeWidth={1.5} />
+    <rect x="14.5" y="17.5" width="5.5" height="4" rx="1" {...S} />
+    <path d="M15.75 17.5v-1.75a2.25 2.25 0 014.5 0v1.75" {...S} strokeWidth={1.75} />
+    <circle cx="17.25" cy="19.5" r="0.75" fill="currentColor" stroke="none" />
+  </NetIcon>
+);
+
+/** DVR / NVR — gravador com baias de disco e câmera. */
+export const DvrIcon: FC<NetIconProps> = (props) => (
+  <NetIcon {...props}>
+    <rect x="2" y="9" width="20" height="11" rx="2" {...S} />
+    <rect x="4.5" y="12" width="3.5" height="5.5" rx="0.75" {...S} />
+    <rect x="9.25" y="12" width="3.5" height="5.5" rx="0.75" {...S} />
+    <rect x="14" y="12" width="3.5" height="5.5" rx="0.75" {...S} />
+    <circle cx="19.25" cy="10.5" r="0.85" fill="currentColor" stroke="none" />
+    <path d="M8.5 9V7a1.25 1.25 0 011.25-1.25h5.5A1.25 1.25 0 0116.25 7V9" {...S} strokeWidth={1.5} />
+    <circle cx="12" cy="5.25" r="2.25" {...S} />
+    <circle cx="12" cy="5.25" r="0.85" fill="currentColor" stroke="none" />
+    <path d="M9.25 5.25h5.5" {...S} strokeWidth={1.5} opacity={0.55} />
+  </NetIcon>
+);
+
 type NetworkIconComponent = FC<NetIconProps>;
 
 export const NETWORK_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, NetworkIconComponent>> = {
@@ -245,6 +274,7 @@ export const NETWORK_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, NetworkIc
   load_balancer: LoadBalancerIcon,
   firewall: FirewallIcon,
   vpn: VpnIcon,
+  vpn_server: VpnServerIcon,
   olt: OltIcon,
   onu: OnuIcon,
   fiber: FiberIcon,
@@ -254,6 +284,7 @@ export const NETWORK_ICON_COMPONENTS: Partial<Record<TopologyHostIcon, NetworkIc
   satellite: SatelliteIcon,
   mesh: MeshIcon,
   camera: CameraIcon,
+  dvr: DvrIcon,
   bridge: BridgeIcon,
   power: PowerIcon,
   server: ServerIcon,

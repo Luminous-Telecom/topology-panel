@@ -2,31 +2,33 @@ import { TopologyHostIcon } from '../types';
 import apSvg from '../img/topology/ap.svg';
 import bridgeSvg from '../img/topology/bridge.svg';
 import cameraSvg from '../img/topology/camera.svg';
+import cloudSvg from '../img/topology/cloud.svg';
+import dvrSvg from '../img/topology/dvr.svg';
 import firewallSvg from '../img/topology/firewall.svg';
-import globeSvg from '../img/topology/globe.svg';
 import laptopSvg from '../img/topology/laptop.svg';
-import meshSvg from '../img/topology/mesh.svg';
 import oltSvg from '../img/topology/olts.svg';
 import powerSvg from '../img/topology/power.svg';
 import routerSvg from '../img/topology/router.svg';
 import serverSvg from '../img/topology/server.svg';
 import switchSvg from '../img/topology/switch.svg';
+import switchUnmanagedSvg from '../img/topology/switch_unmanaged.svg';
+import vpnServerSvg from '../img/topology/vpn_server.svg';
 
 /** Ícones em src/img/topology/ — SVG inline (evita URL quebrada no Grafana). */
 export const CUSTOM_ICON_SVGS: Partial<Record<TopologyHostIcon, string>> = {
   router: routerSvg,
-  bras: switchSvg,
   switch_managed: switchSvg,
-  switch_unmanaged: switchSvg,
+  switch_unmanaged: switchUnmanagedSvg,
   firewall: firewallSvg,
+  vpn_server: vpnServerSvg,
   olt: oltSvg,
   access_point: apSvg,
-  mesh: meshSvg,
   camera: cameraSvg,
+  dvr: dvrSvg,
   bridge: bridgeSvg,
   power: powerSvg,
   server: serverSvg,
-  network: globeSvg,
+  network: cloudSvg,
   host: laptopSvg,
 };
 
@@ -34,8 +36,8 @@ export function isCustomAssetIcon(icon: TopologyHostIcon): boolean {
   return icon in CUSTOM_ICON_SVGS;
 }
 
-/** Só switch não gerenciável — silhueta branca no mapa. */
-export const PASSIVE_CUSTOM_ICONS: TopologyHostIcon[] = ['switch_unmanaged'];
+/** Silhueta branca no mapa — equipamentos passivos / links externos. */
+export const PASSIVE_CUSTOM_ICONS: TopologyHostIcon[] = ['switch_unmanaged', 'network'];
 
 /** Silhueta branca sobre o fundo colorido do nó. */
 export const PASSIVE_ICON_FILTER = 'brightness(0) invert(1)';
