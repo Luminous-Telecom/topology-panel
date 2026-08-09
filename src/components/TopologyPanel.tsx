@@ -4,21 +4,30 @@ import { RefreshEvent, getAppEvents, locationService } from '@grafana/runtime';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
+  HostDisplayMap,
   HostMetadataMap,
   HostProblemMap,
   HostStatusMap,
   TopologyMap,
+  TopologyNode,
   TopologyPanelOptions,
   TopologyView,
   defaultOptions,
 } from '../types';
 import {
+  collectSubmapQueryRefIds,
+  collectQueryRefIdsFromPanelData,
+  collectQueryRefInfosFromPanelData,
   effectiveStatusMetric,
+  extractDisplayQueryHosts,
   extractHostDisplay,
+  extractHostDisplayByRefId,
   extractHostMetadataFromData,
-  extractQueryHosts,
   mergeMapWithQueryHosts,
+  resolveDisplayQueryRefIds,
   resolveZabbixDatasourceUid,
+  sameQueryRefInfos,
+  sameStringList,
 } from '../utils';
 import { fetchZabbixHostMetadata, fetchZabbixHostProblems } from '../utils/zabbixApi';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
@@ -77,6 +86,27 @@ function syncMapWithZabbixMeta(map: TopologyMap, meta: HostMetadataMap): Topolog
   return changed ? { ...map, nodes } : null;
 }
 
+/** Lista de hosts para agregar status do submapa (query refId ou dashboard filho). */
+function submapHostListForNode(
+  node: TopologyNode,
+  hostDisplayByRefId: Record<string, HostDisplayMap>,
+  queryReady: boolean,
+  fetchedFromDashboard: string[] | null | undefined
+): string[] | null | undefined {
+  const refId = node.queryRefId?.trim();
+  if (refId) {
+    if (!queryReady) {
+      return undefined;
+    }
+    const bucket = hostDisplayByRefId[refId] ?? hostDisplayByRefId[refId.toUpperCase()];
+    if (!bucket) {
+      return [];
+    }
+    return Object.keys(bucket).sort((a, b) => a.localeCompare(b));
+  }
+  return fetchedFromDashboard;
+}
+
 export function TopologyPanel({
   options,
   data,
@@ -94,7 +124,10 @@ export function TopologyPanel({
 
   const [fetchedMeta, setFetchedMeta] = useState<HostMetadataMap>({});
   const [problemMap, setProblemMap] = useState<HostProblemMap>({});
-  const [submapHosts, setSubmapHosts] = useState<Record<string, string[] | null | undefined>>({});
+  /** Hosts lidos do JSON do dashboard filho (submapas sem queryRefId). */
+  const [fetchedSubmapHosts, setFetchedSubmapHosts] = useState<
+    Record<string, string[] | null | undefined>
+  >({});
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
   const [refreshCountdown, setRefreshCountdown] = useState<number | null>(() => readDashboardRefreshSeconds());
@@ -127,16 +160,58 @@ export function TopologyPanel({
     const colored = resolvePanelOptionsColors(merged, theme);
     return {
       ...colored,
-      // Só item_key da Query crua (icmppingsec / icmppingloss)
       statusMetric: effectiveStatusMetric(undefined, mappedData),
     };
   }, [options, theme, mappedData]);
 
-  const queryHosts = useMemo(() => extractQueryHosts(mappedData), [mappedData]);
+  const hostDisplayByRefId = useMemo(() => extractHostDisplayByRefId(mappedData), [mappedData]);
+
+  const queryRefIdsAvailable = useMemo(
+    () => collectQueryRefIdsFromPanelData(mappedData),
+    [mappedData]
+  );
+
+  const queryRefInfosAvailable = useMemo(
+    () => collectQueryRefInfosFromPanelData(mappedData),
+    [mappedData]
+  );
+
+  useEffect(() => {
+    if (!onOptionsChange) {
+      return;
+    }
+    const currentIds = latestOptionsRef.current.queryRefIdsAvailable ?? [];
+    const currentInfos = latestOptionsRef.current.queryRefInfosAvailable ?? [];
+    if (
+      sameStringList(currentIds, queryRefIdsAvailable) &&
+      sameQueryRefInfos(currentInfos, queryRefInfosAvailable)
+    ) {
+      return;
+    }
+    onOptionsChange({
+      ...latestOptionsRef.current,
+      queryRefIdsAvailable,
+      queryRefInfosAvailable,
+    });
+  }, [onOptionsChange, queryRefIdsAvailable, queryRefInfosAvailable]);
+
+  const submapQueryRefIds = useMemo(
+    () => collectSubmapQueryRefIds(resolvedOptions.map),
+    [resolvedOptions.map]
+  );
+
+  const displayQueryRefIds = useMemo(
+    () => resolveDisplayQueryRefIds(resolvedOptions),
+    [resolvedOptions.displayQueryRefIds, resolvedOptions.displayQueryRefId]
+  );
+
+  const displayQueryHosts = useMemo(
+    () => extractDisplayQueryHosts(mappedData, submapQueryRefIds, displayQueryRefIds),
+    [mappedData, submapQueryRefIds, displayQueryRefIds]
+  );
 
   const dataMeta = useMemo(() => extractHostMetadataFromData(mappedData), [mappedData]);
 
-  /** Valor + cor/texto dos Thresholds / Value mappings da Query. */
   const hostDisplay = useMemo(() => extractHostDisplay(mappedData), [mappedData]);
 
   const statusMap = useMemo(() => {
@@ -153,11 +228,10 @@ export function TopologyPanel({
   );
 
   const displayMap = useMemo(
-    () => mergeMapWithQueryHosts(resolvedOptions.map, queryHosts, hostMetadata),
-    [resolvedOptions.map, queryHosts, hostMetadata]
+    () => mergeMapWithQueryHosts(resolvedOptions.map, displayQueryHosts, hostMetadata),
+    [resolvedOptions.map, displayQueryHosts, hostMetadata]
   );
 
-  /** Datasource Zabbix da aba Query (problemas, metadata, picker, ping). */
   const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(mappedData), [mappedData]);
 
   const zabbixDatasourceUidRef = useRef(zabbixDatasourceUid);
@@ -167,6 +241,23 @@ export function TopologyPanel({
     data.state === LoadingState.Done ||
     data.state === LoadingState.Streaming ||
     Object.keys(statusMap).length > 0;
+
+  const submapNodes = useMemo(() => {
+    return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
+  }, [resolvedOptions.map.nodes]);
+
+  const submapHosts = useMemo(() => {
+    const result: Record<string, string[] | null | undefined> = {};
+    for (const node of submapNodes) {
+      result[node.id] = submapHostListForNode(
+        node,
+        hostDisplayByRefId,
+        queryReady,
+        fetchedSubmapHosts[node.id]
+      );
+    }
+    return result;
+  }, [submapNodes, hostDisplayByRefId, queryReady, fetchedSubmapHosts]);
 
   useEffect(() => {
     if (!onOptionsChange) {
@@ -186,6 +277,17 @@ export function TopologyPanel({
   const mapHostRefs = useMemo(() => {
     const hostIds = new Set<string>();
     const hostNames = new Set<string>();
+    const addHost = (raw: string) => {
+      const key = raw.trim();
+      if (!key) {
+        return;
+      }
+      if (/^\d+$/.test(key)) {
+        hostIds.add(key);
+      } else {
+        hostNames.add(key);
+      }
+    };
     for (const node of displayMap.nodes) {
       if ((node.type ?? 'host') !== 'host') {
         continue;
@@ -199,38 +301,22 @@ export function TopologyPanel({
         hostNames.add(name);
       }
     }
-    for (const host of queryHosts) {
-      const key = host.trim();
-      if (!key) {
-        continue;
-      }
-      if (/^\d+$/.test(key)) {
-        hostIds.add(key);
-      } else {
-        hostNames.add(key);
-      }
+    for (const host of displayQueryHosts) {
+      addHost(host);
     }
     for (const hosts of Object.values(submapHosts)) {
       if (hosts === undefined || hosts === null) {
         continue;
       }
       for (const host of hosts) {
-        const key = host.trim();
-        if (!key) {
-          continue;
-        }
-        if (/^\d+$/.test(key)) {
-          hostIds.add(key);
-        } else {
-          hostNames.add(key);
-        }
+        addHost(host);
       }
     }
     return {
       hostIds: [...hostIds].sort(),
       hostNames: [...hostNames].sort(),
     };
-  }, [displayMap.nodes, queryHosts, submapHosts]);
+  }, [displayMap.nodes, displayQueryHosts, submapHosts]);
 
   const mapHostRefsRef = useRef(mapHostRefs);
   mapHostRefsRef.current = mapHostRefs;
@@ -240,7 +326,6 @@ export function TopologyPanel({
     [mapHostRefs]
   );
 
-  /** Problemas Zabbix (laranja) — status online/offline continua só na Query. */
   const fetchProblems = useCallback(async () => {
     const uid = zabbixDatasourceUidRef.current?.trim();
     const refs = mapHostRefsRef.current;
@@ -269,7 +354,6 @@ export function TopologyPanel({
     setRefreshTick((t) => t + 1);
   }, [mappedData]);
 
-  // Botão Atualizar + auto-refresh do Grafana
   useEffect(() => {
     const onRefresh = () => {
       void fetchProblems();
@@ -285,7 +369,6 @@ export function TopologyPanel({
     };
   }, [eventBus, fetchProblems]);
 
-  // Intervalo do seletor (?refresh=5s)
   useEffect(() => {
     const syncInterval = () => {
       setRefreshIntervalSec(parseGrafanaRefreshSeconds(locationService.getSearchObject().refresh));
@@ -294,7 +377,6 @@ export function TopologyPanel({
     return locationService.getHistory().listen(syncInterval);
   }, []);
 
-  // Contagem regressiva na legenda
   useEffect(() => {
     if (refreshIntervalSec == null) {
       setRefreshCountdown(null);
@@ -312,7 +394,6 @@ export function TopologyPanel({
     return () => window.clearInterval(id);
   }, [refreshIntervalSec, refreshTick]);
 
-  // Problemas: carga inicial + polling (status vem do refresh da Query)
   useEffect(() => {
     void fetchProblems();
     const sec = refreshIntervalSec ?? 5;
@@ -322,27 +403,25 @@ export function TopologyPanel({
     return () => window.clearInterval(timer);
   }, [fetchProblems, mapHostRefsKey, zabbixDatasourceUid, resolvedOptions.useZabbixProblems, refreshIntervalSec]);
 
-  const submapNodes = useMemo(() => {
-    return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
-  }, [resolvedOptions.map.nodes]);
-
-  const submapFetchKey = useMemo(
+  const legacySubmapFetchKey = useMemo(
     () =>
       submapNodes
+        .filter((n) => !n.queryRefId?.trim())
         .map((n) => `${n.id}\0${n.submapUid}\0${isIncludedInParentStats(n) ? '1' : '0'}`)
         .join('\n'),
     [submapNodes]
   );
 
   useEffect(() => {
-    if (!submapNodes.length) {
-      setSubmapHosts({});
+    const legacyNodes = submapNodes.filter((n) => !n.queryRefId?.trim());
+    if (!legacyNodes.length) {
+      setFetchedSubmapHosts({});
       return;
     }
     let cancelled = false;
     const load = async () => {
       const entries = await Promise.all(
-        submapNodes.map(async (node) => {
+        legacyNodes.map(async (node) => {
           try {
             const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim(), {
               includeNested: isIncludedInParentStats(node),
@@ -354,7 +433,7 @@ export function TopologyPanel({
         })
       );
       if (!cancelled) {
-        setSubmapHosts(Object.fromEntries(entries));
+        setFetchedSubmapHosts(Object.fromEntries(entries));
       }
     };
     void load();
@@ -362,7 +441,7 @@ export function TopologyPanel({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submapFetchKey]);
+  }, [legacySubmapFetchKey]);
 
   useEffect(() => {
     const uid = zabbixDatasourceUid;

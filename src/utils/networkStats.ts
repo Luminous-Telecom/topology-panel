@@ -171,7 +171,7 @@ export function buildRegionStatsMap(
     if (node.type === 'submap') {
       const fetched = submapHosts[node.id];
       if (fetched === undefined) {
-        // Ainda carregando lista de hosts → mostra 0/0/0
+        // Carregando (query ou dashboard filho)
         result.set(node.id, { total: 0, offline: 0, alert: 0, online: 0, unknown: 0 });
         continue;
       }

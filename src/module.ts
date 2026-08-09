@@ -6,6 +6,7 @@ import {
 } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
+import { QueryDisplayRefIdsEditor } from './components/QueryDisplayRefIdsEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
 import { TopologyPanelOptions, defaultOptions } from './types';
 
@@ -252,6 +253,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         description: 'Hosts online com problema ativo usam a cor de alerta',
         defaultValue: true,
         category: ['Zabbix'],
+      })
+      .addCustomEditor({
+        id: 'displayQueryRefIds',
+        path: 'displayQueryRefIds',
+        name: 'Mostrar hosts da query no mapa',
+        editor: QueryDisplayRefIdsEditor,
+        category: ['Zabbix'],
+        defaultValue: undefined,
       })
       .addTextInput({
         path: 'toolUsername',

@@ -17,6 +17,7 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
   const [submapSlug, setSubmapSlug] = useState(node.submapSlug ?? '');
+  const [queryRefId, setQueryRefId] = useState(node.queryRefId ?? '');
   const [dashboardChoices, setDashboardChoices] = useState<TopologyDashboardChoice[]>(
     node.dashboardChoices ?? []
   );
@@ -119,12 +120,27 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
             />
           </Field>
           <Field
+            label="Query Zabbix (refId)"
+            description="RefId da query deste painel (ex.: B) com o host group desta rede. Status offline vem dessa query; hosts não aparecem no mapa pai."
+          >
+            <Input
+              value={queryRefId}
+              onChange={(e) => setQueryRefId(e.currentTarget.value.toUpperCase())}
+              placeholder="Ex.: B"
+            />
+          </Field>
+          <Field
             label="Incluir submapas internos"
-            description="Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)"
+            description={
+              queryRefId.trim()
+                ? 'Ignorado quando há query refId — o host group da query define os hosts'
+                : 'Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)'
+            }
           >
             <InlineSwitch
               label={includeInParentStats ? 'Ativado' : 'Desativado'}
               value={includeInParentStats}
+              disabled={Boolean(queryRefId.trim())}
               onChange={(e) => setIncludeInParentStats(e.currentTarget.checked)}
             />
           </Field>
@@ -233,9 +249,8 @@ export function NodeEditModal({ node, onSave, onClose }: Props) {
             if (type === 'submap') {
               patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
               patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
-              // Só persiste false; true/omitido = inclui no pai (padrão)
+              patch.queryRefId = queryRefId.trim() || undefined;
               patch.includeInParentStats = includeInParentStats ? undefined : false;
-              // Limpa flag legada se existir
               patch.showStatusStats = undefined;
             }
             if (type === 'dashboard_picker') {

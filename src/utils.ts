@@ -11,6 +11,7 @@ import {
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
+  TopologyQueryRefInfo,
   TopologyStatusMetric,
 } from './types';
 import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions, hostIconRenderSize } from './utils/hostIcons';
@@ -224,6 +225,110 @@ function hostLabelFromField(field: { labels?: Record<string, string> }): string 
  * Host -> último valor + cor/texto do mapeamento Grafana (Value mappings / Thresholds).
  * Query Zabbix crua (time_series); usa field.display quando o painel tem field config.
  */
+/** RefIds (A, B, C…) configurados na aba Query do painel. */
+export function collectQueryRefIdsFromPanelData(data?: PanelData): string[] {
+  return collectQueryRefInfosFromPanelData(data).map((info) => info.refId);
+}
+
+function zabbixQueryTargetHint(target: Record<string, unknown>): string | undefined {
+  const pick = (obj: unknown, prefix: string): string | undefined => {
+    if (!obj || typeof obj !== 'object') {
+      return undefined;
+    }
+    const rec = obj as Record<string, unknown>;
+    const filter = typeof rec.filter === 'string' ? rec.filter.trim() : '';
+    if (filter) {
+      return `${prefix}: ${filter}`;
+    }
+    const name = typeof rec.name === 'string' ? rec.name.trim() : '';
+    if (name) {
+      return `${prefix}: ${name}`;
+    }
+    return undefined;
+  };
+
+  return (
+    pick(target.group, 'Grupo') ||
+    pick(target.host, 'Host') ||
+    pick(target.hosts, 'Hosts') ||
+    pick(target.application, 'App') ||
+    pick(target.item, 'Item')
+  );
+}
+
+/** Queries do painel com refId visível e resumo opcional (host group etc.). */
+export function collectQueryRefInfosFromPanelData(data?: PanelData): TopologyQueryRefInfo[] {
+  const byRef = new Map<string, TopologyQueryRefInfo>();
+  if (!data) {
+    return [];
+  }
+
+  for (const target of data.request?.targets ?? []) {
+    const rec = target as Record<string, unknown> & { refId?: string };
+    const refId = rec.refId?.trim().toUpperCase();
+    if (!refId) {
+      continue;
+    }
+    byRef.set(refId, {
+      refId,
+      hint: zabbixQueryTargetHint(rec),
+    });
+  }
+
+  for (const frame of data.series ?? []) {
+    const refId = frame.refId?.trim().toUpperCase();
+    if (!refId || byRef.has(refId)) {
+      continue;
+    }
+    byRef.set(refId, { refId });
+  }
+
+  return [...byRef.values()].sort((a, b) => a.refId.localeCompare(b.refId));
+}
+
+export function sameQueryRefInfos(a: TopologyQueryRefInfo[], b: TopologyQueryRefInfo[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((item, index) => item.refId === b[index].refId && item.hint === b[index].hint);
+}
+
+export function sameStringList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((value, index) => value === b[index]);
+}
+
+function frameQueryRefId(frame: DataFrame): string {
+  return frame.refId?.trim() ?? '';
+}
+
+function collectHostDisplayFromFrame(
+  frame: DataFrame,
+  bucket: HostDisplayMap
+): void {
+  for (const field of frame.fields ?? []) {
+    if (field.type !== FieldType.number) {
+      continue;
+    }
+    const host = hostLabelFromField(field);
+    if (!host) {
+      continue;
+    }
+    const last = lastNumericValue(field);
+    if (last === undefined) {
+      continue;
+    }
+    const displayed = field.display?.(last);
+    bucket[host] = {
+      value: last,
+      color: displayed?.color,
+      text: displayed?.text,
+    };
+  }
+}
+
 export function extractHostDisplay(data: PanelData): HostDisplayMap {
   const result: HostDisplayMap = {};
   if (!data?.series?.length) {
@@ -231,28 +336,82 @@ export function extractHostDisplay(data: PanelData): HostDisplayMap {
   }
 
   for (const frame of data.series) {
-    for (const field of frame.fields ?? []) {
-      if (field.type !== FieldType.number) {
-        continue;
-      }
-      const host = hostLabelFromField(field);
-      if (!host) {
-        continue;
-      }
-      const last = lastNumericValue(field);
-      if (last === undefined) {
-        continue;
-      }
-      const displayed = field.display?.(last);
-      result[host] = {
-        value: last,
-        color: displayed?.color,
-        text: displayed?.text,
-      };
-    }
+    collectHostDisplayFromFrame(frame, result);
   }
 
   return result;
+}
+
+/** Host -> status por refId da query Grafana (A, B, C…). */
+export function extractHostDisplayByRefId(data: PanelData): Record<string, HostDisplayMap> {
+  const result: Record<string, HostDisplayMap> = {};
+  if (!data?.series?.length) {
+    return result;
+  }
+
+  for (const frame of data.series) {
+    const refId = frameQueryRefId(frame);
+    const bucket = result[refId] ?? (result[refId] = {});
+    collectHostDisplayFromFrame(frame, bucket);
+  }
+
+  return result;
+}
+
+/** RefIds de query reservados a submapas (não desenham hosts no mapa pai). */
+export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
+  const refs = new Set<string>();
+  for (const node of map.nodes ?? []) {
+    if (node.type !== 'submap') {
+      continue;
+    }
+    const refId = node.queryRefId?.trim();
+    if (refId) {
+      refs.add(refId.toUpperCase());
+    }
+  }
+  return refs;
+}
+
+/** RefIds das queries que importam hosts ao mapa (opt-in). */
+export function resolveDisplayQueryRefIds(
+  options: Pick<TopologyPanelOptions, 'displayQueryRefIds' | 'displayQueryRefId'>
+): string[] {
+  if (options.displayQueryRefIds?.length) {
+    return options.displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean);
+  }
+  const legacy = options.displayQueryRefId?.trim();
+  if (legacy) {
+    return [legacy.toUpperCase()];
+  }
+  return [];
+}
+
+/** Hosts das queries marcadas para exibição (opt-in; submapas nunca importam). */
+export function extractDisplayQueryHosts(
+  data: PanelData | undefined,
+  submapQueryRefIds: Set<string>,
+  displayQueryRefIds: string[] = []
+): string[] {
+  if (!data?.series?.length || !displayQueryRefIds.length) {
+    return [];
+  }
+  const byRef = extractHostDisplayByRefId(data);
+  const allowed = new Set(displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean));
+  const hosts = new Set<string>();
+  for (const refId of allowed) {
+    if (submapQueryRefIds.has(refId)) {
+      continue;
+    }
+    const display = byRef[refId];
+    if (!display) {
+      continue;
+    }
+    for (const host of Object.keys(display)) {
+      hosts.add(host);
+    }
+  }
+  return [...hosts].sort((a, b) => a.localeCompare(b));
 }
 
 /** Host -> último valor numérico da Query (atalho sobre extractHostDisplay). */

@@ -66,6 +66,11 @@ export interface TopologyNode {
   /** Optional dashboard slug override */
   submapSlug?: string;
   /**
+   * RefId da query Zabbix (aba Query) cujo host group alimenta o status deste submapa.
+   * Ex.: query B com group PLW → queryRefId: "B". Hosts dessa query não aparecem no mapa pai.
+   */
+  queryRefId?: string;
+  /**
    * Dashboards disponíveis no seletor (type=dashboard_picker).
    * Em visualização o clique abre a lista para escolher e navegar.
    */
@@ -139,6 +144,13 @@ export interface HostMetadata {
 
 export type HostMetadataMap = Record<string, HostMetadata>;
 
+/** Query Grafana (refId) detectada na aba Query do painel. */
+export interface TopologyQueryRefInfo {
+  refId: string;
+  /** Resumo legível (ex.: host group Zabbix) */
+  hint?: string;
+}
+
 /** Como interpretar o valor numérico da query Zabbix para online/offline */
 export type TopologyStatusMetric = 'icmp_rtt' | 'packet_loss';
 
@@ -182,6 +194,17 @@ export interface TopologyPanelOptions {
   statusMetric?: TopologyStatusMetric;
   /** Pintar host em cor de alerta quando houver problema ativo no Zabbix */
   useZabbixProblems?: boolean;
+  /**
+   * RefIds das queries que importam hosts ao mapa (opt-in).
+   * Vazio = nenhuma query adiciona hosts automaticamente.
+   */
+  displayQueryRefIds?: string[];
+  /** @deprecated Use displayQueryRefIds */
+  displayQueryRefId?: string;
+  /** Sincronizado pelo painel a partir da aba Query (não editar manualmente). */
+  queryRefIdsAvailable?: string[];
+  /** Metadados das queries (refId + resumo) para o editor de opções. */
+  queryRefInfosAvailable?: TopologyQueryRefInfo[];
   /**
    * @deprecated UID vem da aba Query do painel.
    * Mantido só para JSON antigo de dashboard.

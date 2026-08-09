@@ -414,8 +414,25 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     />
                   </Field>
                   <Field
+                    label="Query Zabbix (refId)"
+                    description="RefId da query deste painel (ex.: B) com o host group desta rede"
+                  >
+                    <Input
+                      value={node.queryRefId ?? ''}
+                      disabled={locked}
+                      placeholder="Ex.: B"
+                      onChange={(e) =>
+                        updateSubmap(idx, { queryRefId: e.currentTarget.value.trim().toUpperCase() || undefined })
+                      }
+                    />
+                  </Field>
+                  <Field
                     label="Incluir submapas internos"
-                    description="Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)"
+                    description={
+                      node.queryRefId?.trim()
+                        ? 'Ignorado quando há query refId'
+                        : 'Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)'
+                    }
                   >
                     <InlineSwitch
                       label={
@@ -424,7 +441,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                           : 'Desativado'
                       }
                       value={node.includeInParentStats !== false && node.showStatusStats !== false}
-                      disabled={locked}
+                      disabled={locked || Boolean(node.queryRefId?.trim())}
                       onChange={(e) =>
                         updateSubmap(idx, {
                           includeInParentStats: e.currentTarget.checked ? undefined : false,
