@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StandardEditorProps } from '@grafana/data';
 import { css } from '@emotion/css';
-import { Stack, Switch, useTheme2 } from '@grafana/ui';
+import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
 import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils';
 
@@ -15,11 +15,15 @@ function resolveAvailableQueryRefs(context: Props['context']): TopologyQueryRefI
   return collectQueryRefInfosFromPanelData(context.data);
 }
 
+function normalizeRefId(refId: string): string {
+  return refId.trim().toUpperCase();
+}
+
 /** Escolhe quais queries (refId) importam hosts ao mapa — opt-in por query. */
 export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   const theme = useTheme2();
   const selected = useMemo(
-    () => new Set((value ?? []).map((r) => r.trim().toUpperCase()).filter(Boolean)),
+    () => new Set((value ?? []).map(normalizeRefId).filter(Boolean)),
     [value]
   );
 
@@ -53,6 +57,25 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
     border: 1px solid ${theme.colors.border.weak};
   `;
 
+  const lockedStyle = css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: ${theme.colors.text.secondary};
+    pointer-events: none;
+  `;
+
+  const commitSelection = (next: Set<string>) => {
+    // Nunca persistir refIds reservados a submapa (evita toggle “fantasma”).
+    for (const reserved of submapRefIds) {
+      next.delete(reserved);
+    }
+    const list = [...next].sort((a, b) => a.localeCompare(b));
+    onChange(list.length ? list : undefined);
+  };
+
   if (!queryRefs.length) {
     return (
       <span style={{ fontSize: 12, opacity: 0.75 }}>
@@ -63,24 +86,34 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
 
   return (
     <Stack direction="column" gap={0.5}>
-        {queryRefs.map(({ refId, hint }) => {
-          const reservedForSubmap = submapRefIds.has(refId);
-          return (
-            <div key={refId} className={rowStyle}>
-              <span className={badgeStyle} title={`Consulta ${refId}`}>
-                {refId}
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Consulta {refId}</div>
-                <div style={{ fontSize: 11, color: theme.colors.text.secondary, lineHeight: 1.35 }}>
-                  {reservedForSubmap
-                    ? 'Reservada a submapa — não importa hosts no mapa pai'
-                    : hint || 'Mostrar hosts desta query no mapa'}
-                </div>
+      {queryRefs.map(({ refId, hint }) => {
+        const reservedForSubmap = submapRefIds.has(refId);
+        const checked = !reservedForSubmap && selected.has(refId);
+
+        return (
+          <div key={refId} className={rowStyle}>
+            <span className={badgeStyle} title={`Consulta ${refId}`}>
+              {refId}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>Consulta {refId}</div>
+              <div style={{ fontSize: 11, color: theme.colors.text.secondary, lineHeight: 1.35 }}>
+                {reservedForSubmap
+                  ? 'Reservada a submapa — não importa hosts no mapa pai'
+                  : hint || 'Mostrar hosts desta query no mapa'}
               </div>
-              <Switch
-                value={selected.has(refId)}
-                disabled={reservedForSubmap}
+            </div>
+            {reservedForSubmap ? (
+              <span
+                className={lockedStyle}
+                title="Reservada a submapa"
+                aria-label={`Consulta ${refId} reservada a submapa`}
+              >
+                <Icon name="lock" />
+              </span>
+            ) : (
+              <Checkbox
+                value={checked}
                 aria-label={`Consulta ${refId} — mostrar hosts no mapa`}
                 onChange={(e) => {
                   const next = new Set(selected);
@@ -89,13 +122,13 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
                   } else {
                     next.delete(refId);
                   }
-                  const list = [...next].sort((a, b) => a.localeCompare(b));
-                  onChange(list.length ? list : undefined);
+                  commitSelection(next);
                 }}
               />
-            </div>
-          );
-        })}
+            )}
+          </div>
+        );
+      })}
     </Stack>
   );
 }

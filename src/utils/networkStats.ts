@@ -22,6 +22,9 @@ export function formatRegionStats(
     if (stats.loadFailed) {
       return 'Mapa indisponível';
     }
+    if (!queryReady) {
+      return 'Carregando…';
+    }
     return `${stats.offline} / ${stats.alert} / ${stats.online}`;
   }
   if (stats.loadFailed) {

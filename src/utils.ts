@@ -523,8 +523,40 @@ export function sameStringList(a: string[], b: string[]): boolean {
   return a.every((value, index) => value === b[index]);
 }
 
-function frameQueryRefId(frame: DataFrame): string {
-  return frame.refId?.trim() ?? '';
+function frameQueryRefId(frame: DataFrame, fallbackRefId?: string): string {
+  return (frame.refId?.trim() || fallbackRefId?.trim() || '').toUpperCase();
+}
+
+/** Único refId do painel — usado quando a série vem sem frame.refId. */
+function soleTargetRefId(data: PanelData): string | undefined {
+  const targets = data.request?.targets ?? [];
+  if (targets.length !== 1) {
+    return undefined;
+  }
+  const refId = (targets[0] as { refId?: string }).refId?.trim();
+  return refId ? refId.toUpperCase() : undefined;
+}
+
+/** Bucket de status por refId (match case-insensitive). */
+export function findHostDisplayBucket(
+  byRefId: Record<string, HostDisplayMap>,
+  refId: string
+): HostDisplayMap | undefined {
+  const trimmed = refId.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const direct = byRefId[trimmed] ?? byRefId[trimmed.toUpperCase()];
+  if (direct) {
+    return direct;
+  }
+  const upper = trimmed.toUpperCase();
+  for (const [key, bucket] of Object.entries(byRefId)) {
+    if (key.toUpperCase() === upper) {
+      return bucket;
+    }
+  }
+  return undefined;
 }
 
 function collectHostDisplayFromFrame(
@@ -596,12 +628,48 @@ export function extractHostDisplayByRefId(
     return result;
   }
 
+  const fallbackRefId = soleTargetRefId(data);
   for (const frame of data.series) {
-    const refId = frameQueryRefId(frame);
+    const refId = frameQueryRefId(frame, fallbackRefId);
+    if (!refId) {
+      continue;
+    }
     const bucket = result[refId] ?? (result[refId] = {});
     collectHostDisplayFromFrame(frame, bucket, statusOptions);
   }
 
+  return result;
+}
+
+/**
+ * Hosts por refId a partir dos labels da Query (não exige último valor numérico).
+ * Usado na contagem de hosts do submapa / host group.
+ */
+export function extractQueryHostsByRefId(data?: PanelData): Record<string, string[]> {
+  const sets: Record<string, Set<string>> = {};
+  if (!data?.series?.length) {
+    return {};
+  }
+
+  const fallbackRefId = soleTargetRefId(data);
+  for (const frame of data.series) {
+    const refId = frameQueryRefId(frame, fallbackRefId);
+    if (!refId) {
+      continue;
+    }
+    const bucket = sets[refId] ?? (sets[refId] = new Set());
+    for (const field of frame.fields ?? []) {
+      const host = hostLabelFromField(field);
+      if (host) {
+        bucket.add(host);
+      }
+    }
+  }
+
+  const result: Record<string, string[]> = {};
+  for (const [refId, hosts] of Object.entries(sets)) {
+    result[refId] = [...hosts];
+  }
   return result;
 }
 
