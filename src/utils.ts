@@ -232,7 +232,7 @@ export function lookupHostStatus(
   ref: HostLookupRef,
   metadata?: HostMetadataMap
 ): number | null | undefined {
-  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim()) {
     return undefined;
   }
 
@@ -260,7 +260,7 @@ export function lookupProblemCount(
   ref: HostLookupRef,
   metadata?: HostMetadataMap
 ): number {
-  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim()) {
     return 0;
   }
   for (const name of collectHostLookupCandidates(ref, metadata)) {
@@ -625,7 +625,7 @@ export function lookupHostDisplay(
   if (!displayMap) {
     return undefined;
   }
-  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim() && !ref.subtitle?.trim()) {
+  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim()) {
     return undefined;
   }
   for (const name of collectHostLookupCandidates(ref, metadata)) {
@@ -727,10 +727,14 @@ function findSavedHostNodes(
     if ((n.type ?? 'host') !== 'host') {
       return false;
     }
-    if (ip && (n.subtitle?.trim() === ip || n.zabbixHost?.trim() === ip)) {
+    const linked = n.zabbixHost?.trim();
+    if (!linked) {
+      return false;
+    }
+    if (ip && (n.subtitle?.trim() === ip || linked === ip)) {
       return true;
     }
-    return n.zabbixHost?.trim() === key || n.label?.trim() === key || n.id === key;
+    return linked === key || n.label?.trim() === key || n.id === key;
   });
 }
 
@@ -907,6 +911,9 @@ export function resolveNodeStatus(
     node.type === 'network' ||
     node.type === 'dashboard_picker'
   ) {
+    return 'unknown';
+  }
+  if (!node.zabbixHost?.trim() && !node.zabbixHostId?.trim()) {
     return 'unknown';
   }
   if (!resolveHostLookupKey(node, metadata)) {

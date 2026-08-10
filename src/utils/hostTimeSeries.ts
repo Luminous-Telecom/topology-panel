@@ -8,6 +8,8 @@ import {
   resolveStatusFromValue,
 } from '../utils';
 
+export const HOST_HOVER_PERIOD_MS = 24 * 60 * 60 * 1000;
+
 export interface HostTimeSeriesPoint {
   t: number;
   value: number;
@@ -100,7 +102,39 @@ function readPoints(
   return points;
 }
 
-/** Série temporal ICMP/perda da Query Zabbix para um host do mapa. */
+function filterPointsToHoverWindow(points: HostTimeSeriesPoint[]): HostTimeSeriesPoint[] {
+  const cutoff = Date.now() - HOST_HOVER_PERIOD_MS;
+  const filtered = points.filter((point) => point.t >= cutoff);
+  return filtered.length ? filtered : points;
+}
+
+export function summarizeHostHoverSeries(
+  points: HostTimeSeriesPoint[],
+  metric: TopologyStatusMetric
+): HostHoverSeries | undefined {
+  if (!points.length) {
+    return undefined;
+  }
+
+  const sorted = [...points].sort((a, b) => a.t - b.t);
+  let failureCount = 0;
+  let lastFailureAt: number | undefined;
+  for (const point of sorted) {
+    if (point.status === 'offline') {
+      failureCount += 1;
+      lastFailureAt = point.t;
+    }
+  }
+
+  return {
+    points: sorted,
+    metric,
+    failureCount,
+    lastFailureAt,
+  };
+}
+
+/** Série temporal ICMP/perda da Query Zabbix para um host (janela de até 24h). */
 export function extractHostHoverSeries(
   data: PanelData | undefined,
   ref: HostLookupRef,
@@ -145,21 +179,23 @@ export function extractHostHoverSeries(
     return undefined;
   }
 
-  let failureCount = 0;
-  let lastFailureAt: number | undefined;
-  for (const point of bestPoints) {
-    if (point.status === 'offline') {
-      failureCount += 1;
-      lastFailureAt = point.t;
-    }
-  }
+  return summarizeHostHoverSeries(filterPointsToHoverWindow(bestPoints), metric);
+}
 
-  return {
-    points: bestPoints,
-    metric,
-    failureCount,
-    lastFailureAt,
-  };
+function formatHoverClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function hostHoverPeriodLabel(series?: HostHoverSeries): string {
+  const points = series?.points;
+  if (points && points.length >= 1) {
+    const fromMs = points[0].t;
+    const toMs = points[points.length - 1].t;
+    return `Últimas 24 horas · ${formatHoverClock(fromMs)} – ${formatHoverClock(toMs)}`;
+  }
+  const nowMs = Date.now();
+  const fromMs = nowMs - HOST_HOVER_PERIOD_MS;
+  return `Últimas 24 horas · ${formatHoverClock(fromMs)} – ${formatHoverClock(nowMs)}`;
 }
 
 export function formatHoverMetricValue(metric: TopologyStatusMetric, value: number): string {

@@ -16,7 +16,7 @@ alwaysApply: false
 | Editor JSON/nós/links | `editor/TopologyEditor.tsx` |
 | Mutações do mapa | `utils/mapEdits.ts` |
 | Helpers puros | `utils.ts` |
-| Chamadas à Zabbix API | `utils/zabbixApi.ts` |
+| Série ICMP / hover (só Query) | `utils/hostTimeSeries.ts` |
 | Tipos | `types.ts` |
 | Modais (`NodeEditModal`, `LinkEditModal`, etc.) | `components/*Modal.tsx` — só UI + validação de formulário; mutação real do mapa fica em `mapEdits.ts` |
 

@@ -62,5 +62,5 @@ Status online/offline vem **só da aba Query** do painel (mesmo caminho do gráf
 2. Auto-refresh do dashboard baixo o bastante (ex.: `10s`)
 3. Campos **Campo host** / **Campo status** batendo com as colunas da Query
 
-Problemas (laranja), metadata e picker ainda usam a API do datasource; o cache TTL do Zabbix
-datasource pode atrasar só esses recursos, não a cor online/offline da Query.
+**Política:** não usar API Zabbix para ICMP, histórico ou cores — ver `no-zabbix-api.mdc`. Período do
+gráfico de hover = intervalo da Query (configure o dashboard, ex. *Last 24 hours*).

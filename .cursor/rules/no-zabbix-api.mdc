@@ -1,0 +1,55 @@
+---
+description: Proíbe chamadas à API Zabbix — dados de monitoramento só via Query do painel
+alwaysApply: true
+---
+
+# Sem API Zabbix
+
+**Nunca** adicione nem restaure chamadas à API Zabbix no plugin (`host.get`, `item.get`, `history.get`,
+`trend.get`, `trigger.get`, `problem.get`, `script.execute`, etc.) — nem em componentes, nem em
+`src/utils/zabbixApi.ts`.
+
+## Fonte única de monitoramento
+
+ICMP, latência, perda, séries temporais, cores online/offline/alerta e gráficos de hover vêm **só**
+da aba **Query** do painel (`PanelData` / `data.series`), com os helpers em `src/utils.ts` e
+`src/utils/hostTimeSeries.ts`.
+
+## Proibido
+
+- Importar funções de `src/utils/zabbixApi.ts` em código **novo** ou reativado
+- Criar métodos novos em `zabbixApi.ts`
+- Buscar histórico ICMP, status ou problemas em paralelo à Query
+- Usar `getBackendSrv().post(.../zabbix-api...)` fora do legado já existente
+
+## Se a tarefa parecer exigir API
+
+1. **Pare** — não implemente
+2. Use só o que a Query já entrega (período = intervalo do dashboard)
+3. Se não der com Query, **pergunte** ao usuário antes de qualquer exceção
+
+## Legado
+
+`src/utils/zabbixApi.ts` ainda pode ser referenciado por fluxos antigos (ex.: modal de ping, picker de
+host na edição). **Não estenda** esse arquivo; ao refatorar esses fluxos, migre para Query ou remova a
+dependência — não adicione casos novos.
+
+## Exemplos
+
+```typescript
+// ❌ BAD — histórico ICMP via API
+import { fetchHostIcmpHistoryPoints } from '../utils/zabbixApi';
+const points = await fetchHostIcmpHistoryPoints(uid, host, metric, periodMs);
+
+// ✅ GOOD — série da Query do painel
+import { extractHostHoverSeries } from '../utils/hostTimeSeries';
+const series = extractHostHoverSeries(queryData, lookupRef, hostMetadata);
+```
+
+```typescript
+// ❌ BAD — cor/status via item.get
+const items = await zabbixCall(uid, 'item.get', { hostids: [id], search: { key_: 'icmpping' } });
+
+// ✅ GOOD — status da Query
+const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
+```

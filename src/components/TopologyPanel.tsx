@@ -125,7 +125,6 @@ export function TopologyPanel({
   fieldConfig,
   replaceVariables,
   timeZone,
-  timeRange,
   width,
   height,
   onOptionsChange,
@@ -301,19 +300,15 @@ export function TopologyPanel({
       if ((node.type ?? 'host') !== 'host') {
         continue;
       }
-      const subtitle = node.subtitle?.trim();
-      if (subtitle && isIpv4(subtitle)) {
-        addHost(subtitle);
-        continue;
-      }
       const hostKey = node.zabbixHost?.trim();
-      if (hostKey && isIpv4(hostKey)) {
+      if (!hostKey) {
+        continue;
+      }
+      if (isIpv4(hostKey)) {
         addHost(hostKey);
         continue;
       }
-      if (hostKey) {
-        addHost(hostKey);
-      }
+      addHost(hostKey);
     }
     for (const host of displayQueryHosts) {
       addHost(host);
@@ -527,7 +522,6 @@ export function TopologyPanel({
         refreshCountdown={refreshCountdown}
         refreshIntervalSec={refreshIntervalSec}
         queryData={mappedData}
-        timeRange={timeRange}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}

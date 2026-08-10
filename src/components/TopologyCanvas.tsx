@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { PanelData, TimeRange } from '@grafana/data';
+import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
@@ -105,8 +105,6 @@ interface Props {
   refreshIntervalSec?: number | null;
   /** Frames da Query Zabbix (com overrides de cor/threshold) */
   queryData?: PanelData;
-  /** Período selecionado no dashboard */
-  timeRange?: TimeRange;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
@@ -354,6 +352,9 @@ function nodeFill(
   if (node.type === 'static') {
     return node.fillColor || options.colorStatic;
   }
+  if (!node.zabbixHost?.trim()) {
+    return options.colorUnknown;
+  }
   const metric = effectiveStatusMetric(options);
   const threshold = offlineThresholdForMetric(metric);
   const lookupRef: HostLookupRef = {
@@ -406,7 +407,6 @@ export function TopologyCanvas({
   refreshCountdown = null,
   refreshIntervalSec = null,
   queryData,
-  timeRange,
   onMapChange,
   onViewChange,
   onShowMinimapChange,
@@ -3407,7 +3407,6 @@ export function TopologyCanvas({
           screenX={hostHover.screenX}
           screenY={hostHover.screenY}
           queryData={queryData}
-          timeRange={timeRange}
           hostMetadata={hostMetadata}
           hostDisplay={hostDisplay}
           problemMap={problemMap}

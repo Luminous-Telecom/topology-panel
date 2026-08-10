@@ -19,8 +19,8 @@ neste repositório (não recrie o equivalente em outro arquivo):
 | Contraste de texto sobre fundo colorido | `src/utils/colorContrast.ts` |
 | Status online/offline/alerta de um host | `resolveNodeStatus` em `src/utils.ts` |
 | Estatísticas agregadas de rede/submapa (online/offline/alerta) | `src/utils/networkStats.ts` |
-| Chamadas à API Zabbix (host.get, item.get, trigger.get, script.execute) | `src/utils/zabbixApi.ts` (sempre via `getBackendSrv()`, nunca `fetch` direto) |
-| Abrir Winbox/SSH/Telnet/ping | `src/utils/hostTools.ts` |
+| Série temporal ICMP / gráfico de hover | `extractHostHoverSeries` em `src/utils/hostTimeSeries.ts` (só `PanelData` da Query) |
+| Abrir Winbox/SSH/Telnet/ping (URL local) | `src/utils/hostTools.ts` |
 | Mutações no `TopologyMap` (add/move/update node, link, bulk edit) | `src/utils/mapEdits.ts` |
 | Adicionar nó "utilitário" (submapa/rede/estático/seletor) numa posição | `addTypedNodeAt` em `src/utils/mapEdits.ts` — chame com o `type`/prefixo/label certos em vez de duplicar o bloco `filter + id + push` |
 | Extrair hosts (nomes/hostids) visíveis de um `TopologyMap` | `extractTopologyHostNames`/`extractTopologyHostRefs` em `src/utils/submapHosts.ts` |

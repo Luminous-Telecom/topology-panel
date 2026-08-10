@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
-import { PanelData, TimeRange } from '@grafana/data';
+import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
@@ -14,7 +14,7 @@ import { HostLookupRef, lookupHostDisplay, lookupProblemCount, resolveHostIp } f
 import {
   extractHostHoverSeries,
   formatHoverMetricValue,
-  HostHoverSeries,
+  hostHoverPeriodLabel,
   hoverMetricLabel,
 } from '../utils/hostTimeSeries';
 
@@ -23,7 +23,6 @@ interface Props {
   screenX: number;
   screenY: number;
   queryData?: PanelData;
-  timeRange?: TimeRange;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
   problemMap?: HostProblemMap;
@@ -48,7 +47,7 @@ function Sparkline({
   colorOnline,
   colorOffline,
 }: {
-  series: HostHoverSeries;
+  series: NonNullable<ReturnType<typeof extractHostHoverSeries>>;
   colorOnline: string;
   colorOffline: string;
 }) {
@@ -122,7 +121,6 @@ export function HostHoverPopover({
   screenX,
   screenY,
   queryData,
-  timeRange,
   hostMetadata,
   hostDisplay,
   problemMap,
@@ -152,9 +150,7 @@ export function HostHoverPopover({
   const ip = resolveHostIp(node, hostMetadata);
 
   const lastPoint = series?.points[series.points.length - 1];
-  const periodLabel = timeRange
-    ? `${formatClock(timeRange.from.valueOf())} – ${formatClock(timeRange.to.valueOf())}`
-    : 'Período do dashboard';
+  const periodLabel = hostHoverPeriodLabel(series);
 
   useLayoutEffect(() => {
     const el = popoverRef.current;
