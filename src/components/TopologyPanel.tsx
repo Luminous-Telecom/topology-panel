@@ -5,6 +5,7 @@ import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
+  HostMetadata,
   HostMetadataMap,
   TopologyMap,
   TopologyNode,
@@ -16,6 +17,9 @@ import {
   collectSubmapQueryRefIds,
   collectQueryRefIdsFromPanelData,
   collectQueryRefInfosFromPanelData,
+  canonicalizeHostKeys,
+  enrichHostDisplayFromMap,
+  enrichHostMetadataFromMap,
   extractDisplayQueryHosts,
   extractHostDisplay,
   extractHostDisplayByRefId,
@@ -25,6 +29,7 @@ import {
   isIpv4,
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
+  resolveHostIp,
   resolveZabbixDatasourceUid,
   sameQueryRefInfos,
   sameStringList,
@@ -38,7 +43,33 @@ import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../util
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
-/** Persiste nome/IP da Query no mapa salvo (migrate + rename). */
+/** Localiza metadata da Query — IP primeiro; nome só se não houver IP. */
+function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap): HostMetadata | undefined {
+  const ip = resolveHostIp(node);
+  if (ip) {
+    const byKey = meta[ip];
+    if (byKey) {
+      return byKey;
+    }
+    for (const entry of Object.values(meta)) {
+      if (entry.ip?.trim() === ip) {
+        return entry;
+      }
+    }
+  }
+
+  const name = node.zabbixHost?.trim();
+  if (name && !isIpv4(name) && meta[name]) {
+    return meta[name];
+  }
+  const label = node.label?.trim();
+  if (label && !isIpv4(label) && meta[label]) {
+    return meta[label];
+  }
+  return undefined;
+}
+
+/** Persiste nome/IP da Query no mapa salvo (migrate + rename). Preferência: IP. */
 function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
   let changed = false;
   const nodes = map.nodes.map((node) => {
@@ -47,12 +78,7 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
     }
     const name = node.zabbixHost?.trim();
     const label = node.label?.trim();
-    const subtitleIp = node.subtitle?.trim() && isIpv4(node.subtitle) ? node.subtitle.trim() : undefined;
-    const entry =
-      (name && meta[name]) ||
-      (label && meta[label]) ||
-      (subtitleIp && meta[subtitleIp]) ||
-      undefined;
+    const entry = findQueryMetaForNode(node, meta);
     if (!entry) {
       if (node.zabbixHostId) {
         changed = true;
@@ -62,9 +88,9 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
       return node;
     }
 
-    const nextName = entry.name?.trim() || name || label;
-    const nextIp = entry.ip?.trim();
-    const nextHostKey = nextIp && isIpv4(nextIp) ? nextIp : nextName && !isIpv4(nextName) ? nextName : name;
+    const nextName = entry.name?.trim() || label || (name && !isIpv4(name) ? name : undefined);
+    const nextIp = entry.ip?.trim() && isIpv4(entry.ip) ? entry.ip.trim() : resolveHostIp(node);
+    const nextHostKey = nextIp || (nextName && !isIpv4(nextName) ? nextName : name);
     const patch: typeof node = { ...node };
     let nodeChanged = false;
 
@@ -100,7 +126,8 @@ function submapHostListForNode(
   node: TopologyNode,
   hostDisplayByRefId: Record<string, HostDisplayMap>,
   queryReady: boolean,
-  fetchedFromDashboard: string[] | null | undefined
+  fetchedFromDashboard: string[] | null | undefined,
+  hostMetadata?: HostMetadataMap
 ): string[] | null | undefined {
   const refId = node.queryRefId?.trim();
   if (refId) {
@@ -111,7 +138,7 @@ function submapHostListForNode(
     if (!bucket) {
       return [];
     }
-    return Object.keys(bucket).sort((a, b) => a.localeCompare(b));
+    return canonicalizeHostKeys(Object.keys(bucket), hostMetadata);
   }
   return fetchedFromDashboard;
 }
@@ -165,10 +192,19 @@ export function TopologyPanel({
     ]
   );
 
-  const hostDisplayByRefId = useMemo(
-    () => extractHostDisplayByRefId(data, statusColorOptions),
-    [data, statusColorOptions]
+  const dataMeta = useMemo(
+    () => enrichHostMetadataFromMap(extractHostMetadataFromData(data), resolvedOptions.map),
+    [data, resolvedOptions.map]
   );
+
+  const hostDisplayByRefId = useMemo(() => {
+    const byRef = extractHostDisplayByRefId(data, statusColorOptions);
+    const enriched: Record<string, HostDisplayMap> = {};
+    for (const [refId, bucket] of Object.entries(byRef)) {
+      enriched[refId] = enrichHostDisplayFromMap(bucket, resolvedOptions.map, dataMeta);
+    }
+    return enriched;
+  }, [data, statusColorOptions, resolvedOptions.map, dataMeta]);
 
   const queryRefIdsAvailable = useMemo(
     () => collectQueryRefIdsFromPanelData(data),
@@ -214,9 +250,15 @@ export function TopologyPanel({
     [data, submapQueryRefIds, displayQueryRefIds]
   );
 
-  const dataMeta = useMemo(() => extractHostMetadataFromData(data), [data]);
-
-  const hostDisplay = useMemo(() => extractHostDisplay(data, statusColorOptions), [data, statusColorOptions]);
+  const hostDisplay = useMemo(
+    () =>
+      enrichHostDisplayFromMap(
+        extractHostDisplay(data, statusColorOptions),
+        resolvedOptions.map,
+        dataMeta
+      ),
+    [data, statusColorOptions, resolvedOptions.map, dataMeta]
+  );
 
   const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
 
@@ -246,11 +288,12 @@ export function TopologyPanel({
         node,
         hostDisplayByRefId,
         queryReady,
-        fetchedSubmapHosts[node.id]
+        fetchedSubmapHosts[node.id],
+        hostMetadata
       );
     }
     return result;
-  }, [submapNodes, hostDisplayByRefId, queryReady, fetchedSubmapHosts]);
+  }, [submapNodes, hostDisplayByRefId, queryReady, fetchedSubmapHosts, hostMetadata]);
 
   useEffect(() => {
     if (!onOptionsChange) {

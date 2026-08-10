@@ -8,8 +8,8 @@
       "name": "Luminous Telecom"
     },
     "keywords": ["topology", "network", "zabbix", "map"],
-    "version": "1.4.113",
-    "updated": "2026-08-09"
+    "version": "1.4.114",
+    "updated": "2026-08-10"
   },
 
   "dependencies": {
