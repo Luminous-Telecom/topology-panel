@@ -618,6 +618,83 @@ export function extractHostDisplay(
   return result;
 }
 
+/**
+ * Junta status ao vivo com o último bom.
+ * Só reutiliza o anterior quando o frame veio vazio (Loading sem séries).
+ * Buckets/hosts que chegaram no live substituem por completo — não grudar offline velho.
+ */
+export function mergeHostDisplayMaps(
+  live: HostDisplayMap,
+  previous: HostDisplayMap
+): HostDisplayMap {
+  if (Object.keys(live).length === 0) {
+    return previous;
+  }
+  return live;
+}
+
+/**
+ * Mantém refIds que ainda não voltaram no refresh; os que chegaram substituem o bucket inteiro.
+ */
+export function mergeHostDisplayByRefId(
+  live: Record<string, HostDisplayMap>,
+  previous: Record<string, HostDisplayMap>
+): Record<string, HostDisplayMap> {
+  if (Object.keys(live).length === 0) {
+    return previous;
+  }
+  if (Object.keys(previous).length === 0) {
+    return live;
+  }
+  const merged: Record<string, HostDisplayMap> = { ...previous };
+  for (const [refId, bucket] of Object.entries(live)) {
+    merged[refId] = bucket;
+  }
+  return merged;
+}
+
+/** Achata buckets por refId num mapa único (hosts do canvas). */
+export function flattenHostDisplayByRefId(
+  byRefId: Record<string, HostDisplayMap>
+): HostDisplayMap {
+  const result: HostDisplayMap = {};
+  for (const bucket of Object.values(byRefId)) {
+    for (const [key, info] of Object.entries(bucket)) {
+      const existing = result[key];
+      if (!existing) {
+        result[key] = info;
+        continue;
+      }
+      if (info.status && !existing.status) {
+        result[key] = info;
+      } else if (info.status) {
+        result[key] = info;
+      }
+    }
+  }
+  return result;
+}
+
+/** Mantém listas de hosts por refId quando o refresh ainda não trouxe aquela query. */
+export function mergeQueryHostsByRefId(
+  live: Record<string, string[]>,
+  previous: Record<string, string[]>
+): Record<string, string[]> {
+  if (Object.keys(live).length === 0) {
+    return previous;
+  }
+  if (Object.keys(previous).length === 0) {
+    return live;
+  }
+  const merged: Record<string, string[]> = { ...previous };
+  for (const [refId, hosts] of Object.entries(live)) {
+    if (hosts.length > 0) {
+      merged[refId] = hosts;
+    }
+  }
+  return merged;
+}
+
 /** Host -> status por refId da query Grafana (A, B, C…). */
 export function extractHostDisplayByRefId(
   data: PanelData,

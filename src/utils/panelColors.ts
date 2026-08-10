@@ -1,6 +1,6 @@
 import { createTheme, GrafanaTheme2 } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { TopologyPanelOptions } from '../types';
+import { TopologyHostIcon, TopologyPanelOptions } from '../types';
 
 export const PANEL_COLOR_OPTION_KEYS = [
   'colorOnline',
@@ -125,6 +125,44 @@ export function panelColorWithAlpha(color: string, alpha: number): string {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 }
 
+type HostTypeColors = NonNullable<TopologyPanelOptions['hostTypeColors']>;
+
+function resolveHostTypeColorsMap(
+  colors: HostTypeColors | undefined,
+  resolve: (color: string) => string
+): HostTypeColors | undefined {
+  if (!colors) {
+    return undefined;
+  }
+  const out: HostTypeColors = {};
+  let any = false;
+  for (const [key, value] of Object.entries(colors) as Array<[TopologyHostIcon, string | undefined]>) {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      continue;
+    }
+    const fixed = resolve(raw);
+    if (!fixed) {
+      continue;
+    }
+    out[key] = fixed;
+    any = true;
+  }
+  return any ? out : undefined;
+}
+
+/** Cor configurada para o tipo/ícone do host (já resolvida para CSS). */
+export function hostTypeFillColor(
+  icon: TopologyHostIcon | undefined,
+  hostTypeColors: HostTypeColors | undefined
+): string | undefined {
+  if (!icon || !hostTypeColors) {
+    return undefined;
+  }
+  const color = hostTypeColors[icon]?.trim();
+  return color || undefined;
+}
+
 /** Resolve cores das opções antes de renderizar SVG. */
 export function resolvePanelOptionsColors(
   options: TopologyPanelOptions,
@@ -145,6 +183,7 @@ export function resolvePanelOptionsColors(
     colorNetworkFill: resolve(options.colorNetworkFill),
     colorNetworkBorder: resolve(options.colorNetworkBorder),
     colorNetworkLabel: resolve(options.colorNetworkLabel),
+    hostTypeColors: resolveHostTypeColorsMap(options.hostTypeColors, resolve),
   };
 }
 
@@ -165,6 +204,28 @@ export function normalizeStoredPanelColors(
     }
     if (!isCssColor(raw) && isCssColor(fixed)) {
       patch[key] = fixed;
+      changed = true;
+    }
+  }
+
+  const rawType = options.hostTypeColors;
+  const fixedType = resolved.hostTypeColors;
+  if (rawType && fixedType) {
+    let typeChanged = false;
+    const nextType: HostTypeColors = { ...rawType };
+    for (const [key, value] of Object.entries(rawType) as Array<[TopologyHostIcon, string | undefined]>) {
+      const raw = String(value ?? '').trim();
+      const fixed = String(fixedType[key] ?? '').trim();
+      if (!raw || !fixed || raw === fixed) {
+        continue;
+      }
+      if (!isCssColor(raw) && isCssColor(fixed)) {
+        nextType[key] = fixed;
+        typeChanged = true;
+      }
+    }
+    if (typeChanged) {
+      patch.hostTypeColors = nextType;
       changed = true;
     }
   }

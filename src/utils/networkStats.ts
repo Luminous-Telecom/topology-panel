@@ -1,5 +1,5 @@
 import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyNode, TopologyPanelOptions } from '../types';
-import { HostLookupRef, lookupHostDisplay, NodeLayout, resolveHostLookupKey } from '../utils';
+import { findHostDisplayBucket, HostLookupRef, lookupHostDisplay, NodeLayout, resolveHostLookupKey } from '../utils';
 import { panelColorWithAlpha } from './panelColors';
 
 export interface RegionHostStats {
@@ -135,7 +135,9 @@ export function buildRegionStatsMap(
   nodeLayouts: Map<string, NodeLayout & TopologyNode>,
   hostDisplay: HostDisplayMap,
   submapHosts: Record<string, string[] | null | undefined> = {},
-  hostMetadata: HostMetadataMap = {}
+  hostMetadata: HostMetadataMap = {},
+  /** Status por refId — submapa com queryRefId só olha a própria consulta (não o mapa pai). */
+  hostDisplayByRefId: Record<string, HostDisplayMap> = {}
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
   const hostNodes = nodes.filter((n) => (n.type ?? 'host') === 'host');
@@ -151,7 +153,11 @@ export function buildRegionStatsMap(
         result.set(node.id, { total: 0, offline: 0, alert: 0, online: 0, unknown: 0, loadFailed: true });
         continue;
       }
-      result.set(node.id, countRegionStats(fetched, hostDisplay, hostMetadata));
+      const refId = node.queryRefId?.trim();
+      const statusMap = refId
+        ? findHostDisplayBucket(hostDisplayByRefId, refId) ?? {}
+        : hostDisplay;
+      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata));
       continue;
     }
 

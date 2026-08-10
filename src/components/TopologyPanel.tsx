@@ -21,17 +21,20 @@ import {
   enrichHostDisplayFromMap,
   enrichHostMetadataFromMap,
   extractDisplayQueryHosts,
-  extractHostDisplay,
   extractHostDisplayByRefId,
   extractHostMetadataFromData,
   extractQueryHostOptions,
   extractQueryHostsByRefId,
   enrichQueryHostOptionsFromMap,
   findHostDisplayBucket,
+  flattenHostDisplayByRefId,
   isIpv4,
+  mergeHostDisplayByRefId,
   mergeMapWithQueryHosts,
+  mergeQueryHostsByRefId,
   resolveDisplayQueryRefIds,
   resolveHostIp,
+  resolveHostLookupKey,
   resolveZabbixDatasourceUid,
   sameQueryRefInfos,
   sameStringList,
@@ -123,16 +126,37 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
   return changed ? { ...map, nodes } : null;
 }
 
-/** Lista de hosts para agregar status do submapa (query refId ou dashboard filho). */
+/** Chaves canônicas (IP ou nome) dos hosts type=host já desenhados neste mapa. */
+function parentMapHostKeys(map: TopologyMap, hostMetadata?: HostMetadataMap): Set<string> {
+  const keys = new Set<string>();
+  for (const node of map.nodes) {
+    if ((node.type ?? 'host') !== 'host') {
+      continue;
+    }
+    const key = resolveHostLookupKey(node, hostMetadata);
+    if (key) {
+      keys.add(key.toLowerCase());
+    }
+  }
+  return keys;
+}
+
+/**
+ * Lista de hosts para agregar status do submapa (query refId ou dashboard filho).
+ * Remove hosts já desenhados como nó no mapa pai — um host compartilhado (ex.: link entre
+ * redes) não deve contar como parte do submapa só porque também está no host group da query B.
+ */
 function submapHostListForNode(
   node: TopologyNode,
   hostDisplayByRefId: Record<string, HostDisplayMap>,
   queryHostsByRefId: Record<string, string[]>,
   queryReady: boolean,
   fetchedFromDashboard: string[] | null | undefined,
+  parentHostKeys: Set<string>,
   hostMetadata?: HostMetadataMap
 ): string[] | null | undefined {
   const refId = node.queryRefId?.trim();
+  let keys: string[] | null | undefined;
   if (refId) {
     if (!queryReady) {
       return undefined;
@@ -141,11 +165,16 @@ function submapHostListForNode(
     const fromLabels =
       queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
     const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
-    const keys =
+    const raw =
       fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
-    return canonicalizeHostKeys(keys, hostMetadata);
+    keys = canonicalizeHostKeys(raw, hostMetadata);
+  } else {
+    keys = fetchedFromDashboard;
   }
-  return fetchedFromDashboard;
+  if (!keys || !parentHostKeys.size) {
+    return keys;
+  }
+  return keys.filter((key) => !parentHostKeys.has(key.toLowerCase()));
 }
 
 export function TopologyPanel({
@@ -169,9 +198,9 @@ export function TopologyPanel({
 
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
-  /** Último status da Query — evita redes cinzas no flash de Loading do refresh. */
-  const lastGoodHostDisplayRef = useRef<HostDisplayMap>({});
+  /** Último status da Query — evita flash no refresh (séries parciais por refId). */
   const lastGoodHostDisplayByRefIdRef = useRef<Record<string, HostDisplayMap>>({});
+  const lastGoodQueryHostsByRefIdRef = useRef<Record<string, string[]>>({});
 
   const resolvedOptions = useMemo(() => {
     const merged = {
@@ -214,24 +243,26 @@ export function TopologyPanel({
     return enriched;
   }, [data, statusColorOptions, resolvedOptions.map, dataMeta]);
 
-  useEffect(() => {
-    if (Object.keys(liveHostDisplayByRefId).length > 0) {
-      lastGoodHostDisplayByRefIdRef.current = liveHostDisplayByRefId;
-    }
-  }, [liveHostDisplayByRefId]);
+  const hostDisplayByRefId = useMemo(
+    () => mergeHostDisplayByRefId(liveHostDisplayByRefId, lastGoodHostDisplayByRefIdRef.current),
+    [liveHostDisplayByRefId]
+  );
 
-  const hostDisplayByRefId = useMemo(() => {
-    if (Object.keys(liveHostDisplayByRefId).length > 0) {
-      return liveHostDisplayByRefId;
+  useEffect(() => {
+    if (Object.keys(hostDisplayByRefId).length > 0) {
+      lastGoodHostDisplayByRefIdRef.current = hostDisplayByRefId;
     }
-    if (
-      data.state === LoadingState.Loading &&
-      Object.keys(lastGoodHostDisplayByRefIdRef.current).length > 0
-    ) {
-      return lastGoodHostDisplayByRefIdRef.current;
-    }
-    return liveHostDisplayByRefId;
-  }, [liveHostDisplayByRefId, data.state]);
+  }, [hostDisplayByRefId]);
+
+  const hostDisplay = useMemo(
+    () =>
+      enrichHostDisplayFromMap(
+        flattenHostDisplayByRefId(hostDisplayByRefId),
+        resolvedOptions.map,
+        dataMeta
+      ),
+    [hostDisplayByRefId, resolvedOptions.map, dataMeta]
+  );
 
   const queryRefIdsAvailable = useMemo(
     () => collectQueryRefIdsFromPanelData(data),
@@ -277,35 +308,6 @@ export function TopologyPanel({
     [data, submapQueryRefIds, displayQueryRefIds]
   );
 
-  const liveHostDisplay = useMemo(
-    () =>
-      enrichHostDisplayFromMap(
-        extractHostDisplay(data, statusColorOptions),
-        resolvedOptions.map,
-        dataMeta
-      ),
-    [data, statusColorOptions, resolvedOptions.map, dataMeta]
-  );
-
-  useEffect(() => {
-    if (Object.keys(liveHostDisplay).length > 0) {
-      lastGoodHostDisplayRef.current = liveHostDisplay;
-    }
-  }, [liveHostDisplay]);
-
-  const hostDisplay = useMemo(() => {
-    if (Object.keys(liveHostDisplay).length > 0) {
-      return liveHostDisplay;
-    }
-    if (
-      data.state === LoadingState.Loading &&
-      Object.keys(lastGoodHostDisplayRef.current).length > 0
-    ) {
-      return lastGoodHostDisplayRef.current;
-    }
-    return liveHostDisplay;
-  }, [liveHostDisplay, data.state]);
-
   const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
 
   const hostMetadata = dataMeta;
@@ -329,7 +331,23 @@ export function TopologyPanel({
     return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
   }, [resolvedOptions.map.nodes]);
 
-  const queryHostsByRefId = useMemo(() => extractQueryHostsByRefId(data), [data]);
+  const liveQueryHostsByRefId = useMemo(() => extractQueryHostsByRefId(data), [data]);
+
+  const queryHostsByRefId = useMemo(
+    () => mergeQueryHostsByRefId(liveQueryHostsByRefId, lastGoodQueryHostsByRefIdRef.current),
+    [liveQueryHostsByRefId]
+  );
+
+  useEffect(() => {
+    if (Object.keys(queryHostsByRefId).length > 0) {
+      lastGoodQueryHostsByRefIdRef.current = queryHostsByRefId;
+    }
+  }, [queryHostsByRefId]);
+
+  const parentHostKeys = useMemo(
+    () => parentMapHostKeys(resolvedOptions.map, hostMetadata),
+    [resolvedOptions.map, hostMetadata]
+  );
 
   const submapHosts = useMemo(() => {
     const result: Record<string, string[] | null | undefined> = {};
@@ -340,11 +358,12 @@ export function TopologyPanel({
         queryHostsByRefId,
         queryReady,
         fetchedSubmapHosts[node.id],
+        parentHostKeys,
         hostMetadata
       );
     }
     return result;
-  }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, fetchedSubmapHosts, hostMetadata]);
+  }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, fetchedSubmapHosts, parentHostKeys, hostMetadata]);
 
   useEffect(() => {
     if (!onOptionsChange) {
@@ -490,6 +509,7 @@ export function TopologyPanel({
         options={resolvedOptions}
         queryHostOptions={queryHostOptions}
         hostDisplay={hostDisplay}
+        hostDisplayByRefId={hostDisplayByRefId}
         queryReady={queryReady}
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}

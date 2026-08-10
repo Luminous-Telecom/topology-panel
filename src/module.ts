@@ -2,6 +2,7 @@ import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
 import { QueryDisplayRefIdsEditor } from './components/QueryDisplayRefIdsEditor';
+import { HostTypeColorsEditor } from './components/HostTypeColorsEditor';
 import { StatusValueMappingsEditor } from './components/StatusValueMappingsEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
 import { TopologyPanelOptions, defaultOptions, defaultStatusValueMappings } from './types';
@@ -138,6 +139,16 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         description: 'Host sem valor na Query ou sem regra de mapeamento',
         defaultValue: '#616161',
         category: ['Aparência'],
+      })
+      .addCustomEditor({
+        id: 'hostTypeColors',
+        path: 'hostTypeColors',
+        name: 'Cor por tipo de host',
+        description:
+          'Fundo do card por tipo/ícone quando online ou sem query (offline/alerta usam as cores globais)',
+        editor: HostTypeColorsEditor,
+        category: ['Aparência'],
+        defaultValue: {},
       })
       .addColorPicker({
         path: 'colorStatic',

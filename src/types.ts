@@ -186,6 +186,12 @@ export interface TopologyPanelOptions {
   colorUnknown: string;
   /** Valor da Query → status */
   statusValueMappings: TopologyStatusValueMapping[];
+  /**
+   * Cor do card do host por tipo/ícone (online ou sem query).
+   * Offline e alerta continuam com colorOffline / colorAlert.
+   * Chave ausente = usa colorOnline / colorUnknown.
+   */
+  hostTypeColors?: Partial<Record<TopologyHostIcon, string>>;
   /** Cor padrão dos rótulos estáticos */
   colorStatic: string;
   colorSubmap: string;
@@ -296,6 +302,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorAlert: '#EF6C00',
   colorUnknown: '#616161',
   statusValueMappings: defaultStatusValueMappings(),
+  hostTypeColors: {},
   colorStatic: '#616161',
   colorSubmap: '#1565C0',
   colorLink: '#78909C',

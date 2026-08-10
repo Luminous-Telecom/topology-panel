@@ -37,7 +37,7 @@ import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DE
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
-import { resolvePanelColor } from '../utils/panelColors';
+import { hostTypeFillColor, resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStatsTextColor, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
 import { isNetworkNode } from '../utils/mapBounds';
@@ -87,6 +87,8 @@ interface Props {
   queryHostOptions?: QueryHostOption[];
   /** Cores/status via mapeamento de valor do painel */
   hostDisplay?: HostDisplayMap;
+  /** Status por refId da Query — usado pelo submapa para não misturar com o mapa pai */
+  hostDisplayByRefId?: Record<string, HostDisplayMap>;
   /** Query carregada ao menos uma vez — evita status falso antes dos dados. */
   queryReady?: boolean;
   hostMetadata?: HostMetadataMap;
@@ -344,7 +346,11 @@ function nodeFill(
   if (node.type === 'static') {
     return node.fillColor || options.colorStatic;
   }
+  const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
   if (!node.zabbixHost?.trim()) {
+    if (typeFill) {
+      return typeFill;
+    }
     return options.colorUnknown;
   }
   const lookupRef = {
@@ -354,10 +360,19 @@ function nodeFill(
   };
   const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   if (!mapped?.color) {
+    if (typeFill) {
+      return typeFill;
+    }
     return options.colorUnknown;
+  }
+  if (mapped.status === 'online' && typeFill) {
+    return typeFill;
   }
   const color = resolveMappedColor?.(mapped.color);
   if (!color) {
+    if (typeFill) {
+      return typeFill;
+    }
     return options.colorUnknown;
   }
   return color;
@@ -369,6 +384,7 @@ export function TopologyCanvas({
   options,
   queryHostOptions = [],
   hostDisplay,
+  hostDisplayByRefId = {},
   queryReady = false,
   hostMetadata,
   submapHosts = {},
@@ -567,7 +583,8 @@ export function TopologyCanvas({
       layouts,
       hostDisplay ?? {},
       submapHosts,
-      hostMetadata
+      hostMetadata,
+      hostDisplayByRefId
     );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
@@ -587,7 +604,7 @@ export function TopologyCanvas({
     }
 
     return { nodeLayouts: layouts, regionStats: stats };
-  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, options, submapHosts, hostMetadata, queryReady]);
+  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, options, submapHosts, hostMetadata, queryReady]);
 
   const validLinks = useMemo(() => {
     return map.links.filter((l) => {
