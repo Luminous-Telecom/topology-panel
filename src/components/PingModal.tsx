@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Field, Spinner } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Field, Modal, Spinner } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi';
 import { copyPingCommand } from '../utils/hostTools';
@@ -163,7 +162,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
   const summary = icmpSummary(icmpStatus);
 
   return (
-    <DraggableModal title="Ping" isOpen onDismiss={onClose}>
+    <Modal title="Ping" isOpen onDismiss={onClose}>
       <Field label="Host">
         <div style={{ fontSize: 14 }}>{label}</div>
       </Field>
@@ -233,14 +232,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         </div>
       </Field>
 
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={() => void runPingBurst()} disabled={running}>
           Ping agora
         </Button>
         <Button variant="primary" onClick={onClose}>
           Fechar
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

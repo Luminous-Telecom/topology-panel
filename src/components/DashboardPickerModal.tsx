@@ -1,6 +1,5 @@
 import React from 'react';
-import { Button } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Modal } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { TopologyDashboardChoice, TopologyNode } from '../types';
 
@@ -79,7 +78,7 @@ export function DashboardPickerModal({ node, onClose, onSelect }: Props) {
   const title = node.label?.trim() || 'Selecionar dashboard';
 
   return (
-    <DraggableModal title={title} isOpen onDismiss={onClose}>
+    <Modal title={title} isOpen onDismiss={onClose}>
       {choices.length === 0 ? (
         <p style={{ margin: '8px 0 16px', opacity: 0.8 }}>
           Nenhum dashboard configurado neste seletor. Edite as propriedades do botão para incluir dashboards.
@@ -107,11 +106,11 @@ export function DashboardPickerModal({ node, onClose, onSelect }: Props) {
           })}
         </div>
       )}
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Field, Input } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Field, Input, Modal } from '@grafana/ui';
 
 interface Props {
   count: number;
@@ -13,7 +12,7 @@ export function BulkHostCredentialsModal({ count, onSave, onClose }: Props) {
   const [toolPassword, setToolPassword] = useState('');
 
   return (
-    <DraggableModal title={`Credenciais Tools (${count} hosts)`} isOpen onDismiss={onClose}>
+    <Modal title={`Credenciais Tools (${count} hosts)`} isOpen onDismiss={onClose}>
       <Field
         label="Usuário"
         description={`Aplicar o mesmo usuário a ${count} hosts selecionados (Winbox / SSH / Telnet)`}
@@ -37,7 +36,7 @@ export function BulkHostCredentialsModal({ count, onSave, onClose }: Props) {
           autoComplete="new-password"
         />
       </Field>
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -52,7 +51,7 @@ export function BulkHostCredentialsModal({ count, onSave, onClose }: Props) {
         >
           Aplicar a {count} hosts
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

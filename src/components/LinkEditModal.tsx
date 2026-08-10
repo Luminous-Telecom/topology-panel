@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Field, Input, Select } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Field, Input, Modal, Select } from '@grafana/ui';
 import { TopologyLink, TopologyLinkMedium } from '../types';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
@@ -27,7 +26,7 @@ export function LinkEditModal({ link, onSave, onClose }: Props) {
   const [bandwidthUnit, setBandwidthUnit] = useState<LinkBandwidthUnit>(initial.unit);
 
   return (
-    <DraggableModal title="Editar link" isOpen onDismiss={onClose}>
+    <Modal title="Editar link" isOpen onDismiss={onClose}>
       <Field label="Tipo">
         <Select
           options={mediumOptions}
@@ -57,7 +56,7 @@ export function LinkEditModal({ link, onSave, onClose }: Props) {
           />
         </div>
       </Field>
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -73,7 +72,7 @@ export function LinkEditModal({ link, onSave, onClose }: Props) {
         >
           Salvar
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

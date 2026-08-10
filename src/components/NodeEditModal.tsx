@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, ColorPickerInput, Field, InlineSwitch, Input, Select } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal, Select } from '@grafana/ui';
 import {
   TopologyDashboardChoice,
   TopologyHostIcon,
@@ -238,7 +237,7 @@ export function NodeEditModal({
     !nodeIp;
 
   return (
-    <DraggableModal title={title} isOpen onDismiss={onClose}>
+    <Modal title={title} isOpen onDismiss={onClose}>
       {isZabbixHost && (
         <>
           <Field
@@ -426,14 +425,14 @@ export function NodeEditModal({
           </Field>
         </>
       )}
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
         <Button disabled={saveDisabled} onClick={handleSave}>
           Salvar
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

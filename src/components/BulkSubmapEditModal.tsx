@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Field, InlineSwitch, Input } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
 
 export type BulkSubmapPatch = {
   /** undefined = não alterar */
@@ -23,7 +22,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
   const [includeInParentStats, setIncludeInParentStats] = useState(true);
 
   return (
-    <DraggableModal title={`Editar submapas (${count})`} isOpen onDismiss={onClose}>
+    <Modal title={`Editar submapas (${count})`} isOpen onDismiss={onClose}>
       <Field
         label="Incluir submapas internos"
         description="Desative para monitorar só os hosts de cada dashboard, ignorando submapas dentro dele"
@@ -50,7 +49,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
           placeholder="Não alterar"
         />
       </Field>
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -69,7 +68,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
         >
           Aplicar a {count} submapas
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Field, Select } from '@grafana/ui';
-import { DraggableModal } from './DraggableModal';
+import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
 import { formatQueryHostOptionLabel, isIpv4, QueryHostOption, resolveHostIp } from '../utils';
@@ -111,7 +110,7 @@ export function ZabbixHostPickerModal({
     : 'Nenhum host na Query do painel. Configure a aba Query e aguarde os dados.';
 
   return (
-    <DraggableModal title={title} isOpen onDismiss={onClose}>
+    <Modal title={title} isOpen onDismiss={onClose}>
       <Field
         label="Host"
         description={
@@ -137,7 +136,7 @@ export function ZabbixHostPickerModal({
       <Field label="Tipo / ícone">
         <HostIconPicker value={icon} onChange={setIcon} />
       </Field>
-      <DraggableModal.ButtonRow>
+      <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -155,7 +154,7 @@ export function ZabbixHostPickerModal({
         >
           {confirmLabel}
         </Button>
-      </DraggableModal.ButtonRow>
-    </DraggableModal>
+      </Modal.ButtonRow>
+    </Modal>
   );
 }

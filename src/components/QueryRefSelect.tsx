@@ -8,6 +8,7 @@ interface Props {
   onChange: (refId: string) => void;
   queryRefs: TopologyQueryRefInfo[];
   disabled?: boolean;
+  menuShouldPortal?: boolean;
 }
 
 function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
@@ -19,7 +20,13 @@ function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
 }
 
 /** Select de consulta Grafana (A, B, C…) para vincular submapas ao status ICMP. */
-export function QueryRefSelect({ value, onChange, queryRefs, disabled }: Props) {
+export function QueryRefSelect({
+  value,
+  onChange,
+  queryRefs,
+  disabled,
+  menuShouldPortal = true,
+}: Props) {
   const normalized = value.trim().toUpperCase();
 
   const options = useMemo(() => {
@@ -50,6 +57,7 @@ export function QueryRefSelect({ value, onChange, queryRefs, disabled }: Props) 
       options={options}
       value={normalized || null}
       disabled={disabled}
+      menuShouldPortal={menuShouldPortal}
       placeholder="Selecionar consulta…"
       noOptionsMessage="Nenhuma consulta disponível"
       onChange={(v) => onChange(v?.value ?? '')}

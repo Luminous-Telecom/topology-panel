@@ -10,9 +10,16 @@ interface Props {
   disabled?: boolean;
   /** Prefer dashboards com esta tag (ex.: topology) */
   tagHint?: string;
+  menuShouldPortal?: boolean;
 }
 
-export function DashboardMultiSelect({ value, onChange, disabled, tagHint = 'topology,dude' }: Props) {
+export function DashboardMultiSelect({
+  value,
+  onChange,
+  disabled,
+  tagHint = 'topology,dude',
+  menuShouldPortal = true,
+}: Props) {
   const { dashboards, loading } = useGrafanaDashboards();
 
   const options = useMemo(() => {
@@ -44,6 +51,7 @@ export function DashboardMultiSelect({ value, onChange, disabled, tagHint = 'top
       value={selected}
       isLoading={loading}
       disabled={disabled}
+      menuShouldPortal={menuShouldPortal}
       placeholder="Selecionar dashboards…"
       noOptionsMessage="Nenhum dashboard encontrado"
       closeMenuOnSelect={false}

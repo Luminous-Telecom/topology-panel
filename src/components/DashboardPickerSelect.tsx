@@ -9,9 +9,16 @@ interface Props {
   disabled?: boolean;
   /** Prefer dashboards com esta tag (ex.: topology) */
   tagHint?: string;
+  menuShouldPortal?: boolean;
 }
 
-export function DashboardPickerSelect({ value, onChange, disabled, tagHint = 'topology,dude' }: Props) {
+export function DashboardPickerSelect({
+  value,
+  onChange,
+  disabled,
+  tagHint = 'topology,dude',
+  menuShouldPortal = true,
+}: Props) {
   const { dashboards, loading } = useGrafanaDashboards();
 
   const options = useMemo(() => {
@@ -29,6 +36,7 @@ export function DashboardPickerSelect({ value, onChange, disabled, tagHint = 'to
       value={value || null}
       isLoading={loading}
       disabled={disabled}
+      menuShouldPortal={menuShouldPortal}
       placeholder="Selecionar dashboard…"
       noOptionsMessage="Nenhum dashboard encontrado"
       onChange={(v) => {
