@@ -85,7 +85,7 @@ interface Props {
   options: TopologyPanelOptions;
   /** Hosts disponíveis nas séries da Query do painel */
   queryHostOptions?: QueryHostOption[];
-  /** Cores/textos dos Value mappings / Thresholds da Query */
+  /** Cores/status via mapeamento de valor do painel */
   hostDisplay?: HostDisplayMap;
   /** Query carregada ao menos uma vez — evita status falso antes dos dados. */
   queryReady?: boolean;
@@ -2539,6 +2539,12 @@ export function TopologyCanvas({
     if (options.legendUnknown !== false) {
       items.push({ label: 'Sem query', color: options.colorUnknown });
     }
+    if (options.legendOnline !== false) {
+      items.push({ label: 'Online', color: options.colorOnline });
+    }
+    if (options.legendOffline !== false) {
+      items.push({ label: 'Offline', color: options.colorOffline });
+    }
     if (options.legendStatic) {
       items.push({ label: 'Estático', color: options.colorStatic });
     }
@@ -2558,12 +2564,16 @@ export function TopologyCanvas({
   }, [
     options.showLegend,
     options.legendUnknown,
+    options.legendOnline,
+    options.legendOffline,
     options.legendStatic,
     options.legendSubmap,
     options.legendLink,
     options.legendDownload,
     options.legendUpload,
     options.colorUnknown,
+    options.colorOnline,
+    options.colorOffline,
     options.colorStatic,
     options.colorSubmap,
     options.colorLink,

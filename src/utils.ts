@@ -13,6 +13,7 @@ import {
   TopologyQueryRefInfo,
 } from './types';
 import { hostIp as hostIpFromNode } from './utils/hostTools';
+import { resolveHostStatusDisplay, StatusColorOptions } from './utils/statusMapping';
 import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions, hostIconRenderSize } from './utils/hostIcons';
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
@@ -275,8 +276,8 @@ function hostLabelFromField(field: { labels?: Record<string, string> }): string 
 }
 
 /**
- * Host -> último valor + cor/texto do mapeamento Grafana (Value mappings / Thresholds).
- * Query Zabbix crua (time_series); usa field.display quando o painel tem field config.
+ * Host -> último valor + cor/texto via mapeamento de status do painel.
+ * Query Zabbix crua (time_series).
  */
 /** RefIds (A, B, C…) configurados na aba Query do painel. */
 export function collectQueryRefIdsFromPanelData(data?: PanelData | DataFrame[]): string[] {
@@ -400,7 +401,8 @@ function frameQueryRefId(frame: DataFrame): string {
 
 function collectHostDisplayFromFrame(
   frame: DataFrame,
-  bucket: HostDisplayMap
+  bucket: HostDisplayMap,
+  statusOptions: StatusColorOptions
 ): void {
   for (const field of frame.fields ?? []) {
     if (field.type !== FieldType.number) {
@@ -422,12 +424,15 @@ function collectHostDisplayFromFrame(
     if (last === undefined) {
       continue;
     }
-    const displayed = field.display?.(last);
-    const entry: HostDisplayInfo = {
-      value: last,
-      color: displayed?.color,
-      text: displayed?.text,
-    };
+    const resolved = resolveHostStatusDisplay(last, statusOptions);
+    const entry: HostDisplayInfo = resolved
+      ? {
+          value: last,
+          color: resolved.color,
+          text: resolved.text,
+          status: resolved.status,
+        }
+      : { value: last };
     bucket[host] = entry;
     const labels = (field.labels ?? {}) as Record<string, string | undefined>;
     const ip = pickIpFromLabels(labels);
@@ -437,21 +442,27 @@ function collectHostDisplayFromFrame(
   }
 }
 
-export function extractHostDisplay(data: PanelData): HostDisplayMap {
+export function extractHostDisplay(
+  data: PanelData,
+  statusOptions: StatusColorOptions
+): HostDisplayMap {
   const result: HostDisplayMap = {};
   if (!data?.series?.length) {
     return result;
   }
 
   for (const frame of data.series) {
-    collectHostDisplayFromFrame(frame, result);
+    collectHostDisplayFromFrame(frame, result, statusOptions);
   }
 
   return result;
 }
 
 /** Host -> status por refId da query Grafana (A, B, C…). */
-export function extractHostDisplayByRefId(data: PanelData): Record<string, HostDisplayMap> {
+export function extractHostDisplayByRefId(
+  data: PanelData,
+  statusOptions: StatusColorOptions
+): Record<string, HostDisplayMap> {
   const result: Record<string, HostDisplayMap> = {};
   if (!data?.series?.length) {
     return result;
@@ -460,7 +471,7 @@ export function extractHostDisplayByRefId(data: PanelData): Record<string, HostD
   for (const frame of data.series) {
     const refId = frameQueryRefId(frame);
     const bucket = result[refId] ?? (result[refId] = {});
-    collectHostDisplayFromFrame(frame, bucket);
+    collectHostDisplayFromFrame(frame, bucket, statusOptions);
   }
 
   return result;
@@ -500,7 +511,11 @@ export function extractDisplayQueryHosts(
   if (!data?.series?.length || !displayQueryRefIds.length) {
     return [];
   }
-  const byRef = extractHostDisplayByRefId(data);
+  const byRef = extractHostDisplayByRefId(data, {
+    colorOnline: '',
+    colorOffline: '',
+    statusValueMappings: [],
+  });
   const allowed = new Set(displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean));
   const hosts = new Set<string>();
   for (const refId of allowed) {
@@ -555,7 +570,13 @@ export function extractQueryHosts(data: PanelData | DataFrame[] | undefined): st
   }
 
   const panelData = Array.isArray(data) ? panelDataFromFrames(data) : data;
-  for (const host of Object.keys(extractHostDisplay(panelData))) {
+  for (const host of Object.keys(
+    extractHostDisplay(panelData, {
+      colorOnline: '',
+      colorOffline: '',
+      statusValueMappings: [],
+    })
+  )) {
     hosts.add(host);
   }
   for (const frame of panelData.series ?? []) {

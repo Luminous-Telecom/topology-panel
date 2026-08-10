@@ -156,13 +156,34 @@ export interface TopologyView {
   scale: number;
 }
 
+export type TopologyHostStatus = 'online' | 'offline';
+
+/** Mapeamento de valor da Query → status online/offline (configurado no painel). */
+export interface TopologyStatusValueMapping {
+  /** Valor exato — se definido, ignora from/to */
+  value?: number;
+  /** Início do intervalo inclusivo (omitir = −∞) */
+  from?: number;
+  /** Fim do intervalo inclusivo (omitir = +∞) */
+  to?: number;
+  status: TopologyHostStatus;
+  /** Rótulo opcional no hover/legenda */
+  label?: string;
+}
+
 export interface TopologyPanelOptions {
   map: TopologyMap;
   /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
   view?: TopologyView;
   /** Colors */
+  /** Host online (mapeamento de valor) */
+  colorOnline: string;
+  /** Host offline (mapeamento de valor) */
+  colorOffline: string;
   /** Host sem cor na Query */
   colorUnknown: string;
+  /** Valor da Query → online/offline */
+  statusValueMappings: TopologyStatusValueMapping[];
   /** Cor padrão dos rótulos estáticos */
   colorStatic: string;
   colorSubmap: string;
@@ -208,6 +229,8 @@ export interface TopologyPanelOptions {
   showMinimap?: boolean;
   /** Itens da legenda (quais cores mostrar) */
   legendUnknown?: boolean;
+  legendOnline?: boolean;
+  legendOffline?: boolean;
   legendStatic?: boolean;
   legendSubmap?: boolean;
   legendLink?: boolean;
@@ -258,9 +281,17 @@ export const defaultTopologyMap = (): TopologyMap => ({
   links: [{ from: 'core-switch', to: 'city-plw' }],
 });
 
+export const defaultStatusValueMappings = (): TopologyStatusValueMapping[] => [
+  { value: 0, status: 'offline', label: 'Down' },
+  { from: 0, status: 'online', label: 'Up' },
+];
+
 export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
+  colorOnline: '#2E7D32',
+  colorOffline: '#C62828',
   colorUnknown: '#616161',
+  statusValueMappings: defaultStatusValueMappings(),
   colorStatic: '#616161',
   colorSubmap: '#1565C0',
   colorLink: '#78909C',
@@ -282,6 +313,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   showLegend: true,
   showMinimap: true,
   legendUnknown: true,
+  legendOnline: true,
+  legendOffline: true,
   legendStatic: false,
   legendSubmap: false,
   legendLink: false,
@@ -293,11 +326,12 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   dashboardNavChoices: [],
 });
 
-/** Cor/texto do mapeamento Grafana (Value mappings / Thresholds) por host */
+/** Cor/texto do status mapeado por host (valor da Query + mapeamento do painel). */
 export interface HostDisplayInfo {
   value: number;
   color?: string;
   text?: string;
+  status?: TopologyHostStatus;
 }
 
 export type HostDisplayMap = Record<string, HostDisplayInfo>;

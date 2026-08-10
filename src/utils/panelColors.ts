@@ -3,6 +3,8 @@ import { config } from '@grafana/runtime';
 import { TopologyPanelOptions } from '../types';
 
 export const PANEL_COLOR_OPTION_KEYS = [
+  'colorOnline',
+  'colorOffline',
   'colorUnknown',
   'colorStatic',
   'colorSubmap',
@@ -98,6 +100,8 @@ export function resolvePanelOptionsColors(
   const resolve = (color: string) => resolvePanelColor(theme, color);
   return {
     ...options,
+    colorOnline: resolve(options.colorOnline),
+    colorOffline: resolve(options.colorOffline),
     colorUnknown: resolve(options.colorUnknown),
     colorStatic: resolve(options.colorStatic),
     colorSubmap: resolve(options.colorSubmap),

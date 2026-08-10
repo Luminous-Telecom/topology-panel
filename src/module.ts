@@ -1,32 +1,12 @@
-import {
-  FieldColorModeId,
-  FieldConfigProperty,
-  PanelPlugin,
-  ThresholdsMode,
-} from '@grafana/data';
+import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
 import { QueryDisplayRefIdsEditor } from './components/QueryDisplayRefIdsEditor';
+import { StatusValueMappingsEditor } from './components/StatusValueMappingsEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
-import { TopologyPanelOptions, defaultOptions } from './types';
+import { TopologyPanelOptions, defaultOptions, defaultStatusValueMappings } from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
-  .useFieldConfig({
-    standardOptions: {
-      [FieldConfigProperty.Mappings]: {},
-      [FieldConfigProperty.Thresholds]: {
-        defaultValue: {
-          mode: ThresholdsMode.Absolute,
-          steps: [{ value: null as unknown as number, color: 'green' }],
-        },
-      },
-      [FieldConfigProperty.Color]: {
-        defaultValue: {
-          mode: FieldColorModeId.Thresholds,
-        },
-      },
-    },
-  })
   .setPanelOptions((builder) => {
     builder
       .addCustomEditor({
@@ -34,7 +14,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'map',
         name: 'Layout e links',
         description:
-          'Layout e links. Query Zabbix (time_series). Status e cores: Thresholds / Value mappings na aba Query do painel.',
+          'Layout e links. Query Zabbix (time_series). Status e cores: mapeamento de valor nas opções do painel.',
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
@@ -123,9 +103,32 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Aparência'],
       })
       .addColorPicker({
+        path: 'colorOnline',
+        name: 'Cor online',
+        description: 'Hosts com valor mapeado como online',
+        defaultValue: '#2E7D32',
+        category: ['Aparência'],
+      })
+      .addColorPicker({
+        path: 'colorOffline',
+        name: 'Cor offline',
+        description: 'Hosts com valor mapeado como offline',
+        defaultValue: '#C62828',
+        category: ['Aparência'],
+      })
+      .addCustomEditor({
+        id: 'statusValueMappings',
+        path: 'statusValueMappings',
+        name: 'Mapeamento de status',
+        description: 'Valor da Query Zabbix → online ou offline (0 = offline; acima de 0 = online)',
+        editor: StatusValueMappingsEditor,
+        category: ['Aparência'],
+        defaultValue: defaultStatusValueMappings(),
+      })
+      .addColorPicker({
         path: 'colorUnknown',
         name: 'Cor sem query',
-        description: 'Host sem cor na Query (Thresholds / Value mappings)',
+        description: 'Host sem valor na Query ou sem regra de mapeamento',
         defaultValue: '#616161',
         category: ['Aparência'],
       })
@@ -178,6 +181,18 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'legendUnknown',
         name: 'Sem query',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendOnline',
+        name: 'Online',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendOffline',
+        name: 'Offline',
         defaultValue: true,
         category: ['Legenda'],
       })

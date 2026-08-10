@@ -1,6 +1,7 @@
 import { DataFrame, Field, FieldType, PanelData, TimeRange } from '@grafana/data';
 import { HostMetadataMap } from '../types';
 import { collectHostLookupCandidates, HostLookupRef } from '../utils';
+import { resolveHostStatusFromValue, StatusColorOptions } from './statusMapping';
 
 export type TopologyHoverMetric = 'icmp_rtt' | 'packet_loss';
 
@@ -8,7 +9,7 @@ export interface HostTimeSeriesPoint {
   t: number;
   value: number;
   displayText?: string;
-  status: 'online' | 'offline';
+  status?: 'online' | 'offline';
 }
 
 export interface HostHoverSeries {
@@ -108,21 +109,6 @@ function fieldSeriesLabel(field: Field): string {
   return 'ICMP';
 }
 
-function offlineThresholdForMetric(metric: TopologyHoverMetric): number {
-  return metric === 'packet_loss' ? 1 : 0;
-}
-
-function resolveStatusFromValue(
-  value: number,
-  threshold: number,
-  metric: TopologyHoverMetric
-): 'online' | 'offline' {
-  if (metric === 'packet_loss') {
-    return value >= threshold ? 'offline' : 'online';
-  }
-  return value <= 0 ? 'offline' : 'online';
-}
-
 function timestampMs(raw: unknown): number | undefined {
   if (raw == null) {
     return undefined;
@@ -142,8 +128,7 @@ function timestampMs(raw: unknown): number | undefined {
 function readPoints(
   timeField: Field,
   valueField: Field,
-  metric: TopologyHoverMetric,
-  threshold: number
+  statusOptions: StatusColorOptions
 ): HostTimeSeriesPoint[] {
   const points: HostTimeSeriesPoint[] = [];
   const len = valueField.values.length;
@@ -157,12 +142,10 @@ function readPoints(
     if (!Number.isFinite(value)) {
       continue;
     }
-    const displayed = valueField.display?.(value);
     points.push({
       t,
       value,
-      displayText: displayed?.text,
-      status: resolveStatusFromValue(value, threshold, metric),
+      status: resolveHostStatusFromValue(value, statusOptions.statusValueMappings),
     });
   }
   return points;
@@ -210,8 +193,9 @@ function summarizeHoverSeries(
 export function extractHostHoverSeries(
   data: PanelData | undefined,
   ref: HostLookupRef,
-  metadata?: HostMetadataMap,
-  displayQueryRefIds: string[] = []
+  metadata: HostMetadataMap | undefined,
+  displayQueryRefIds: string[],
+  statusOptions: StatusColorOptions
 ): HostHoverSeries | undefined {
   if (!data?.series?.length) {
     return undefined;
@@ -227,7 +211,6 @@ export function extractHostHoverSeries(
       ? new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean))
       : undefined;
   const metric = effectiveHoverMetric(data, displayQueryRefIds);
-  const threshold = offlineThresholdForMetric(metric);
 
   let bestPoints: HostTimeSeriesPoint[] = [];
   let bestLabel = hoverMetricLabel(metric);
@@ -250,7 +233,7 @@ export function extractHostHoverSeries(
       if (!fieldMatchesIcmpMetric(field, metric)) {
         continue;
       }
-      const points = readPoints(timeField, field, metric, threshold);
+      const points = readPoints(timeField, field, statusOptions);
       if (points.length > bestPoints.length) {
         bestPoints = points;
         bestLabel = fieldSeriesLabel(field);

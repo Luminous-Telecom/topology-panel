@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyFieldOverrides, LoadingState, PanelProps } from '@grafana/data';
+import { LoadingState, PanelProps } from '@grafana/data';
 import { locationService } from '@grafana/runtime';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
@@ -119,9 +119,6 @@ function submapHostListForNode(
 export function TopologyPanel({
   options,
   data,
-  fieldConfig,
-  replaceVariables,
-  timeZone,
   width,
   height,
   onOptionsChange,
@@ -141,21 +138,6 @@ export function TopologyPanel({
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
 
-  /** Aplica Thresholds / Value mappings / cor nos frames da Query. */
-  const mappedData = useMemo(() => {
-    if (!data?.series?.length) {
-      return data;
-    }
-    const series = applyFieldOverrides({
-      data: data.series,
-      fieldConfig: fieldConfig ?? { defaults: {}, overrides: [] },
-      replaceVariables: replaceVariables ?? ((v) => v),
-      theme,
-      timeZone: timeZone || 'browser',
-    });
-    return { ...data, series };
-  }, [data, fieldConfig, replaceVariables, theme, timeZone]);
-
   const resolvedOptions = useMemo(() => {
     const merged = {
       ...defaultOptions(),
@@ -166,18 +148,30 @@ export function TopologyPanel({
     return {
       ...colored,
     };
-  }, [options, theme, mappedData]);
+  }, [options, theme]);
 
-  const hostDisplayByRefId = useMemo(() => extractHostDisplayByRefId(mappedData), [mappedData]);
+  const statusColorOptions = useMemo(
+    () => ({
+      colorOnline: resolvedOptions.colorOnline,
+      colorOffline: resolvedOptions.colorOffline,
+      statusValueMappings: resolvedOptions.statusValueMappings,
+    }),
+    [resolvedOptions.colorOnline, resolvedOptions.colorOffline, resolvedOptions.statusValueMappings]
+  );
+
+  const hostDisplayByRefId = useMemo(
+    () => extractHostDisplayByRefId(data, statusColorOptions),
+    [data, statusColorOptions]
+  );
 
   const queryRefIdsAvailable = useMemo(
-    () => collectQueryRefIdsFromPanelData(mappedData),
-    [mappedData]
+    () => collectQueryRefIdsFromPanelData(data),
+    [data]
   );
 
   const queryRefInfosAvailable = useMemo(
-    () => collectQueryRefInfosFromPanelData(mappedData),
-    [mappedData]
+    () => collectQueryRefInfosFromPanelData(data),
+    [data]
   );
 
   useEffect(() => {
@@ -210,15 +204,15 @@ export function TopologyPanel({
   );
 
   const displayQueryHosts = useMemo(
-    () => extractDisplayQueryHosts(mappedData, submapQueryRefIds, displayQueryRefIds),
-    [mappedData, submapQueryRefIds, displayQueryRefIds]
+    () => extractDisplayQueryHosts(data, submapQueryRefIds, displayQueryRefIds),
+    [data, submapQueryRefIds, displayQueryRefIds]
   );
 
-  const dataMeta = useMemo(() => extractHostMetadataFromData(mappedData), [mappedData]);
+  const dataMeta = useMemo(() => extractHostMetadataFromData(data), [data]);
 
-  const hostDisplay = useMemo(() => extractHostDisplay(mappedData), [mappedData]);
+  const hostDisplay = useMemo(() => extractHostDisplay(data, statusColorOptions), [data, statusColorOptions]);
 
-  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(mappedData), [mappedData]);
+  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
 
   const hostMetadata = dataMeta;
 
@@ -231,8 +225,8 @@ export function TopologyPanel({
   );
 
   const queryHostOptions = useMemo(
-    () => enrichQueryHostOptionsFromMap(extractQueryHostOptions(mappedData), resolvedOptions.map),
-    [mappedData, resolvedOptions.map]
+    () => enrichQueryHostOptionsFromMap(extractQueryHostOptions(data), resolvedOptions.map),
+    [data, resolvedOptions.map]
   );
 
   const submapNodes = useMemo(() => {
@@ -269,7 +263,7 @@ export function TopologyPanel({
 
   useEffect(() => {
     setRefreshTick((t) => t + 1);
-  }, [mappedData]);
+  }, [data]);
 
   useEffect(() => {
     const syncInterval = () => {
@@ -401,7 +395,7 @@ export function TopologyPanel({
         submapHosts={submapHosts}
         refreshCountdown={refreshCountdown}
         refreshIntervalSec={refreshIntervalSec}
-        queryData={mappedData}
+        queryData={data}
         zabbixDatasourceUid={zabbixDatasourceUid}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}

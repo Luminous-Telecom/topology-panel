@@ -352,7 +352,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         <Stack direction="column" gap={1}>
           {hostNodes.length === 0 && (
             <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-              Configure a aba <strong>Query</strong> do painel e o <strong>Field config</strong> (Thresholds / Value mappings) para status e cores dos hosts.
+              Configure a aba <strong>Query</strong> do painel e o <strong>mapeamento de status</strong> nas opções do painel (Aparência) para cores dos hosts.
             </div>
           )}
           {hostNodes.map((node) => {

@@ -17,6 +17,7 @@ import {
   hoverMetricLabel,
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
+import { StatusColorOptions } from '../utils/statusMapping';
 
 interface Props {
   node: TopologyNode;
@@ -131,6 +132,15 @@ export function HostHoverPopover({
 
   const displayQueryRefIds = useMemo(() => resolveDisplayQueryRefIds(options), [options.displayQueryRefIds]);
 
+  const statusColorOptions = useMemo<StatusColorOptions>(
+    () => ({
+      colorOnline: options.colorOnline,
+      colorOffline: options.colorOffline,
+      statusValueMappings: options.statusValueMappings,
+    }),
+    [options.colorOnline, options.colorOffline, options.statusValueMappings]
+  );
+
   const lookupRef = useMemo<HostLookupRef>(
     () => ({
       zabbixHost: node.zabbixHost,
@@ -141,14 +151,21 @@ export function HostHoverPopover({
   );
 
   const series = useMemo(
-    () => extractHostHoverSeries(queryData, lookupRef, hostMetadata, displayQueryRefIds),
-    [displayQueryRefIds, hostMetadata, lookupRef, queryData]
+    () =>
+      extractHostHoverSeries(
+        queryData,
+        lookupRef,
+        hostMetadata,
+        displayQueryRefIds,
+        statusColorOptions
+      ),
+    [displayQueryRefIds, hostMetadata, lookupRef, queryData, statusColorOptions]
   );
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   const ip = resolveHostIp(node, hostMetadata);
-  const lineColor = display?.color ? String(display.color) : theme.colors.text.secondary;
-  const offlineColor = theme.colors.error.main;
+  const lineColor = display?.color ? String(display.color) : options.colorOnline;
+  const offlineColor = options.colorOffline;
 
   const lastPoint = series?.points[series.points.length - 1];
   const periodLabel = hostHoverPeriodLabel(series, queryData?.timeRange);
