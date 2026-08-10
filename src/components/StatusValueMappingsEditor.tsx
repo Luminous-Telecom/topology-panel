@@ -11,6 +11,7 @@ type MappingMode = 'value' | 'range';
 const STATUS_OPTIONS: Array<{ label: string; value: TopologyHostStatus }> = [
   { label: 'Online', value: 'online' },
   { label: 'Offline', value: 'offline' },
+  { label: 'Alerta', value: 'alert' },
 ];
 
 function mappingMode(entry: TopologyStatusValueMapping): MappingMode {
@@ -89,7 +90,7 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
   return (
     <Stack direction="column" gap={1}>
       <div style={{ fontSize: 12, color: theme.colors.text.secondary, lineHeight: 1.4 }}>
-        Valores da Query Zabbix: 0 = offline; acima de 0 = online (icmpping / icmppingsec).
+        Valores da Query Zabbix: 0 = offline; acima de 0 = online; alerta via regra própria.
         A primeira regra que bater define a cor — offline (valor exato 0) deve vir antes do intervalo online.
       </div>
 

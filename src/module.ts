@@ -116,11 +116,18 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: '#C62828',
         category: ['Aparência'],
       })
+      .addColorPicker({
+        path: 'colorAlert',
+        name: 'Cor alerta',
+        description: 'Hosts com valor mapeado como alerta',
+        defaultValue: '#EF6C00',
+        category: ['Aparência'],
+      })
       .addCustomEditor({
         id: 'statusValueMappings',
         path: 'statusValueMappings',
         name: 'Mapeamento de status',
-        description: 'Valor da Query Zabbix → online ou offline (0 = offline; acima de 0 = online)',
+        description: 'Valor da Query Zabbix → online, offline ou alerta (0 = offline; acima de 0 = online)',
         editor: StatusValueMappingsEditor,
         category: ['Aparência'],
         defaultValue: defaultStatusValueMappings(),
@@ -193,6 +200,12 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'legendOffline',
         name: 'Offline',
+        defaultValue: true,
+        category: ['Legenda'],
+      })
+      .addBooleanSwitch({
+        path: 'legendAlert',
+        name: 'Alerta',
         defaultValue: true,
         category: ['Legenda'],
       })

@@ -156,9 +156,9 @@ export interface TopologyView {
   scale: number;
 }
 
-export type TopologyHostStatus = 'online' | 'offline';
+export type TopologyHostStatus = 'online' | 'offline' | 'alert';
 
-/** Mapeamento de valor da Query → status online/offline (configurado no painel). */
+/** Mapeamento de valor da Query → status (configurado no painel). */
 export interface TopologyStatusValueMapping {
   /** Valor exato — se definido, ignora from/to */
   value?: number;
@@ -180,9 +180,11 @@ export interface TopologyPanelOptions {
   colorOnline: string;
   /** Host offline (mapeamento de valor) */
   colorOffline: string;
+  /** Host em alerta (mapeamento de valor) */
+  colorAlert: string;
   /** Host sem cor na Query */
   colorUnknown: string;
-  /** Valor da Query → online/offline */
+  /** Valor da Query → status */
   statusValueMappings: TopologyStatusValueMapping[];
   /** Cor padrão dos rótulos estáticos */
   colorStatic: string;
@@ -231,6 +233,7 @@ export interface TopologyPanelOptions {
   legendUnknown?: boolean;
   legendOnline?: boolean;
   legendOffline?: boolean;
+  legendAlert?: boolean;
   legendStatic?: boolean;
   legendSubmap?: boolean;
   legendLink?: boolean;
@@ -290,6 +293,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
   colorOnline: '#2E7D32',
   colorOffline: '#C62828',
+  colorAlert: '#EF6C00',
   colorUnknown: '#616161',
   statusValueMappings: defaultStatusValueMappings(),
   colorStatic: '#616161',
@@ -315,6 +319,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   legendUnknown: true,
   legendOnline: true,
   legendOffline: true,
+  legendAlert: true,
   legendStatic: false,
   legendSubmap: false,
   legendLink: false,

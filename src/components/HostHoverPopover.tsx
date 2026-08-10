@@ -136,9 +136,10 @@ export function HostHoverPopover({
     () => ({
       colorOnline: options.colorOnline,
       colorOffline: options.colorOffline,
+      colorAlert: options.colorAlert,
       statusValueMappings: options.statusValueMappings,
     }),
-    [options.colorOnline, options.colorOffline, options.statusValueMappings]
+    [options.colorOnline, options.colorOffline, options.colorAlert, options.statusValueMappings]
   );
 
   const lookupRef = useMemo<HostLookupRef>(

@@ -1,5 +1,5 @@
 import { DataFrame, Field, FieldType, PanelData, TimeRange } from '@grafana/data';
-import { HostMetadataMap } from '../types';
+import { HostMetadataMap, TopologyHostStatus } from '../types';
 import { collectHostLookupCandidates, HostLookupRef } from '../utils';
 import { resolveHostStatusFromValue, StatusColorOptions } from './statusMapping';
 
@@ -9,7 +9,7 @@ export interface HostTimeSeriesPoint {
   t: number;
   value: number;
   displayText?: string;
-  status?: 'online' | 'offline';
+  status?: TopologyHostStatus;
 }
 
 export interface HostHoverSeries {

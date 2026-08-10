@@ -154,9 +154,15 @@ export function TopologyPanel({
     () => ({
       colorOnline: resolvedOptions.colorOnline,
       colorOffline: resolvedOptions.colorOffline,
+      colorAlert: resolvedOptions.colorAlert,
       statusValueMappings: resolvedOptions.statusValueMappings,
     }),
-    [resolvedOptions.colorOnline, resolvedOptions.colorOffline, resolvedOptions.statusValueMappings]
+    [
+      resolvedOptions.colorOnline,
+      resolvedOptions.colorOffline,
+      resolvedOptions.colorAlert,
+      resolvedOptions.statusValueMappings,
+    ]
   );
 
   const hostDisplayByRefId = useMemo(

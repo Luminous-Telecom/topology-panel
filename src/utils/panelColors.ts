@@ -5,6 +5,7 @@ import { TopologyPanelOptions } from '../types';
 export const PANEL_COLOR_OPTION_KEYS = [
   'colorOnline',
   'colorOffline',
+  'colorAlert',
   'colorUnknown',
   'colorStatic',
   'colorSubmap',
@@ -92,6 +93,38 @@ export function resolvePanelColor(theme: GrafanaTheme2, color?: unknown): string
   return resolveNamedColor(theme, raw);
 }
 
+function parseHexRgb(hex: string): { r: number; g: number; b: number } | undefined {
+  const raw = hex.trim();
+  if (!raw.startsWith('#')) {
+    return undefined;
+  }
+  const h = raw.slice(1);
+  if (h.length === 3) {
+    return {
+      r: parseInt(h[0] + h[0], 16),
+      g: parseInt(h[1] + h[1], 16),
+      b: parseInt(h[2] + h[2], 16),
+    };
+  }
+  if (h.length === 6) {
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+  return undefined;
+}
+
+/** Converte cor hex do painel em rgba para preenchimentos translúcidos de rede. */
+export function panelColorWithAlpha(color: string, alpha: number): string {
+  const rgb = parseHexRgb(color);
+  if (!rgb) {
+    throw new Error(`Cor do painel inválida para alpha: ${color}`);
+  }
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
 /** Resolve cores das opções antes de renderizar SVG. */
 export function resolvePanelOptionsColors(
   options: TopologyPanelOptions,
@@ -102,6 +135,7 @@ export function resolvePanelOptionsColors(
     ...options,
     colorOnline: resolve(options.colorOnline),
     colorOffline: resolve(options.colorOffline),
+    colorAlert: resolve(options.colorAlert),
     colorUnknown: resolve(options.colorUnknown),
     colorStatic: resolve(options.colorStatic),
     colorSubmap: resolve(options.colorSubmap),

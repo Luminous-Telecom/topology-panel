@@ -514,6 +514,7 @@ export function extractDisplayQueryHosts(
   const byRef = extractHostDisplayByRefId(data, {
     colorOnline: '',
     colorOffline: '',
+    colorAlert: '',
     statusValueMappings: [],
   });
   const allowed = new Set(displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean));
@@ -574,6 +575,7 @@ export function extractQueryHosts(data: PanelData | DataFrame[] | undefined): st
     extractHostDisplay(panelData, {
       colorOnline: '',
       colorOffline: '',
+      colorAlert: '',
       statusValueMappings: [],
     })
   )) {

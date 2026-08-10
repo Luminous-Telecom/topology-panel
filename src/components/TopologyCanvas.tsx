@@ -39,7 +39,7 @@ import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
+import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStatsTextColor, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
 import { isNetworkNode } from '../utils/mapBounds';
 import {
   CanvasTool,
@@ -152,6 +152,18 @@ const styles = {
     display: block;
     user-select: none;
     touch-action: none;
+  `,
+  offlineBlink: css`
+    animation: topology-offline-blink 1s ease-in-out infinite;
+    @keyframes topology-offline-blink {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.28;
+      }
+    }
   `,
   empty: css`
     display: flex;
@@ -2545,6 +2557,9 @@ export function TopologyCanvas({
     if (options.legendOffline !== false) {
       items.push({ label: 'Offline', color: options.colorOffline });
     }
+    if (options.legendAlert !== false) {
+      items.push({ label: 'Alerta', color: options.colorAlert });
+    }
     if (options.legendStatic) {
       items.push({ label: 'Estático', color: options.colorStatic });
     }
@@ -2566,6 +2581,7 @@ export function TopologyCanvas({
     options.legendUnknown,
     options.legendOnline,
     options.legendOffline,
+    options.legendAlert,
     options.legendStatic,
     options.legendSubmap,
     options.legendLink,
@@ -2574,6 +2590,7 @@ export function TopologyCanvas({
     options.colorUnknown,
     options.colorOnline,
     options.colorOffline,
+    options.colorAlert,
     options.colorStatic,
     options.colorSubmap,
     options.colorLink,
@@ -2585,13 +2602,13 @@ export function TopologyCanvas({
     (node: TopologyNode): string => {
       if (isNetworkNode(node)) {
         const stats = regionStats.get(node.id);
-        const fillOverride = regionFillColor(stats, options, 'network');
+        const fillOverride = regionFillColor(stats, options, 'network', queryReady);
         const fillRaw = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
         return resolveColor(fillRaw);
       }
       const fillOverride =
         node.type === 'submap'
-          ? regionFillColor(regionStats.get(node.id), options, 'submap')
+          ? regionFillColor(regionStats.get(node.id), options, 'submap', queryReady)
           : undefined;
       const fillRaw =
         fillOverride ??
@@ -2599,22 +2616,16 @@ export function TopologyCanvas({
         nodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
       return resolveColor(fillRaw);
     },
-    [
-      regionStats,
-      options,
-      queryReady,
-      hostMetadata,
-      hostDisplay,
-      resolveColor,
-    ]
+    [regionStats, options, queryReady, hostMetadata, hostDisplay, resolveColor]
   );
 
   const resolveMiniNetworkStroke = useCallback(
     (node: TopologyNode): string => {
-      const strokeRaw = node.borderColor ?? options.colorNetworkBorder;
+      const stats = regionStats.get(node.id);
+      const strokeRaw = regionStrokeColor(stats, options, queryReady, node.borderColor);
       return resolveColor(strokeRaw);
     },
-    [options.colorNetworkBorder, resolveColor]
+    [regionStats, options, queryReady, resolveColor]
   );
 
   const miniLinkColor = resolveColor(options.colorLink);
@@ -2745,13 +2756,16 @@ export function TopologyCanvas({
               }
               const { w, h, label, x, y } = layout;
               const stats = regionStats.get(node.id);
-              const fillOverride = regionFillColor(stats, options, 'network');
+              const fillOverride = regionFillColor(stats, options, 'network', queryReady);
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??
                 options.colorNetworkFill;
               const fill = resolveColor(fillRaw);
-              const stroke = resolveColor(node.borderColor ?? options.colorNetworkBorder);
+              const networkOffline = regionHasOfflineHosts(stats, queryReady);
+              const stroke = resolveColor(
+                regionStrokeColor(stats, options, queryReady, node.borderColor)
+              );
               const statsLabel = stats ? formatRegionStats(stats, queryReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
@@ -2774,6 +2788,7 @@ export function TopologyCanvas({
                 <g
                   key={node.id}
                   data-node-id={node.id}
+                  className={networkOffline ? styles.offlineBlink : undefined}
                   pointerEvents="auto"
                   onPointerDown={(e) => onNetworkPointerDown(e, node)}
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
@@ -2830,7 +2845,7 @@ export function TopologyCanvas({
                       y={statsY}
                       textAnchor="start"
                       dominantBaseline="middle"
-                      fill={titleText}
+                      fill={regionStatsTextColor(stats)}
                       fontSize={statsFontSize}
                       fontFamily="Inter, Helvetica, Arial, sans-serif"
                       pointerEvents="none"
@@ -2953,7 +2968,7 @@ export function TopologyCanvas({
             const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout;
               const fillOverride =
                 node.type === 'submap'
-                  ? regionFillColor(regionStats.get(node.id), options, 'submap')
+                  ? regionFillColor(regionStats.get(node.id), options, 'submap', queryReady)
                   : undefined;
               const fillRaw =
                 fillOverride ??
@@ -2969,10 +2984,21 @@ export function TopologyCanvas({
             const subtitleColor =
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
-                : subtextOnBackground(fill);
+                : region
+                  ? region.offline > 0
+                    ? '#ffcdd2'
+                    : region.alert > 0
+                      ? '#ffcc80'
+                      : '#c8e6c9'
+                  : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
             const nodeIsHost = isHostNode(node);
+            const hostStatus = nodeIsHost
+              ? resolveHostNodeStatus(node, hostDisplay, hostMetadata)
+              : undefined;
+            const submapOffline = regionHasOfflineHosts(region, queryReady);
+            const isOfflineBlink = hostStatus === 'offline' || submapOffline;
             const hostIcon = nodeIsHost ? node.icon ?? null : null;
             const textCenterX = x + w / 2;
             const iconX = x + w / 2;
@@ -2987,6 +3013,7 @@ export function TopologyCanvas({
               <g
                 key={node.id}
                 data-node-id={node.id}
+                className={isOfflineBlink ? styles.offlineBlink : undefined}
                 onPointerDown={(e) => onNodePointerDown(e, node)}
                 onClick={(e) => onNodeClick(e, node)}
                 onDoubleClick={(e) => onNodeDoubleClick(e, node)}

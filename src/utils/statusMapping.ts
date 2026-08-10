@@ -2,7 +2,7 @@ import { TopologyHostStatus, TopologyPanelOptions, TopologyStatusValueMapping } 
 
 export type StatusColorOptions = Pick<
   TopologyPanelOptions,
-  'colorOnline' | 'colorOffline' | 'statusValueMappings'
+  'colorOnline' | 'colorOffline' | 'colorAlert' | 'statusValueMappings'
 >;
 
 function isExactMapping(entry: TopologyStatusValueMapping): boolean {
@@ -40,6 +40,9 @@ export function resolveStatusColor(
 ): string {
   if (status === 'online') {
     return options.colorOnline;
+  }
+  if (status === 'alert') {
+    return options.colorAlert;
   }
   return options.colorOffline;
 }
