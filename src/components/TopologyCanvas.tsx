@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
+import { PanelData, TimeRange } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
@@ -58,6 +59,7 @@ import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
 import { BulkSubmapEditModal } from './BulkSubmapEditModal';
 import { ZabbixHostPickerModal } from './AddZabbixHostModal';
 import { PingModal } from './PingModal';
+import { HostHoverPopover } from './HostHoverPopover';
 import { LinkEditModal } from './LinkEditModal';
 import { TopologyMinimap } from './TopologyMinimap';
 import { formatLinkBandwidth, linkStrokeWidth } from '../utils/linkBandwidth';
@@ -101,6 +103,10 @@ interface Props {
   refreshCountdown?: number | null;
   /** Intervalo de auto-refresh do dashboard em segundos (null = off/manual) */
   refreshIntervalSec?: number | null;
+  /** Frames da Query Zabbix (com overrides de cor/threshold) */
+  queryData?: PanelData;
+  /** Período selecionado no dashboard */
+  timeRange?: TimeRange;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
@@ -399,6 +405,8 @@ export function TopologyCanvas({
   submapHosts = {},
   refreshCountdown = null,
   refreshIntervalSec = null,
+  queryData,
+  timeRange,
   onMapChange,
   onViewChange,
   onShowMinimapChange,
@@ -526,6 +534,11 @@ export function TopologyCanvas({
   const [pickerNode, setPickerNode] = useState<TopologyNode | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
+  const [hostHover, setHostHover] = useState<{
+    node: TopologyNode;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
   const [selectedLink, setSelectedLink] = useState<TopologyLink | null>(null);
   const [editLink, setEditLink] = useState<TopologyLink | null>(null);
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
@@ -1519,6 +1532,7 @@ export function TopologyCanvas({
         moved: false,
         group,
       };
+      setHostHover(null);
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
     [map.nodes, nodeLayouts, selectedNodeIds, storedMap]
@@ -3109,8 +3123,25 @@ export function TopologyCanvas({
                 onClick={(e) => onNodeClick(e, node)}
                 onDoubleClick={(e) => onNodeDoubleClick(e, node)}
                 onContextMenu={(e) => handleContextMenu(e, { node })}
-                onMouseEnter={() => setLinkHoverId(node.id)}
-                onMouseLeave={() => setLinkHoverId(null)}
+                onMouseEnter={(e) => {
+                  setLinkHoverId(node.id);
+                  if (nodeIsHost && node.zabbixHost?.trim()) {
+                    setHostHover({ node, screenX: e.clientX, screenY: e.clientY });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (nodeIsHost && node.zabbixHost?.trim()) {
+                    setHostHover((prev) =>
+                      prev?.node.id === node.id
+                        ? { node, screenX: e.clientX, screenY: e.clientY }
+                        : prev
+                    );
+                  }
+                }}
+                onMouseLeave={() => {
+                  setLinkHoverId(null);
+                  setHostHover((prev) => (prev?.node.id === node.id ? null : prev));
+                }}
                 style={{
                   cursor: panTool
                     ? options.enablePan
@@ -3369,6 +3400,21 @@ export function TopologyCanvas({
           onClose={() => setPingTarget(null)}
         />
       )}
+
+      {hostHover && !editNode && !searchOpen ? (
+        <HostHoverPopover
+          node={hostHover.node}
+          screenX={hostHover.screenX}
+          screenY={hostHover.screenY}
+          queryData={queryData}
+          timeRange={timeRange}
+          hostMetadata={hostMetadata}
+          hostDisplay={hostDisplay}
+          problemMap={problemMap}
+          options={options}
+          icmpReady={icmpReady}
+        />
+      ) : null}
 
       {editLink && (
         <LinkEditModal

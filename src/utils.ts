@@ -79,7 +79,7 @@ export function resolveHostLookupKey(
   return name || undefined;
 }
 
-function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostMetadataMap): string[] {
+export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostMetadataMap): string[] {
   const zabbixHost = ref.zabbixHost?.trim();
   const label = ref.label?.trim();
   const hostId = ref.zabbixHostId?.trim();

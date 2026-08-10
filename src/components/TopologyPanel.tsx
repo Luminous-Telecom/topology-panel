@@ -125,6 +125,7 @@ export function TopologyPanel({
   fieldConfig,
   replaceVariables,
   timeZone,
+  timeRange,
   width,
   height,
   onOptionsChange,
@@ -525,6 +526,8 @@ export function TopologyPanel({
         submapHosts={submapHosts}
         refreshCountdown={refreshCountdown}
         refreshIntervalSec={refreshIntervalSec}
+        queryData={mappedData}
+        timeRange={timeRange}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}
