@@ -97,6 +97,8 @@ interface Props {
   refreshIntervalSec?: number | null;
   /** Frames da Query Zabbix (com overrides de cor/threshold) */
   queryData?: PanelData;
+  /** UID do datasource Zabbix (aba Query) — usado pelo modal de ping */
+  zabbixDatasourceUid?: string;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
@@ -361,6 +363,7 @@ export function TopologyCanvas({
   refreshCountdown = null,
   refreshIntervalSec = null,
   queryData,
+  zabbixDatasourceUid,
   onMapChange,
   onViewChange,
   onShowMinimapChange,
@@ -3287,6 +3290,8 @@ export function TopologyCanvas({
         <PingModal
           label={pingTarget.label}
           ip={pingTarget.ip}
+          zabbixHost={pingTarget.zabbixHost}
+          datasourceUid={zabbixDatasourceUid}
           onClose={() => setPingTarget(null)}
         />
       )}

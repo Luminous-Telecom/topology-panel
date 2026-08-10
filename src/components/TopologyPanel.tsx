@@ -25,6 +25,7 @@ import {
   isIpv4,
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
+  resolveZabbixDatasourceUid,
   sameQueryRefInfos,
   sameStringList,
 } from '../utils';
@@ -217,6 +218,8 @@ export function TopologyPanel({
 
   const hostDisplay = useMemo(() => extractHostDisplay(mappedData), [mappedData]);
 
+  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(mappedData), [mappedData]);
+
   const hostMetadata = dataMeta;
 
   const queryReady =
@@ -399,6 +402,7 @@ export function TopologyPanel({
         refreshCountdown={refreshCountdown}
         refreshIntervalSec={refreshIntervalSec}
         queryData={mappedData}
+        zabbixDatasourceUid={zabbixDatasourceUid}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}

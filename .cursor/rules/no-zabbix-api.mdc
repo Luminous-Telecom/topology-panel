@@ -1,43 +1,49 @@
 ---
-description: Proíbe chamadas à API Zabbix — dados de monitoramento só via Query do painel
+description: Proíbe chamadas à API Zabbix — monitoramento só via Query; exceção ping no modal Tools
 alwaysApply: true
 ---
 
-# Sem API Zabbix
+# Sem API Zabbix (com exceção de ping)
 
-**Nunca** adicione nem restaure chamadas à API Zabbix no plugin (`host.get`, `item.get`, `history.get`,
-`trend.get`, `trigger.get`, `problem.get`, `script.execute`, etc.) — nem em componentes, nem em
-`src/utils/zabbixApi.ts`.
+**Nunca** adicione chamadas à API Zabbix no plugin (`host.get`, `item.get`, `history.get`,
+`trend.get`, `trigger.get`, `problem.get`, `script.execute`, etc.) — nem em componentes genéricos, nem
+fora dos fluxos permitidos abaixo.
 
-## Fonte única de monitoramento
+## Fonte única de monitoramento (mapa, cores, hover)
 
 ICMP, latência, perda, séries temporais, cores online/offline/alerta e gráficos de hover vêm **só**
 da aba **Query** do painel (`PanelData` / `data.series`), com os helpers em `src/utils.ts` e
 `src/utils/hostTimeSeries.ts`.
 
+## Exceção autorizada — ping via Tools
+
+O modal **Tools → Ping** (`PingModal.tsx`) **pode** usar a API Zabbix **somente** via
+`src/utils/zabbixApi.ts`:
+
+- `executeHostPingScript` — `script.get` + `script.execute` (script "Ping" / "Ping rápido" no Zabbix)
+- `fetchHostIcmpStatus` — `host.get` + `item.get` (itens `icmpping*`) para resumo ICMP no modal
+- Resolução de `hostid` por nome/IP — `host.get` (só para o fluxo de ping)
+
+**Não estenda** `zabbixApi.ts` para outros casos (status do mapa, histórico, problemas, picker, metadata
+em massa). Novos métodos na API Zabbix exigem aprovação explícita do usuário.
+
 ## Proibido
 
-- Importar funções de `src/utils/zabbixApi.ts` em código **novo** ou reativado
-- Criar métodos novos em `zabbixApi.ts`
-- Buscar histórico ICMP, status ou problemas em paralelo à Query
-- Usar `getBackendSrv().post(.../zabbix-api...)` fora do legado já existente
+- Importar `zabbixApi.ts` fora de `PingModal.tsx` (e testes desse fluxo, se existirem)
+- Buscar histórico ICMP, status do mapa ou problemas em paralelo à Query
+- Usar `getBackendSrv().post(.../zabbix-api...)` em qualquer outro arquivo
+- Reintroduzir polling de status/cores via API no painel principal
 
 ## Se a tarefa parecer exigir API
 
-1. **Pare** — não implemente
+1. **Pare** — não implemente fora da exceção de ping
 2. Use só o que a Query já entrega (período = intervalo do dashboard)
-3. Se não der com Query, **pergunte** ao usuário antes de qualquer exceção
-
-## Legado
-
-`src/utils/zabbixApi.ts` ainda pode ser referenciado por fluxos antigos (ex.: modal de ping, picker de
-host na edição). **Não estenda** esse arquivo; ao refatorar esses fluxos, migre para Query ou remova a
-dependência — não adicione casos novos.
+3. Se não der com Query e **não** for ping, **pergunte** ao usuário antes de qualquer exceção nova
 
 ## Exemplos
 
 ```typescript
-// ❌ BAD — histórico ICMP via API
+// ❌ BAD — histórico ICMP via API no hover/mapa
 import { fetchHostIcmpHistoryPoints } from '../utils/zabbixApi';
 const points = await fetchHostIcmpHistoryPoints(uid, host, metric, periodMs);
 
@@ -47,7 +53,13 @@ const series = extractHostHoverSeries(queryData, lookupRef, hostMetadata);
 ```
 
 ```typescript
-// ❌ BAD — cor/status via item.get
+// ✅ GOOD — só no PingModal
+import { executeHostPingScript } from '../utils/zabbixApi';
+const result = await executeHostPingScript(datasourceUid, zabbixHost, 'panel');
+```
+
+```typescript
+// ❌ BAD — cor/status via item.get no mapa
 const items = await zabbixCall(uid, 'item.get', { hostids: [id], search: { key_: 'icmpping' } });
 
 // ✅ GOOD — status da Query

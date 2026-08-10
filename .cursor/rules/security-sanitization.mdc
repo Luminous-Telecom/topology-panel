@@ -33,8 +33,8 @@ alwaysApply: true
   credenciais, ou conteúdo de `TopologyMap`. Se precisar depurar, remova o log antes de finalizar a
   tarefa — não deixe `console.*` no código de produção.
 - Status online/offline vem exclusivamente da aba **Query** do painel (`data.series`, via
-  `resolveNodeStatus` em `utils.ts`). **Nunca** use a API Zabbix para ICMP, histórico, cores ou hover —
-  ver regra `no-zabbix-api.mdc`.
+  `resolveNodeStatus` em `utils.ts`). **Nunca** use a API Zabbix para ICMP, histórico, cores ou hover no
+  mapa — ver regra `no-zabbix-api.mdc`. **Exceção:** modal **Tools → Ping** (`PingModal` + `zabbixApi.ts`).
 - Erros de chamadas assíncronas (`fetchGrafanaDashboards`, `fetchDashboardTopologyHosts`)
   sempre tratados com `try/catch`/`finally`, retornando um valor vazio/seguro (`[]`, `{}`, `null`) mais
   um estado de erro visível quando fizer sentido para o usuário (ver `PingModal.tsx`,

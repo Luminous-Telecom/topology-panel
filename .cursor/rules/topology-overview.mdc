@@ -62,5 +62,6 @@ Status online/offline vem **só da aba Query** do painel (mesmo caminho do gráf
 2. Auto-refresh do dashboard baixo o bastante (ex.: `10s`)
 3. Campos **Campo host** / **Campo status** batendo com as colunas da Query
 
-**Política:** não usar API Zabbix para ICMP, histórico ou cores — ver `no-zabbix-api.mdc`. Período do
-gráfico de hover = intervalo da Query (configure o dashboard, ex. *Last 24 hours*).
+**Política:** mapa, cores e hover usam só a Query — ver `no-zabbix-api.mdc`. **Exceção:** ping interativo
+via **Tools → Ping** (script Zabbix + resumo ICMP no modal). Período do gráfico de hover = intervalo da
+Query (configure o dashboard, ex. *Last 24 hours*).
