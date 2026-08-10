@@ -1,24 +1,34 @@
-import { Field, FieldType, PanelData } from '@grafana/data';
+import { DataFrame, Field, FieldType, PanelData, TimeRange } from '@grafana/data';
 import { HostMetadataMap } from '../types';
 import { collectHostLookupCandidates, HostLookupRef } from '../utils';
 
-export const HOST_HOVER_PERIOD_MS = 24 * 60 * 60 * 1000;
+export type TopologyHoverMetric = 'icmp_rtt' | 'packet_loss';
 
 export interface HostTimeSeriesPoint {
   t: number;
   value: number;
   displayText?: string;
+  status: 'online' | 'offline';
 }
 
 export interface HostHoverSeries {
   points: HostTimeSeriesPoint[];
+  metric: TopologyHoverMetric;
   fieldLabel: string;
+  failureCount: number;
+  lastFailureAt?: number;
 }
 
 function hostLabelFromField(field: Field): string | undefined {
   const labels = field.labels ?? {};
   const host = labels.host?.trim() || labels.__zbx_host_name?.trim() || labels.hostName?.trim();
   return host || undefined;
+}
+
+function fieldItemKey(field: Field): string {
+  return String(field.labels?.item_key ?? field.labels?.key_ ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 function fieldMatchesHost(field: Field, candidates: Set<string>): boolean {
@@ -38,6 +48,49 @@ function fieldMatchesHost(field: Field, candidates: Set<string>): boolean {
   return false;
 }
 
+/** Métrica ICMP detectada pelos item_key das séries da Query (sem opções do painel). */
+export function effectiveHoverMetric(data?: PanelData, displayQueryRefIds: string[] = []): TopologyHoverMetric {
+  const allowed =
+    displayQueryRefIds.length > 0
+      ? new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean))
+      : undefined;
+
+  for (const frame of data?.series ?? []) {
+    if (!frameMatchesDisplayQuery(frame, allowed)) {
+      continue;
+    }
+    for (const field of frame.fields ?? []) {
+      const key = fieldItemKey(field);
+      if (key.includes('icmppingloss')) {
+        return 'packet_loss';
+      }
+      if (key.includes('icmppingsec') || key === 'icmpping') {
+        return 'icmp_rtt';
+      }
+    }
+  }
+  return 'icmp_rtt';
+}
+
+function fieldMatchesIcmpMetric(field: Field, metric: TopologyHoverMetric): boolean {
+  const key = fieldItemKey(field);
+  if (!key) {
+    return true;
+  }
+  if (metric === 'packet_loss') {
+    return key.includes('icmppingloss');
+  }
+  return key.includes('icmppingsec') || key.includes('icmpping');
+}
+
+function frameMatchesDisplayQuery(frame: DataFrame, allowedRefIds?: Set<string>): boolean {
+  if (!allowedRefIds || allowedRefIds.size === 0) {
+    return true;
+  }
+  const refId = frame.refId?.trim().toUpperCase();
+  return Boolean(refId && allowedRefIds.has(refId));
+}
+
 function fieldSeriesLabel(field: Field): string {
   const configName = field.config?.displayName?.trim();
   if (configName) {
@@ -48,11 +101,26 @@ function fieldSeriesLabel(field: Field): string {
   if (itemName) {
     return itemName;
   }
-  const itemKey = labels.item_key?.trim() || labels.key_?.trim();
+  const itemKey = fieldItemKey(field);
   if (itemKey) {
     return itemKey;
   }
-  return 'Query';
+  return 'ICMP';
+}
+
+function offlineThresholdForMetric(metric: TopologyHoverMetric): number {
+  return metric === 'packet_loss' ? 1 : 0;
+}
+
+function resolveStatusFromValue(
+  value: number,
+  threshold: number,
+  metric: TopologyHoverMetric
+): 'online' | 'offline' {
+  if (metric === 'packet_loss') {
+    return value >= threshold ? 'offline' : 'online';
+  }
+  return value <= 0 ? 'offline' : 'online';
 }
 
 function timestampMs(raw: unknown): number | undefined {
@@ -71,7 +139,12 @@ function timestampMs(raw: unknown): number | undefined {
   return undefined;
 }
 
-function readPoints(timeField: Field, valueField: Field): HostTimeSeriesPoint[] {
+function readPoints(
+  timeField: Field,
+  valueField: Field,
+  metric: TopologyHoverMetric,
+  threshold: number
+): HostTimeSeriesPoint[] {
   const points: HostTimeSeriesPoint[] = [];
   const len = valueField.values.length;
   for (let i = 0; i < len; i++) {
@@ -89,22 +162,56 @@ function readPoints(timeField: Field, valueField: Field): HostTimeSeriesPoint[] 
       t,
       value,
       displayText: displayed?.text,
+      status: resolveStatusFromValue(value, threshold, metric),
     });
   }
   return points;
 }
 
-function filterPointsToHoverWindow(points: HostTimeSeriesPoint[]): HostTimeSeriesPoint[] {
-  const cutoff = Date.now() - HOST_HOVER_PERIOD_MS;
-  const filtered = points.filter((point) => point.t >= cutoff);
+function timeRangeBoundsMs(range: TimeRange): { fromMs: number; toMs: number } {
+  return {
+    fromMs: range.from.valueOf(),
+    toMs: range.to.valueOf(),
+  };
+}
+
+function filterPointsToTimeRange(points: HostTimeSeriesPoint[], range?: TimeRange): HostTimeSeriesPoint[] {
+  if (!range) {
+    return points;
+  }
+  const { fromMs, toMs } = timeRangeBoundsMs(range);
+  const filtered = points.filter((point) => point.t >= fromMs && point.t <= toMs);
   return filtered.length ? filtered : points;
 }
 
-/** Série temporal da Query Zabbix para um host (janela de até 24h). */
+function summarizeHoverSeries(
+  points: HostTimeSeriesPoint[],
+  metric: TopologyHoverMetric,
+  fieldLabel: string
+): HostHoverSeries {
+  let failureCount = 0;
+  let lastFailureAt: number | undefined;
+  for (const point of points) {
+    if (point.status === 'offline') {
+      failureCount += 1;
+      lastFailureAt = point.t;
+    }
+  }
+  return {
+    points,
+    metric,
+    fieldLabel,
+    failureCount,
+    lastFailureAt,
+  };
+}
+
+/** Série ICMP/perda da Query Zabbix para um host (refIds opt-in + intervalo do dashboard). */
 export function extractHostHoverSeries(
   data: PanelData | undefined,
   ref: HostLookupRef,
-  metadata?: HostMetadataMap
+  metadata?: HostMetadataMap,
+  displayQueryRefIds: string[] = []
 ): HostHoverSeries | undefined {
   if (!data?.series?.length) {
     return undefined;
@@ -115,10 +222,20 @@ export function extractHostHoverSeries(
     return undefined;
   }
 
+  const allowedRefIds =
+    displayQueryRefIds.length > 0
+      ? new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean))
+      : undefined;
+  const metric = effectiveHoverMetric(data, displayQueryRefIds);
+  const threshold = offlineThresholdForMetric(metric);
+
   let bestPoints: HostTimeSeriesPoint[] = [];
-  let bestLabel = 'Query';
+  let bestLabel = hoverMetricLabel(metric);
 
   for (const frame of data.series) {
+    if (!frameMatchesDisplayQuery(frame, allowedRefIds)) {
+      continue;
+    }
     const timeField = frame.fields.find((field) => field.type === FieldType.time);
     if (!timeField) {
       continue;
@@ -130,7 +247,10 @@ export function extractHostHoverSeries(
       if (!fieldMatchesHost(field, candidates)) {
         continue;
       }
-      const points = readPoints(timeField, field);
+      if (!fieldMatchesIcmpMetric(field, metric)) {
+        continue;
+      }
+      const points = readPoints(timeField, field, metric, threshold);
       if (points.length > bestPoints.length) {
         bestPoints = points;
         bestLabel = fieldSeriesLabel(field);
@@ -142,32 +262,77 @@ export function extractHostHoverSeries(
     return undefined;
   }
 
-  const sorted = [...filterPointsToHoverWindow(bestPoints)].sort((a, b) => a.t - b.t);
-  return {
-    points: sorted,
-    fieldLabel: bestLabel,
-  };
+  const sorted = [...filterPointsToTimeRange(bestPoints, data.timeRange)].sort((a, b) => a.t - b.t);
+  return summarizeHoverSeries(sorted, metric, bestLabel);
 }
 
-function formatHoverClock(ts: number): string {
+function formatHoverClock(ts: number, spanMs: number): string {
+  if (spanMs > 24 * 60 * 60 * 1000) {
+    return new Date(ts).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
   return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function hostHoverPeriodLabel(series?: HostHoverSeries): string {
-  const points = series?.points;
-  if (points && points.length >= 1) {
-    const fromMs = points[0].t;
-    const toMs = points[points.length - 1].t;
-    return `Últimas 24 horas · ${formatHoverClock(fromMs)} – ${formatHoverClock(toMs)}`;
+function dashboardTimeRangeLabel(timeRange: TimeRange): string {
+  const fromRaw = timeRange.raw.from;
+  const toRaw = timeRange.raw.to;
+  if (typeof fromRaw === 'string' && fromRaw.startsWith('now')) {
+    const toPart = typeof toRaw === 'string' ? toRaw : 'now';
+    return `${fromRaw} → ${toPart}`;
   }
-  const nowMs = Date.now();
-  const fromMs = nowMs - HOST_HOVER_PERIOD_MS;
-  return `Últimas 24 horas · ${formatHoverClock(fromMs)} – ${formatHoverClock(nowMs)}`;
+  const spanMs = timeRange.to.valueOf() - timeRange.from.valueOf();
+  const clock = (ts: number) => formatHoverClock(ts, spanMs);
+  return `${clock(timeRange.from.valueOf())} – ${clock(timeRange.to.valueOf())}`;
 }
 
-export function formatHoverFieldValue(point: HostTimeSeriesPoint): string {
+export function hostHoverPeriodLabel(series?: HostHoverSeries, timeRange?: TimeRange): string {
+  const points = series?.points;
+  const spanMs =
+    points && points.length >= 2
+      ? points[points.length - 1].t - points[0].t
+      : timeRange
+        ? timeRange.to.valueOf() - timeRange.from.valueOf()
+        : 0;
+  const clock = (ts: number) => formatHoverClock(ts, spanMs);
+
+  if (timeRange) {
+    const rangeLabel = dashboardTimeRangeLabel(timeRange);
+    if (points && points.length >= 1) {
+      return `${rangeLabel} · ${clock(points[0].t)} – ${clock(points[points.length - 1].t)}`;
+    }
+    const { fromMs, toMs } = timeRangeBoundsMs(timeRange);
+    return `${rangeLabel} · ${clock(fromMs)} – ${clock(toMs)}`;
+  }
+
+  if (points && points.length >= 1) {
+    return `${clock(points[0].t)} – ${clock(points[points.length - 1].t)}`;
+  }
+
+  return 'Período do dashboard';
+}
+
+export function formatHoverMetricValue(metric: TopologyHoverMetric, value: number): string {
+  if (metric === 'packet_loss') {
+    return `${value.toFixed(1)}%`;
+  }
+  if (value <= 0) {
+    return 'sem resposta';
+  }
+  return `${(value * 1000).toFixed(1)} ms`;
+}
+
+export function hoverMetricLabel(metric: TopologyHoverMetric): string {
+  return metric === 'packet_loss' ? 'Perda ICMP' : 'Latência ICMP';
+}
+
+export function formatHoverFieldValue(point: HostTimeSeriesPoint, metric: TopologyHoverMetric): string {
   if (point.displayText?.trim()) {
     return point.displayText.trim();
   }
-  return String(point.value);
+  return formatHoverMetricValue(metric, point.value);
 }

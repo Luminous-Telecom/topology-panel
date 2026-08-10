@@ -15,6 +15,11 @@ import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { isIpv4, queryHostPickerOptions, QueryHostOption, resolveHostIp, resolveQueryHostOptionForNode } from '../utils';
 
+const ipReadoutStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 14,
+};
+
 export interface NodeEditSavePayload {
   patch: Partial<TopologyNode>;
   rebind?: {
@@ -134,6 +139,7 @@ export function NodeEditModal({
   const selectedQueryHost =
     queryHostOptions.find((host) => host.ip === selectedHostKey || host.visibleName === selectedHostKey) ??
     boundQueryHost;
+  const displayIp = selectedQueryHost?.ip ?? nodeIp;
   const queryLoadError = queryHostOptions.length
     ? null
     : 'Nenhum host na Query do painel. Configure a aba Query e aguarde os dados.';
@@ -254,9 +260,9 @@ export function NodeEditModal({
               }
             />
           </Field>
-          {selectedQueryHost?.ip ? (
+          {displayIp ? (
             <Field label="IP">
-              <span>{selectedQueryHost.ip}</span>
+              <div style={ipReadoutStyle}>{displayIp}</div>
             </Field>
           ) : null}
         </>

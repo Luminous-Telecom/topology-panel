@@ -2,6 +2,7 @@ import { DataFrame, FieldType, LoadingState, PanelData, getDefaultTimeRange } fr
 import {
   HostDisplayInfo,
   HostDisplayMap,
+  HostMetadata,
   HostMetadataMap,
   TopologyHostIcon,
   TopologyLink,
@@ -595,6 +596,93 @@ function queryHostIpCandidates(node: QueryHostNodeRef): string[] {
   return out;
 }
 
+const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip'];
+
+function pickIpFromLabels(labels: Record<string, string | undefined>): string | undefined {
+  for (const key of IP_LABEL_KEYS) {
+    const v = labels[key]?.trim();
+    if (v && IPV4.test(v)) {
+      return v;
+    }
+  }
+  const technical = labels.__zbx_host?.trim();
+  if (technical && IPV4.test(technical)) {
+    return technical;
+  }
+  return undefined;
+}
+
+/** IP de um host da Query (labels, chave IPv4 ou índice por nome no metadata). */
+function resolveQueryHostOptionIp(
+  hostKey: string,
+  meta: HostMetadata | undefined,
+  metadata: HostMetadataMap
+): string | undefined {
+  const fromMeta = meta?.ip?.trim();
+  if (fromMeta && isIpv4(fromMeta)) {
+    return fromMeta;
+  }
+  if (isIpv4(hostKey)) {
+    return hostKey;
+  }
+  for (const [key, entry] of Object.entries(metadata)) {
+    if (!isIpv4(key)) {
+      continue;
+    }
+    const entryName = entry.name?.trim();
+    if (entryName === hostKey || entryName === meta?.name?.trim()) {
+      return key;
+    }
+  }
+  return undefined;
+}
+
+export function formatQueryHostOptionLabel(host: QueryHostOption): string {
+  if (host.ip && isIpv4(host.ip)) {
+    return `${host.visibleName} (${host.ip})`;
+  }
+  return host.visibleName;
+}
+
+/** Preenche IP ausente na Query com subtitle/zabbixHost dos nós já salvos no mapa. */
+export function enrichQueryHostOptionsFromMap(
+  options: QueryHostOption[],
+  map: TopologyMap
+): QueryHostOption[] {
+  if (!options.length) {
+    return options;
+  }
+
+  return options.map((opt) => {
+    if (opt.ip && isIpv4(opt.ip)) {
+      return opt;
+    }
+
+    for (const node of map.nodes) {
+      if ((node.type ?? 'host') !== 'host') {
+        continue;
+      }
+      const nodeIp = resolveHostIp(node);
+      if (!nodeIp) {
+        continue;
+      }
+      const linked = node.zabbixHost?.trim();
+      const label = node.label?.trim();
+      const nameMatch =
+        linked === opt.visibleName ||
+        linked === opt.technicalName ||
+        label === opt.visibleName ||
+        label === opt.technicalName;
+      const ipKeyMatch = linked === nodeIp && (opt.visibleName === label || isIpv4(opt.technicalName));
+      if (nameMatch || ipKeyMatch) {
+        return { ...opt, ip: nodeIp };
+      }
+    }
+
+    return opt;
+  });
+}
+
 /** Hosts visíveis + IP a partir das séries da Query do painel. */
 export function extractQueryHostOptions(data: PanelData | DataFrame[] | undefined): QueryHostOption[] {
   const metadata = extractHostMetadataFromData(data);
@@ -605,8 +693,8 @@ export function extractQueryHostOptions(data: PanelData | DataFrame[] | undefine
   for (const hostKey of hostKeys) {
     const meta = metadata[hostKey];
     const visibleName = meta?.name?.trim() || hostKey;
-    const ip = meta?.ip?.trim();
-    const technicalName = IPV4.test(hostKey) ? visibleName : hostKey;
+    const ip = resolveQueryHostOptionIp(hostKey, meta, metadata);
+    const technicalName = isIpv4(hostKey) ? visibleName : hostKey;
     const dedupeKey = (ip && isIpv4(ip) ? ip : visibleName).toLowerCase();
     if (seen.has(dedupeKey)) {
       continue;
@@ -615,7 +703,7 @@ export function extractQueryHostOptions(data: PanelData | DataFrame[] | undefine
     options.push({
       visibleName,
       technicalName,
-      ip: ip && isIpv4(ip) ? ip : undefined,
+      ip,
     });
   }
 
@@ -669,21 +757,9 @@ export function queryHostPickerOptions(
       return !onMap.names.has(host.visibleName);
     })
     .map((host) => ({
-      label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
+      label: formatQueryHostOptionLabel(host),
       value: host.ip ?? host.visibleName,
     }));
-}
-
-const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip'];
-
-function pickIpFromLabels(labels: Record<string, string | undefined>): string | undefined {
-  for (const key of IP_LABEL_KEYS) {
-    const v = labels[key]?.trim();
-    if (v && IPV4.test(v)) {
-      return v;
-    }
-  }
-  return undefined;
 }
 
 /** Nome/IP só dos labels da Query Zabbix (sem colunas de transform). */

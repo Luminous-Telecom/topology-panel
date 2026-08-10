@@ -3,7 +3,12 @@ import { Button, Field, Select } from '@grafana/ui';
 import { DraggableModal } from './DraggableModal';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
-import { isIpv4, QueryHostOption, resolveHostIp } from '../utils';
+import { formatQueryHostOptionLabel, isIpv4, QueryHostOption, resolveHostIp } from '../utils';
+
+const ipReadoutStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 14,
+};
 
 interface Props {
   mode: 'add' | 'edit';
@@ -88,14 +93,17 @@ export function ZabbixHostPickerModal({
       return !onMap.names.has(host.visibleName);
     })
     .map((host) => ({
-      label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
+      label: formatQueryHostOptionLabel(host),
       value: host.ip ?? host.visibleName,
     }));
 
   const selectedHost = queryHostOptions.find(
     (host) => host.ip === hostKey || host.visibleName === hostKey
   );
-  const canConfirm = Boolean(selectedHost?.ip && isIpv4(selectedHost.ip));
+  const resolvedIp =
+    selectedHost?.ip?.trim() ||
+    (hostKey && isIpv4(hostKey) ? hostKey.trim() : undefined);
+  const canConfirm = Boolean(resolvedIp && isIpv4(resolvedIp));
   const title = mode === 'edit' ? 'Editar host Zabbix' : 'Adicionar host Zabbix';
   const confirmLabel = mode === 'edit' ? 'Salvar' : 'Adicionar';
   const loadError = queryHostOptions.length
@@ -121,9 +129,9 @@ export function ZabbixHostPickerModal({
           }
         />
       </Field>
-      {selectedHost?.ip ? (
+      {resolvedIp ? (
         <Field label="IP">
-          <span>{selectedHost.ip}</span>
+          <div style={ipReadoutStyle}>{resolvedIp}</div>
         </Field>
       ) : null}
       <Field label="Tipo / ícone">
@@ -136,11 +144,13 @@ export function ZabbixHostPickerModal({
         <Button
           disabled={!canConfirm}
           onClick={() => {
-            const ip = selectedHost?.ip?.trim();
-            if (selectedHost && ip && isIpv4(ip)) {
-              onConfirm(selectedHost.visibleName, ip, icon);
-              onClose();
+            const ip = resolvedIp?.trim();
+            if (!ip || !isIpv4(ip)) {
+              return;
             }
+            const visibleName = selectedHost?.visibleName ?? ip;
+            onConfirm(visibleName, ip, icon);
+            onClose();
           }}
         >
           {confirmLabel}

@@ -33,8 +33,8 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, eventTargetsElement, findScrollParents, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostLayoutKey, resolveLinkMedium, snapNodeCenterToGrid, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
-import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, eventTargetsElement, findScrollParents, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostIp, resolveHostLayoutKey, resolveLinkMedium, snapNodeCenterToGrid, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
+import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
@@ -1920,7 +1920,7 @@ export function TopologyCanvas({
 
   const buildToolsMenu = useCallback(
     (node: TopologyNode): ContextMenuItem | null => {
-      const ip = hostIp(node);
+      const ip = resolveHostIp(node, hostMetadata);
       if (!ip) {
         return null;
       }
@@ -1946,7 +1946,7 @@ export function TopologyCanvas({
         })),
       };
     },
-    [options, showToast]
+    [hostMetadata, options, showToast]
   );
 
   const handleContextMenu = useCallback(
@@ -1959,7 +1959,7 @@ export function TopologyCanvas({
         rawNode?.type === 'network' && areNetworksLocked(storedMap) ? undefined : rawNode;
       const isCanvas = !node && !target?.link;
       const isHost = (node?.type ?? 'host') === 'host';
-      const hasTools = Boolean(node && isHost && hostIp(node));
+      const hasTools = Boolean(node && isHost && resolveHostIp(node, hostMetadata));
 
       if (isCanvas) {
         if (!canEditCanvas) {
@@ -3006,7 +3006,7 @@ export function TopologyCanvas({
                       ? linkFromId !== null
                         ? 'crosshair'
                         : 'move'
-                      : (node.type ?? 'host') === 'host' && hostIp(node)
+                      : (node.type ?? 'host') === 'host' && resolveHostIp(node, hostMetadata)
                         ? 'context-menu'
                         : node.type === 'submap' || node.type === 'dashboard_picker'
                           ? 'pointer'

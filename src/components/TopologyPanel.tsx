@@ -21,6 +21,7 @@ import {
   extractHostDisplayByRefId,
   extractHostMetadataFromData,
   extractQueryHostOptions,
+  enrichQueryHostOptionsFromMap,
   isIpv4,
   mergeMapWithQueryHosts,
   resolveDisplayQueryRefIds,
@@ -226,7 +227,10 @@ export function TopologyPanel({
     [resolvedOptions.map, displayQueryHosts, hostMetadata]
   );
 
-  const queryHostOptions = useMemo(() => extractQueryHostOptions(mappedData), [mappedData]);
+  const queryHostOptions = useMemo(
+    () => enrichQueryHostOptionsFromMap(extractQueryHostOptions(mappedData), resolvedOptions.map),
+    [mappedData, resolvedOptions.map]
+  );
 
   const submapNodes = useMemo(() => {
     return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
