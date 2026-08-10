@@ -404,22 +404,20 @@ export function rebindZabbixHost(
   nodeId: string,
   newVisibleName: string,
   ip: string,
-  icon?: TopologyNode['icon']
+  icon?: TopologyNode['icon'],
+  sourceNode?: Pick<TopologyNode, 'x' | 'y' | 'width' | 'height' | 'icon'>
 ): TopologyMap {
   const node = map.nodes.find((n) => n.id === nodeId);
-  if (!node) {
-    return map;
-  }
   const ipKey = ip.trim();
   if (!isIpv4(ipKey)) {
     return map;
   }
-  const oldIp = node.subtitle?.trim();
-  const oldKey = node.zabbixHost?.trim();
+  const oldIp = node?.subtitle?.trim();
+  const oldKey = node?.zabbixHost?.trim();
   const label = newVisibleName.trim() || ipKey;
 
   let nodes = map.nodes;
-  if (oldKey && oldKey !== ipKey) {
+  if (node && oldKey && oldKey !== ipKey) {
     nodes = nodes.filter(
       (n) => !((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === oldKey && n.id === nodeId)
     );
@@ -431,14 +429,14 @@ export function rebindZabbixHost(
   });
   const next = upsertHostLayout({ ...map, nodes }, ipKey, {
     id: nodeId,
-    x: node.x,
-    y: node.y,
-    width: node.width,
-    height: node.height,
+    x: node?.x ?? sourceNode?.x ?? 100,
+    y: node?.y ?? sourceNode?.y ?? 100,
+    width: node?.width ?? sourceNode?.width,
+    height: node?.height ?? sourceNode?.height,
     label,
     subtitle: ipKey,
     type: 'host',
-    icon: icon ?? node.icon,
+    icon: icon ?? node?.icon ?? sourceNode?.icon,
   });
 
   return {

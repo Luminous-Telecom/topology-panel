@@ -3,8 +3,6 @@ import {
   HostDisplayInfo,
   HostDisplayMap,
   HostMetadataMap,
-  HostProblemMap,
-  HostStatusMap,
   TopologyHostIcon,
   TopologyLink,
   TopologyLinkMedium,
@@ -12,18 +10,16 @@ import {
   TopologyNode,
   TopologyPanelOptions,
   TopologyQueryRefInfo,
-  TopologyStatusMetric,
 } from './types';
 import { hostIp as hostIpFromNode } from './utils/hostTools';
 import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions, hostIconRenderSize } from './utils/hostIcons';
-
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 export function isIpv4(value: string): boolean {
   return IPV4.test(value.trim());
 }
 
-/** IP do host (subtitle, zabbixHost ou metadata da Query/API). */
+/** IP do host (subtitle, zabbixHost ou metadata da Query). */
 export function resolveHostIp(
   node: { zabbixHost?: string; subtitle?: string; zabbixHostId?: string },
   metadata?: HostMetadataMap
@@ -157,25 +153,6 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
   return out;
 }
 
-/** Métrica pelo item_key cru da Query Zabbix (sem transform / sem opções). */
-export function effectiveStatusMetric(
-  _options?: Pick<TopologyPanelOptions, 'statusMetric'>,
-  data?: PanelData
-): TopologyStatusMetric {
-  for (const frame of data?.series ?? []) {
-    for (const field of frame.fields ?? []) {
-      const key = String(field.labels?.item_key ?? field.labels?.key_ ?? '').trim().toLowerCase();
-      if (key.includes('icmppingloss')) {
-        return 'packet_loss';
-      }
-      if (key.includes('icmppingsec') || key === 'icmpping') {
-        return 'icmp_rtt';
-      }
-    }
-  }
-  return 'icmp_rtt';
-}
-
 /** UID do datasource Zabbix a partir das queries do painel (aba Query). */
 export function resolveZabbixDatasourceUid(data?: PanelData): string | undefined {
   if (!data) {
@@ -207,77 +184,6 @@ export function resolveZabbixDatasourceUid(data?: PanelData): string | undefined
   }
 
   return undefined;
-}
-
-/** Limiar de perda (%) para marcar offline — só em modo perda de pacotes. */
-export function offlineThresholdForMetric(metric: TopologyStatusMetric): number {
-  return metric === 'packet_loss' ? 1 : 0;
-}
-
-export function resolveStatusFromValue(
-  v: number,
-  threshold: number,
-  metric: TopologyStatusMetric
-): 'online' | 'offline' {
-  if (metric === 'packet_loss') {
-    return v >= threshold ? 'offline' : 'online';
-  }
-  // icmppingsec: segundos; 0 = sem resposta ICMP
-  return v <= 0 ? 'offline' : 'online';
-}
-
-/** Busca valor de status por nome/IP (aliases do mapa + metadata da Query). */
-export function lookupHostStatus(
-  statusMap: HostStatusMap,
-  ref: HostLookupRef,
-  metadata?: HostMetadataMap
-): number | null | undefined {
-  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim()) {
-    return undefined;
-  }
-
-  for (const name of collectHostLookupCandidates(ref, metadata)) {
-    const v = statusMap[name];
-    if (v !== null && v !== undefined) {
-      return v;
-    }
-  }
-
-  for (const name of collectHostLookupCandidates(ref, metadata)) {
-    const lower = name.toLowerCase();
-    for (const [key, v] of Object.entries(statusMap)) {
-      if (v !== null && v !== undefined && key.toLowerCase() === lower) {
-        return v;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-export function lookupProblemCount(
-  problemMap: HostProblemMap,
-  ref: HostLookupRef,
-  metadata?: HostMetadataMap
-): number {
-  if (!ref.zabbixHost?.trim() && !ref.zabbixHostId?.trim()) {
-    return 0;
-  }
-  for (const name of collectHostLookupCandidates(ref, metadata)) {
-    const count = problemMap[name] ?? 0;
-    if (count > 0) {
-      return count;
-    }
-  }
-  for (const name of collectHostLookupCandidates(ref, metadata)) {
-    const lower = name.toLowerCase();
-    for (const [key, count] of Object.entries(problemMap)) {
-      if (count > 0 && key.toLowerCase() === lower) {
-        return count;
-      }
-    }
-  }
-  return 0;
 }
 
 export function hostToNodeId(host: string): string {
@@ -503,6 +409,14 @@ function collectHostDisplayFromFrame(
     if (!host) {
       continue;
     }
+    if (bucket[host]) {
+      const labels = (field.labels ?? {}) as Record<string, string | undefined>;
+      const ip = pickIpFromLabels(labels);
+      if (ip && !bucket[ip]) {
+        bucket[ip] = bucket[host];
+      }
+      continue;
+    }
     const last = lastNumericValue(field);
     if (last === undefined) {
       continue;
@@ -568,16 +482,12 @@ export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
 
 /** RefIds das queries que importam hosts ao mapa (opt-in). */
 export function resolveDisplayQueryRefIds(
-  options: Pick<TopologyPanelOptions, 'displayQueryRefIds' | 'displayQueryRefId'>
+  options: Pick<TopologyPanelOptions, 'displayQueryRefIds'>
 ): string[] {
-  if (options.displayQueryRefIds?.length) {
-    return options.displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean);
+  if (!options.displayQueryRefIds?.length) {
+    return [];
   }
-  const legacy = options.displayQueryRefId?.trim();
-  if (legacy) {
-    return [legacy.toUpperCase()];
-  }
-  return [];
+  return options.displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean);
 }
 
 /** Hosts das queries marcadas para exibição (opt-in; submapas nunca importam). */
@@ -605,15 +515,6 @@ export function extractDisplayQueryHosts(
     }
   }
   return [...hosts].sort((a, b) => a.localeCompare(b));
-}
-
-/** Host -> último valor numérico da Query (atalho sobre extractHostDisplay). */
-export function extractHostStatus(data: PanelData): HostStatusMap {
-  const result: HostStatusMap = {};
-  for (const [host, info] of Object.entries(extractHostDisplay(data))) {
-    result[host] = info.value;
-  }
-  return result;
 }
 
 /** Busca cor/texto mapeados por IP ou nome (mesmos aliases do status). */
@@ -653,7 +554,7 @@ export function extractQueryHosts(data: PanelData | DataFrame[] | undefined): st
   }
 
   const panelData = Array.isArray(data) ? panelDataFromFrames(data) : data;
-  for (const host of Object.keys(extractHostStatus(panelData))) {
+  for (const host of Object.keys(extractHostDisplay(panelData))) {
     hosts.add(host);
   }
   for (const frame of panelData.series ?? []) {
@@ -666,6 +567,111 @@ export function extractQueryHosts(data: PanelData | DataFrame[] | undefined): st
   }
 
   return [...hosts].sort((a, b) => a.localeCompare(b));
+}
+
+export interface QueryHostOption {
+  visibleName: string;
+  technicalName: string;
+  ip?: string;
+}
+
+export interface QueryHostNodeRef {
+  zabbixHost?: string;
+  subtitle?: string;
+  label?: string;
+}
+
+function queryHostIpCandidates(node: QueryHostNodeRef): string[] {
+  const out: string[] = [];
+  const add = (value?: string) => {
+    const trimmed = value?.trim();
+    if (!trimmed || !IPV4.test(trimmed) || out.includes(trimmed)) {
+      return;
+    }
+    out.push(trimmed);
+  };
+  add(node.subtitle);
+  add(node.zabbixHost);
+  return out;
+}
+
+/** Hosts visíveis + IP a partir das séries da Query do painel. */
+export function extractQueryHostOptions(data: PanelData | DataFrame[] | undefined): QueryHostOption[] {
+  const metadata = extractHostMetadataFromData(data);
+  const hostKeys = extractQueryHosts(data);
+  const options: QueryHostOption[] = [];
+  const seen = new Set<string>();
+
+  for (const hostKey of hostKeys) {
+    const meta = metadata[hostKey];
+    const visibleName = meta?.name?.trim() || hostKey;
+    const ip = meta?.ip?.trim();
+    const technicalName = IPV4.test(hostKey) ? visibleName : hostKey;
+    const dedupeKey = (ip && isIpv4(ip) ? ip : visibleName).toLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    options.push({
+      visibleName,
+      technicalName,
+      ip: ip && isIpv4(ip) ? ip : undefined,
+    });
+  }
+
+  return options.sort((a, b) => a.visibleName.localeCompare(b.visibleName));
+}
+
+/** Encontra o host da Query que corresponde ao nó do mapa (IP, depois nome). */
+export function resolveQueryHostOptionForNode(
+  list: QueryHostOption[],
+  node: QueryHostNodeRef
+): QueryHostOption | undefined {
+  for (const ip of queryHostIpCandidates(node)) {
+    const byIp = list.find((host) => host.ip === ip);
+    if (byIp) {
+      return byIp;
+    }
+  }
+
+  const name = node.zabbixHost?.trim();
+  const label = node.label?.trim();
+  for (const candidate of [name, label]) {
+    if (!candidate || IPV4.test(candidate)) {
+      continue;
+    }
+    const lower = candidate.toLowerCase();
+    const byName = list.find(
+      (host) =>
+        host.visibleName.toLowerCase() === lower || host.technicalName.toLowerCase() === lower
+    );
+    if (byName) {
+      return byName;
+    }
+  }
+
+  return undefined;
+}
+
+export function queryHostPickerOptions(
+  list: QueryHostOption[],
+  onMap: { ips: Set<string>; names: Set<string> },
+  boundHost?: QueryHostOption
+): Array<{ label: string; value: string }> {
+  return list
+    .filter((host) => {
+      if (boundHost?.ip && host.ip === boundHost.ip) {
+        return true;
+      }
+      if (host.ip && onMap.ips.has(host.ip)) {
+        return false;
+      }
+      return !onMap.names.has(host.visibleName);
+    })
+    .map((host) => ({
+      label: host.ip ? `${host.visibleName} (${host.ip})` : host.visibleName,
+      value: host.ip ?? host.visibleName,
+    }));
 }
 
 const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip'];
@@ -896,34 +902,6 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   }
 
   return { ...map, nodes, hostIcons };
-}
-
-export function resolveNodeStatus(
-  node: HostLookupRef & { type?: string },
-  statusMap: HostStatusMap,
-  threshold: number,
-  metric: TopologyStatusMetric = 'icmp_rtt',
-  metadata?: HostMetadataMap
-): 'online' | 'offline' | 'unknown' {
-  if (
-    node.type === 'submap' ||
-    node.type === 'static' ||
-    node.type === 'network' ||
-    node.type === 'dashboard_picker'
-  ) {
-    return 'unknown';
-  }
-  if (!node.zabbixHost?.trim() && !node.zabbixHostId?.trim()) {
-    return 'unknown';
-  }
-  if (!resolveHostLookupKey(node, metadata)) {
-    return 'unknown';
-  }
-  const v = lookupHostStatus(statusMap, node, metadata);
-  if (v === null || v === undefined) {
-    return 'unknown';
-  }
-  return resolveStatusFromValue(v, threshold, metric);
 }
 
 /** Overlay do nome/IP atuais do Zabbix (sem alterar o mapa persistido). */

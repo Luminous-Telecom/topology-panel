@@ -352,7 +352,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         <Stack direction="column" gap={1}>
           {hostNodes.length === 0 && (
             <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-              Configure o <strong>Datasource UID</strong> Zabbix nas opções do painel. O status ICMP é buscado direto na API (itens icmpping*).
+              Configure a aba <strong>Query</strong> do painel e o <strong>Field config</strong> (Thresholds / Value mappings) para status e cores dos hosts.
             </div>
           )}
           {hostNodes.map((node) => {
@@ -428,7 +428,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   </Field>
                   <Field
                     label="Consulta Zabbix"
-                    description="Host group desta consulta alimenta o status offline do submapa"
+                    description="Host group desta consulta alimenta a contagem de hosts do submapa"
                   >
                     <QueryRefSelect
                       value={node.queryRefId ?? ''}

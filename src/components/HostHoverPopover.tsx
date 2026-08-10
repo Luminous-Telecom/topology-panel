@@ -6,16 +6,14 @@ import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
   HostMetadataMap,
-  HostProblemMap,
   TopologyNode,
   TopologyPanelOptions,
 } from '../types';
-import { HostLookupRef, lookupHostDisplay, lookupProblemCount, resolveHostIp } from '../utils';
+import { HostLookupRef, lookupHostDisplay, resolveHostIp } from '../utils';
 import {
   extractHostHoverSeries,
-  formatHoverMetricValue,
+  formatHoverFieldValue,
   hostHoverPeriodLabel,
-  hoverMetricLabel,
 } from '../utils/hostTimeSeries';
 
 interface Props {
@@ -25,9 +23,8 @@ interface Props {
   queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
-  problemMap?: HostProblemMap;
   options: TopologyPanelOptions;
-  icmpReady?: boolean;
+  queryReady?: boolean;
 }
 
 const CHART_W = 260;
@@ -38,20 +35,14 @@ function hostTitle(node: TopologyNode): string {
   return node.label?.trim() || node.zabbixHost?.trim() || node.id;
 }
 
-function formatClock(ts: number): string {
-  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
 function Sparkline({
   series,
-  colorOnline,
-  colorOffline,
+  lineColor,
 }: {
   series: NonNullable<ReturnType<typeof extractHostHoverSeries>>;
-  colorOnline: string;
-  colorOffline: string;
+  lineColor: string;
 }) {
-  const { points, metric } = series;
+  const { points } = series;
   if (points.length < 2) {
     return null;
   }
@@ -62,30 +53,20 @@ function Sparkline({
 
   let yMax = 0;
   for (const point of points) {
-    if (metric === 'packet_loss') {
-      yMax = Math.max(yMax, point.value);
-    } else if (point.value > 0) {
-      yMax = Math.max(yMax, point.value * 1000);
-    }
+    yMax = Math.max(yMax, Math.abs(point.value));
   }
-  if (metric === 'packet_loss') {
-    yMax = Math.max(yMax, 1);
-  } else {
-    yMax = Math.max(yMax, 1);
-  }
+  yMax = Math.max(yMax, 1);
 
   const innerW = CHART_W - PAD * 2;
   const innerH = CHART_H - PAD * 2;
 
   const toX = (t: number) => PAD + ((t - tMin) / tSpan) * innerW;
-  const toY = (displayValue: number) => PAD + innerH - (displayValue / yMax) * innerH;
+  const toY = (value: number) => PAD + innerH - (Math.abs(value) / yMax) * innerH;
 
   const pathD = points
     .map((point, idx) => {
       const x = toX(point.t);
-      const displayValue =
-        metric === 'packet_loss' ? point.value : point.value <= 0 ? 0 : point.value * 1000;
-      const y = toY(displayValue);
+      const y = toY(point.value);
       return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(' ');
@@ -96,22 +77,11 @@ function Sparkline({
       <path
         d={pathD}
         fill="none"
-        stroke={colorOnline}
+        stroke={lineColor}
         strokeWidth={1.5}
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      {points.map((point, idx) =>
-        point.status === 'offline' ? (
-          <circle
-            key={idx}
-            cx={toX(point.t)}
-            cy={toY(metric === 'packet_loss' ? point.value : 0)}
-            r={2.5}
-            fill={colorOffline}
-          />
-        ) : null
-      )}
     </svg>
   );
 }
@@ -123,9 +93,8 @@ export function HostHoverPopover({
   queryData,
   hostMetadata,
   hostDisplay,
-  problemMap,
   options,
-  icmpReady,
+  queryReady,
 }: Props) {
   const theme = useTheme2();
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -146,8 +115,8 @@ export function HostHoverPopover({
   );
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  const problemCount = lookupProblemCount(problemMap ?? {}, lookupRef, hostMetadata);
   const ip = resolveHostIp(node, hostMetadata);
+  const lineColor = display?.color ? String(display.color) : theme.colors.text.secondary;
 
   const lastPoint = series?.points[series.points.length - 1];
   const periodLabel = hostHoverPeriodLabel(series);
@@ -170,7 +139,7 @@ export function HostHoverPopover({
     left = Math.max(margin, left);
     top = Math.max(margin, top);
     setPosition({ left, top });
-  }, [screenX, screenY, series, problemCount, display?.text]);
+  }, [screenX, screenY, series, display?.text]);
 
   const panelStyle = css`
     position: fixed;
@@ -202,18 +171,6 @@ export function HostHoverPopover({
     font-size: 11px;
   `;
 
-  const failureStyle = css`
-    margin-top: 6px;
-    color: ${theme.colors.error.text};
-    font-size: 11px;
-  `;
-
-  const alertStyle = css`
-    margin-top: 4px;
-    color: ${options.colorAlert || theme.colors.warning.text};
-    font-size: 11px;
-  `;
-
   const emptyStyle = css`
     margin-top: 8px;
     color: ${theme.colors.text.secondary};
@@ -226,40 +183,24 @@ export function HostHoverPopover({
       {ip ? <div className={subtitleStyle}>{ip}</div> : null}
       <div className={subtitleStyle}>{periodLabel}</div>
 
-      {!icmpReady ? (
+      {!queryReady ? (
         <div className={emptyStyle}>Aguardando dados da Query…</div>
       ) : series ? (
         <>
           <div className={statRowStyle}>
-            <span>{hoverMetricLabel(series.metric)}</span>
+            <span>{series.fieldLabel}</span>
             {lastPoint ? (
               <span>
-                Agora: {formatHoverMetricValue(series.metric, lastPoint.value)}
+                Agora: {formatHoverFieldValue(lastPoint)}
                 {display?.text ? ` · ${display.text}` : ''}
               </span>
             ) : null}
           </div>
-          <Sparkline series={series} colorOnline={options.colorOnline} colorOffline={options.colorOffline} />
-          {series.failureCount > 0 ? (
-            <div className={failureStyle}>
-              {series.failureCount} falha{series.failureCount === 1 ? '' : 's'} no período
-              {series.lastFailureAt ? ` · última ${formatClock(series.lastFailureAt)}` : ''}
-            </div>
-          ) : (
-            <div className={subtitleStyle} style={{ marginTop: 6 }}>
-              Sem falhas ICMP no período
-            </div>
-          )}
+          <Sparkline series={series} lineColor={lineColor} />
         </>
       ) : (
-        <div className={emptyStyle}>Sem série ICMP da Query para este host</div>
+        <div className={emptyStyle}>Sem série da Query para este host</div>
       )}
-
-      {problemCount > 0 ? (
-        <div className={alertStyle}>
-          {problemCount} problema{problemCount === 1 ? '' : 's'} Zabbix ativo{problemCount === 1 ? '' : 's'}
-        </div>
-      ) : null}
     </div>,
     document.body
   );

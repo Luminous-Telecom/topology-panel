@@ -5,8 +5,6 @@ import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
   HostMetadataMap,
-  HostProblemMap,
-  HostStatusMap,
   TopologyLink,
   TopologyMap,
   TopologyNode,
@@ -35,10 +33,10 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, effectiveStatusMetric, eventTargetsElement, findScrollParents, HostLookupRef, lookupHostDisplay, lookupHostStatus, lookupProblemCount, measureTextWidth, NodeLayout, offlineThresholdForMetric, resolveLinkMedium, resolveNodeStatus, snapNodeCenterToGrid, snapToGrid, withLiveZabbixMeta } from '../utils';
+import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, eventTargetsElement, findScrollParents, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostLayoutKey, resolveLinkMedium, snapNodeCenterToGrid, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, hostIp, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
-import { isDarkBackground, subtextOnBackground, textOnBackground } from '../utils/colorContrast';
+import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor } from '../utils/networkStats';
@@ -85,19 +83,13 @@ interface Props {
   map: TopologyMap;
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
-  /** UID do datasource Zabbix da aba Query do painel */
-  zabbixDatasourceUid?: string;
-  /** Host groups definidos na query Zabbix do painel */
-  zabbixGroupNames?: string[];
-  statusMap: HostStatusMap;
+  /** Hosts disponíveis nas séries da Query do painel */
+  queryHostOptions?: QueryHostOption[];
   /** Cores/textos dos Value mappings / Thresholds da Query */
   hostDisplay?: HostDisplayMap;
-  /** ICMP puro — estatísticas de rede/submapa (sem problemas Zabbix). */
-  regionStatusMap?: HostStatusMap;
-  /** ICMP carregado ao menos uma vez — evita vermelho/OK falso antes da API Zabbix. */
-  icmpReady?: boolean;
+  /** Query carregada ao menos uma vez — evita status falso antes dos dados. */
+  queryReady?: boolean;
   hostMetadata?: HostMetadataMap;
-  problemMap?: HostProblemMap;
   submapHosts?: Record<string, string[] | null | undefined>;
   /** Segundos restantes até o próximo auto-refresh do dashboard */
   refreshCountdown?: number | null;
@@ -158,18 +150,6 @@ const styles = {
     display: block;
     user-select: none;
     touch-action: none;
-  `,
-  offlineBlink: css`
-    animation: topology-offline-blink 1s ease-in-out infinite;
-    @keyframes topology-offline-blink {
-      0%,
-      100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.28;
-      }
-    }
   `,
   empty: css`
     display: flex;
@@ -337,9 +317,7 @@ function LinkMarkers({ colorLink }: { colorLink: string }) {
 function nodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
-  statusMap: HostStatusMap,
   hostMetadata?: HostMetadataMap,
-  problemMap: HostProblemMap = {},
   hostDisplay?: HostDisplayMap,
   resolveMappedColor?: (color?: unknown) => string | undefined
 ): string {
@@ -355,54 +333,30 @@ function nodeFill(
   if (!node.zabbixHost?.trim()) {
     return options.colorUnknown;
   }
-  const metric = effectiveStatusMetric(options);
-  const threshold = offlineThresholdForMetric(metric);
-  const lookupRef: HostLookupRef = {
+  const lookupRef = {
     zabbixHost: node.zabbixHost,
     subtitle: node.subtitle,
     label: node.label,
   };
-  const raw = lookupHostStatus(statusMap, lookupRef, hostMetadata);
-  const st = resolveNodeStatus(node, statusMap, threshold, metric, hostMetadata);
   const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  const mappedColor = resolveMappedColor?.(mapped?.color) || mapped?.color;
-
-  // ICMP 0 (ou perda >= limiar) → offline (mapeamento ou fallback); nunca laranja
-  const icmpDown =
-    raw !== null &&
-    raw !== undefined &&
-    (metric === 'packet_loss' ? raw >= threshold : raw <= 0);
-  if (st === 'offline' || icmpDown) {
-    return mappedColor || options.colorOffline;
+  if (!mapped?.color) {
+    return options.colorUnknown;
   }
-
-  // Laranja só se online no ICMP e com problema Zabbix
-  if (
-    st === 'online' &&
-    options.useZabbixProblems !== false &&
-    lookupRef.zabbixHost &&
-    lookupProblemCount(problemMap, lookupRef, hostMetadata) > 0
-  ) {
-    return options.colorAlert || '#EF6C00';
+  const color = resolveMappedColor?.(mapped.color);
+  if (!color) {
+    return options.colorUnknown;
   }
-  if (st === 'online') {
-    return mappedColor || options.colorOnline;
-  }
-  return options.colorUnknown;
+  return color;
 }
 
 export function TopologyCanvas({
   map,
   storedMap,
   options,
-  zabbixDatasourceUid,
-  zabbixGroupNames = [],
-  statusMap,
+  queryHostOptions = [],
   hostDisplay,
-  regionStatusMap,
-  icmpReady = false,
+  queryReady = false,
   hostMetadata,
-  problemMap = {},
   submapHosts = {},
   refreshCountdown = null,
   refreshIntervalSec = null,
@@ -596,11 +550,9 @@ export function TopologyCanvas({
     const stats = buildRegionStatsMap(
       map.nodes,
       layouts,
-      regionStatusMap ?? statusMap,
-      options,
+      hostDisplay ?? {},
       submapHosts,
-      hostMetadata,
-      problemMap
+      hostMetadata
     );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
@@ -614,13 +566,13 @@ export function TopologyCanvas({
       if (!positioned) {
         continue;
       }
-      const withStats = { ...positioned, subtitle: formatRegionStats(region, icmpReady, 'submap') };
+      const withStats = { ...positioned, subtitle: formatRegionStats(region, queryReady, 'submap') };
       const layout = computeNodeLayout(withStats, layoutOpts);
       layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
     }
 
     return { nodeLayouts: layouts, regionStats: stats };
-  }, [map.nodes, layoutOpts, dragPreview, regionStatusMap, statusMap, options, submapHosts, hostMetadata, icmpReady, problemMap]);
+  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, options, submapHosts, hostMetadata, queryReady]);
 
   const validLinks = useMemo(() => {
     return map.links.filter((l) => {
@@ -2581,17 +2533,8 @@ export function TopologyCanvas({
       return [];
     }
     const items: Array<{ label: string; color: string }> = [];
-    if (options.legendOnline !== false) {
-      items.push({ label: 'Online', color: options.colorOnline });
-    }
-    if (options.legendOffline !== false) {
-      items.push({ label: 'Offline', color: options.colorOffline });
-    }
-    if (options.legendAlert !== false) {
-      items.push({ label: 'Alerta', color: options.colorAlert || '#EF6C00' });
-    }
     if (options.legendUnknown !== false) {
-      items.push({ label: 'Sem gerência', color: options.colorUnknown });
+      items.push({ label: 'Sem query', color: options.colorUnknown });
     }
     if (options.legendStatic) {
       items.push({ label: 'Estático', color: options.colorStatic });
@@ -2611,18 +2554,12 @@ export function TopologyCanvas({
     return items;
   }, [
     options.showLegend,
-    options.legendOnline,
-    options.legendOffline,
-    options.legendAlert,
     options.legendUnknown,
     options.legendStatic,
     options.legendSubmap,
     options.legendLink,
     options.legendDownload,
     options.legendUpload,
-    options.colorOnline,
-    options.colorOffline,
-    options.colorAlert,
     options.colorUnknown,
     options.colorStatic,
     options.colorSubmap,
@@ -2635,27 +2572,25 @@ export function TopologyCanvas({
     (node: TopologyNode): string => {
       if (isNetworkNode(node)) {
         const stats = regionStats.get(node.id);
-        const fillOverride = regionFillColor(stats, options, 'network', icmpReady);
+        const fillOverride = regionFillColor(stats, options, 'network');
         const fillRaw = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
         return resolveColor(fillRaw);
       }
       const fillOverride =
         node.type === 'submap'
-          ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady)
+          ? regionFillColor(regionStats.get(node.id), options, 'submap')
           : undefined;
       const fillRaw =
         fillOverride ??
         (node.fillColor ? node.fillColor : undefined) ??
-        nodeFill(node, options, statusMap, hostMetadata, problemMap, hostDisplay, resolveColor);
+        nodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
       return resolveColor(fillRaw);
     },
     [
       regionStats,
       options,
-      icmpReady,
-      statusMap,
+      queryReady,
       hostMetadata,
-      problemMap,
       hostDisplay,
       resolveColor,
     ]
@@ -2663,35 +2598,10 @@ export function TopologyCanvas({
 
   const resolveMiniNetworkStroke = useCallback(
     (node: TopologyNode): string => {
-      const stats = regionStats.get(node.id);
-      const networkAlert = Boolean(
-        icmpReady &&
-          stats &&
-          !stats.loadFailed &&
-          stats.total > 0 &&
-          stats.offline === 0 &&
-          stats.alert > 0
-      );
-      const networkOnline = Boolean(
-        icmpReady &&
-          stats &&
-          !stats.loadFailed &&
-          stats.total > 0 &&
-          stats.offline === 0 &&
-          stats.alert === 0 &&
-          stats.online > 0
-      );
-      const strokeRaw =
-        stats && stats.offline > 0
-          ? options.colorOffline
-          : networkAlert
-            ? options.colorAlert
-            : networkOnline
-              ? options.colorOnline
-              : node.borderColor ?? options.colorNetworkBorder;
+      const strokeRaw = node.borderColor ?? options.colorNetworkBorder;
       return resolveColor(strokeRaw);
     },
-    [regionStats, options, icmpReady, resolveColor]
+    [options.colorNetworkBorder, resolveColor]
   );
 
   const miniLinkColor = resolveColor(options.colorLink);
@@ -2822,44 +2732,14 @@ export function TopologyCanvas({
               }
               const { w, h, label, x, y } = layout;
               const stats = regionStats.get(node.id);
-              const fillOverride = regionFillColor(stats, options, 'network', icmpReady);
+              const fillOverride = regionFillColor(stats, options, 'network');
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??
                 options.colorNetworkFill;
               const fill = resolveColor(fillRaw);
-              const networkOffline =
-                Boolean(icmpReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0);
-              const networkAlert =
-                Boolean(
-                  icmpReady &&
-                    stats &&
-                    !stats.loadFailed &&
-                    stats.total > 0 &&
-                    stats.offline === 0 &&
-                    stats.alert > 0
-                );
-              const networkOnline =
-                Boolean(
-                  icmpReady &&
-                    stats &&
-                    !stats.loadFailed &&
-                    stats.total > 0 &&
-                    stats.offline === 0 &&
-                    stats.alert === 0 &&
-                    stats.online > 0
-                );
-              const strokeRaw =
-                stats && stats.offline > 0
-                  ? options.colorOffline
-                  : networkAlert
-                    ? options.colorAlert
-                    : networkOnline
-                      ? options.colorOnline
-                      : node.borderColor ?? options.colorNetworkBorder;
-              const stroke = resolveColor(strokeRaw);
-              const strokeOpacity = networkOffline ? 1 : networkAlert ? 0.85 : networkOnline ? 0.35 : 0.85;
-              const statsLabel = stats ? formatRegionStats(stats, icmpReady) : undefined;
+              const stroke = resolveColor(node.borderColor ?? options.colorNetworkBorder);
+              const statsLabel = stats ? formatRegionStats(stats, queryReady) : undefined;
               const statsPad = 8;
               const statsFontSize = Math.max(9, options.nodeFontSize - 1);
               const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : undefined;
@@ -2881,7 +2761,6 @@ export function TopologyCanvas({
                 <g
                   key={node.id}
                   data-node-id={node.id}
-                  className={networkOffline ? styles.offlineBlink : undefined}
                   pointerEvents="auto"
                   onPointerDown={(e) => onNetworkPointerDown(e, node)}
                   onDoubleClick={(e) => onNodeDoubleClick(e, node)}
@@ -2906,7 +2785,7 @@ export function TopologyCanvas({
                     fill={fill}
                     stroke={isSelected ? '#4FC3F7' : stroke}
                     strokeWidth={isSelected ? 3 : 1.5}
-                    strokeOpacity={isSelected ? 1 : strokeOpacity}
+                    strokeOpacity={isSelected ? 1 : 0.85}
                   />
                   <rect
                     x={titleX}
@@ -2938,9 +2817,7 @@ export function TopologyCanvas({
                       y={statsY}
                       textAnchor="start"
                       dominantBaseline="middle"
-                      fill={
-                        stats!.offline > 0 ? '#ffcdd2' : stats!.alert > 0 ? '#ffcc80' : '#c8e6c9'
-                      }
+                      fill={titleText}
                       fontSize={statsFontSize}
                       fontFamily="Inter, Helvetica, Arial, sans-serif"
                       pointerEvents="none"
@@ -3063,15 +2940,15 @@ export function TopologyCanvas({
             const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout;
               const fillOverride =
                 node.type === 'submap'
-                  ? regionFillColor(regionStats.get(node.id), options, 'submap', icmpReady)
+                  ? regionFillColor(regionStats.get(node.id), options, 'submap')
                   : undefined;
               const fillRaw =
                 fillOverride ??
                 (node.fillColor ? node.fillColor : undefined) ??
-                nodeFill(node, options, statusMap, hostMetadata, problemMap, hostDisplay, resolveColor);
+                nodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
               const fill = resolveColor(fillRaw);
             const region = node.type === 'submap' ? regionStats.get(node.id) : undefined;
-            const regionLabel = region ? formatRegionStats(region, icmpReady, 'submap') : undefined;
+            const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
             const labelColor =
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
@@ -3079,31 +2956,10 @@ export function TopologyCanvas({
             const subtitleColor =
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
-                : region
-                  ? region.offline > 0
-                    ? isDarkBackground(fill)
-                      ? '#ffcdd2'
-                      : '#b71c1c'
-                    : isDarkBackground(fill)
-                      ? '#c8e6c9'
-                      : '#1b5e20'
-                  : subtextOnBackground(fill);
+                : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const displaySubY = subY;
             const nodeIsHost = isHostNode(node);
-            const hostStatus = nodeIsHost
-              ? resolveNodeStatus(
-                  node,
-                  statusMap,
-                  offlineThresholdForMetric(effectiveStatusMetric(options)),
-                  effectiveStatusMetric(options),
-                  hostMetadata
-                )
-              : null;
-            const submapOffline = Boolean(
-              icmpReady && region && !region.loadFailed && region.total > 0 && region.offline > 0
-            );
-            const isOfflineBlink = hostStatus === 'offline' || submapOffline;
             const hostIcon = nodeIsHost ? node.icon ?? null : null;
             const textCenterX = x + w / 2;
             const iconX = x + w / 2;
@@ -3118,7 +2974,6 @@ export function TopologyCanvas({
               <g
                 key={node.id}
                 data-node-id={node.id}
-                className={isOfflineBlink ? styles.offlineBlink : undefined}
                 onPointerDown={(e) => onNodePointerDown(e, node)}
                 onClick={(e) => onNodeClick(e, node)}
                 onDoubleClick={(e) => onNodeDoubleClick(e, node)}
@@ -3298,8 +3153,7 @@ export function TopologyCanvas({
         <NodeEditModal
           node={editNode}
           queryRefInfos={options.queryRefInfosAvailable ?? []}
-          zabbixDatasourceUid={zabbixDatasourceUid}
-          zabbixGroupNames={zabbixGroupNames}
+          queryHostOptions={queryHostOptions}
           storedMap={storedMap}
           onClose={() => setEditNode(null)}
           onSave={(payload: NodeEditSavePayload) => {
@@ -3310,10 +3164,49 @@ export function TopologyCanvas({
                 editNode.id,
                 payload.rebind.visibleName,
                 payload.rebind.ip,
-                payload.rebind.icon
+                payload.rebind.icon,
+                editNode
               );
             }
-            const savedNode = next.nodes.find((n) => n.id === editNode.id);
+
+            const findSavedNode = () =>
+              next.nodes.find((n) => n.id === editNode.id) ??
+              (editNode.zabbixHost?.trim()
+                ? next.nodes.find(
+                    (n) =>
+                      (n.type ?? 'host') === 'host' &&
+                      n.zabbixHost?.trim() === editNode.zabbixHost?.trim()
+                  )
+                : undefined) ??
+              (payload.rebind?.ip
+                ? next.nodes.find(
+                    (n) =>
+                      (n.type ?? 'host') === 'host' &&
+                      (n.subtitle?.trim() === payload.rebind?.ip ||
+                        n.zabbixHost?.trim() === payload.rebind?.ip)
+                  )
+                : undefined);
+
+            let savedNode = findSavedNode();
+
+            if (!savedNode && !payload.rebind && Object.keys(payload.patch).length > 0) {
+              const key = resolveHostLayoutKey(editNode);
+              if (key) {
+                next = upsertHostLayout(next, key, {
+                  id: editNode.id,
+                  x: editNode.x,
+                  y: editNode.y,
+                  width: editNode.width,
+                  height: editNode.height,
+                  label: editNode.label,
+                  subtitle: editNode.subtitle ?? key,
+                  type: 'host',
+                  ...payload.patch,
+                });
+                savedNode = findSavedNode();
+              }
+            }
+
             if (savedNode && Object.keys(payload.patch).length > 0) {
               next = updateStoredNode(next, savedNode, payload.patch);
             }
@@ -3336,8 +3229,7 @@ export function TopologyCanvas({
       {addHostAt && (
         <ZabbixHostPickerModal
           mode="add"
-          datasourceUid={zabbixDatasourceUid}
-          zabbixGroupNames={zabbixGroupNames}
+          queryHostOptions={queryHostOptions}
           storedMap={storedMap}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon) =>
@@ -3395,8 +3287,6 @@ export function TopologyCanvas({
         <PingModal
           label={pingTarget.label}
           ip={pingTarget.ip}
-          zabbixHost={pingTarget.zabbixHost}
-          datasourceUid={zabbixDatasourceUid}
           onClose={() => setPingTarget(null)}
         />
       )}
@@ -3409,9 +3299,8 @@ export function TopologyCanvas({
           queryData={queryData}
           hostMetadata={hostMetadata}
           hostDisplay={hostDisplay}
-          problemMap={problemMap}
           options={options}
-          icmpReady={icmpReady}
+          queryReady={queryReady}
         />
       ) : null}
 

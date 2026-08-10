@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal, Select } from '@grafana/ui';
+import { Button, ColorPickerInput, Field, InlineSwitch, Input, Select } from '@grafana/ui';
+import { DraggableModal } from './DraggableModal';
 import {
   TopologyDashboardChoice,
   TopologyHostIcon,
@@ -12,12 +13,7 @@ import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
-import { isIpv4, resolveHostIp } from '../utils';
-import {
-  fetchZabbixHostsInGroupNames,
-  resolveZabbixHostOptionForNode,
-  zabbixHostPickerOptions,
-} from '../utils/zabbixApi';
+import { isIpv4, queryHostPickerOptions, QueryHostOption, resolveHostIp, resolveQueryHostOptionForNode } from '../utils';
 
 export interface NodeEditSavePayload {
   patch: Partial<TopologyNode>;
@@ -31,8 +27,7 @@ export interface NodeEditSavePayload {
 interface Props {
   node: TopologyNode;
   queryRefInfos?: TopologyQueryRefInfo[];
-  zabbixDatasourceUid?: string;
-  zabbixGroupNames?: string[];
+  queryHostOptions?: QueryHostOption[];
   storedMap?: TopologyMap;
   onSave: (payload: NodeEditSavePayload) => void;
   onClose: () => void;
@@ -77,8 +72,7 @@ function hostSelectValue(node: TopologyNode): string | undefined {
 export function NodeEditModal({
   node,
   queryRefInfos = [],
-  zabbixDatasourceUid,
-  zabbixGroupNames = [],
+  queryHostOptions = [],
   storedMap,
   onSave,
   onClose,
@@ -103,15 +97,11 @@ export function NodeEditModal({
   const [borderColor, setBorderColor] = useState(node.borderColor ?? '');
   const [toolUsername, setToolUsername] = useState(node.toolUsername ?? '');
   const [toolPassword, setToolPassword] = useState(node.toolPassword ?? '');
-  const [zabbixHosts, setZabbixHosts] = useState<Awaited<ReturnType<typeof fetchZabbixHostsInGroupNames>>>([]);
   const [selectedHostKey, setSelectedHostKey] = useState<string | undefined>(hostSelectValue(node));
-  const [loadingZabbixHosts, setLoadingZabbixHosts] = useState(false);
-  const [zabbixLoadError, setZabbixLoadError] = useState<string | null>(null);
 
   const type = node.type ?? 'host';
   const isHost = type === 'host';
   const isZabbixHost = isHost && Boolean(node.zabbixHost?.trim());
-  const groupNamesKey = zabbixGroupNames.join('\0');
   const nodeIp = resolveHostIp(node);
 
   const onMap = useMemo(() => {
@@ -121,74 +111,32 @@ export function NodeEditModal({
     return hostsAlreadyOnMap(storedMap, nodeIp, node.zabbixHost);
   }, [node.zabbixHost, nodeIp, storedMap]);
 
-  const boundZabbixHost = useMemo(
-    () => resolveZabbixHostOptionForNode(zabbixHosts, node),
-    [node, zabbixHosts]
+  const boundQueryHost = useMemo(
+    () => resolveQueryHostOptionForNode(queryHostOptions, node),
+    [node, queryHostOptions]
   );
 
   useEffect(() => {
-    if (!isZabbixHost || !zabbixDatasourceUid || !storedMap) {
+    if (!isZabbixHost) {
       return;
     }
-    if (!zabbixGroupNames.length) {
-      setZabbixLoadError('Configure um host group na query Zabbix do painel (aba Query).');
-      setZabbixHosts([]);
-      setSelectedHostKey(undefined);
-      return;
+    const match = resolveQueryHostOptionForNode(queryHostOptions, node);
+    if (match) {
+      setSelectedHostKey(match.ip ?? match.visibleName);
     }
-    let cancelled = false;
-    setLoadingZabbixHosts(true);
-    setZabbixLoadError(null);
-    fetchZabbixHostsInGroupNames(zabbixDatasourceUid, zabbixGroupNames)
-      .then((list) => {
-        if (cancelled) {
-          return;
-        }
-        if (!list.length) {
-          setZabbixLoadError(`Nenhum host encontrado no grupo Zabbix: ${zabbixGroupNames.join(', ')}.`);
-          setZabbixHosts([]);
-          setSelectedHostKey(undefined);
-          return;
-        }
-        setZabbixHosts(list);
-        const match = resolveZabbixHostOptionForNode(list, node);
-        if (match) {
-          setSelectedHostKey(match.ip ?? match.visibleName);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setZabbixLoadError(err instanceof Error ? err.message : 'Falha ao carregar hosts do Zabbix.');
-          setZabbixHosts([]);
-          setSelectedHostKey(undefined);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingZabbixHosts(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    groupNamesKey,
-    isZabbixHost,
-    node,
-    storedMap,
-    zabbixDatasourceUid,
-    zabbixGroupNames,
-  ]);
+  }, [isZabbixHost, node, queryHostOptions]);
 
-  const zabbixHostOptions = useMemo(
-    () => zabbixHostPickerOptions(zabbixHosts, onMap, boundZabbixHost),
-    [boundZabbixHost, onMap, zabbixHosts]
+  const queryHostSelectOptions = useMemo(
+    () => queryHostPickerOptions(queryHostOptions, onMap, boundQueryHost),
+    [boundQueryHost, onMap, queryHostOptions]
   );
 
-  const selectedZabbixHost =
-    zabbixHosts.find((host) => host.ip === selectedHostKey || host.visibleName === selectedHostKey) ??
-    boundZabbixHost;
-  const groupHint = zabbixGroupNames.length ? zabbixGroupNames.join(', ') : undefined;
+  const selectedQueryHost =
+    queryHostOptions.find((host) => host.ip === selectedHostKey || host.visibleName === selectedHostKey) ??
+    boundQueryHost;
+  const queryLoadError = queryHostOptions.length
+    ? null
+    : 'Nenhum host na Query do painel. Configure a aba Query e aguarde os dados.';
 
   const title =
     type === 'submap'
@@ -203,22 +151,28 @@ export function NodeEditModal({
 
   const handleSave = () => {
     if (isZabbixHost) {
-      const ip = selectedZabbixHost?.ip?.trim();
-      if (!selectedZabbixHost || !ip || !isIpv4(ip)) {
+      const ip = selectedQueryHost?.ip?.trim() || nodeIp;
+      if (!ip || !isIpv4(ip)) {
         return;
       }
+      const visibleName =
+        selectedQueryHost?.visibleName ??
+        (node.label?.trim() || node.zabbixHost?.trim() || ip);
       const payload: NodeEditSavePayload = {
         patch: {
           toolUsername: toolUsername.trim(),
           toolPassword,
         },
       };
+      if (icon !== node.icon) {
+        payload.patch.icon = icon;
+      }
       const hostChanged =
         ip !== nodeIp ||
-        selectedZabbixHost.visibleName !== (node.label?.trim() || node.zabbixHost?.trim());
-      if (hostChanged || icon !== node.icon) {
+        visibleName !== (node.label?.trim() || node.zabbixHost?.trim());
+      if (hostChanged) {
         payload.rebind = {
-          visibleName: selectedZabbixHost.visibleName,
+          visibleName,
           ip,
           icon,
         };
@@ -270,40 +224,39 @@ export function NodeEditModal({
     onClose();
   };
 
+  const hostSelectionChanged = selectedHostKey !== hostSelectValue(node);
   const saveDisabled =
-    isZabbixHost && (!selectedZabbixHost?.ip || !isIpv4(selectedZabbixHost.ip));
+    isZabbixHost &&
+    hostSelectionChanged &&
+    (!selectedQueryHost?.ip || !isIpv4(selectedQueryHost.ip)) &&
+    !nodeIp;
 
   return (
-    <Modal title={title} isOpen onDismiss={onClose}>
+    <DraggableModal title={title} isOpen onDismiss={onClose}>
       {isZabbixHost && (
         <>
           <Field
             label="Host Zabbix"
             description={
-              zabbixLoadError ??
-              (groupHint
-                ? `Hosts do grupo ${groupHint}. Vinculado pelo IP da interface principal.`
-                : 'Vinculado pelo IP da interface principal no Zabbix.')
+              queryLoadError ??
+              'Hosts retornados pela Query do painel. Vinculado pelo IP nos labels da série.'
             }
           >
             <Select
-              options={zabbixHostOptions}
+              options={queryHostSelectOptions}
               value={selectedHostKey}
-              isLoading={loadingZabbixHosts}
-              disabled={!zabbixGroupNames.length || loadingZabbixHosts}
+              disabled={!queryHostOptions.length}
               onChange={(v) => setSelectedHostKey(v.value)}
               placeholder={
-                loadingZabbixHosts
-                  ? 'Carregando hosts…'
-                  : zabbixHostOptions.length
-                    ? 'Selecione o host'
-                    : 'Nenhum host disponível neste grupo'
+                queryHostSelectOptions.length
+                  ? 'Selecione o host'
+                  : 'Nenhum host disponível na Query'
               }
             />
           </Field>
-          {selectedZabbixHost?.ip ? (
+          {selectedQueryHost?.ip ? (
             <Field label="IP">
-              <span>{selectedZabbixHost.ip}</span>
+              <span>{selectedQueryHost.ip}</span>
             </Field>
           ) : null}
         </>
@@ -368,7 +321,7 @@ export function NodeEditModal({
           </Field>
           <Field
             label="Consulta Zabbix"
-            description="Consulta deste painel cujo host group define o status offline deste submapa"
+            description="Consulta deste painel cujo host group define os hosts monitorados deste submapa"
           >
             <QueryRefSelect value={queryRefId} queryRefs={queryRefInfos} onChange={setQueryRefId} />
           </Field>
@@ -467,14 +420,14 @@ export function NodeEditModal({
           </Field>
         </>
       )}
-      <Modal.ButtonRow>
+      <DraggableModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
         <Button disabled={saveDisabled} onClick={handleSave}>
           Salvar
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </DraggableModal.ButtonRow>
+    </DraggableModal>
   );
 }

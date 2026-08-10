@@ -1,26 +1,18 @@
 import { Field, FieldType, PanelData } from '@grafana/data';
-import { HostMetadataMap, TopologyStatusMetric } from '../types';
-import {
-  collectHostLookupCandidates,
-  effectiveStatusMetric,
-  HostLookupRef,
-  offlineThresholdForMetric,
-  resolveStatusFromValue,
-} from '../utils';
+import { HostMetadataMap } from '../types';
+import { collectHostLookupCandidates, HostLookupRef } from '../utils';
 
 export const HOST_HOVER_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 export interface HostTimeSeriesPoint {
   t: number;
   value: number;
-  status: 'online' | 'offline';
+  displayText?: string;
 }
 
 export interface HostHoverSeries {
   points: HostTimeSeriesPoint[];
-  metric: TopologyStatusMetric;
-  failureCount: number;
-  lastFailureAt?: number;
+  fieldLabel: string;
 }
 
 function hostLabelFromField(field: Field): string | undefined {
@@ -46,17 +38,21 @@ function fieldMatchesHost(field: Field, candidates: Set<string>): boolean {
   return false;
 }
 
-function fieldMatchesMetric(field: Field, metric: TopologyStatusMetric): boolean {
-  const key = String(field.labels?.item_key ?? field.labels?.key_ ?? '')
-    .trim()
-    .toLowerCase();
-  if (!key) {
-    return true;
+function fieldSeriesLabel(field: Field): string {
+  const configName = field.config?.displayName?.trim();
+  if (configName) {
+    return configName;
   }
-  if (metric === 'packet_loss') {
-    return key.includes('icmppingloss');
+  const labels = field.labels ?? {};
+  const itemName = labels.item_name?.trim() || labels.item?.trim();
+  if (itemName) {
+    return itemName;
   }
-  return key.includes('icmppingsec') || key.includes('icmpping');
+  const itemKey = labels.item_key?.trim() || labels.key_?.trim();
+  if (itemKey) {
+    return itemKey;
+  }
+  return 'Query';
 }
 
 function timestampMs(raw: unknown): number | undefined {
@@ -75,12 +71,7 @@ function timestampMs(raw: unknown): number | undefined {
   return undefined;
 }
 
-function readPoints(
-  timeField: Field,
-  valueField: Field,
-  metric: TopologyStatusMetric,
-  threshold: number
-): HostTimeSeriesPoint[] {
+function readPoints(timeField: Field, valueField: Field): HostTimeSeriesPoint[] {
   const points: HostTimeSeriesPoint[] = [];
   const len = valueField.values.length;
   for (let i = 0; i < len; i++) {
@@ -93,10 +84,11 @@ function readPoints(
     if (!Number.isFinite(value)) {
       continue;
     }
+    const displayed = valueField.display?.(value);
     points.push({
       t,
       value,
-      status: resolveStatusFromValue(value, threshold, metric),
+      displayText: displayed?.text,
     });
   }
   return points;
@@ -108,33 +100,7 @@ function filterPointsToHoverWindow(points: HostTimeSeriesPoint[]): HostTimeSerie
   return filtered.length ? filtered : points;
 }
 
-export function summarizeHostHoverSeries(
-  points: HostTimeSeriesPoint[],
-  metric: TopologyStatusMetric
-): HostHoverSeries | undefined {
-  if (!points.length) {
-    return undefined;
-  }
-
-  const sorted = [...points].sort((a, b) => a.t - b.t);
-  let failureCount = 0;
-  let lastFailureAt: number | undefined;
-  for (const point of sorted) {
-    if (point.status === 'offline') {
-      failureCount += 1;
-      lastFailureAt = point.t;
-    }
-  }
-
-  return {
-    points: sorted,
-    metric,
-    failureCount,
-    lastFailureAt,
-  };
-}
-
-/** Série temporal ICMP/perda da Query Zabbix para um host (janela de até 24h). */
+/** Série temporal da Query Zabbix para um host (janela de até 24h). */
 export function extractHostHoverSeries(
   data: PanelData | undefined,
   ref: HostLookupRef,
@@ -149,9 +115,8 @@ export function extractHostHoverSeries(
     return undefined;
   }
 
-  const metric = effectiveStatusMetric(undefined, data);
-  const threshold = offlineThresholdForMetric(metric);
   let bestPoints: HostTimeSeriesPoint[] = [];
+  let bestLabel = 'Query';
 
   for (const frame of data.series) {
     const timeField = frame.fields.find((field) => field.type === FieldType.time);
@@ -165,12 +130,10 @@ export function extractHostHoverSeries(
       if (!fieldMatchesHost(field, candidates)) {
         continue;
       }
-      if (!fieldMatchesMetric(field, metric)) {
-        continue;
-      }
-      const points = readPoints(timeField, field, metric, threshold);
+      const points = readPoints(timeField, field);
       if (points.length > bestPoints.length) {
         bestPoints = points;
+        bestLabel = fieldSeriesLabel(field);
       }
     }
   }
@@ -179,7 +142,11 @@ export function extractHostHoverSeries(
     return undefined;
   }
 
-  return summarizeHostHoverSeries(filterPointsToHoverWindow(bestPoints), metric);
+  const sorted = [...filterPointsToHoverWindow(bestPoints)].sort((a, b) => a.t - b.t);
+  return {
+    points: sorted,
+    fieldLabel: bestLabel,
+  };
 }
 
 function formatHoverClock(ts: number): string {
@@ -198,16 +165,9 @@ export function hostHoverPeriodLabel(series?: HostHoverSeries): string {
   return `Últimas 24 horas · ${formatHoverClock(fromMs)} – ${formatHoverClock(nowMs)}`;
 }
 
-export function formatHoverMetricValue(metric: TopologyStatusMetric, value: number): string {
-  if (metric === 'packet_loss') {
-    return `${value.toFixed(1)}%`;
+export function formatHoverFieldValue(point: HostTimeSeriesPoint): string {
+  if (point.displayText?.trim()) {
+    return point.displayText.trim();
   }
-  if (value <= 0) {
-    return 'sem resposta';
-  }
-  return `${(value * 1000).toFixed(1)} ms`;
-}
-
-export function hoverMetricLabel(metric: TopologyStatusMetric): string {
-  return metric === 'packet_loss' ? 'Perda ICMP' : 'Latência ICMP';
+  return String(point.value);
 }

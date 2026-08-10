@@ -150,10 +150,6 @@ export interface TopologyQueryRefInfo {
   hint?: string;
 }
 
-/** Como interpretar o valor numérico da query Zabbix para online/offline */
-export type TopologyStatusMetric = 'icmp_rtt' | 'packet_loss';
-
-/** Zoom/pan do canvas — salvo nas opções do painel */
 export interface TopologyView {
   x: number;
   y: number;
@@ -165,10 +161,7 @@ export interface TopologyPanelOptions {
   /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
   view?: TopologyView;
   /** Colors */
-  colorOnline: string;
-  colorOffline: string;
-  /** Host online com problema ativo no Zabbix */
-  colorAlert: string;
+  /** Host sem cor na Query */
   colorUnknown: string;
   /** Cor padrão dos rótulos estáticos */
   colorStatic: string;
@@ -187,28 +180,14 @@ export interface TopologyPanelOptions {
   nodeFontSize: number;
   showSubtitle: boolean;
   /**
-   * @deprecated Inferido do item_key da Query (`icmppingsec` / `icmppingloss`).
-   * Mantido só para JSON antigo de dashboard.
-   */
-  statusMetric?: TopologyStatusMetric;
-  /** Pintar host em cor de alerta quando houver problema ativo no Zabbix */
-  useZabbixProblems?: boolean;
-  /**
    * RefIds das queries que importam hosts ao mapa (opt-in).
    * Vazio = nenhuma query adiciona hosts automaticamente.
    */
   displayQueryRefIds?: string[];
-  /** @deprecated Use displayQueryRefIds */
-  displayQueryRefId?: string;
   /** Sincronizado pelo painel a partir da aba Query (não editar manualmente). */
   queryRefIdsAvailable?: string[];
   /** Metadados das queries (refId + resumo) para o editor de opções. */
   queryRefInfosAvailable?: TopologyQueryRefInfo[];
-  /**
-   * @deprecated UID vem da aba Query do painel.
-   * Mantido só para JSON antigo de dashboard.
-   */
-  zabbixDatasourceUid?: string;
   /** Enable pan with mouse drag */
   enablePan: boolean;
   /** Enable zoom with mouse wheel / pinch on touch */
@@ -228,9 +207,6 @@ export interface TopologyPanelOptions {
   /** Mini mapa de visão geral (arrastar para navegar) */
   showMinimap?: boolean;
   /** Itens da legenda (quais cores mostrar) */
-  legendOnline?: boolean;
-  legendOffline?: boolean;
-  legendAlert?: boolean;
   legendUnknown?: boolean;
   legendStatic?: boolean;
   legendSubmap?: boolean;
@@ -284,9 +260,6 @@ export const defaultTopologyMap = (): TopologyMap => ({
 
 export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
-  colorOnline: '#2E7D32',
-  colorOffline: '#C62828',
-  colorAlert: '#EF6C00',
   colorUnknown: '#616161',
   colorStatic: '#616161',
   colorSubmap: '#1565C0',
@@ -304,14 +277,10 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   showGrid: false,
   gridSize: 10,
   snapToGrid: true,
-  useZabbixProblems: true,
   toolUsername: '',
   toolPassword: '',
   showLegend: true,
   showMinimap: true,
-  legendOnline: true,
-  legendOffline: true,
-  legendAlert: true,
   legendUnknown: true,
   legendStatic: false,
   legendSubmap: false,
@@ -324,9 +293,6 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   dashboardNavChoices: [],
 });
 
-/** Host name ou hostid -> last status value (ICMP rtt em segundos, ou perda %) */
-export type HostStatusMap = Record<string, number | null | undefined>;
-
 /** Cor/texto do mapeamento Grafana (Value mappings / Thresholds) por host */
 export interface HostDisplayInfo {
   value: number;
@@ -335,9 +301,6 @@ export interface HostDisplayInfo {
 }
 
 export type HostDisplayMap = Record<string, HostDisplayInfo>;
-
-/** Host name ou hostid -> active Zabbix problem count */
-export type HostProblemMap = Record<string, number>;
 
 export function parseTopologyJson(raw: string): TopologyMap | null {
   try {

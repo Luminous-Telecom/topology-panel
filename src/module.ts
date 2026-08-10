@@ -17,11 +17,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       [FieldConfigProperty.Thresholds]: {
         defaultValue: {
           mode: ThresholdsMode.Absolute,
-          steps: [
-            // icmppingsec: 0 = offline; >0 = online
-            { value: null as unknown as number, color: 'semi-dark-red' },
-            { value: 0.0000001, color: 'semi-dark-green' },
-          ],
+          steps: [{ value: null as unknown as number, color: 'green' }],
         },
       },
       [FieldConfigProperty.Color]: {
@@ -38,7 +34,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'map',
         name: 'Layout e links',
         description:
-          'Layout e links. Query Zabbix crua (time_series). Cores de status: Thresholds / Value mappings.',
+          'Layout e links. Query Zabbix (time_series). Status e cores: Thresholds / Value mappings na aba Query do painel.',
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
@@ -127,30 +123,9 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Aparência'],
       })
       .addColorPicker({
-        path: 'colorOnline',
-        name: 'Cor online (fallback)',
-        description: 'Usada se Thresholds/Value mappings não definirem cor',
-        defaultValue: '#2E7D32',
-        category: ['Aparência'],
-      })
-      .addColorPicker({
-        path: 'colorOffline',
-        name: 'Cor offline (fallback)',
-        description: 'Usada se Thresholds/Value mappings não definirem cor',
-        defaultValue: '#C62828',
-        category: ['Aparência'],
-      })
-      .addColorPicker({
-        path: 'colorAlert',
-        name: 'Cor alerta',
-        description: 'Host online com problema ativo no Zabbix (padrão laranja #EF6C00)',
-        defaultValue: '#EF6C00',
-        category: ['Aparência'],
-      })
-      .addColorPicker({
         path: 'colorUnknown',
-        name: 'Cor sem gerência',
-        description: 'Host sem valor na Query',
+        name: 'Cor sem query',
+        description: 'Host sem cor na Query (Thresholds / Value mappings)',
         defaultValue: '#616161',
         category: ['Aparência'],
       })
@@ -201,26 +176,8 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Legenda'],
       })
       .addBooleanSwitch({
-        path: 'legendOnline',
-        name: 'Online',
-        defaultValue: true,
-        category: ['Legenda'],
-      })
-      .addBooleanSwitch({
-        path: 'legendOffline',
-        name: 'Offline',
-        defaultValue: true,
-        category: ['Legenda'],
-      })
-      .addBooleanSwitch({
-        path: 'legendAlert',
-        name: 'Alerta',
-        defaultValue: true,
-        category: ['Legenda'],
-      })
-      .addBooleanSwitch({
         path: 'legendUnknown',
-        name: 'Sem gerência',
+        name: 'Sem query',
         defaultValue: true,
         category: ['Legenda'],
       })
@@ -253,13 +210,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         name: 'Upload (destino)',
         defaultValue: false,
         category: ['Legenda'],
-      })
-      .addBooleanSwitch({
-        path: 'useZabbixProblems',
-        name: 'Usar problemas Zabbix',
-        description: 'Hosts online com problema ativo usam a cor de alerta',
-        defaultValue: true,
-        category: ['Zabbix'],
       })
       .addCustomEditor({
         id: 'displayQueryRefIds',
