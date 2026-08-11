@@ -1452,11 +1452,13 @@ export function computeNodeLayout(
     const sub = node.subtitle?.trim();
     const hasTwoLines = Boolean(sub);
     const contentW = Math.max(measureTextWidth(label, fontSize), sub ? measureTextWidth(sub, subFontSize) : 0);
-    const w = node.width ?? Math.max(Math.ceil(contentW + pad * 2), 80);
+    const autoMinW = Math.max(Math.ceil(contentW + pad * 2), 80);
+    const w = node.width != null ? Math.max(node.width, autoMinW) : autoMinW;
     const autoMinH = hasTwoLines
       ? pad * 2 + fontSize + lineGap + subFontSize
       : pad * 2 + fontSize;
-    const h = node.height ?? Math.max(autoMinH, hasTwoLines ? 44 : 28);
+    const floorH = Math.max(autoMinH, hasTwoLines ? 44 : 28);
+    const h = node.height != null ? Math.max(node.height, floorH) : floorH;
 
     if (hasTwoLines) {
       return {

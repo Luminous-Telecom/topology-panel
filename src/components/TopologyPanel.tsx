@@ -353,7 +353,9 @@ export function TopologyPanel({
   );
 
   const submapNodes = useMemo(() => {
-    return resolvedOptions.map.nodes.filter((n) => n.type === 'submap' && n.submapUid?.trim());
+    return resolvedOptions.map.nodes.filter(
+      (n) => n.type === 'submap' && (n.submapUid?.trim() || n.queryRefId?.trim())
+    );
   }, [resolvedOptions.map.nodes]);
 
   const liveQueryHostsByRefId = useMemo(() => extractQueryHostsByRefId(data), [data]);
@@ -375,8 +377,8 @@ export function TopologyPanel({
   }, [queryHostsByRefId, queryError]);
 
   const parentHostKeys = useMemo(
-    () => parentMapHostKeys(resolvedOptions.map, hostMetadata),
-    [resolvedOptions.map, hostMetadata]
+    () => parentMapHostKeys(displayMap, hostMetadata),
+    [displayMap, hostMetadata]
   );
 
   const submapHosts = useMemo(() => {
@@ -421,14 +423,14 @@ export function TopologyPanel({
   const legacySubmapFetchKey = useMemo(
     () =>
       submapNodes
-        .filter((n) => !n.queryRefId?.trim())
+        .filter((n) => !n.queryRefId?.trim() && n.submapUid?.trim())
         .map((n) => `${n.id}\0${n.submapUid}\0${isIncludedInParentStats(n) ? '1' : '0'}`)
         .join('\n'),
     [submapNodes]
   );
 
   useEffect(() => {
-    const legacyNodes = submapNodes.filter((n) => !n.queryRefId?.trim());
+    const legacyNodes = submapNodes.filter((n) => !n.queryRefId?.trim() && n.submapUid?.trim());
     if (!legacyNodes.length) {
       setFetchedSubmapHosts({});
       return;

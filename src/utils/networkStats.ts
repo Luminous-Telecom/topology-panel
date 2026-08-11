@@ -17,6 +17,8 @@ export interface RegionHostStats {
   /** Hosts do mapa sem valor/status na Query */
   unknown: number;
   loadFailed?: boolean;
+  /** Hosts do submapa ainda não resolvidos (query ou dashboard filho). */
+  loadPending?: boolean;
 }
 
 /** Rede: texto descritivo. Submapa: parado / alerta / online. */
@@ -29,8 +31,11 @@ export function formatRegionStats(
     if (stats.loadFailed) {
       return 'Mapa indisponível';
     }
-    if (!queryReady) {
+    if (!queryReady || stats.loadPending) {
       return 'Carregando…';
+    }
+    if (stats.total === 0) {
+      return '0 / 0 / 0';
     }
     return `${stats.offline} / ${stats.alert} / ${stats.online}`;
   }
@@ -153,7 +158,14 @@ export function buildRegionStatsMap(
     if (node.type === 'submap') {
       const fetched = submapHosts[node.id];
       if (fetched === undefined) {
-        result.set(node.id, { total: 0, offline: 0, alert: 0, online: 0, unknown: 0 });
+        result.set(node.id, {
+          total: 0,
+          offline: 0,
+          alert: 0,
+          online: 0,
+          unknown: 0,
+          loadPending: true,
+        });
         continue;
       }
       if (fetched === null) {

@@ -1845,7 +1845,16 @@ export function TopologyCanvas({
                       : '#c8e6c9'
                   : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
-            const displaySubY = subY;
+            const statsSubFontSize = Math.max(9, subFontSize);
+            const displaySubY =
+              subY ??
+              (displaySub
+                ? labelY !== undefined && labelY < h * 0.45
+                  ? h - 8 - statsSubFontSize / 2
+                  : labelY !== undefined
+                    ? labelY + labelFontSize / 2 + 4 + statsSubFontSize / 2
+                    : h - 8 - statsSubFontSize / 2
+                : undefined);
             const nodeIsHost = isHostNode(node);
             const hostStatus = nodeIsHost
               ? resolveHostNodeStatus(node, hostDisplay, hostMetadata)
