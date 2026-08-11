@@ -1,5 +1,6 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { TopologyMap } from '../types';
+import { isHostNode, isIpv4 } from '../utils';
 
 type DashboardTopologyPanel = { type?: string; options?: { map?: TopologyMap } };
 type DashboardTopologyElement = {
@@ -40,17 +41,12 @@ function visibleHostRefs(map: TopologyMap): Array<{ name?: string; ip?: string }
   const refs: Array<{ name?: string; ip?: string }> = [];
 
   for (const node of map.nodes ?? []) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const name = node.zabbixHost?.trim();
     const subtitle = node.subtitle?.trim();
-    const ip =
-      subtitle && /^\d{1,3}(\.\d{1,3}){3}$/.test(subtitle)
-        ? subtitle
-        : name && /^\d{1,3}(\.\d{1,3}){3}$/.test(name)
-          ? name
-          : undefined;
+    const ip = subtitle && isIpv4(subtitle) ? subtitle : name && isIpv4(name) ? name : undefined;
     const hiddenKey = ip ?? name;
     if (hiddenKey && hidden.has(hiddenKey)) {
       continue;
@@ -83,27 +79,6 @@ export function extractTopologyHostNames(map: TopologyMap): string[] {
   }
 
   return hosts;
-}
-
-/** Extrai IPs e nomes separados (para API Zabbix). */
-export function extractTopologyHostRefs(map: TopologyMap): { hostIds: string[]; hostNames: string[] } {
-  const hostNames: string[] = [];
-  const seenNames = new Set<string>();
-
-  for (const { name, ip } of visibleHostRefs(map)) {
-    const key = ip ?? name;
-    if (!key) {
-      continue;
-    }
-    const dedupe = key.toLowerCase();
-    if (seenNames.has(dedupe)) {
-      continue;
-    }
-    seenNames.add(dedupe);
-    hostNames.push(key);
-  }
-
-  return { hostIds: [], hostNames };
 }
 
 /**

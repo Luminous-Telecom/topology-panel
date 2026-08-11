@@ -14,11 +14,22 @@ import {
 } from './types';
 import { hostIp as hostIpFromNode } from './utils/hostTools';
 import { resolveHostStatusDisplay, StatusColorOptions } from './utils/statusMapping';
-import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions, hostIconRenderSize } from './utils/hostIcons';
-const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions } from './utils/hostIcons';
+import { isIpv4 } from './utils/ipv4';
 
-export function isIpv4(value: string): boolean {
-  return IPV4.test(value.trim());
+export { isIpv4 };
+
+/** Nó do tipo host — inclui nós legados sem `type` (default é 'host'). */
+export function isHostNode(node: TopologyNode): boolean {
+  return (node.type ?? 'host') === 'host';
+}
+
+export function isSubmapNode(node: TopologyNode): boolean {
+  return node.type === 'submap';
+}
+
+export function findNodeById(nodes: TopologyNode[], id: string): TopologyNode | undefined {
+  return nodes.find((n) => n.id === id);
 }
 
 /** IP do host (subtitle, zabbixHost ou metadata da Query). */
@@ -85,7 +96,6 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
   const zabbixHost = ref.zabbixHost?.trim();
   const label = ref.label?.trim();
   const hostId = ref.zabbixHostId?.trim();
-  const subtitleIp = hostIpFromNode(ref);
   const out: string[] = [];
   const add = (value?: string) => {
     const trimmed = value?.trim();
@@ -97,6 +107,7 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
 
   const resolvedIp = resolveHostIp(ref, metadata);
   // IP primeiro — status/hover/sync preferem interface estável ao rename.
+  // (resolveHostIp já cobre subtitle/zabbixHost como IP; se vier vazio, nenhum dos dois é IP.)
   if (resolvedIp) {
     add(resolvedIp);
     const metaByIp = metadata?.[resolvedIp];
@@ -108,10 +119,6 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
         add(entry.name);
       }
     }
-  } else if (subtitleIp) {
-    add(subtitleIp);
-  } else if (zabbixHost && isIpv4(zabbixHost)) {
-    add(zabbixHost);
   }
 
   // Nome só como fallback (ou alias depois do IP).
@@ -172,7 +179,7 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
   const result: HostMetadataMap = { ...meta };
 
   for (const node of map.nodes) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const ip = resolveHostIp(node);
@@ -235,7 +242,7 @@ export function enrichHostDisplayFromMap(
   const result: HostDisplayMap = { ...display };
 
   for (const node of map.nodes) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const ip = resolveHostIp(node, metadata);
@@ -446,38 +453,6 @@ function zabbixQueryTargetHint(target: Record<string, unknown>): string | undefi
   );
 }
 
-/** Nome do host group configurado na query Zabbix (aba Query). */
-export function zabbixQueryGroupName(target: Record<string, unknown>): string | undefined {
-  return zabbixQueryScopeName(target.group);
-}
-
-/** Host groups das queries Zabbix do painel (filtra por displayQueryRefIds quando definido). */
-export function resolveZabbixGroupNamesFromPanelData(
-  data: PanelData | undefined,
-  displayQueryRefIds: string[] = []
-): string[] {
-  if (!data?.request?.targets?.length) {
-    return [];
-  }
-  const preferred = new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean));
-  const names = new Set<string>();
-  for (const target of data.request.targets) {
-    const rec = target as Record<string, unknown> & { refId?: string };
-    const refId = rec.refId?.trim().toUpperCase();
-    if (!refId) {
-      continue;
-    }
-    if (preferred.size > 0 && !preferred.has(refId)) {
-      continue;
-    }
-    const groupName = zabbixQueryGroupName(rec);
-    if (groupName) {
-      names.add(groupName);
-    }
-  }
-  return [...names].sort((a, b) => a.localeCompare(b));
-}
-
 /** Queries do painel com refId visível e resumo opcional (host group etc.). */
 export function collectQueryRefInfosFromPanelData(data?: PanelData | DataFrame[]): TopologyQueryRefInfo[] {
   const byRef = new Map<string, TopologyQueryRefInfo>();
@@ -616,21 +591,6 @@ export function extractHostDisplay(
   }
 
   return result;
-}
-
-/**
- * Junta status ao vivo com o último bom.
- * Só reutiliza o anterior quando o frame veio vazio (Loading sem séries).
- * Buckets/hosts que chegaram no live substituem por completo — não grudar offline velho.
- */
-export function mergeHostDisplayMaps(
-  live: HostDisplayMap,
-  previous: HostDisplayMap
-): HostDisplayMap {
-  if (Object.keys(live).length === 0) {
-    return previous;
-  }
-  return live;
 }
 
 /**
@@ -883,7 +843,7 @@ function queryHostIpCandidates(node: QueryHostNodeRef): string[] {
   const out: string[] = [];
   const add = (value?: string) => {
     const trimmed = value?.trim();
-    if (!trimmed || !IPV4.test(trimmed) || out.includes(trimmed)) {
+    if (!trimmed || !isIpv4(trimmed) || out.includes(trimmed)) {
       return;
     }
     out.push(trimmed);
@@ -898,12 +858,12 @@ const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip
 function pickIpFromLabels(labels: Record<string, string | undefined>): string | undefined {
   for (const key of IP_LABEL_KEYS) {
     const v = labels[key]?.trim();
-    if (v && IPV4.test(v)) {
+    if (v && isIpv4(v)) {
       return v;
     }
   }
   const technical = labels.__zbx_host?.trim();
-  if (technical && IPV4.test(technical)) {
+  if (technical && isIpv4(technical)) {
     return technical;
   }
   return undefined;
@@ -956,7 +916,7 @@ export function enrichQueryHostOptionsFromMap(
     }
 
     for (const node of map.nodes) {
-      if ((node.type ?? 'host') !== 'host') {
+      if (!isHostNode(node)) {
         continue;
       }
       const nodeIp = resolveHostIp(node);
@@ -1022,7 +982,7 @@ export function resolveQueryHostOptionForNode(
   const name = node.zabbixHost?.trim();
   const label = node.label?.trim();
   for (const candidate of [name, label]) {
-    if (!candidate || IPV4.test(candidate)) {
+    if (!candidate || isIpv4(candidate)) {
       continue;
     }
     const lower = candidate.toLowerCase();
@@ -1036,6 +996,36 @@ export function resolveQueryHostOptionForNode(
   }
 
   return undefined;
+}
+
+/** IPs/nomes já usados por hosts do mapa (para excluir da lista de hosts disponíveis). */
+export function hostsAlreadyOnMap(
+  map: TopologyMap,
+  exceptIp?: string,
+  exceptName?: string
+): { ips: Set<string>; names: Set<string> } {
+  const ips = new Set<string>();
+  const names = new Set<string>();
+  const skipIp = exceptIp?.trim();
+  const skipName = exceptName?.trim();
+  for (const entry of map.nodes) {
+    if (!isHostNode(entry)) {
+      continue;
+    }
+    const ip = resolveHostIp(entry);
+    if (ip && ip !== skipIp) {
+      ips.add(ip);
+    }
+    const z = entry.zabbixHost?.trim();
+    if (z && !isIpv4(z) && z !== skipName) {
+      names.add(z);
+    }
+    const label = entry.label?.trim();
+    if (label && label !== skipName && label !== z) {
+      names.add(label);
+    }
+  }
+  return { ips, names };
 }
 
 export function queryHostPickerOptions(
@@ -1103,7 +1093,7 @@ function findSavedHostNodes(
   const key = hostName.trim();
   const ip = hostIp?.trim();
   return map.nodes.filter((n) => {
-    if ((n.type ?? 'host') !== 'host') {
+    if (!isHostNode(n)) {
       return false;
     }
     const linked = n.zabbixHost?.trim();
@@ -1128,7 +1118,7 @@ export function mergeMapWithQueryHosts(
 ): TopologyMap {
   const submaps = map.nodes.filter((n) => n.type === 'submap');
   const dashboardPickers = map.nodes.filter((n) => n.type === 'dashboard_picker');
-  const savedHosts = map.nodes.filter((n) => (n.type ?? 'host') === 'host');
+  const savedHosts = map.nodes.filter((n) => isHostNode(n));
 
   const hostNames =
     queryHosts.length > 0
@@ -1237,13 +1227,11 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
   let idx = -1;
   if (isIpv4(key)) {
     idx = nodes.findIndex(
-      (n) =>
-        (n.type ?? 'host') === 'host' &&
-        (n.subtitle?.trim() === key || n.zabbixHost?.trim() === key)
+      (n) => isHostNode(n) && (n.subtitle?.trim() === key || n.zabbixHost?.trim() === key)
     );
   }
   if (idx < 0) {
-    idx = nodes.findIndex((n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key);
+    idx = nodes.findIndex((n) => isHostNode(n) && n.zabbixHost?.trim() === key);
   }
 
   if (idx >= 0) {
@@ -1285,7 +1273,7 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
 
 /** Overlay do nome/IP atuais do Zabbix (sem alterar o mapa persistido). */
 export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMap): TopologyNode {
-  if ((node.type ?? 'host') !== 'host' || !metadata) {
+  if (!isHostNode(node) || !metadata) {
     return node;
   }
   const name = node.zabbixHost?.trim();
@@ -1384,10 +1372,37 @@ export function eventTargetsElement(e: Event, target: HTMLElement): boolean {
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
+/**
+ * Cache de `measureTextWidth` por texto+fontSize — `nodeLayouts` (TopologyCanvas.tsx) recalcula
+ * o layout de todos os nós em todo render (inclui drag/resize preview nas deps), então sem cache
+ * o mesmo label/subtítulo é medido no canvas repetidamente a cada frame de arraste. Rótulos de
+ * host/rede são um conjunto pequeno e estável por mapa, então um cap simples evita crescimento
+ * ilimitado sem precisar de uma LRU real.
+ */
+const MEASURE_TEXT_CACHE_MAX = 4000;
+const measureTextCache = new Map<string, number>();
+
 export function measureTextWidth(text: string, fontSize: number): number {
   if (!text) {
     return 0;
   }
+  const cacheKey = `${fontSize}\u0000${text}`;
+  const cached = measureTextCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const width = measureTextWidthUncached(text, fontSize);
+  if (measureTextCache.size >= MEASURE_TEXT_CACHE_MAX) {
+    const oldestKey = measureTextCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      measureTextCache.delete(oldestKey);
+    }
+  }
+  measureTextCache.set(cacheKey, width);
+  return width;
+}
+
+function measureTextWidthUncached(text: string, fontSize: number): number {
   if (typeof document === 'undefined') {
     return text.length * fontSize * 0.55;
   }

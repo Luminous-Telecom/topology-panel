@@ -1,4 +1,5 @@
-import { TopologyMap, TopologyNode } from '../types';
+import { TopologyMap, TopologyNode, TopologyView } from '../types';
+import { clamp } from '../utils';
 
 export interface MapContentBounds {
   x0: number;
@@ -49,32 +50,31 @@ export function computeTopologyContentBounds(
   };
 }
 
-export function layoutCenter(layout: LayoutBox): { x: number; y: number } {
-  return { x: layout.x + layout.w / 2, y: layout.y + layout.h / 2 };
-}
-
 export function isNetworkNode(node: TopologyNode): boolean {
   return node.type === 'network';
 }
 
-export function pointInLayoutBox(px: number, py: number, layout: LayoutBox): boolean {
-  return px >= layout.x && px <= layout.x + layout.w && py >= layout.y && py <= layout.y + layout.h;
-}
-
-/** Rede cujo retângulo contém o ponto (ordem inversa — rede “por cima” vence). */
-export function findNetworkAtMapPoint(
-  mapX: number,
-  mapY: number,
-  nodes: TopologyNode[],
-  nodeLayouts: Map<string, LayoutBox>
-): TopologyNode | undefined {
-  const networks = nodes.filter(isNetworkNode);
-  for (let i = networks.length - 1; i >= 0; i -= 1) {
-    const node = networks[i];
-    const layout = nodeLayouts.get(node.id);
-    if (layout && pointInLayoutBox(mapX, mapY, layout)) {
-      return node;
-    }
+/**
+ * Escala/posição para o fit inicial do mapa (`fitToView` em `useTopologyViewport.ts`), usado
+ * quando o painel não tem uma view salva ainda.
+ * `null` quando o mapa ou o viewport ainda não têm dimensão válida (ex.: canvas ainda não montado).
+ */
+export function computeFitToViewTransform(
+  mapWidth: number,
+  mapHeight: number,
+  clientWidth: number,
+  clientHeight: number,
+  pad = 24
+): TopologyView | null {
+  if (!mapWidth || !mapHeight || clientWidth <= 0 || clientHeight <= 0) {
+    return null;
   }
-  return undefined;
+  const sx = (clientWidth - pad * 2) / mapWidth;
+  const sy = (clientHeight - pad * 2) / mapHeight;
+  const scale = clamp(Math.min(sx, sy), 0.15, 2);
+  return {
+    scale,
+    x: (clientWidth - mapWidth * scale) / 2,
+    y: (clientHeight - mapHeight * scale) / 2,
+  };
 }

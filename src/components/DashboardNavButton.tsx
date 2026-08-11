@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { TopologyDashboardChoice } from '../types';
 import { openDashboardUrl } from './DashboardPickerModal';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface Props {
   label?: string;
@@ -75,18 +76,7 @@ export function DashboardNavButton({ label = 'Dashboards', choices }: Props) {
 
   const close = useCallback(() => setOpen(false), []);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        close();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [close, open]);
+  useEscapeKey(close, open);
 
   if (valid.length === 0) {
     return null;

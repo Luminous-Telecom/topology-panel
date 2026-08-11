@@ -1,5 +1,5 @@
 import { TopologyHostIcon, TopologyLink, TopologyMap, TopologyNode } from '../types';
-import { hostToNodeId, upsertHostLayout } from '../utils';
+import { findNodeById, hostToNodeId, isHostNode, upsertHostLayout } from '../utils';
 import { addLinkToMap, updateLinkProps } from './mapEdits';
 
 const CLIPBOARD_VERSION = 1 as const;
@@ -101,21 +101,19 @@ function resolveNodeForCopy(
   storedMap: TopologyMap,
   nodeId: string
 ): TopologyNode | null {
-  const displayNode = displayMap.nodes.find((n) => n.id === nodeId);
+  const displayNode = findNodeById(displayMap.nodes, nodeId);
   if (!displayNode) {
     return null;
   }
 
-  const storedNode = storedMap.nodes.find((n) => n.id === nodeId);
+  const storedNode = findNodeById(storedMap.nodes, nodeId);
   if (storedNode) {
     return { ...storedNode, x: displayNode.x, y: displayNode.y };
   }
 
   const hostKey = displayNode.zabbixHost?.trim();
   if (hostKey) {
-    const byHost = storedMap.nodes.find(
-      (n) => (n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === hostKey
-    );
+    const byHost = storedMap.nodes.find((n) => isHostNode(n) && n.zabbixHost?.trim() === hostKey);
     if (byHost) {
       return { ...byHost, x: displayNode.x, y: displayNode.y };
     }

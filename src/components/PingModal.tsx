@@ -76,6 +76,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
   const outputRef = useRef<HTMLPreElement>(null);
   const liveRef = useRef(true);
   const runningRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const appendOutput = useCallback((chunk: string) => {
     setPingOutput((prev) => {
@@ -105,6 +113,10 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         fetchHostIcmpStatus(datasourceUid, zabbixHost).catch(() => null),
       ]);
 
+      if (!mountedRef.current) {
+        return;
+      }
+
       if (icmp) {
         setIcmpStatus(icmp);
       }
@@ -122,10 +134,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         }
       }
     } catch (err) {
-      setPingError(err instanceof Error ? err.message : 'Falha ao executar o ping.');
+      if (mountedRef.current) {
+        setPingError(err instanceof Error ? err.message : 'Falha ao executar o ping.');
+      }
     } finally {
       runningRef.current = false;
-      setRunning(false);
+      if (mountedRef.current) {
+        setRunning(false);
+      }
     }
   }, [appendOutput, datasourceUid, zabbixHost]);
 
@@ -154,8 +170,15 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
 
   const onCopy = useCallback(async () => {
     const msg = await copyPingCommand(ip);
+    if (!mountedRef.current) {
+      return;
+    }
     setCopyMsg(msg);
-    window.setTimeout(() => setCopyMsg(null), 2500);
+    window.setTimeout(() => {
+      if (mountedRef.current) {
+        setCopyMsg(null);
+      }
+    }, 2500);
   }, [ip]);
 
   const pingCmd = `ping ${ip}`;

@@ -1,5 +1,12 @@
 import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyNode, TopologyPanelOptions } from '../types';
-import { findHostDisplayBucket, HostLookupRef, lookupHostDisplay, NodeLayout, resolveHostLookupKey } from '../utils';
+import {
+  findHostDisplayBucket,
+  HostLookupRef,
+  isHostNode,
+  lookupHostDisplay,
+  NodeLayout,
+  resolveHostLookupKey,
+} from '../utils';
 import { panelColorWithAlpha } from './panelColors';
 
 export interface RegionHostStats {
@@ -140,7 +147,7 @@ export function buildRegionStatsMap(
   hostDisplayByRefId: Record<string, HostDisplayMap> = {}
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
-  const hostNodes = nodes.filter((n) => (n.type ?? 'host') === 'host');
+  const hostNodes = nodes.filter((n) => isHostNode(n));
 
   for (const node of nodes) {
     if (node.type === 'submap') {
@@ -265,7 +272,7 @@ export function resolveHostNodeStatus(
   hostDisplay: HostDisplayMap | undefined,
   hostMetadata?: HostMetadataMap
 ): TopologyHostStatus | 'unknown' | undefined {
-  if ((node.type ?? 'host') !== 'host') {
+  if (!isHostNode(node)) {
     return undefined;
   }
   const lookupRef: HostLookupRef = {

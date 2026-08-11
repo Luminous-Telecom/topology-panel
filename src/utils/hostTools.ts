@@ -1,3 +1,5 @@
+import { isIpv4 } from './ipv4';
+
 export type HostToolId = 'ping' | 'web' | 'winbox' | 'telnet' | 'winboxNovo' | 'ssh';
 
 export interface HostToolDef {
@@ -34,7 +36,7 @@ export const HOST_TOOLS: HostToolDef[] = [
   { id: 'ssh', label: 'SSH' },
 ];
 
-const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+/** Extrai um IPv4 solto de texto livre (ex.: "10.0.0.5 - core") — regex distinta de `isIpv4`. */
 const IPV4_IN_TEXT = /\b(\d{1,3}(?:\.\d{1,3}){3})\b/;
 
 export function hostIp(node: { subtitle?: string }): string | undefined {
@@ -42,7 +44,7 @@ export function hostIp(node: { subtitle?: string }): string | undefined {
   if (!raw) {
     return undefined;
   }
-  if (IPV4.test(raw)) {
+  if (isIpv4(raw)) {
     return raw;
   }
   const match = raw.match(IPV4_IN_TEXT);
@@ -184,7 +186,7 @@ export async function runHostTool(
   auth?: HostToolAuth
 ): Promise<string | undefined> {
   const target = ip.trim();
-  if (!IPV4.test(target)) {
+  if (!isIpv4(target)) {
     return 'IP inválido ou indisponível';
   }
 

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
-import { formatQueryHostOptionLabel, isIpv4, QueryHostOption, resolveHostIp } from '../utils';
+import { hostsAlreadyOnMap, isIpv4, QueryHostOption, queryHostPickerOptions } from '../utils';
 
 const ipReadoutStyle: React.CSSProperties = {
   fontFamily: 'monospace',
@@ -21,30 +21,6 @@ interface Props {
   initialIcon?: TopologyHostIcon;
   onConfirm: (visibleName: string, ip: string, icon: TopologyHostIcon) => void;
   onClose: () => void;
-}
-
-function hostsAlreadyOnMap(map: TopologyMap, exceptIp?: string, exceptName?: string): {
-  ips: Set<string>;
-  names: Set<string>;
-} {
-  const ips = new Set<string>();
-  const names = new Set<string>();
-  const skipIp = exceptIp?.trim();
-  const skipName = exceptName?.trim();
-  for (const node of map.nodes) {
-    if ((node.type ?? 'host') !== 'host') {
-      continue;
-    }
-    const ip = resolveHostIp(node);
-    if (ip && ip !== skipIp) {
-      ips.add(ip);
-    }
-    const z = node.zabbixHost?.trim();
-    if (z && !isIpv4(z) && z !== skipName) {
-      names.add(z);
-    }
-  }
-  return { ips, names };
 }
 
 export function ZabbixHostPickerModal({
@@ -84,17 +60,7 @@ export function ZabbixHostPickerModal({
     }
   }, [mode, initialVisibleName, initialIp, queryHostOptions]);
 
-  const hostOptions = queryHostOptions
-    .filter((host) => {
-      if (host.ip && onMap.ips.has(host.ip)) {
-        return false;
-      }
-      return !onMap.names.has(host.visibleName);
-    })
-    .map((host) => ({
-      label: formatQueryHostOptionLabel(host),
-      value: host.ip ?? host.visibleName,
-    }));
+  const hostOptions = queryHostPickerOptions(queryHostOptions, onMap);
 
   const selectedHost = queryHostOptions.find(
     (host) => host.ip === hostKey || host.visibleName === hostKey

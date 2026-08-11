@@ -12,7 +12,14 @@ import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
-import { isIpv4, queryHostPickerOptions, QueryHostOption, resolveHostIp, resolveQueryHostOptionForNode } from '../utils';
+import {
+  hostsAlreadyOnMap,
+  isIpv4,
+  queryHostPickerOptions,
+  QueryHostOption,
+  resolveHostIp,
+  resolveQueryHostOptionForNode,
+} from '../utils';
 
 const ipReadoutStyle: React.CSSProperties = {
   fontFamily: 'monospace',
@@ -35,34 +42,6 @@ interface Props {
   storedMap?: TopologyMap;
   onSave: (payload: NodeEditSavePayload) => void;
   onClose: () => void;
-}
-
-function hostsAlreadyOnMap(map: TopologyMap, exceptIp?: string, exceptName?: string): {
-  ips: Set<string>;
-  names: Set<string>;
-} {
-  const ips = new Set<string>();
-  const names = new Set<string>();
-  const skipIp = exceptIp?.trim();
-  const skipName = exceptName?.trim();
-  for (const entry of map.nodes) {
-    if ((entry.type ?? 'host') !== 'host') {
-      continue;
-    }
-    const ip = resolveHostIp(entry);
-    if (ip && ip !== skipIp) {
-      ips.add(ip);
-    }
-    const z = entry.zabbixHost?.trim();
-    if (z && !isIpv4(z) && z !== skipName) {
-      names.add(z);
-    }
-    const label = entry.label?.trim();
-    if (label && label !== skipName && label !== z) {
-      names.add(label);
-    }
-  }
-  return { ips, names };
 }
 
 function hostSelectValue(node: TopologyNode): string | undefined {

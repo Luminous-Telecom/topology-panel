@@ -1,11 +1,27 @@
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
 import {
   collectHostHiddenKeys,
+  findNodeById,
   inferLinkMedium,
+  isHostNode,
   isIpv4,
+  isSubmapNode,
   resolveHostLayoutKey,
   upsertHostLayout,
 } from '../utils';
+
+/** Compara endpoints de link sem considerar direção (a→b é o mesmo link que b→a). */
+export function linksMatchEndpoints(
+  a: { from: string; to: string },
+  b: { from: string; to: string }
+): boolean {
+  return (a.from === b.from && a.to === b.to) || (a.from === b.to && a.to === b.from);
+}
+
+/** Chave estável de um link (direção original a→b) — usada para seleção/hover/lookup por identidade. */
+export function linkKey(link: { from: string; to: string }): string {
+  return `${link.from}-${link.to}`;
+}
 
 export function toggleMapLock(map: TopologyMap): TopologyMap {
   return { ...map, locked: !map.locked };
@@ -88,12 +104,12 @@ export function addLinkToMap(map: TopologyMap, from: string, to: string): Topolo
   if (from === to) {
     return map;
   }
-  const exists = map.links.some((l) => (l.from === from && l.to === to) || (l.from === to && l.to === from));
+  const exists = map.links.some((l) => linksMatchEndpoints(l, { from, to }));
   if (exists) {
     return map;
   }
-  const fromNode = map.nodes.find((n) => n.id === from);
-  const toNode = map.nodes.find((n) => n.id === to);
+  const fromNode = findNodeById(map.nodes, from);
+  const toNode = findNodeById(map.nodes, to);
   return {
     ...map,
     links: [...map.links, { from, to, medium: inferLinkMedium(fromNode, toNode) }],
@@ -110,7 +126,7 @@ export function removeNodeFromMap(
     type?: TopologyNode['type'];
   }
 ): TopologyMap {
-  const node = map.nodes.find((n) => n.id === nodeId);
+  const node = findNodeById(map.nodes, nodeId);
   const nodes = map.nodes.filter((n) => n.id !== nodeId);
   const links = map.links.filter((l) => l.from !== nodeId && l.to !== nodeId);
 
@@ -151,7 +167,7 @@ export function removeNodesFromMap(map: TopologyMap, nodesToRemove: TopologyNode
 }
 
 export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Partial<TopologyNode>): TopologyMap {
-  if ((node.type ?? 'host') === 'host') {
+  if (isHostNode(node)) {
     const key = resolveHostLayoutKey(node);
     if (key) {
       return upsertHostLayout(map, key, { ...patch, id: node.id });
@@ -199,7 +215,7 @@ export function updateHostsIconBulk(
   const zabbixKeys = new Set<string>();
 
   for (const node of selectedNodes) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const key = node.zabbixHost?.trim();
@@ -215,7 +231,7 @@ export function updateHostsIconBulk(
     const displayNode = selectedNodes.find((n) => n.zabbixHost?.trim() === key);
     let matched = false;
     const nodes = next.nodes.map((n) => {
-      if ((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === key) {
+      if (isHostNode(n) && n.zabbixHost?.trim() === key) {
         matched = true;
         return { ...n, icon };
       }
@@ -238,11 +254,11 @@ export function updateHostsIconBulk(
   }
 
   for (const node of selectedNodes) {
-    if ((node.type ?? 'host') !== 'host' || node.zabbixHost?.trim()) {
+    if (!isHostNode(node) || node.zabbixHost?.trim()) {
       continue;
     }
-    const stored = next.nodes.find((n) => n.id === node.id);
-    if (stored && (stored.type ?? 'host') === 'host') {
+    const stored = findNodeById(next.nodes, node.id);
+    if (stored && isHostNode(stored)) {
       next = updateStoredNode(next, stored, { icon });
     }
   }
@@ -262,11 +278,11 @@ export function updateSubmapsBulk(
 ): TopologyMap {
   let next = map;
   for (const node of selectedNodes) {
-    if (node.type !== 'submap') {
+    if (!isSubmapNode(node)) {
       continue;
     }
-    const stored = next.nodes.find((n) => n.id === node.id);
-    if (!stored || stored.type !== 'submap') {
+    const stored = findNodeById(next.nodes, node.id);
+    if (!stored || !isSubmapNode(stored)) {
       continue;
     }
     const nodePatch: Partial<TopologyNode> = {
@@ -296,7 +312,7 @@ export function updateHostsCredentialsBulk(
   let next = map;
 
   for (const node of selectedNodes) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const key = node.zabbixHost?.trim();
@@ -313,8 +329,8 @@ export function updateHostsCredentialsBulk(
       });
       continue;
     }
-    const stored = next.nodes.find((n) => n.id === node.id);
-    if (stored && (stored.type ?? 'host') === 'host') {
+    const stored = findNodeById(next.nodes, node.id);
+    if (stored && isHostNode(stored)) {
       next = updateStoredNode(next, stored, {
         toolUsername: username,
         toolPassword: password,
@@ -327,7 +343,7 @@ export function updateHostsCredentialsBulk(
 
 export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, y: number): TopologyMap {
   const patch: Partial<TopologyNode> = { x: Math.round(x), y: Math.round(y) };
-  if ((node.type ?? 'host') === 'host' && node.networkId) {
+  if (isHostNode(node) && node.networkId) {
     patch.networkId = undefined;
   }
   return updateStoredNode(map, node, patch);
@@ -341,7 +357,7 @@ export function moveStoredNodesBulk(
 ): TopologyMap {
   let next = map;
   for (const { nodeId, x, y } of moves) {
-    const node = next.nodes.find((n) => n.id === nodeId) ?? resolveNode?.(nodeId);
+    const node = findNodeById(next.nodes, nodeId) ?? resolveNode?.(nodeId);
     if (!node) {
       continue;
     }
@@ -407,7 +423,7 @@ export function rebindZabbixHost(
   icon?: TopologyNode['icon'],
   sourceNode?: Pick<TopologyNode, 'x' | 'y' | 'width' | 'height' | 'icon'>
 ): TopologyMap {
-  const node = map.nodes.find((n) => n.id === nodeId);
+  const node = findNodeById(map.nodes, nodeId);
   const ipKey = ip.trim();
   if (!isIpv4(ipKey)) {
     return map;
@@ -418,9 +434,7 @@ export function rebindZabbixHost(
 
   let nodes = map.nodes;
   if (node && oldKey && oldKey !== ipKey) {
-    nodes = nodes.filter(
-      (n) => !((n.type ?? 'host') === 'host' && n.zabbixHost?.trim() === oldKey && n.id === nodeId)
-    );
+    nodes = nodes.filter((n) => !(isHostNode(n) && n.zabbixHost?.trim() === oldKey && n.id === nodeId));
   }
 
   const hiddenHosts = map.hiddenHosts?.filter((h) => {
@@ -454,7 +468,7 @@ export function updateLinkProps(
   return {
     ...map,
     links: map.links.map((l) => {
-      if (!((l.from === from && l.to === to) || (l.from === to && l.to === from))) {
+      if (!linksMatchEndpoints(l, { from, to })) {
         return l;
       }
       const next = { ...l, ...patch };
@@ -472,6 +486,6 @@ export function updateLinkProps(
 export function removeLinkByEndpoints(map: TopologyMap, from: string, to: string): TopologyMap {
   return {
     ...map,
-    links: map.links.filter((l) => !((l.from === from && l.to === to) || (l.from === to && l.to === from))),
+    links: map.links.filter((l) => !linksMatchEndpoints(l, { from, to })),
   };
 }

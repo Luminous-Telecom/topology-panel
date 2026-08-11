@@ -1,4 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
+import { isIpv4 } from './ipv4';
 
 interface ZabbixApiResponse<T> {
   result?: T;
@@ -13,7 +14,6 @@ interface ZabbixHost {
 }
 
 const BATCH_SIZE = 50;
-const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 /** Zabbix host.status — 0 monitorado, 1 desativado. */
 const ZABBIX_HOST_MONITORED = 0;
 
@@ -52,7 +52,7 @@ async function fetchHostsByInterfaceIp(
   ips: string[],
   withInterfaces = true
 ): Promise<ZabbixHost[]> {
-  const missing = ips.map((ip) => ip.trim()).filter((ip) => IPV4.test(ip));
+  const missing = ips.map((ip) => ip.trim()).filter((ip) => isIpv4(ip));
   if (!missing.length) {
     return [];
   }
@@ -86,7 +86,7 @@ async function resolveZabbixHostId(datasourceUid: string, hostName: string): Pro
   if (!name) {
     return undefined;
   }
-  if (IPV4.test(name)) {
+  if (isIpv4(name)) {
     const byIp = await fetchHostsByInterfaceIp(datasourceUid, [name], false);
     const ipHostId = asZabbixId(byIp[0]?.hostid);
     if (ipHostId) {

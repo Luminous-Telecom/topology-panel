@@ -5,6 +5,7 @@ import { Icon, useTheme2 } from '@grafana/ui';
 import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste } from 'react-icons/fa6';
 import { TopologyNode, TopologyNodeType } from '../types';
 import { resolvePanelColor } from '../utils/panelColors';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 export type CanvasTool = 'select' | 'pan';
 
@@ -465,17 +466,7 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
     }
   }, [x, y, items]);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const dismiss = useCallback(
     (e: React.MouseEvent | React.PointerEvent) => {
@@ -918,6 +909,38 @@ const toastStyle = css`
   max-width: 90%;
   text-align: center;
 `;
+
+const queryErrorBadgeStyle = css`
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(198, 40, 40, 0.85);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 260px;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+`;
+
+/** Aviso discreto (não bloqueia o mapa) quando a Query do painel falhou — status ao vivo indisponível. */
+export function TopologyQueryErrorBadge({ visible }: { visible: boolean }) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div className={queryErrorBadgeStyle} role="status">
+      <Icon name="exclamation-triangle" size="sm" />
+      <span>Falha na Query do painel — sem status ao vivo dos hosts.</span>
+    </div>
+  );
+}
 
 export function TopologyToast({ message }: { message: string | null }) {
   if (!message) {

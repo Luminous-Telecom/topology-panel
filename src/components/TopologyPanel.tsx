@@ -28,6 +28,7 @@ import {
   enrichQueryHostOptionsFromMap,
   findHostDisplayBucket,
   flattenHostDisplayByRefId,
+  isHostNode,
   isIpv4,
   mergeHostDisplayByRefId,
   mergeMapWithQueryHosts,
@@ -40,6 +41,7 @@ import {
   sameStringList,
 } from '../utils';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
+import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
@@ -78,7 +80,7 @@ function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap): HostMe
 function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
   let changed = false;
   const nodes = map.nodes.map((node) => {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       return node;
     }
     const name = node.zabbixHost?.trim();
@@ -130,7 +132,7 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
 function parentMapHostKeys(map: TopologyMap, hostMetadata?: HostMetadataMap): Set<string> {
   const keys = new Set<string>();
   for (const node of map.nodes) {
-    if ((node.type ?? 'host') !== 'host') {
+    if (!isHostNode(node)) {
       continue;
     }
     const key = resolveHostLookupKey(node, hostMetadata);
@@ -202,17 +204,30 @@ export function TopologyPanel({
   const lastGoodHostDisplayByRefIdRef = useRef<Record<string, HostDisplayMap>>({});
   const lastGoodQueryHostsByRefIdRef = useRef<Record<string, string[]>>({});
 
+  /**
+   * Erros estruturais em `options.map` (JSON editado à mão, fora do `TopologyEditor`) — `nodes`/
+   * `links` não são arrays, ou `width`/`height` não são números positivos. Quando não vazio, o
+   * painel mostra um erro explícito em vez de montar o canvas (ver `no-fallbacks.mdc`).
+   */
+  const mapValidationErrors = useMemo(
+    () => (options.map ? validateTopologyMap(options.map) : []),
+    [options.map]
+  );
+
   const resolvedOptions = useMemo(() => {
+    // Mapa malformado nunca é usado para renderizar — só evita que os hooks abaixo quebrem antes
+    // do erro explícito (ver `mapValidationErrors`) ser mostrado.
+    const useIncomingMap = Boolean(options.map) && mapValidationErrors.length === 0;
     const merged = {
       ...defaultOptions(),
       ...options,
-      ...(options.map ? { map: options.map } : {}),
+      map: useIncomingMap ? (options.map as TopologyMap) : defaultOptions().map,
     };
     const colored = resolvePanelOptionsColors(merged, theme);
     return {
       ...colored,
     };
-  }, [options, theme]);
+  }, [options, theme, mapValidationErrors]);
 
   const statusColorOptions = useMemo(
     () => ({
@@ -234,6 +249,13 @@ export function TopologyPanel({
     [data, resolvedOptions.map]
   );
 
+  /**
+   * Query em erro (datasource fora do ar, script quebrado, etc.) — não reaproveita o último
+   * status bom indefinidamente. Sem isto, uma falha permanente na Query mascararia o problema
+   * mostrando para sempre o último status visto (ver `no-fallbacks.mdc`).
+   */
+  const queryError = data.state === LoadingState.Error;
+
   const liveHostDisplayByRefId = useMemo(() => {
     const byRef = extractHostDisplayByRefId(data, statusColorOptions);
     const enriched: Record<string, HostDisplayMap> = {};
@@ -244,15 +266,20 @@ export function TopologyPanel({
   }, [data, statusColorOptions, resolvedOptions.map, dataMeta]);
 
   const hostDisplayByRefId = useMemo(
-    () => mergeHostDisplayByRefId(liveHostDisplayByRefId, lastGoodHostDisplayByRefIdRef.current),
-    [liveHostDisplayByRefId]
+    () =>
+      queryError ? {} : mergeHostDisplayByRefId(liveHostDisplayByRefId, lastGoodHostDisplayByRefIdRef.current),
+    [liveHostDisplayByRefId, queryError]
   );
 
   useEffect(() => {
+    if (queryError) {
+      lastGoodHostDisplayByRefIdRef.current = {};
+      return;
+    }
     if (Object.keys(hostDisplayByRefId).length > 0) {
       lastGoodHostDisplayByRefIdRef.current = hostDisplayByRefId;
     }
-  }, [hostDisplayByRefId]);
+  }, [hostDisplayByRefId, queryError]);
 
   const hostDisplay = useMemo(
     () =>
@@ -334,15 +361,20 @@ export function TopologyPanel({
   const liveQueryHostsByRefId = useMemo(() => extractQueryHostsByRefId(data), [data]);
 
   const queryHostsByRefId = useMemo(
-    () => mergeQueryHostsByRefId(liveQueryHostsByRefId, lastGoodQueryHostsByRefIdRef.current),
-    [liveQueryHostsByRefId]
+    () =>
+      queryError ? {} : mergeQueryHostsByRefId(liveQueryHostsByRefId, lastGoodQueryHostsByRefIdRef.current),
+    [liveQueryHostsByRefId, queryError]
   );
 
   useEffect(() => {
+    if (queryError) {
+      lastGoodQueryHostsByRefIdRef.current = {};
+      return;
+    }
     if (Object.keys(queryHostsByRefId).length > 0) {
       lastGoodQueryHostsByRefIdRef.current = queryHostsByRefId;
     }
-  }, [queryHostsByRefId]);
+  }, [queryHostsByRefId, queryError]);
 
   const parentHostKeys = useMemo(
     () => parentMapHostKeys(resolvedOptions.map, hostMetadata),
@@ -493,6 +525,31 @@ export function TopologyPanel({
     return null;
   }
 
+  if (mapValidationErrors.length > 0) {
+    return (
+      <div
+        style={{
+          width,
+          height,
+          background: theme.colors.background.primary,
+          color: theme.colors.error.text,
+          overflow: 'auto',
+          padding: 16,
+          fontSize: 13,
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>Mapa de topologia inválido (options.map)</strong>
+        <ul style={{ marginTop: 8 }}>
+          {mapValidationErrors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+        <div>Corrija o JSON do mapa no editor do painel (aba do plugin) e salve novamente.</div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -511,6 +568,7 @@ export function TopologyPanel({
         hostDisplay={hostDisplay}
         hostDisplayByRefId={hostDisplayByRefId}
         queryReady={queryReady}
+        queryError={queryError}
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
         refreshCountdown={refreshCountdown}

@@ -23,7 +23,7 @@ import {
   parseTopologyJson,
   topologyToJson,
 } from '../types';
-import { inferLinkMedium } from '../utils';
+import { findNodeById, inferLinkMedium, isHostNode } from '../utils';
 import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
 import { QueryRefSelect } from '../components/QueryRefSelect';
@@ -75,10 +75,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [openNodes, setOpenNodes] = useState<Record<string, boolean>>({});
 
-  const hostNodes = useMemo(
-    () => map.nodes.filter((n) => (n.type ?? 'host') === 'host'),
-    [map.nodes]
-  );
+  const hostNodes = useMemo(() => map.nodes.filter((n) => isHostNode(n)), [map.nodes]);
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
   const dashboardPickerNodes = useMemo(
     () => map.nodes.filter((n) => n.type === 'dashboard_picker'),
@@ -236,8 +233,8 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           return { ...l, bandwidthMbps: mbps };
         }
         const next: TopologyLink = { ...l, [field]: value };
-        const fromNode = map.nodes.find((n) => n.id === (field === 'from' ? value : l.from));
-        const toNode = map.nodes.find((n) => n.id === (field === 'to' ? value : l.to));
+        const fromNode = findNodeById(map.nodes, field === 'from' ? value : l.from);
+        const toNode = findNodeById(map.nodes, field === 'to' ? value : l.to);
         if (!l.medium) {
           next.medium = inferLinkMedium(fromNode, toNode);
         }
