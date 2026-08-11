@@ -598,22 +598,38 @@ const legendCountdownStyle = css`
 
 export function TopologyColorLegend({
   items,
-  refreshCountdown = null,
   refreshIntervalSec = null,
+  refreshResetKey,
 }: {
   items: TopologyLegendItem[];
-  refreshCountdown?: number | null;
   refreshIntervalSec?: number | null;
+  /** Muda a cada refresh de verdade da Query — reinicia o contador local para `refreshIntervalSec`. */
+  refreshResetKey?: unknown;
 }) {
   const theme = useTheme2();
   const visible = items
     .map((item) => ({ label: item.label, color: resolvePanelColor(theme, item.color) }))
     .filter((item) => Boolean(item.color));
 
+  // Contador local, isolado do resto do mapa: sem isto, o tick de 1s subia até o `TopologyPanel`
+  // e forçava um re-render do `TopologyCanvas` inteiro a cada segundo (ver auto-deploy.mdc /
+  // pontos prioritários de performance do arraste).
+  const [countdown, setCountdown] = useState<number | null>(refreshIntervalSec);
+  useEffect(() => {
+    if (refreshIntervalSec == null) {
+      setCountdown(null);
+      return;
+    }
+    setCountdown(refreshIntervalSec);
+    const id = window.setInterval(() => {
+      setCountdown((c) => (c == null || c <= 1 ? refreshIntervalSec : c - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshIntervalSec, refreshResetKey]);
+
   const countdownLabel =
-    refreshIntervalSec == null
-      ? 'Atualização: manual'
-      : `Atualiza em ${refreshCountdown ?? refreshIntervalSec}s`;
+    refreshIntervalSec == null ? 'Atualização: manual' : `Atualiza em ${countdown ?? refreshIntervalSec}s`;
 
   if (visible.length === 0) {
     // Ainda mostra o contador mesmo sem itens de legenda

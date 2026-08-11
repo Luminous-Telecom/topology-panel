@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Field, Modal, Spinner } from '@grafana/ui';
+import { Button, Modal, Spinner } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi';
 import { copyPingCommand } from '../utils/hostTools';
+import { FieldReadout } from './FieldReadout';
 
 interface Props {
   label: string;
@@ -186,14 +187,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
 
   return (
     <Modal title="Ping" isOpen onDismiss={onClose}>
-      <Field label="Host">
+      <FieldReadout label="Host">
         <div style={{ fontSize: 14 }}>{label}</div>
-      </Field>
-      <Field label="IP">
+      </FieldReadout>
+      <FieldReadout label="IP">
         <div style={{ fontFamily: 'monospace', fontSize: 14 }}>{ip}</div>
-      </Field>
+      </FieldReadout>
 
-      <Field label="Resultado do ping">
+      <FieldReadout label="Resultado do ping">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
             {running ? (
@@ -230,9 +231,9 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
             <div style={{ marginTop: 8, fontSize: 12, color: '#8ab4f8' }}>{summary}</div>
           ) : null}
         </div>
-      </Field>
+      </FieldReadout>
 
-      <Field label="Comando local (terminal)">
+      <FieldReadout label="Comando local (terminal)">
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code
@@ -253,7 +254,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
           </div>
           {copyMsg ? <div style={{ marginTop: 6, fontSize: 12, color: '#66bb6a' }}>{copyMsg}</div> : null}
         </div>
-      </Field>
+      </FieldReadout>
 
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={() => void runPingBurst()} disabled={running}>

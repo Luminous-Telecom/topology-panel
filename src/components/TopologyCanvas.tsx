@@ -5,6 +5,7 @@ import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
   HostMetadataMap,
+  TopologyHostIcon,
   TopologyLink,
   TopologyMap,
   TopologyNode,
@@ -35,12 +36,14 @@ import {
 } from '../utils/mapEdits';
 import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, findNodeById, isHostNode, isSubmapNode, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostIp, resolveHostLayoutKey, resolveLinkMedium, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
-import { HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
+import { HOST_ICON_LABELS, HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
 import { hostTypeFillColor, resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStatsTextColor, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
-import { isNetworkNode } from '../utils/mapBounds';
+import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
+import { useMapContentScroll } from '../hooks/useMapContentScroll';
+import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import {
   CanvasTool,
   ContextMenuItem,
@@ -96,9 +99,11 @@ interface Props {
   queryError?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
-  /** Segundos restantes até o próximo auto-refresh do dashboard */
-  refreshCountdown?: number | null;
-  /** Intervalo de auto-refresh do dashboard em segundos (null = off/manual) */
+  /**
+   * Intervalo de auto-refresh do dashboard em segundos (null = off/manual). O contador
+   * "Atualiza em Ns" conta o tempo sozinho dentro de `TopologyColorLegend` — não fica em estado
+   * do painel para não forçar um re-render do mapa inteiro a cada segundo.
+   */
   refreshIntervalSec?: number | null;
   /** Frames da Query Zabbix (com overrides de cor/threshold) */
   queryData?: PanelData;
@@ -134,6 +139,31 @@ const styles = {
       background: #111217;
     }
   `,
+  scrollPane: css`
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    z-index: 0;
+    overscroll-behavior: contain;
+    /* Deixa a faixa das barras clicável; o SVG cobre só a client area. */
+    &::-webkit-scrollbar {
+      width: 22px;
+      height: 22px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.28);
+      border-radius: 10px;
+    }
+    &::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.42);
+    }
+    &::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+  `,
+  scrollSizer: css`
+    pointer-events: none;
+  `,
   wrapSelect: css`
     cursor: default;
     &:active {
@@ -150,6 +180,20 @@ const styles = {
     display: block;
     user-select: none;
     touch-action: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 1;
+  `,
+  empty: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #8e8e8e;
+    font-size: 14px;
+    padding: 16px;
+    text-align: center;
   `,
   offlineBlink: css`
     animation: topology-offline-blink 1s ease-in-out infinite;
@@ -162,16 +206,6 @@ const styles = {
         opacity: 0.28;
       }
     }
-  `,
-  empty: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #8e8e8e;
-    font-size: 14px;
-    padding: 16px;
-    text-align: center;
   `,
 };
 
@@ -262,11 +296,7 @@ function nodeFill(
   if (node.type === 'static') {
     return node.fillColor || options.colorStatic;
   }
-  const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
   if (!node.zabbixHost?.trim()) {
-    if (typeFill) {
-      return typeFill;
-    }
     return options.colorUnknown;
   }
   const lookupRef = {
@@ -276,38 +306,32 @@ function nodeFill(
   };
   const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   if (!mapped?.color) {
-    if (typeFill) {
-      return typeFill;
-    }
     return options.colorUnknown;
   }
+  const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
   if (mapped.status === 'online' && typeFill) {
     return typeFill;
   }
   const color = resolveMappedColor?.(mapped.color);
   if (!color) {
-    if (typeFill) {
-      return typeFill;
-    }
     return options.colorUnknown;
   }
   return color;
 }
 
 export function TopologyCanvas({
-  map,
+  map: liveMap,
   storedMap,
   options,
   queryHostOptions = [],
-  hostDisplay,
-  hostDisplayByRefId = {},
-  queryReady = false,
-  queryError = false,
-  hostMetadata,
-  submapHosts = {},
-  refreshCountdown = null,
+  hostDisplay: liveHostDisplay,
+  hostDisplayByRefId: liveHostDisplayByRefId = {},
+  queryReady: liveQueryReady = false,
+  queryError: liveQueryError = false,
+  hostMetadata: liveHostMetadata,
+  submapHosts: liveSubmapHosts = {},
   refreshIntervalSec = null,
-  queryData,
+  queryData: liveQueryData,
   zabbixDatasourceUid,
   onMapChange,
   onViewChange,
@@ -320,7 +344,49 @@ export function TopologyCanvas({
 }: Props) {
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
+  /** True do pointerdown ao pointerup/cancel (pan, nó, resize, marquee, scrollbar) — usado só
+   * para congelar `liveDataSnapshot` abaixo; não é a máquina de estado do drag em si. */
+  const isGestureActiveRef = useRef(false);
+  const liveDataSnapshot = useMemo(
+    () => ({
+      map: liveMap,
+      hostDisplay: liveHostDisplay,
+      hostDisplayByRefId: liveHostDisplayByRefId,
+      queryReady: liveQueryReady,
+      queryError: liveQueryError,
+      hostMetadata: liveHostMetadata,
+      submapHosts: liveSubmapHosts,
+      queryData: liveQueryData,
+    }),
+    [
+      liveMap,
+      liveHostDisplay,
+      liveHostDisplayByRefId,
+      liveQueryReady,
+      liveQueryError,
+      liveHostMetadata,
+      liveSubmapHosts,
+      liveQueryData,
+    ]
+  );
+  const [frozenData, flushFrozenData] = useDeferredDuringGesture(liveDataSnapshot, isGestureActiveRef);
+  const {
+    map,
+    hostDisplay,
+    hostDisplayByRefId,
+    queryReady,
+    queryError,
+    hostMetadata,
+    submapHosts,
+    queryData,
+  } = frozenData;
   const wrapRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const bindScrollRef = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setScrollElement(node);
+  }, []);
   const svgRef = useRef<SVGSVGElement>(null);
   const { flowPaused, setFlowPaused } = useLinkFlowAnimation(wrapRef);
   const savedView = options.view;
@@ -373,6 +439,7 @@ export function TopologyCanvas({
     pinchActiveRef,
   } = useTopologyViewport({
     wrapRef,
+    sizeElement: scrollElement,
     mapWidth: map.width,
     mapHeight: map.height,
     savedView,
@@ -495,6 +562,22 @@ export function TopologyCanvas({
     return { nodeLayouts: layouts, regionStats: stats };
   }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, options, submapHosts, hostMetadata, queryReady]);
 
+  const contentBounds = useMemo(
+    () => computeTopologyContentBounds(map, nodeLayouts),
+    [map, nodeLayouts]
+  );
+
+  const suspendScrollSyncRef = useRef(false);
+  const { contentWidth, contentHeight, onScroll, syncScrollFromView } = useMapContentScroll({
+    scrollRef,
+    bounds: contentBounds,
+    view,
+    viewRef,
+    commitView,
+    viewport,
+    suspendSyncRef: suspendScrollSyncRef,
+  });
+
   const validLinks = useMemo(() => {
     return map.links.filter((l) => {
       const from = nodeLayouts.get(l.from);
@@ -540,17 +623,21 @@ export function TopologyCanvas({
   const focusNodeOnMap = useCallback(
     (nodeId: string) => {
       const layout = nodeLayouts.get(nodeId);
-      const el = wrapRef.current;
-      if (!layout || !el) {
+      if (!layout) {
         return;
       }
       const cx = layout.x + layout.w / 2;
       const cy = layout.y + layout.h / 2;
       const scale = clamp(Math.max(viewRef.current.scale, 0.55), 0.15, 3);
+      const vw = viewportRef.current.w;
+      const vh = viewportRef.current.h;
+      if (vw <= 0 || vh <= 0) {
+        return;
+      }
       commitView({
         scale,
-        x: el.clientWidth / 2 - cx * scale,
-        y: el.clientHeight / 2 - cy * scale,
+        x: vw / 2 - cx * scale,
+        y: vh / 2 - cy * scale,
       });
       setSelectedNodeIds([nodeId]);
       setSelectedLink(null);
@@ -559,7 +646,7 @@ export function TopologyCanvas({
       setMarqueeRect(null);
       setAlignGuides([]);
     },
-    [commitView, nodeLayouts]
+    [commitView, nodeLayouts, viewRef, viewportRef]
   );
 
   const openSubmap = useCallback((node: TopologyNode) => {
@@ -643,7 +730,54 @@ export function TopologyCanvas({
     setMarqueeRect,
     setAlignGuides,
   });
-  cancelActiveDragRef.current = cancelActiveDrag;
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragRef.current) {
+        suspendScrollSyncRef.current = true;
+      }
+      onPointerMove(e);
+    },
+    [dragRef, onPointerMove]
+  );
+
+  /**
+   * Clique na faixa da barra de rolagem nativa não pode borbulhar pra fora do painel: em modo de
+   * edição do dashboard, o Grafana tem seu próprio listener (fora do nosso controle, na
+   * PanelChrome) que abre o painel lateral de opções ao detectar clique no painel. `pointerdown`,
+   * `mousedown` e `click` são eventos nativos independentes (parar um não para os outros), então
+   * paramos os três explicitamente — só quando o alvo é o `scrollPane` em si (nunca um nó/link).
+   */
+  const stopScrollbarBubble = useCallback(
+    (e: React.SyntheticEvent) => {
+      if (e.target === scrollRef.current) {
+        e.stopPropagation();
+      }
+    },
+    [scrollRef]
+  );
+
+  /** Limpeza comum de fim de gesto (pointerup normal ou cancelamento por pinch): libera o sync
+   * de scroll, descongela `liveDataSnapshot` e realinha a scrollbar à view final. */
+  const finishGesture = useCallback(() => {
+    suspendScrollSyncRef.current = false;
+    isGestureActiveRef.current = false;
+    flushFrozenData();
+    syncScrollFromView();
+  }, [syncScrollFromView, flushFrozenData]);
+
+  const endPointerGesture = useCallback(
+    (e: React.PointerEvent) => {
+      onPointerUp(e);
+      finishGesture();
+    },
+    [onPointerUp, finishGesture]
+  );
+
+  cancelActiveDragRef.current = () => {
+    cancelActiveDrag();
+    finishGesture();
+  };
 
   const onNodeClick = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
@@ -1246,6 +1380,15 @@ export function TopologyCanvas({
     if (options.legendUpload) {
       items.push({ label: 'Upload (destino)', color: options.colorLinkUpload });
     }
+    if (options.legendHostTypes) {
+      for (const [icon, color] of Object.entries(options.hostTypeColors ?? {})) {
+        const trimmed = color?.trim();
+        if (!trimmed) {
+          continue;
+        }
+        items.push({ label: HOST_ICON_LABELS[icon as TopologyHostIcon], color: trimmed });
+      }
+    }
     return items;
   }, [
     options.showLegend,
@@ -1258,6 +1401,7 @@ export function TopologyCanvas({
     options.legendLink,
     options.legendDownload,
     options.legendUpload,
+    options.legendHostTypes,
     options.colorUnknown,
     options.colorOnline,
     options.colorOffline,
@@ -1267,6 +1411,7 @@ export function TopologyCanvas({
     options.colorLink,
     options.colorLinkDownload,
     options.colorLinkUpload,
+    options.hostTypeColors,
   ]);
 
   const resolveMiniNodeFill = useCallback(
@@ -1305,17 +1450,35 @@ export function TopologyCanvas({
     <div
       ref={wrapRef}
       className={`${styles.wrap} ${panTool ? styles.wrapPan : styles.wrapSelect}`}
+      onPointerDownCapture={(e) => {
+        // Fase de captura — dispara mesmo quando um filho (nó, link, scrollbar) chama
+        // stopPropagation() no pointerdown. Congela `liveDataSnapshot` (useDeferredDuringGesture)
+        // até o pointerup/cancel, para um auto-refresh do dashboard não trocar cores/hosts/
+        // posições no meio do arraste.
+        isGestureActiveRef.current = true;
+        // Clique na faixa da barra de rolagem nativa (o `svg` cobre só a client area; o alvo aqui
+        // só é o próprio `scrollPane` quando o clique cai fora dele, na faixa da scrollbar). A
+        // `scrollLeft/scrollTop` já é a fonte de verdade durante esse arraste — suspende só o
+        // "sync view -> scrollLeft" (efeito passivo em `useMapContentScroll`) pra não competir com
+        // o drag nativo e causar o "pulo".
+        if (e.target === scrollRef.current) {
+          suspendScrollSyncRef.current = true;
+        }
+        stopScrollbarBubble(e);
+      }}
+      onMouseDownCapture={stopScrollbarBubble}
+      onClickCapture={stopScrollbarBubble}
       onPointerDown={onWrapPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(e) => onPointerUp(e)}
-      onPointerCancel={(e) => onPointerUp(e)}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endPointerGesture}
+      onPointerCancel={endPointerGesture}
       onLostPointerCapture={(e) => {
         // Arraste de nó continua via listeners globais — não abortar ao sair do painel.
         if (dragRef.current?.kind === 'node') {
           return;
         }
         if (dragRef.current) {
-          onPointerUp(e);
+          endPointerGesture(e);
         }
       }}
       onContextMenu={(e) => handleContextMenu(e)}
@@ -1366,7 +1529,24 @@ export function TopologyCanvas({
         </div>
       )}
 
-      <svg ref={svgRef} className={styles.svg} width="100%" height="100%" onContextMenu={(e) => handleContextMenu(e)}>
+      <div ref={bindScrollRef} className={styles.scrollPane} onScroll={onScroll}>
+        <div
+          className={styles.scrollSizer}
+          style={{
+            width: Math.max(contentWidth, 1),
+            height: Math.max(contentHeight, 1),
+          }}
+          aria-hidden
+        />
+      </div>
+
+      <svg
+        ref={svgRef}
+        className={styles.svg}
+        width={viewport.w > 0 ? viewport.w : '100%'}
+        height={viewport.h > 0 ? viewport.h : '100%'}
+        onContextMenu={(e) => handleContextMenu(e)}
+      >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
           <LinkMarkers colorLink={options.colorLink} />
           <rect
@@ -1842,8 +2022,8 @@ export function TopologyCanvas({
       {showLegend && (
         <TopologyColorLegend
           items={legendItems}
-          refreshCountdown={refreshCountdown}
           refreshIntervalSec={refreshIntervalSec}
+          refreshResetKey={queryData}
         />
       )}
 

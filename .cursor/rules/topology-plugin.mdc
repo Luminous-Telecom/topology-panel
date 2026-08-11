@@ -26,6 +26,26 @@ Componentes de modal seguem sempre o mesmo esqueleto (`Modal` + `Field`/`Input` 
 `Modal.ButtonRow` com "Cancelar" + ação). Siga esse padrão ao criar um modal novo — não invente um
 layout diferente.
 
+## Acessibilidade — `Field` e `<label>`
+
+O `<Field label="...">` do Grafana sempre renderiza um `<label>`; o `htmlFor` é inferido do `id`
+(ou `inputId`) do filho direto (`getChildId`). Sem isso o `<label>` fica órfão (DevTools: "No label
+associated with a form field" / "Incorrect use of `<label for=FORM_ELEMENT>`" / "Duplicate form
+field id").
+
+- Todo componente de formulário direto de um `<Field>` precisa de id **único por instância**: gere
+  `const uid = useId();` no topo do componente/editor e passe `id={\`${uid}-algumSufixo\`}` para
+  `Input`/`TextArea`/`ColorPickerInput`/`InlineSwitch`, ou `inputId={\`${uid}-algumSufixo\`}` para
+  `Select`/`MultiSelect` (inclusive `DashboardPickerSelect`/`QueryRefSelect`/`DashboardMultiSelect`,
+  que só repassam a prop — não recrie esses wrappers sem `inputId`).
+- Dentro de `.map()` (submapas, links, etc.), inclua o índice no sufixo (`\`${uid}-link-${idx}-from\`}`)
+  para não colidir entre linhas repetidas.
+- Se o conteúdo do `Field` **não** é um único form control controlável (texto só leitura, grade de
+  botões do `HostIconPicker`, bloco de resultado) use `FieldReadout` (`components/FieldReadout.tsx`)
+  em vez de `Field` — ele não renderiza `<label>`, só um `role="group"` com `aria-label`.
+- Dois controles sob o mesmo rótulo visual (ex.: valor + unidade de "Capacidade") → `FieldReadout`
+  no rótulo externo + `aria-label` descrevendo cada controle interno individualmente.
+
 ## Tipos principais
 
 - Nós: `host` | `network` | `submap` | `static`

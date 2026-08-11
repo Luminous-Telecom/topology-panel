@@ -10,6 +10,8 @@ interface Props {
   /** Prefer dashboards com esta tag (ex.: topology) */
   tagHint?: string;
   menuShouldPortal?: boolean;
+  /** Associa o <Select> a um <Field label> externo (htmlFor) */
+  inputId?: string;
 }
 
 export function DashboardPickerSelect({
@@ -18,6 +20,7 @@ export function DashboardPickerSelect({
   disabled,
   tagHint = 'topology,dude',
   menuShouldPortal = true,
+  inputId,
 }: Props) {
   const { dashboards, loading } = useGrafanaDashboards();
 
@@ -32,6 +35,7 @@ export function DashboardPickerSelect({
 
   return (
     <Select
+      inputId={inputId}
       options={options}
       value={value || null}
       isLoading={loading}

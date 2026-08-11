@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { Button, Field, Input, Modal, Select } from '@grafana/ui';
 import { TopologyLink, TopologyLinkMedium } from '../types';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
+import { FieldReadout } from './FieldReadout';
 
 interface Props {
   link: TopologyLink;
@@ -20,6 +21,7 @@ const unitOptions = [
 ];
 
 export function LinkEditModal({ link, onSave, onClose }: Props) {
+  const uid = useId();
   const initial = useMemo(() => bandwidthToInput(link.bandwidthMbps), [link.bandwidthMbps]);
   const [medium, setMedium] = useState<TopologyLinkMedium>(link.medium === 'radio' ? 'radio' : 'fiber');
   const [bandwidthValue, setBandwidthValue] = useState(initial.value);
@@ -29,17 +31,19 @@ export function LinkEditModal({ link, onSave, onClose }: Props) {
     <Modal title="Editar link" isOpen onDismiss={onClose}>
       <Field label="Tipo">
         <Select
+          inputId={`${uid}-medium`}
           options={mediumOptions}
           value={medium}
           onChange={(v) => setMedium((v.value ?? 'fiber') as TopologyLinkMedium)}
         />
       </Field>
-      <Field
+      <FieldReadout
         label="Capacidade"
         description="Largura da linha aumenta conforme Gb. Deixe vazio para usar espessura padrão."
       >
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <Input
+            aria-label="Capacidade — valor"
             type="number"
             min={0}
             step="any"
@@ -49,13 +53,14 @@ export function LinkEditModal({ link, onSave, onClose }: Props) {
             width={16}
           />
           <Select
+            aria-label="Capacidade — unidade"
             options={unitOptions}
             value={bandwidthUnit}
             onChange={(v) => setBandwidthUnit((v.value ?? 'gbps') as LinkBandwidthUnit)}
             width={12}
           />
         </div>
-      </Field>
+      </FieldReadout>
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar

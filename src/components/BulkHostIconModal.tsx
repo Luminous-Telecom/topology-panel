@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Button, Field, Modal } from '@grafana/ui';
+import { Button, Modal } from '@grafana/ui';
 import { TopologyHostIcon } from '../types';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { HostIconPicker } from './HostIconPicker';
+import { FieldReadout } from './FieldReadout';
 
 interface Props {
   count: number;
@@ -15,9 +16,9 @@ export function BulkHostIconModal({ count, onSave, onClose }: Props) {
 
   return (
     <Modal title={`Alterar tipo (${count} hosts)`} isOpen onDismiss={onClose}>
-      <Field label="Tipo / ícone" description={`Aplicar ${HOST_ICON_LABELS[icon]} a ${count} hosts selecionados`}>
+      <FieldReadout label="Tipo / ícone" description={`Aplicar ${HOST_ICON_LABELS[icon]} a ${count} hosts selecionados`}>
         <HostIconPicker value={icon} onChange={setIcon} />
-      </Field>
+      </FieldReadout>
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar

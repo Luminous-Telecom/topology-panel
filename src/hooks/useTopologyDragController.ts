@@ -790,10 +790,9 @@ export function useTopologyDragController({
             if (!pending || dragRef.current?.kind !== 'pan' || pinchActiveRef.current) {
               return;
             }
-            // Só aplica pan depois de sair do limiar de clique/tap.
-            if (!dragRef.current.moved) {
-              return;
-            }
+            // Aplica o delta acumulado desde o 1º pixel — o limiar de 4px só decide
+            // "clique vs arraste" (d.moved) no pointerup; represar o pan até o limiar
+            // fazia o mapa "pular" de uma vez o delta acumulado ao cruzá-lo.
             commitView((v) => ({ ...v, x: pending.x, y: pending.y }));
           });
         }

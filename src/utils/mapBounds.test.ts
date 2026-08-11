@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeFitToViewTransform, computeTopologyContentBounds } from './mapBounds';
+import {
+  computeFitToViewTransform,
+  computeMapScrollMetrics,
+  computeTopologyContentBounds,
+  viewPanFromScroll,
+} from './mapBounds';
 
 describe('computeFitToViewTransform', () => {
   it('mapa sem width/height (mapa em branco malformado) não quebra — retorna null', () => {
@@ -42,5 +47,43 @@ describe('computeTopologyContentBounds', () => {
     const bounds = computeTopologyContentBounds({ width: 800, height: 600, nodes: [], links: [] }, layouts);
     expect(bounds.x0).toBe(-548);
     expect(bounds.y0).toBe(-548);
+  });
+});
+
+describe('computeMapScrollMetrics', () => {
+  const bounds = { x0: 0, y0: 0, x1: 2000, y1: 1500, width: 2000, height: 1500 };
+
+  it('conteúdo maior que o viewport gera scroll horizontal e vertical', () => {
+    const metrics = computeMapScrollMetrics(bounds, { x: 0, y: 0, scale: 1 }, 800, 600);
+    expect(metrics.contentWidth).toBe(2000);
+    expect(metrics.contentHeight).toBe(1500);
+    expect(metrics.maxScrollLeft).toBe(1200);
+    expect(metrics.maxScrollTop).toBe(900);
+    expect(metrics.scrollLeft).toBe(0);
+    expect(metrics.scrollTop).toBe(0);
+  });
+
+  it('conteúdo que cabe no viewport não gera scroll', () => {
+    const small = { x0: 0, y0: 0, x1: 400, y1: 300, width: 400, height: 300 };
+    const metrics = computeMapScrollMetrics(small, { x: 0, y: 0, scale: 1 }, 800, 600);
+    expect(metrics.contentWidth).toBe(800);
+    expect(metrics.contentHeight).toBe(600);
+    expect(metrics.maxScrollLeft).toBe(0);
+    expect(metrics.maxScrollTop).toBe(0);
+  });
+
+  it('pan negativo aumenta scrollLeft/scrollTop', () => {
+    const metrics = computeMapScrollMetrics(bounds, { x: -200, y: -100, scale: 1 }, 800, 600);
+    expect(metrics.scrollLeft).toBe(200);
+    expect(metrics.scrollTop).toBe(100);
+  });
+
+  it('viewPanFromScroll é o inverso de scrollLeft derivado do pan', () => {
+    const scale = 1.25;
+    const scrolled = { x0: -48, y0: -48, x1: 848, y1: 648, width: 896, height: 696 };
+    const pan = viewPanFromScroll(120, 80, scale, scrolled);
+    const metrics = computeMapScrollMetrics(scrolled, { ...pan, scale }, 800, 600);
+    expect(metrics.scrollLeft).toBe(120);
+    expect(metrics.scrollTop).toBe(80);
   });
 });

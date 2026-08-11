@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Button, Field, Modal, Select } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
+import { FieldReadout } from './FieldReadout';
 import { hostsAlreadyOnMap, isIpv4, QueryHostOption, queryHostPickerOptions } from '../utils';
 
 const ipReadoutStyle: React.CSSProperties = {
@@ -33,6 +34,7 @@ export function ZabbixHostPickerModal({
   onConfirm,
   onClose,
 }: Props) {
+  const uid = useId();
   const [hostKey, setHostKey] = useState<string | undefined>();
   const [icon, setIcon] = useState<TopologyHostIcon>(initialIcon ?? 'network');
 
@@ -85,6 +87,7 @@ export function ZabbixHostPickerModal({
         }
       >
         <Select
+          inputId={`${uid}-host`}
           options={hostOptions}
           value={hostKey}
           disabled={!queryHostOptions.length}
@@ -95,13 +98,13 @@ export function ZabbixHostPickerModal({
         />
       </Field>
       {resolvedIp ? (
-        <Field label="IP">
+        <FieldReadout label="IP">
           <div style={ipReadoutStyle}>{resolvedIp}</div>
-        </Field>
+        </FieldReadout>
       ) : null}
-      <Field label="Tipo / ícone">
+      <FieldReadout label="Tipo / ícone">
         <HostIconPicker value={icon} onChange={setIcon} />
-      </Field>
+      </FieldReadout>
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar

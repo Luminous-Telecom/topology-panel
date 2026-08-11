@@ -11,6 +11,8 @@ interface Props {
   /** Prefer dashboards com esta tag (ex.: topology) */
   tagHint?: string;
   menuShouldPortal?: boolean;
+  /** Associa o <MultiSelect> a um <Field label> externo (htmlFor) */
+  inputId?: string;
 }
 
 export function DashboardMultiSelect({
@@ -19,6 +21,7 @@ export function DashboardMultiSelect({
   disabled,
   tagHint = 'topology,dude',
   menuShouldPortal = true,
+  inputId,
 }: Props) {
   const { dashboards, loading } = useGrafanaDashboards();
 
@@ -47,6 +50,7 @@ export function DashboardMultiSelect({
 
   return (
     <MultiSelect
+      inputId={inputId}
       options={options}
       value={selected}
       isLoading={loading}

@@ -56,8 +56,8 @@ export function HostTypeColorsEditor({ value, onChange }: Props) {
   return (
     <Stack direction="column" gap={1}>
       <div className={hintStyle}>
-        Vale para hosts online ou sem query. Offline e alerta usam as cores globais.
-        Vazio = cor online / sem query do painel.
+        Vale só para hosts online. Offline, alerta e sem dado usam as cores globais do painel.
+        Vazio = cor online do painel.
       </div>
       {HOST_ICON_ORDER.map((icon) => {
         const { h } = hostIconRenderDimensions(icon, 22);

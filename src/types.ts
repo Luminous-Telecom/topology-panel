@@ -187,9 +187,10 @@ export interface TopologyPanelOptions {
   /** Valor da Query → status */
   statusValueMappings: TopologyStatusValueMapping[];
   /**
-   * Cor do card do host por tipo/ícone (online ou sem query).
-   * Offline e alerta continuam com colorOffline / colorAlert.
-   * Chave ausente = usa colorOnline / colorUnknown.
+   * Cor do card do host por tipo/ícone — vale só quando online.
+   * Offline/alerta continuam com colorOffline / colorAlert; sem dado na Query
+   * (ou sem zabbixHost) continua com colorUnknown, nunca a cor do tipo.
+   * Chave ausente = usa colorOnline.
    */
   hostTypeColors?: Partial<Record<TopologyHostIcon, string>>;
   /** Cor padrão dos rótulos estáticos */
@@ -245,6 +246,8 @@ export interface TopologyPanelOptions {
   legendLink?: boolean;
   legendDownload?: boolean;
   legendUpload?: boolean;
+  /** Cores por tipo/ícone configuradas em hostTypeColors */
+  legendHostTypes?: boolean;
   /**
    * Nome da variável Grafana na barra do painel de controle (ex.: mapa → $mapa / var-mapa).
    * Configure as opções em: Dashboard → Configurações → Variáveis.
@@ -332,6 +335,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   legendLink: false,
   legendDownload: false,
   legendUpload: false,
+  legendHostTypes: false,
   dashboardNavVariable: 'mapa',
   showDashboardNav: false,
   dashboardNavLabel: 'Dashboards',

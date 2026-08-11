@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useId, useMemo, useState } from 'react';
 import { StandardEditorProps } from '@grafana/data';
 import {
   Alert,
@@ -27,6 +27,7 @@ import { findNodeById, inferLinkMedium, isHostNode } from '../utils';
 import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
 import { QueryRefSelect } from '../components/QueryRefSelect';
+import { FieldReadout } from '../components/FieldReadout';
 import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
 
 type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
@@ -66,6 +67,7 @@ function LockBar({ locked, onToggle }: { locked: boolean; onToggle: () => void }
 }
 
 export function TopologyEditor({ value, onChange, context }: Props) {
+  const uid = useId();
   const theme = useTheme2();
   const map = value ?? defaultTopologyMap();
   const queryRefInfos = context.options.queryRefInfosAvailable ?? [];
@@ -281,6 +283,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         </Alert>
         <Field label="Topologia (JSON)">
           <TextArea
+            id={`${uid}-json`}
             rows={16}
             value={jsonText}
             disabled={locked}
@@ -317,6 +320,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
 
       <Field label="Largura do mapa">
         <Input
+          id={`${uid}-map-width`}
           type="number"
           value={map.width}
           disabled={locked}
@@ -330,6 +334,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
       </Field>
       <Field label="Altura do mapa">
         <Input
+          id={`${uid}-map-height`}
           type="number"
           value={map.height}
           disabled={locked}
@@ -342,7 +347,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         />
       </Field>
 
-      <Field
+      <FieldReadout
         label={`Hosts Zabbix (${hostNodes.length})`}
         description="Nome e IP vêm do Zabbix. Posição: arraste no mapa (botão direito para links)."
       >
@@ -375,9 +380,9 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             );
           })}
         </Stack>
-      </Field>
+      </FieldReadout>
 
-      <Field label={`Submapas (${submapNodes.length})`} description="Atalhos para outros dashboards">
+      <FieldReadout label={`Submapas (${submapNodes.length})`} description="Atalhos para outros dashboards">
         <Stack direction="column" gap={1}>
           {submapNodes.map((node, idx) => {
             const isOpen = openNodes[node.id] ?? false;
@@ -396,6 +401,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                 <Stack direction="column" gap={1}>
                   <Field label="ID interno">
                     <Input
+                      id={`${uid}-submap-${idx}-id`}
                       value={node.id}
                       disabled={locked}
                       onChange={(e) => updateSubmap(idx, { id: e.currentTarget.value })}
@@ -403,6 +409,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   </Field>
                   <Field label="Nome exibido">
                     <Input
+                      id={`${uid}-submap-${idx}-label`}
                       value={node.label ?? ''}
                       disabled={locked}
                       onChange={(e) => updateSubmap(idx, { label: e.currentTarget.value })}
@@ -413,12 +420,13 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     description={node.submapSlug ? `Slug: ${node.submapSlug}` : undefined}
                   >
                     <DashboardPickerSelect
+                      inputId={`${uid}-submap-${idx}-dashboard`}
                       value={node.submapUid ?? ''}
                       disabled={locked}
-                      onChange={(uid, slug) =>
+                      onChange={(nextUid, slug) =>
                         updateSubmap(idx, {
-                          submapUid: uid || undefined,
-                          submapSlug: slug || uid || undefined,
+                          submapUid: nextUid || undefined,
+                          submapSlug: slug || nextUid || undefined,
                         })
                       }
                     />
@@ -428,6 +436,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     description="Host group desta consulta alimenta a contagem de hosts do submapa"
                   >
                     <QueryRefSelect
+                      inputId={`${uid}-submap-${idx}-query`}
                       value={node.queryRefId ?? ''}
                       queryRefs={queryRefInfos}
                       disabled={locked}
@@ -445,6 +454,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     }
                   >
                     <InlineSwitch
+                      id={`${uid}-submap-${idx}-include-stats`}
                       label={
                         node.includeInParentStats !== false && node.showStatusStats !== false
                           ? 'Ativado'
@@ -471,9 +481,9 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             + Adicionar submapa
           </Button>
         </Stack>
-      </Field>
+      </FieldReadout>
 
-      <Field
+      <FieldReadout
         label={`Seletores de dashboards (${dashboardPickerNodes.length})`}
         description="Botão no mapa com lista configurável de dashboards para abrir"
       >
@@ -497,6 +507,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                 <Stack direction="column" gap={1}>
                   <Field label="Nome exibido">
                     <Input
+                      id={`${uid}-picker-${idx}-label`}
                       value={node.label ?? ''}
                       disabled={locked}
                       onChange={(e) => updateDashboardPicker(idx, { label: e.currentTarget.value })}
@@ -507,6 +518,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     description="Aparecem ao clicar no botão no mapa"
                   >
                     <DashboardMultiSelect
+                      inputId={`${uid}-picker-${idx}-dashboards`}
                       value={node.dashboardChoices ?? []}
                       disabled={locked}
                       onChange={(choices) => updateDashboardPicker(idx, { dashboardChoices: choices })}
@@ -528,9 +540,9 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             + Adicionar seletor de dashboards
           </Button>
         </Stack>
-      </Field>
+      </FieldReadout>
 
-      <Field label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = tracejado · Capacidade define espessura e rótulo (Mb/Gb)">
+      <FieldReadout label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = tracejado · Capacidade define espessura e rótulo (Mb/Gb)">
         <Stack direction="column" gap={1}>
           {map.links.map((link, idx) => {
             const bw = bandwidthToInput(link.bandwidthMbps);
@@ -538,6 +550,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <Field label="De">
                 <Select
+                  inputId={`${uid}-link-${idx}-from`}
                   width={20}
                   options={nodeOptions}
                   value={link.from}
@@ -551,6 +564,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
               </Field>
               <Field label="Para">
                 <Select
+                  inputId={`${uid}-link-${idx}-to`}
                   width={20}
                   options={nodeOptions}
                   value={link.to}
@@ -564,6 +578,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
               </Field>
               <Field label="Meio">
                 <Select
+                  inputId={`${uid}-link-${idx}-medium`}
                   width={18}
                   options={mediumOptions}
                   value={link.medium ?? 'fiber'}
@@ -575,9 +590,10 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                   }}
                 />
               </Field>
-              <Field label="Capacidade">
+              <FieldReadout label="Capacidade">
                 <div style={{ display: 'flex', gap: 4 }}>
                   <Input
+                    aria-label={`Capacidade do link ${idx + 1} — valor`}
                     type="number"
                     min={0}
                     step="any"
@@ -590,6 +606,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     }
                   />
                   <Select
+                    aria-label={`Capacidade do link ${idx + 1} — unidade`}
                     width={10}
                     options={[
                       { label: 'Mb', value: 'mbps' },
@@ -602,7 +619,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                     }
                   />
                 </div>
-              </Field>
+              </FieldReadout>
               <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeLink(idx)}>
                 Remover
               </Button>
@@ -613,7 +630,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
             + Adicionar link
           </Button>
         </Stack>
-      </Field>
+      </FieldReadout>
 
       <Button
         variant="secondary"

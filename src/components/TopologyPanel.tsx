@@ -194,9 +194,7 @@ export function TopologyPanel({
   const [fetchedSubmapHosts, setFetchedSubmapHosts] = useState<
     Record<string, string[] | null | undefined>
   >({});
-  const [refreshTick, setRefreshTick] = useState(0);
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
-  const [refreshCountdown, setRefreshCountdown] = useState<number | null>(() => readDashboardRefreshSeconds());
 
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
@@ -413,33 +411,12 @@ export function TopologyPanel({
   }, [options, theme, onOptionsChange]);
 
   useEffect(() => {
-    setRefreshTick((t) => t + 1);
-  }, [data]);
-
-  useEffect(() => {
     const syncInterval = () => {
       setRefreshIntervalSec(parseGrafanaRefreshSeconds(locationService.getSearchObject().refresh));
     };
     syncInterval();
     return locationService.getHistory().listen(syncInterval);
   }, []);
-
-  useEffect(() => {
-    if (refreshIntervalSec == null) {
-      setRefreshCountdown(null);
-      return;
-    }
-    setRefreshCountdown(refreshIntervalSec);
-    const id = window.setInterval(() => {
-      setRefreshCountdown((c) => {
-        if (c == null) {
-          return refreshIntervalSec;
-        }
-        return c <= 1 ? refreshIntervalSec : c - 1;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [refreshIntervalSec, refreshTick]);
 
   const legacySubmapFetchKey = useMemo(
     () =>
@@ -571,7 +548,6 @@ export function TopologyPanel({
         queryError={queryError}
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
-        refreshCountdown={refreshCountdown}
         refreshIntervalSec={refreshIntervalSec}
         queryData={data}
         zabbixDatasourceUid={zabbixDatasourceUid}

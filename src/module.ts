@@ -250,6 +250,13 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: false,
         category: ['Legenda'],
       })
+      .addBooleanSwitch({
+        path: 'legendHostTypes',
+        name: 'Cores por tipo de ícone',
+        description: 'Lista os tipos configurados em "Ícone → cor por tipo" com a cor de cada um',
+        defaultValue: false,
+        category: ['Legenda'],
+      })
       .addCustomEditor({
         id: 'displayQueryRefIds',
         path: 'displayQueryRefIds',

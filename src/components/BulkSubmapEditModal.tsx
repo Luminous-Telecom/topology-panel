@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Button, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
 
 export type BulkSubmapPatch = {
@@ -17,6 +17,7 @@ interface Props {
 }
 
 export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
+  const uid = useId();
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
   const [includeInParentStats, setIncludeInParentStats] = useState(true);
@@ -28,6 +29,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
         description="Desative para monitorar só os hosts de cada dashboard, ignorando submapas dentro dele"
       >
         <InlineSwitch
+          id={`${uid}-include-stats`}
           label={includeInParentStats ? 'Ativado' : 'Desativado'}
           value={includeInParentStats}
           onChange={(e) => setIncludeInParentStats(e.currentTarget.checked)}
@@ -35,6 +37,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
       </Field>
       <Field label="Largura (px)" description="Vazio = manter a largura atual de cada submapa">
         <Input
+          id={`${uid}-width`}
           type="number"
           value={width}
           onChange={(e) => setWidth(e.currentTarget.value)}
@@ -43,6 +46,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
       </Field>
       <Field label="Altura (px)" description="Vazio = manter a altura atual de cada submapa">
         <Input
+          id={`${uid}-height`}
           type="number"
           value={height}
           onChange={(e) => setHeight(e.currentTarget.value)}

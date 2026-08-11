@@ -9,6 +9,8 @@ interface Props {
   queryRefs: TopologyQueryRefInfo[];
   disabled?: boolean;
   menuShouldPortal?: boolean;
+  /** Associa o <Select> a um <Field label> externo (htmlFor) */
+  inputId?: string;
 }
 
 function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
@@ -26,6 +28,7 @@ export function QueryRefSelect({
   queryRefs,
   disabled,
   menuShouldPortal = true,
+  inputId,
 }: Props) {
   const normalized = value.trim().toUpperCase();
 
@@ -46,7 +49,7 @@ export function QueryRefSelect({
 
   if (!queryRefs.length && !normalized) {
     return (
-      <span style={{ fontSize: 12, opacity: 0.75 }}>
+      <span id={inputId} style={{ fontSize: 12, opacity: 0.75 }}>
         Nenhuma consulta detectada — configure na aba Query e aguarde o painel carregar.
       </span>
     );
@@ -54,6 +57,7 @@ export function QueryRefSelect({
 
   return (
     <Select
+      inputId={inputId}
       options={options}
       value={normalized || null}
       disabled={disabled}

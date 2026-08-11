@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal, Select } from '@grafana/ui';
 import {
   TopologyDashboardChoice,
@@ -11,6 +11,7 @@ import { DashboardMultiSelect } from './DashboardMultiSelect';
 import { DashboardPickerSelect } from './DashboardPickerSelect';
 import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
+import { FieldReadout } from './FieldReadout';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import {
   hostsAlreadyOnMap,
@@ -60,6 +61,7 @@ export function NodeEditModal({
   onSave,
   onClose,
 }: Props) {
+  const uid = useId();
   const [label, setLabel] = useState(node.label ?? '');
   const [subtitle, setSubtitle] = useState(node.subtitle ?? '');
   const [submapUid, setSubmapUid] = useState(node.submapUid ?? '');
@@ -227,6 +229,7 @@ export function NodeEditModal({
             }
           >
             <Select
+              inputId={`${uid}-host`}
               options={queryHostSelectOptions}
               value={selectedHostKey}
               disabled={!queryHostOptions.length}
@@ -239,26 +242,26 @@ export function NodeEditModal({
             />
           </Field>
           {displayIp ? (
-            <Field label="IP">
+            <FieldReadout label="IP">
               <div style={ipReadoutStyle}>{displayIp}</div>
-            </Field>
+            </FieldReadout>
           ) : null}
         </>
       )}
       {!isZabbixHost && type !== 'dashboard_picker' && (
         <Field label="Nome exibido">
-          <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+          <Input id={`${uid}-label`} value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
         </Field>
       )}
       {!isZabbixHost && isHost && (
         <Field label="Subtítulo / IP">
-          <Input value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
+          <Input id={`${uid}-subtitle`} value={subtitle} onChange={(e) => setSubtitle(e.currentTarget.value)} />
         </Field>
       )}
       {isHost && (
-        <Field label="Tipo / ícone" description={`Ícone: ${HOST_ICON_LABELS[icon]}`}>
+        <FieldReadout label="Tipo / ícone" description={`Ícone: ${HOST_ICON_LABELS[icon]}`}>
           <HostIconPicker value={icon} onChange={setIcon} />
-        </Field>
+        </FieldReadout>
       )}
       {isHost && (
         <>
@@ -267,6 +270,7 @@ export function NodeEditModal({
             description="Winbox / SSH / Telnet — vazio usa o padrão do painel (Acesso remoto)"
           >
             <Input
+              id={`${uid}-tool-username`}
               value={toolUsername}
               onChange={(e) => setToolUsername(e.currentTarget.value)}
               placeholder="Padrão do painel"
@@ -278,6 +282,7 @@ export function NodeEditModal({
             description="Abre Winbox já autenticado. Fica salva no JSON do mapa."
           >
             <Input
+              id={`${uid}-tool-password`}
               type="password"
               value={toolPassword}
               onChange={(e) => setToolPassword(e.currentTarget.value)}
@@ -294,9 +299,10 @@ export function NodeEditModal({
             description={submapSlug ? `Slug: ${submapSlug}` : 'Selecione o dashboard de destino do submapa'}
           >
             <DashboardPickerSelect
+              inputId={`${uid}-submap-dashboard`}
               value={submapUid}
-              onChange={(uid, slug) => {
-                setSubmapUid(uid);
+              onChange={(nextUid, slug) => {
+                setSubmapUid(nextUid);
                 if (slug) {
                   setSubmapSlug(slug);
                 }
@@ -307,7 +313,12 @@ export function NodeEditModal({
             label="Consulta Zabbix"
             description="Consulta deste painel cujo host group define os hosts monitorados deste submapa"
           >
-            <QueryRefSelect value={queryRefId} queryRefs={queryRefInfos} onChange={setQueryRefId} />
+            <QueryRefSelect
+              inputId={`${uid}-submap-query`}
+              value={queryRefId}
+              queryRefs={queryRefInfos}
+              onChange={setQueryRefId}
+            />
           </Field>
           <Field
             label="Incluir submapas internos"
@@ -318,6 +329,7 @@ export function NodeEditModal({
             }
           >
             <InlineSwitch
+              id={`${uid}-submap-include-stats`}
               label={includeInParentStats ? 'Ativado' : 'Desativado'}
               value={includeInParentStats}
               disabled={Boolean(queryRefId.trim())}
@@ -325,10 +337,22 @@ export function NodeEditModal({
             />
           </Field>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-submap-width`}
+              type="number"
+              value={width}
+              onChange={(e) => setWidth(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
           <Field label="Altura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={height} onChange={(e) => setHeight(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-submap-height`}
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
         </>
       )}
@@ -338,16 +362,33 @@ export function NodeEditModal({
             label="Dashboards disponíveis"
             description="Dashboards que aparecem ao clicar neste botão no mapa"
           >
-            <DashboardMultiSelect value={dashboardChoices} onChange={setDashboardChoices} />
+            <DashboardMultiSelect
+              inputId={`${uid}-picker-dashboards`}
+              value={dashboardChoices}
+              onChange={setDashboardChoices}
+            />
           </Field>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-picker-width`}
+              type="number"
+              value={width}
+              onChange={(e) => setWidth(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
           <Field label="Altura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={height} onChange={(e) => setHeight(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-picker-height`}
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
           <Field label="Cor de fundo" description="Vazio = cor submapa do painel (Aparência)">
             <ColorPickerInput
+              id={`${uid}-picker-fill-color`}
               value={fillColor}
               onChange={setFillColor}
               returnColorAs="hex"
@@ -359,16 +400,35 @@ export function NodeEditModal({
       {type === 'static' && (
         <>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={width} onChange={(e) => setWidth(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-static-width`}
+              type="number"
+              value={width}
+              onChange={(e) => setWidth(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
           <Field label="Altura (px)" description="Vazio = automático pelo texto">
-            <Input type="number" value={height} onChange={(e) => setHeight(e.currentTarget.value)} placeholder="Automático" />
+            <Input
+              id={`${uid}-static-height`}
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(e.currentTarget.value)}
+              placeholder="Automático"
+            />
           </Field>
           <Field label="Tamanho da fonte (px)" description="Vazio = padrão do painel">
-            <Input type="number" value={fontSize} onChange={(e) => setFontSize(e.currentTarget.value)} placeholder="Padrão do painel" />
+            <Input
+              id={`${uid}-static-font-size`}
+              type="number"
+              value={fontSize}
+              onChange={(e) => setFontSize(e.currentTarget.value)}
+              placeholder="Padrão do painel"
+            />
           </Field>
           <Field label="Cor de fundo" description="Vazio = cor estático do painel (Aparência)">
             <ColorPickerInput
+              id={`${uid}-static-fill-color`}
               value={fillColor}
               onChange={setFillColor}
               returnColorAs="hex"
@@ -377,6 +437,7 @@ export function NodeEditModal({
           </Field>
           <Field label="Cor do texto" description="Vazio = contraste automático sobre o fundo">
             <ColorPickerInput
+              id={`${uid}-static-label-color`}
               value={labelColor}
               onChange={setLabelColor}
               returnColorAs="hex"
@@ -388,19 +449,39 @@ export function NodeEditModal({
       {type === 'network' && (
         <>
           <Field label="Nome">
-            <Input value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+            <Input id={`${uid}-network-label`} value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
           </Field>
           <Field label="Largura (px)">
-            <Input type="number" value={width || String(node.width ?? 220)} onChange={(e) => setWidth(e.currentTarget.value)} />
+            <Input
+              id={`${uid}-network-width`}
+              type="number"
+              value={width || String(node.width ?? 220)}
+              onChange={(e) => setWidth(e.currentTarget.value)}
+            />
           </Field>
           <Field label="Altura (px)">
-            <Input type="number" value={height || String(node.height ?? 140)} onChange={(e) => setHeight(e.currentTarget.value)} />
+            <Input
+              id={`${uid}-network-height`}
+              type="number"
+              value={height || String(node.height ?? 140)}
+              onChange={(e) => setHeight(e.currentTarget.value)}
+            />
           </Field>
           <Field label="Cor de preenchimento (opcional)" description="Ex: rgba(96,96,96,0.22)">
-            <Input value={fillColor} onChange={(e) => setFillColor(e.currentTarget.value)} placeholder="Padrão do painel" />
+            <Input
+              id={`${uid}-network-fill-color`}
+              value={fillColor}
+              onChange={(e) => setFillColor(e.currentTarget.value)}
+              placeholder="Padrão do painel"
+            />
           </Field>
           <Field label="Cor da borda (opcional)">
-            <Input value={borderColor} onChange={(e) => setBorderColor(e.currentTarget.value)} placeholder="Padrão do painel" />
+            <Input
+              id={`${uid}-network-border-color`}
+              value={borderColor}
+              onChange={(e) => setBorderColor(e.currentTarget.value)}
+              placeholder="Padrão do painel"
+            />
           </Field>
         </>
       )}

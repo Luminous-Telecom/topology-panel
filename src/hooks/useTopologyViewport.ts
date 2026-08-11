@@ -5,6 +5,11 @@ import { computeFitToViewTransform } from '../utils/mapBounds';
 
 interface UseTopologyViewportParams {
   wrapRef: RefObject<HTMLDivElement>;
+  /**
+   * Elemento montado cuja `clientWidth`/`clientHeight` define o viewport (ex.: painel de scroll
+   * sem a largura das barras). Enquanto `null`, usa `wrapRef`.
+   */
+  sizeElement?: HTMLElement | null;
   mapWidth: number;
   mapHeight: number;
   savedView: TopologyView | undefined;
@@ -41,6 +46,7 @@ interface UseTopologyViewportResult {
  */
 export function useTopologyViewport({
   wrapRef,
+  sizeElement = null,
   mapWidth,
   mapHeight,
   savedView,
@@ -51,6 +57,9 @@ export function useTopologyViewport({
   onFullscreenChange,
   showToast,
 }: UseTopologyViewportParams): UseTopologyViewportResult {
+  const sizeElementRef = useRef(sizeElement);
+  sizeElementRef.current = sizeElement;
+  const resolveSizeEl = useCallback((): HTMLElement | null => sizeElementRef.current ?? wrapRef.current, [wrapRef]);
   const [view, setView] = useState<TopologyView>(() =>
     savedView && typeof savedView.scale === 'number' ? savedView : { x: 0, y: 0, scale: 1 }
   );
@@ -107,7 +116,7 @@ export function useTopologyViewport({
   }, []);
 
   const fitToView = useCallback(() => {
-    const el = wrapRef.current;
+    const el = resolveSizeEl();
     if (!el) {
       return;
     }
@@ -116,7 +125,7 @@ export function useTopologyViewport({
       return;
     }
     commitView(transform);
-  }, [commitView, mapWidth, mapHeight]);
+  }, [commitView, mapWidth, mapHeight, resolveSizeEl]);
 
   const didInitialFitRef = useRef(false);
   useEffect(() => {
@@ -132,23 +141,30 @@ export function useTopologyViewport({
   }, [commitView, fitToView, mapWidth, mapHeight, savedView]);
 
   useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) {
+    const wrap = wrapRef.current;
+    const sizeEl = sizeElement ?? wrap;
+    if (!sizeEl) {
       return;
     }
     const onResize = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
+      const target = sizeElementRef.current ?? wrapRef.current;
+      if (!target) {
+        return;
+      }
+      const w = target.clientWidth;
+      const h = target.clientHeight;
       if (w > 0 && h > 0) {
         setViewport({ w, h });
       }
     };
     const ro = new ResizeObserver(onResize);
-    ro.observe(el);
+    ro.observe(sizeEl);
+    if (wrap && wrap !== sizeEl) {
+      ro.observe(wrap);
+    }
     onResize();
     return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sizeElement, wrapRef]);
 
   useEffect(() => {
     if (!onViewChange || !didInitialFitRef.current) {
@@ -184,7 +200,8 @@ export function useTopologyViewport({
     const isOverPanel = (e: Event) => eventTargetsElement(e, el);
 
     const applyZoomAt = (clientX: number, clientY: number, nextScale: number, from: TopologyView) => {
-      const rect = el.getBoundingClientRect();
+      const sizeEl = resolveSizeEl() ?? el;
+      const rect = sizeEl.getBoundingClientRect();
       const mx = clientX - rect.left;
       const my = clientY - rect.top;
       const ns = clamp(nextScale, 0.1, 4);
@@ -218,7 +235,8 @@ export function useTopologyViewport({
       }
       const a = touches[0];
       const b = touches[1];
-      const rect = el.getBoundingClientRect();
+      const sizeEl = resolveSizeEl() ?? el;
+      const rect = sizeEl.getBoundingClientRect();
       return {
         dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
         midX: (a.clientX + b.clientX) / 2 - rect.left,

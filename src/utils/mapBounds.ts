@@ -54,6 +54,67 @@ export function isNetworkNode(node: TopologyNode): boolean {
   return node.type === 'network';
 }
 
+/** Tamanho da área rolável e posição do scroll equivalentes ao pan atual. */
+export interface MapScrollMetrics {
+  contentWidth: number;
+  contentHeight: number;
+  scrollLeft: number;
+  scrollTop: number;
+  maxScrollLeft: number;
+  maxScrollTop: number;
+}
+
+/**
+ * Converte bounds do conteúdo + view (pan/zoom) em métricas de scroll nativo.
+ * Scrollbars aparecem só quando o conteúdo (hosts/redes) ultrapassa o viewport na escala atual.
+ */
+export function computeMapScrollMetrics(
+  bounds: MapContentBounds,
+  view: TopologyView,
+  viewportW: number,
+  viewportH: number
+): MapScrollMetrics {
+  if (viewportW <= 0 || viewportH <= 0 || view.scale <= 0) {
+    return {
+      contentWidth: Math.max(viewportW, 1),
+      contentHeight: Math.max(viewportH, 1),
+      scrollLeft: 0,
+      scrollTop: 0,
+      maxScrollLeft: 0,
+      maxScrollTop: 0,
+    };
+  }
+
+  const contentWidth = Math.max(viewportW, bounds.width * view.scale);
+  const contentHeight = Math.max(viewportH, bounds.height * view.scale);
+  const maxScrollLeft = Math.max(0, contentWidth - viewportW);
+  const maxScrollTop = Math.max(0, contentHeight - viewportH);
+  const scrollLeft = clamp(-view.x - bounds.x0 * view.scale, 0, maxScrollLeft);
+  const scrollTop = clamp(-view.y - bounds.y0 * view.scale, 0, maxScrollTop);
+
+  return {
+    contentWidth,
+    contentHeight,
+    scrollLeft,
+    scrollTop,
+    maxScrollLeft,
+    maxScrollTop,
+  };
+}
+
+/** Pan (view.x/y) correspondente a uma posição de scroll nativo. */
+export function viewPanFromScroll(
+  scrollLeft: number,
+  scrollTop: number,
+  scale: number,
+  bounds: MapContentBounds
+): Pick<TopologyView, 'x' | 'y'> {
+  return {
+    x: -bounds.x0 * scale - scrollLeft,
+    y: -bounds.y0 * scale - scrollTop,
+  };
+}
+
 /**
  * Escala/posição para o fit inicial do mapa (`fitToView` em `useTopologyViewport.ts`), usado
  * quando o painel não tem uma view salva ainda.
