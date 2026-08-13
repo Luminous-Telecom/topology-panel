@@ -83,6 +83,9 @@ function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): Topology
     if (!isHostNode(node)) {
       return node;
     }
+    if (!node.zabbixHost?.trim()) {
+      return node;
+    }
     const name = node.zabbixHost?.trim();
     const label = node.label?.trim();
     const entry = findQueryMetaForNode(node, meta);

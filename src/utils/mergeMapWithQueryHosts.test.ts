@@ -38,6 +38,15 @@ describe('mergeMapWithQueryHosts', () => {
     expect(next.nodes.map((n) => n.zabbixHost)).toEqual(['host-b']);
   });
 
+  it('dispositivo manual sem Query não duplica nó fantasma na grade', () => {
+    const map = emptyMap({
+      nodes: [{ id: 'device-1', type: 'host', x: 200, y: 300, label: 'Dispositivo' }],
+    });
+    const next = mergeMapWithQueryHosts(map, []);
+    expect(next.nodes).toHaveLength(1);
+    expect(next.nodes[0]).toMatchObject({ id: 'device-1', x: 200, y: 300 });
+  });
+
   it('host removido da Query mas mantido manualmente (sem zabbixHost) não some', () => {
     const map = emptyMap({
       nodes: [{ id: 'manual-1', type: 'host', x: 10, y: 10, label: 'Dispositivo manual' }],

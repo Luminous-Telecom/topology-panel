@@ -1123,7 +1123,7 @@ export function mergeMapWithQueryHosts(
   const hostNames =
     queryHosts.length > 0
       ? queryHosts
-      : savedHosts.map((n) => n.zabbixHost?.trim() || n.label?.trim() || n.id).filter(Boolean);
+      : savedHosts.map((n) => n.zabbixHost?.trim()).filter((key): key is string => Boolean(key));
 
   const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
   const visibleHostNames = hostNames.filter((h) => !isQueryHostHidden(h, hostMetadata[h], hidden));
