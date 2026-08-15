@@ -24,8 +24,10 @@ import {
   extractHostDisplayByRefId,
   extractHostMetadataFromData,
   extractQueryHostOptions,
+  extractQueryHosts,
   extractQueryHostsByRefId,
   enrichQueryHostOptionsFromMap,
+  filterQueryHostOptionsByDisplayHosts,
   findHostDisplayBucket,
   flattenHostDisplayByRefId,
   isHostNode,
@@ -45,6 +47,7 @@ import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
+import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
 
@@ -245,9 +248,19 @@ export function TopologyPanel({
     ]
   );
 
+  const queryMeta = useMemo(() => extractHostMetadataFromData(data), [data]);
+  const queryHosts = useMemo(() => extractQueryHosts(data), [data]);
+
+  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
+
+  const { metadata: apiHostMetadata, loading: zabbixMetadataLoading } = useZabbixHostMetadata(
+    zabbixDatasourceUid,
+    queryHosts
+  );
+
   const dataMeta = useMemo(
-    () => enrichHostMetadataFromMap(extractHostMetadataFromData(data), resolvedOptions.map),
-    [data, resolvedOptions.map]
+    () => enrichHostMetadataFromMap({ ...queryMeta, ...apiHostMetadata }, resolvedOptions.map),
+    [queryMeta, apiHostMetadata, resolvedOptions.map]
   );
 
   /**
@@ -336,8 +349,6 @@ export function TopologyPanel({
     [data, submapQueryRefIds, displayQueryRefIds]
   );
 
-  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
-
   const hostMetadata = dataMeta;
 
   const queryReady =
@@ -350,10 +361,13 @@ export function TopologyPanel({
     [resolvedOptions.map, displayQueryHosts, hostMetadata]
   );
 
-  const queryHostOptions = useMemo(
-    () => enrichQueryHostOptionsFromMap(extractQueryHostOptions(data), resolvedOptions.map),
-    [data, resolvedOptions.map]
-  );
+  const queryHostOptions = useMemo(() => {
+    const enriched = enrichQueryHostOptionsFromMap(
+      extractQueryHostOptions(data, hostMetadata),
+      resolvedOptions.map
+    );
+    return filterQueryHostOptionsByDisplayHosts(enriched, displayQueryHosts, hostMetadata);
+  }, [data, displayQueryHosts, hostMetadata, resolvedOptions.map]);
 
   const submapNodes = useMemo(() => {
     return resolvedOptions.map.nodes.filter(
@@ -556,6 +570,7 @@ export function TopologyPanel({
         refreshIntervalSec={refreshIntervalSec}
         queryData={data}
         zabbixDatasourceUid={zabbixDatasourceUid}
+        zabbixMetadataLoading={zabbixMetadataLoading}
         onMapChange={dashboardEditing ? commitChange : undefined}
         onViewChange={dashboardEditing ? handleViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}

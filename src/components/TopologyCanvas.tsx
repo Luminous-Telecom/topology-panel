@@ -109,6 +109,8 @@ interface Props {
   queryData?: PanelData;
   /** UID do datasource Zabbix (aba Query) — usado pelo modal de ping */
   zabbixDatasourceUid?: string;
+  /** Buscando IP da interface principal no Zabbix (fallback quando a Query não traz IP). */
+  zabbixMetadataLoading?: boolean;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
@@ -333,6 +335,7 @@ export function TopologyCanvas({
   refreshIntervalSec = null,
   queryData: liveQueryData,
   zabbixDatasourceUid,
+  zabbixMetadataLoading = false,
   onMapChange,
   onViewChange,
   onShowMinimapChange,
@@ -2131,6 +2134,7 @@ export function TopologyCanvas({
           mode="add"
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
+          zabbixMetadataLoading={zabbixMetadataLoading}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon) =>
             persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon))

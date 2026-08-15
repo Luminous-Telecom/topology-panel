@@ -47,6 +47,27 @@ describe('mergeMapWithQueryHosts', () => {
     expect(next.nodes[0]).toMatchObject({ id: 'device-1', x: 200, y: 300 });
   });
 
+  it('host salvo fora das queries de exibição permanece visível no mapa', () => {
+    const map = emptyMap({
+      nodes: [
+        {
+          id: 'saved-b',
+          type: 'host',
+          zabbixHost: '10.0.0.2',
+          subtitle: '10.0.0.2',
+          x: 50,
+          y: 80,
+          label: 'Host B',
+        },
+      ],
+    });
+    const metadata: HostMetadataMap = { 'host-a': { name: 'Host A', ip: '10.0.0.1' } };
+    const next = mergeMapWithQueryHosts(map, ['host-a'], metadata);
+    expect(next.nodes).toHaveLength(2);
+    expect(next.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['saved-b']));
+    expect(next.nodes.find((n) => n.id === 'saved-b')).toMatchObject({ x: 50, y: 80 });
+  });
+
   it('host removido da Query mas mantido manualmente (sem zabbixHost) não some', () => {
     const map = emptyMap({
       nodes: [{ id: 'manual-1', type: 'host', x: 10, y: 10, label: 'Dispositivo manual' }],

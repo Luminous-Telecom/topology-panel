@@ -548,11 +548,6 @@ function collectHostDisplayFromFrame(
       continue;
     }
     if (bucket[host]) {
-      const labels = (field.labels ?? {}) as Record<string, string | undefined>;
-      const ip = pickIpFromLabels(labels);
-      if (ip && !bucket[ip]) {
-        bucket[ip] = bucket[host];
-      }
       continue;
     }
     const last = lastNumericValue(field);
@@ -569,11 +564,6 @@ function collectHostDisplayFromFrame(
         }
       : { value: last };
     bucket[host] = entry;
-    const labels = (field.labels ?? {}) as Record<string, string | undefined>;
-    const ip = pickIpFromLabels(labels);
-    if (ip) {
-      bucket[ip] = entry;
-    }
   }
 }
 
@@ -853,20 +843,13 @@ function queryHostIpCandidates(node: QueryHostNodeRef): string[] {
   return out;
 }
 
-const IP_LABEL_KEYS = ['host_ip', 'ip', '__zbx_host_ip', 'hostip', 'interface_ip'];
-
-function pickIpFromLabels(labels: Record<string, string | undefined>): string | undefined {
-  for (const key of IP_LABEL_KEYS) {
-    const v = labels[key]?.trim();
-    if (v && isIpv4(v)) {
-      return v;
-    }
+function hostMetadataNamesMatch(a?: string, b?: string): boolean {
+  const left = a?.trim();
+  const right = b?.trim();
+  if (!left || !right) {
+    return false;
   }
-  const technical = labels.__zbx_host?.trim();
-  if (technical && isIpv4(technical)) {
-    return technical;
-  }
-  return undefined;
+  return left.toLowerCase() === right.toLowerCase();
 }
 
 /** IP de um host da Query (labels, chave IPv4 ou índice por nome no metadata). */
@@ -882,12 +865,25 @@ function resolveQueryHostOptionIp(
   if (isIpv4(hostKey)) {
     return hostKey;
   }
+
+  const hostKeyLower = hostKey.trim().toLowerCase();
+  const direct = metadata[hostKey];
+  if (direct?.ip?.trim() && isIpv4(direct.ip)) {
+    return direct.ip.trim();
+  }
+
   for (const [key, entry] of Object.entries(metadata)) {
+    if (key.toLowerCase() === hostKeyLower && entry.ip?.trim() && isIpv4(entry.ip)) {
+      return entry.ip.trim();
+    }
+    if (hostMetadataNamesMatch(entry.name, hostKey) && entry.ip?.trim() && isIpv4(entry.ip)) {
+      return entry.ip.trim();
+    }
     if (!isIpv4(key)) {
       continue;
     }
     const entryName = entry.name?.trim();
-    if (entryName === hostKey || entryName === meta?.name?.trim()) {
+    if (hostMetadataNamesMatch(entryName, hostKey) || hostMetadataNamesMatch(entryName, meta?.name)) {
       return key;
     }
   }
@@ -941,8 +937,11 @@ export function enrichQueryHostOptionsFromMap(
 }
 
 /** Hosts visíveis + IP a partir das séries da Query do painel. */
-export function extractQueryHostOptions(data: PanelData | DataFrame[] | undefined): QueryHostOption[] {
-  const metadata = extractHostMetadataFromData(data);
+export function extractQueryHostOptions(
+  data: PanelData | DataFrame[] | undefined,
+  metadataOverride?: HostMetadataMap
+): QueryHostOption[] {
+  const metadata = metadataOverride ?? extractHostMetadataFromData(data);
   const hostKeys = extractQueryHosts(data);
   const options: QueryHostOption[] = [];
   const seen = new Set<string>();
@@ -1049,7 +1048,44 @@ export function queryHostPickerOptions(
     }));
 }
 
-/** Nome/IP só dos labels da Query Zabbix (sem colunas de transform). */
+/** Restringe o picker de hosts às queries marcadas para exibição no mapa. */
+export function filterQueryHostOptionsByDisplayHosts(
+  options: QueryHostOption[],
+  displayHosts: string[],
+  metadata: HostMetadataMap = {}
+): QueryHostOption[] {
+  if (!displayHosts.length) {
+    return options;
+  }
+
+  const displayKeys = new Set<string>();
+  for (const key of displayHosts) {
+    const trimmed = key.trim();
+    if (!trimmed) {
+      continue;
+    }
+    displayKeys.add(trimmed.toLowerCase());
+    const meta = metadata[trimmed];
+    const name = meta?.name?.trim();
+    const ip = meta?.ip?.trim();
+    if (name) {
+      displayKeys.add(name.toLowerCase());
+    }
+    if (ip) {
+      displayKeys.add(ip.toLowerCase());
+    }
+  }
+
+  return options.filter((opt) => {
+    const keys = [opt.visibleName, opt.technicalName, opt.ip]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    return keys.some((key) => displayKeys.has(key));
+  });
+}
+
+/** Nome dos hosts a partir dos labels da Query (IP vem da API Zabbix). */
 export function extractHostMetadataFromData(data: PanelData | DataFrame[] | undefined): HostMetadataMap {
   const result: HostMetadataMap = {};
   if (!data) {
@@ -1064,20 +1100,22 @@ export function extractHostMetadataFromData(data: PanelData | DataFrame[] | unde
       if (!host) {
         continue;
       }
-      const visible = (labels.__zbx_host_visible_name || labels.host || host).trim();
-      const ip = pickIpFromLabels(labels) ?? result[host]?.ip;
-      const entry = {
+      const visible = (labels.__zbx_host_visible_name || labels.__zbx_host_name || labels.host || host).trim();
+      const hostid = labels.hostid?.trim() || labels.__zbx_hostid?.trim();
+      const entry: HostMetadata = {
         name: visible,
-        ip,
-        hostid: labels.hostid?.trim() || labels.__zbx_hostid?.trim() || result[host]?.hostid,
+        ip: isIpv4(host) ? host : result[host]?.ip,
+        hostid: hostid || result[host]?.hostid,
       };
       result[host] = entry;
-      if (ip && isIpv4(ip)) {
-        result[ip] = entry;
+      if (entry.name) {
+        result[entry.name] = entry;
       }
-      const hostid = entry.hostid?.trim();
-      if (hostid) {
-        result[hostid] = entry;
+      if (entry.ip && isIpv4(entry.ip)) {
+        result[entry.ip] = entry;
+      }
+      if (entry.hostid) {
+        result[entry.hostid] = entry;
       }
     }
   }
@@ -1176,12 +1214,21 @@ export function mergeMapWithQueryHosts(
   });
 
   const manualHosts = savedHosts.filter((n) => !n.zabbixHost?.trim() && !usedSavedIds.has(n.id));
+  const savedLayoutHosts = savedHosts.filter((n) => n.zabbixHost?.trim() && !usedSavedIds.has(n.id));
   const staticNodes = map.nodes.filter((n) => n.type === 'static');
   const networkNodes = map.nodes.filter((n) => n.type === 'network');
 
   return {
     ...map,
-    nodes: [...networkNodes, ...hostNodes, ...manualHosts, ...submaps, ...staticNodes, ...dashboardPickers],
+    nodes: [
+      ...networkNodes,
+      ...hostNodes,
+      ...manualHosts,
+      ...savedLayoutHosts,
+      ...submaps,
+      ...staticNodes,
+      ...dashboardPickers,
+    ],
   };
 }
 

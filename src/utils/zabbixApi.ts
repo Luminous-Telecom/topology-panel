@@ -1,4 +1,5 @@
 import { getBackendSrv } from '@grafana/runtime';
+import { HostMetadata, HostMetadataMap } from '../types';
 import { isIpv4 } from './ipv4';
 
 interface ZabbixApiResponse<T> {
@@ -104,6 +105,110 @@ async function resolveZabbixHostId(datasourceUid: string, hostName: string): Pro
     });
   }
   return asZabbixId(hosts?.[0]?.hostid) || undefined;
+}
+
+function pickMainInterfaceIp(
+  interfaces?: Array<{ ip: string; main?: string; type?: string }>
+): string | undefined {
+  if (!interfaces?.length) {
+    return undefined;
+  }
+  const main = interfaces.find((iface) => iface.main === '1');
+  if (main?.ip && isIpv4(main.ip)) {
+    return main.ip.trim();
+  }
+  const agent = interfaces.find((iface) => iface.type === '1');
+  if (agent?.ip && isIpv4(agent.ip)) {
+    return agent.ip.trim();
+  }
+  for (const iface of interfaces) {
+    const ip = iface.ip?.trim();
+    if (ip && isIpv4(ip)) {
+      return ip;
+    }
+  }
+  return undefined;
+}
+
+function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): void {
+  const visibleName = host.name?.trim() || host.host?.trim();
+  const technicalName = host.host?.trim();
+  const hostid = asZabbixId(host.hostid) || undefined;
+  const ip = pickMainInterfaceIp(host.interfaces);
+  if (!visibleName && !technicalName) {
+    return;
+  }
+  const entry: HostMetadata = {
+    name: visibleName || technicalName || '',
+    ip,
+    hostid,
+  };
+  const keys = [visibleName, technicalName, hostid, ip];
+  for (const key of keys) {
+    const trimmed = key?.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const prev = result[trimmed];
+    result[trimmed] = prev
+      ? {
+          name: entry.name || prev.name,
+          ip: prev.ip && isIpv4(prev.ip) ? prev.ip : entry.ip,
+          hostid: prev.hostid || entry.hostid,
+        }
+      : entry;
+  }
+}
+
+/** IP/nome da interface principal via host.get — usado quando a Query não traz IP nos labels. */
+export async function fetchZabbixHostMetadata(
+  datasourceUid: string,
+  hostNames: string[]
+): Promise<HostMetadataMap> {
+  const names = [
+    ...new Set(
+      hostNames
+        .map((name) => name.trim())
+        .filter((name) => Boolean(name) && !isIpv4(name))
+    ),
+  ];
+  if (!datasourceUid || !names.length) {
+    return {};
+  }
+
+  const result: HostMetadataMap = {};
+  const seenHostIds = new Set<string>();
+
+  for (const batch of chunk(names, BATCH_SIZE)) {
+    try {
+      const [byName, byHost] = await Promise.all([
+        zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+          filter: { name: batch },
+          output: ['hostid', 'host', 'name'],
+          selectInterfaces: ['ip', 'main', 'type'],
+        }),
+        zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+          filter: { host: batch },
+          output: ['hostid', 'host', 'name'],
+          selectInterfaces: ['ip', 'main', 'type'],
+        }),
+      ]);
+      for (const host of [...(byName ?? []), ...(byHost ?? [])]) {
+        const hostid = asZabbixId(host.hostid);
+        if (hostid && seenHostIds.has(hostid)) {
+          continue;
+        }
+        if (hostid) {
+          seenHostIds.add(hostid);
+        }
+        indexZabbixHostMetadata(result, host);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+
+  return result;
 }
 
 export interface HostIcmpStatus {
