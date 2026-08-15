@@ -91,6 +91,18 @@ describe('mergeMapWithQueryHosts', () => {
     );
   });
 
+  it('não emite dois nós com o mesmo id quando o mapa salvo tem cópia duplicada', () => {
+    const map = emptyMap({
+      nodes: [
+        { id: 'ltbac-ptz07-ptz15-2', type: 'host', zabbixHost: '10.58.206.2', x: -1089, y: -387, label: 'LTBAC - PTZ07-PTZ15' },
+        { id: 'ltbac-ptz07-ptz15-2', type: 'host', zabbixHost: '10.58.206.2', x: -1009, y: -157, label: 'LTBAC - PTZ07-PTZ15' },
+      ],
+    });
+    const next = mergeMapWithQueryHosts(map, ['10.58.206.2']);
+    const ids = next.nodes.filter((n) => n.type === 'host').map((n) => n.id);
+    expect(ids).toEqual(['ltbac-ptz07-ptz15-2']);
+  });
+
   it('usa o IP da metadata da Query como chave/hostToNodeId quando disponível', () => {
     const metadata: HostMetadataMap = { 'host-a': { name: 'Host A', ip: '10.0.0.5' } };
     const next = mergeMapWithQueryHosts(emptyMap(), ['host-a'], metadata);

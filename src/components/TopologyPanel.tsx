@@ -43,6 +43,7 @@ import {
   sameStringList,
 } from '../utils';
 import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
+import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
@@ -225,7 +226,7 @@ export function TopologyPanel({
     const merged = {
       ...defaultOptions(),
       ...options,
-      map: useIncomingMap ? (options.map as TopologyMap) : defaultOptions().map,
+      map: useIncomingMap ? ensureUniqueNodeIds(options.map as TopologyMap) : defaultOptions().map,
     };
     const colored = resolvePanelOptionsColors(merged, theme);
     return {
@@ -478,14 +479,20 @@ export function TopologyPanel({
   }, [legacySubmapFetchKey]);
 
   useEffect(() => {
-    if (!onOptionsChange || !Object.keys(dataMeta).length) {
+    if (!onOptionsChange || mapValidationErrors.length > 0) {
       return;
     }
-    const synced = syncMapWithQueryMeta(latestOptionsRef.current.map, dataMeta);
-    if (synced) {
-      onOptionsChange({ ...latestOptionsRef.current, map: synced });
+    const currentMap = latestOptionsRef.current.map;
+    if (!currentMap || !Array.isArray(currentMap.nodes)) {
+      return;
     }
-  }, [dataMeta, onOptionsChange]);
+    const unique = ensureUniqueNodeIds(currentMap);
+    const synced = Object.keys(dataMeta).length ? syncMapWithQueryMeta(unique, dataMeta) : null;
+    const next = synced ?? (unique !== currentMap ? unique : null);
+    if (next) {
+      onOptionsChange({ ...latestOptionsRef.current, map: next });
+    }
+  }, [dataMeta, mapValidationErrors, onOptionsChange]);
 
   const applyMap = useCallback(
     (map: TopologyMap) => {

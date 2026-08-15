@@ -3,6 +3,7 @@ import { TopologyMap, TopologyNode } from '../types';
 import {
   addLinkToMap,
   linksMatchEndpoints,
+  ensureUniqueNodeIds,
   moveStoredNode,
   moveStoredNodesBulk,
   rebindZabbixHost,
@@ -111,6 +112,46 @@ describe('moveStoredNode / moveStoredNodesBulk', () => {
   it('ignora ids não encontrados sem lançar erro', () => {
     const map = emptyMap({ nodes: [hostNode()] });
     expect(() => moveStoredNodesBulk(map, [{ nodeId: 'ghost', x: 1, y: 1 }])).not.toThrow();
+  });
+
+  it('move o host arrastado quando outro nó compartilha o mesmo IP', () => {
+    const first = hostNode({
+      id: 'ltbac-a',
+      zabbixHost: '10.58.206.2',
+      subtitle: '10.58.206.2',
+      x: -1089,
+      y: -387,
+    });
+    const second = hostNode({
+      id: 'ltbac-b',
+      zabbixHost: '10.58.206.2',
+      subtitle: '10.58.206.2',
+      x: -1009,
+      y: -157,
+    });
+    const map = emptyMap({ nodes: [first, second] });
+    const next = moveStoredNode(map, second, 400, 500);
+    expect(next.nodes.find((n) => n.id === 'ltbac-a')).toMatchObject({ x: -1089, y: -387 });
+    expect(next.nodes.find((n) => n.id === 'ltbac-b')).toMatchObject({ x: 400, y: 500 });
+  });
+});
+
+describe('ensureUniqueNodeIds', () => {
+  it('sem colisão, devolve o mesmo mapa', () => {
+    const map = emptyMap({ nodes: [hostNode(), hostNode({ id: 'b' })] });
+    expect(ensureUniqueNodeIds(map)).toBe(map);
+  });
+
+  it('renomeia a cópia posterior quando dois nós têm o mesmo id', () => {
+    const map = emptyMap({
+      nodes: [
+        hostNode({ id: 'ltbac-ptz07-ptz15-2', x: -1089, y: -387 }),
+        hostNode({ id: 'ltbac-ptz07-ptz15-2', x: -1009, y: -157 }),
+      ],
+    });
+    const next = ensureUniqueNodeIds(map);
+    expect(next.nodes.map((n) => n.id)).toEqual(['ltbac-ptz07-ptz15-2', 'ltbac-ptz07-ptz15-2-2']);
+    expect(next.nodes[1]).toMatchObject({ x: -1009, y: -157 });
   });
 });
 

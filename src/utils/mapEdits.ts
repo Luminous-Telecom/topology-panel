@@ -36,6 +36,40 @@ export function areNetworksLocked(map: TopologyMap): boolean {
   return map.networksLocked !== false;
 }
 
+function nextAvailableNodeId(base: string, used: Set<string>): string {
+  let n = 2;
+  let candidate = `${base}-${n}`;
+  while (used.has(candidate)) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
+}
+
+/**
+ * Garante id único em `map.nodes`. Cópias com o mesmo id (comum após colar/sincronizar
+ * o mesmo host duas vezes) fazem o React e o `nodeLayouts` (Map por id) ignorarem uma
+ * delas — o arraste parece não funcionar.
+ */
+export function ensureUniqueNodeIds(map: TopologyMap): TopologyMap {
+  if (!Array.isArray(map.nodes)) {
+    return map;
+  }
+  const seen = new Set<string>();
+  let changed = false;
+  const nodes = map.nodes.map((node) => {
+    if (!seen.has(node.id)) {
+      seen.add(node.id);
+      return node;
+    }
+    changed = true;
+    const nextId = nextAvailableNodeId(node.id, seen);
+    seen.add(nextId);
+    return { ...node, id: nextId };
+  });
+  return changed ? { ...map, nodes } : map;
+}
+
 /**
  * Adiciona um nó de um tipo "utilitário" (submapa/rede/estático/seletor) na posição dada.
  * `idPrefix-N` e `makeLabel` usam a contagem de nós já existentes desse tipo (1-based).

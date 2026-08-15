@@ -1185,6 +1185,9 @@ export function mergeMapWithQueryHosts(
 
     if (savedMatches.length > 0) {
       for (const saved of savedMatches) {
+        if (usedSavedIds.has(saved.id)) {
+          continue;
+        }
         usedSavedIds.add(saved.id);
         hostNodes.push({
           ...saved,
@@ -1272,7 +1275,13 @@ export function upsertHostLayout(map: TopologyMap, zabbixHost: string, patch: Pa
 
   const nodes = [...map.nodes];
   let idx = -1;
-  if (isIpv4(key)) {
+  const patchId = patch.id?.trim();
+  // Nó específico primeiro — dois hosts com o mesmo IP (cópias no mapa) não
+  // podem compartilhar o findIndex por IP, senão o arraste grava no outro.
+  if (patchId) {
+    idx = nodes.findIndex((n) => n.id === patchId);
+  }
+  if (idx < 0 && isIpv4(key)) {
     idx = nodes.findIndex(
       (n) => isHostNode(n) && (n.subtitle?.trim() === key || n.zabbixHost?.trim() === key)
     );
