@@ -3,7 +3,7 @@ import { TopologyView } from '../types';
 import {
   computeMapScrollMetrics,
   MapContentBounds,
-  viewPanFromScroll,
+  viewPanDeltaFromScroll,
 } from '../utils/mapBounds';
 
 interface UseMapContentScrollParams {
@@ -42,6 +42,8 @@ export function useMapContentScroll({
   suspendSyncRef,
 }: UseMapContentScrollParams): UseMapContentScrollResult {
   const ignoreScrollEventRef = useRef(false);
+  /** Último `scrollLeft/scrollTop` visto no elemento — base do delta em `onScroll`. */
+  const lastNativeScrollRef = useRef({ left: 0, top: 0 });
 
   // `true` enquanto o próprio `onScroll` está processando um evento nativo (arraste da
   // scrollbar, roda do mouse, trackpad sobre o container). Serve só para o efeito de sync
@@ -56,6 +58,10 @@ export function useMapContentScroll({
     [bounds, view, viewport.h, viewport.w]
   );
 
+  const rememberNativeScroll = useCallback((el: HTMLDivElement) => {
+    lastNativeScrollRef.current = { left: el.scrollLeft, top: el.scrollTop };
+  }, []);
+
   const writeScrollPosition = useCallback(
     (scrollLeft: number, scrollTop: number) => {
       const el = scrollRef.current;
@@ -65,17 +71,19 @@ export function useMapContentScroll({
       const nextLeft = Math.round(scrollLeft);
       const nextTop = Math.round(scrollTop);
       if (Math.abs(el.scrollLeft - nextLeft) < 1 && Math.abs(el.scrollTop - nextTop) < 1) {
+        rememberNativeScroll(el);
         return;
       }
       ignoreScrollEventRef.current = true;
       el.scrollLeft = nextLeft;
       el.scrollTop = nextTop;
+      rememberNativeScroll(el);
       // O evento `scroll` costuma ser síncrono ao atribuir; libera no próximo frame por segurança.
       requestAnimationFrame(() => {
         ignoreScrollEventRef.current = false;
       });
     },
-    [scrollRef]
+    [rememberNativeScroll, scrollRef]
   );
 
   const syncScrollFromView = useCallback(() => {
@@ -104,11 +112,16 @@ export function useMapContentScroll({
     // Não checa `suspendSyncRef` aqui: durante o arraste da própria barra de rolagem nativa,
     // `scrollLeft/scrollTop` é a fonte de verdade e este é o único caminho que atualiza a view a
     // partir dela.
-    if (ignoreScrollEventRef.current) {
-      return;
-    }
     const el = scrollRef.current;
     if (!el) {
+      return;
+    }
+
+    const prevLeft = lastNativeScrollRef.current.left;
+    const prevTop = lastNativeScrollRef.current.top;
+    rememberNativeScroll(el);
+
+    if (ignoreScrollEventRef.current) {
       return;
     }
 
@@ -120,17 +133,20 @@ export function useMapContentScroll({
       isNativeScrollingRef.current = false;
       return;
     }
-    const pan = viewPanFromScroll(el.scrollLeft, el.scrollTop, current.scale, bounds);
-    if (Math.abs(pan.x - current.x) < 0.5 && Math.abs(pan.y - current.y) < 0.5) {
+
+    const { dx, dy } = viewPanDeltaFromScroll(prevLeft, prevTop, el.scrollLeft, el.scrollTop);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
       isNativeScrollingRef.current = false;
       return;
     }
 
+    // Delta, não pan absoluto: mapa centralizado satura `scrollLeft` em 0, e reconstruir o
+    // pan a partir de 0 encostaria o conteúdo à esquerda no primeiro evento da barra.
     // Commit direto, sem rAF de batching: o navegador já entrega `scroll` no máximo 1x por
     // frame, então um segundo estágio de throttling só adiciona um frame de atraso entre a
     // posição da barra (que o navegador já moveu) e o conteúdo do mapa (que só acompanha depois
     // do commit + re-render) — é esse atraso que aparece como "pulo" ao segurar a scrollbar.
-    commitView((prev) => ({ ...prev, x: pan.x, y: pan.y }));
+    commitView((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
 
     // Libera o guard depois que o commit e o efeito de sync passivo (que roda em resposta a
     // ele) já tiveram a chance de rodar neste ciclo, evitando reabrir a janela de corrida entre
@@ -138,7 +154,7 @@ export function useMapContentScroll({
     requestAnimationFrame(() => {
       isNativeScrollingRef.current = false;
     });
-  }, [bounds, commitView, scrollRef, viewRef]);
+  }, [bounds, commitView, rememberNativeScroll, scrollRef, viewRef]);
 
   return {
     contentWidth: metrics.contentWidth,

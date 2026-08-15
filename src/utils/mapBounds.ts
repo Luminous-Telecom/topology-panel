@@ -102,7 +102,10 @@ export function computeMapScrollMetrics(
   };
 }
 
-/** Pan (view.x/y) correspondente a uma posição de scroll nativo. */
+/** Pan (view.x/y) correspondente a uma posição de scroll nativo.
+ * Só é o inverso de `computeMapScrollMetrics` quando o pan cabe no intervalo
+ * `[0, maxScroll]` — mapa centralizado (pan além da origem do conteúdo) satura
+ * em `scrollLeft = 0` e esta função devolve o pan encostado à esquerda. */
 export function viewPanFromScroll(
   scrollLeft: number,
   scrollTop: number,
@@ -112,6 +115,24 @@ export function viewPanFromScroll(
   return {
     x: -bounds.x0 * scale - scrollLeft,
     y: -bounds.y0 * scale - scrollTop,
+  };
+}
+
+/**
+ * Delta de pan correspondente a uma mudança de `scrollLeft`/`scrollTop` nativo.
+ * Usar o delta — e não `viewPanFromScroll` absoluto — ao arrastar a scrollbar:
+ * o inset de um mapa centralizado não cabe em `scrollLeft` (clamped a 0), e a
+ * conversão absoluta puxaria o mapa para a esquerda no primeiro evento.
+ */
+export function viewPanDeltaFromScroll(
+  prevScrollLeft: number,
+  prevScrollTop: number,
+  nextScrollLeft: number,
+  nextScrollTop: number
+): { dx: number; dy: number } {
+  return {
+    dx: prevScrollLeft - nextScrollLeft,
+    dy: prevScrollTop - nextScrollTop,
   };
 }
 

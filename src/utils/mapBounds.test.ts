@@ -3,6 +3,7 @@ import {
   computeFitToViewTransform,
   computeMapScrollMetrics,
   computeTopologyContentBounds,
+  viewPanDeltaFromScroll,
   viewPanFromScroll,
 } from './mapBounds';
 
@@ -85,5 +86,37 @@ describe('computeMapScrollMetrics', () => {
     const metrics = computeMapScrollMetrics(scrolled, { ...pan, scale }, 800, 600);
     expect(metrics.scrollLeft).toBe(120);
     expect(metrics.scrollTop).toBe(80);
+  });
+
+  it('mapa centralizado satura scrollLeft em 0 e viewPanFromScroll não reconstrói o pan', () => {
+    const bounds = { x0: -48, y0: -48, x1: 2048, y1: 1548, width: 2096, height: 1596 };
+    const view = { x: 100, y: 80, scale: 1 };
+    const metrics = computeMapScrollMetrics(bounds, view, 1200, 800);
+    expect(metrics.maxScrollLeft).toBeGreaterThan(0);
+    expect(metrics.maxScrollTop).toBeGreaterThan(0);
+    expect(metrics.scrollLeft).toBe(0);
+    expect(metrics.scrollTop).toBe(0);
+    const pan = viewPanFromScroll(metrics.scrollLeft, metrics.scrollTop, view.scale, bounds);
+    expect(pan.x).toBe(48);
+    expect(pan.y).toBe(48);
+    expect(pan.x).not.toBeCloseTo(view.x);
+    expect(pan.y).not.toBeCloseTo(view.y);
+  });
+});
+
+describe('viewPanDeltaFromScroll', () => {
+  it('arrastar a barra com o mapa centralizado só aplica o delta — não encosta à esquerda', () => {
+    const view = { x: 100, y: 40, scale: 0.5 };
+    const delta = viewPanDeltaFromScroll(0, 0, 10, 4);
+    expect(view.x + delta.dx).toBe(90);
+    expect(view.y + delta.dy).toBe(36);
+  });
+
+  it('scroll de volta à origem restaura o pan extra', () => {
+    const start = { x: 100, y: 40 };
+    const out = viewPanDeltaFromScroll(0, 0, 25, 10);
+    const back = viewPanDeltaFromScroll(25, 10, 0, 0);
+    expect(start.x + out.dx + back.dx).toBe(100);
+    expect(start.y + out.dy + back.dy).toBe(40);
   });
 });
