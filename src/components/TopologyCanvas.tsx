@@ -119,6 +119,8 @@ interface Props {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). */
+  hideOverlayControls?: boolean;
 }
 
 const styles = {
@@ -344,6 +346,7 @@ export function TopologyCanvas({
   onRedo,
   canUndo = false,
   canRedo = false,
+  hideOverlayControls = false,
 }: Props) {
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
@@ -1486,37 +1489,39 @@ export function TopologyCanvas({
       }}
       onContextMenu={(e) => handleContextMenu(e)}
     >
-      <TopologyToolbar
-        tool={tool}
-        onToolChange={setTool}
-        locked={Boolean(map.locked)}
-        networksLocked={networksLocked}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
-        canPaste={canEditCanvas && clipboardReady}
-        onUndo={onUndo}
-        onRedo={onRedo}
-        onCopy={copySelection}
-        onPaste={pasteAtViewCenter}
-        onToggleLock={() => persist(toggleMapLock(storedMap))}
-        onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
-        flowPaused={flowPaused}
-        onToggleFlow={() => setFlowPaused((p) => !p)}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={() => void toggleFullscreen()}
-        showMinimap={showMinimap}
-        onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
-        showLegend={showLegend}
-        onToggleLegend={() => onShowLegendChange?.(!showLegend)}
-        showEditControls={canPersist}
-        searchNodes={map.nodes}
-        searchOpen={searchOpen}
-        onSearchOpenChange={setSearchOpen}
-        onSearchFocusNode={focusNodeOnMap}
-      />
+      {!hideOverlayControls && (
+        <TopologyToolbar
+          tool={tool}
+          onToolChange={setTool}
+          locked={Boolean(map.locked)}
+          networksLocked={networksLocked}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
+          canPaste={canEditCanvas && clipboardReady}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          onCopy={copySelection}
+          onPaste={pasteAtViewCenter}
+          onToggleLock={() => persist(toggleMapLock(storedMap))}
+          onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
+          flowPaused={flowPaused}
+          onToggleFlow={() => setFlowPaused((p) => !p)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => void toggleFullscreen()}
+          showMinimap={showMinimap}
+          onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
+          showLegend={showLegend}
+          onToggleLegend={() => onShowLegendChange?.(!showLegend)}
+          showEditControls={canPersist}
+          searchNodes={map.nodes}
+          searchOpen={searchOpen}
+          onSearchOpenChange={setSearchOpen}
+          onSearchFocusNode={focusNodeOnMap}
+        />
+      )}
 
-      {options.showDashboardNav !== false && (
+      {!hideOverlayControls && options.showDashboardNav !== false && (
         <DashboardNavButton
           label={options.dashboardNavLabel?.trim() || 'Dashboards'}
           choices={options.dashboardNavChoices ?? []}

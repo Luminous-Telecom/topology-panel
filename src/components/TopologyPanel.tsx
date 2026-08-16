@@ -47,6 +47,7 @@ import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
+import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
@@ -189,6 +190,7 @@ export function TopologyPanel({
 }: Props) {
   const theme = useTheme2();
   const dashboardEditing = useDashboardEditMode();
+  const playlistPlayback = useGrafanaPlaylistPlayback();
   useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
 
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
@@ -535,6 +537,7 @@ export function TopologyPanel({
         onRedo={dashboardEditing ? redo : undefined}
         canUndo={dashboardEditing && canUndo}
         canRedo={dashboardEditing && canRedo}
+        hideOverlayControls={playlistPlayback}
       />
     </div>
   );

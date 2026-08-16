@@ -25,6 +25,7 @@ neste repositório (não recrie o equivalente em outro arquivo):
 | Adicionar nó "utilitário" (submapa/rede/estático/seletor) numa posição | `addTypedNodeAt` em `src/utils/mapEdits.ts` — chame com o `type`/prefixo/label certos em vez de duplicar o bloco `filter + id + push` |
 | Extrair hosts (nomes/hostids) visíveis de um `TopologyMap` | `extractTopologyHostNames`/`extractTopologyHostRefs` em `src/utils/submapHosts.ts` |
 | Detectar modo de edição do dashboard Grafana | `useDashboardEditMode` em `src/hooks/` |
+| Detectar lista de reprodução / kiosk Grafana | `useGrafanaPlaylistPlayback` + `src/utils/grafanaPlaylist.ts` |
 | Undo/redo do mapa | `useMapHistory` em `src/hooks/` |
 | Ícone de host (SVG inline ou react-icons) | `src/utils/hostIcons.tsx` + `src/utils/customIcons.ts` |
 | Rótulo de bloco para conteúdo que **não** é um único form control (texto só leitura, grade de botões, resultado/lista) — evita `<label>` órfão do `<Field>` | `FieldReadout` em `src/components/FieldReadout.tsx` |

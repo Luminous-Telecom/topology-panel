@@ -7,10 +7,10 @@ alwaysApply: false
 # Grafana — só APIs oficiais
 
 - **Proibido** manipular o DOM do dashboard fora do próprio painel: sem `document.querySelector`
-  em elementos do chrome do Grafana, sem `document.getElementById` para achar outros painéis. A
-  única exceção documentada é `useDashboardEditMode.ts`, que detecta o modo de edição do dashboard
-  via seletor de `data-testid`/`aria-label` porque o Grafana não expõe esse estado por API — não
-  copie esse padrão para outros casos sem necessidade equivalente.
+  em elementos do chrome do Grafana, sem `document.getElementById` para achar outros painéis. As
+  únicas exceções documentadas são `useDashboardEditMode.ts` (modo edição) e
+  `useGrafanaPlaylistPlayback.ts` / `documentHasPlaylistControls` (lista de reprodução) — o Grafana
+  não expõe esses estados por API. Não copie esse padrão para outros casos sem necessidade equivalente.
 - `document.createElement` só é aceitável para elementos efêmeros e desanexados do próprio plugin
   (ex.: `iframe`/`a` temporários para abrir `winbox://`/`ssh://` em `hostTools.ts`, `canvas` para
   gerar imagem em memória). Nunca para navegar a árvore de outros painéis/dashboard, nem para mutar
