@@ -5,7 +5,12 @@ import { QueryDisplayRefIdsEditor } from './components/QueryDisplayRefIdsEditor'
 import { HostTypeColorsEditor } from './components/HostTypeColorsEditor';
 import { StatusValueMappingsEditor } from './components/StatusValueMappingsEditor';
 import { TopologyEditor } from './editor/TopologyEditor';
-import { TopologyPanelOptions, defaultOptions, defaultStatusValueMappings } from './types';
+import {
+  TopologyPanelOptions,
+  defaultHostTypeColors,
+  defaultOptions,
+  defaultStatusValueMappings,
+} from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
   .setPanelOptions((builder) => {
@@ -107,21 +112,21 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'colorOnline',
         name: 'Cor online',
         description: 'Hosts com valor mapeado como online',
-        defaultValue: '#2E7D32',
+        defaultValue: '#28eb0e',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorOffline',
         name: 'Cor offline',
         description: 'Hosts com valor mapeado como offline',
-        defaultValue: '#C62828',
+        defaultValue: '#ff0101',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorAlert',
         name: 'Cor alerta',
         description: 'Hosts com valor mapeado como alerta',
-        defaultValue: '#EF6C00',
+        defaultValue: '#ff7300',
         category: ['Aparência'],
       })
       .addCustomEditor({
@@ -148,19 +153,19 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
           'Fundo do card por tipo/ícone quando online ou sem query (offline/alerta usam as cores globais)',
         editor: HostTypeColorsEditor,
         category: ['Aparência'],
-        defaultValue: {},
+        defaultValue: defaultHostTypeColors(),
       })
       .addColorPicker({
         path: 'colorStatic',
         name: 'Cor estático',
         description: 'Cor de fundo padrão dos rótulos estáticos (pode sobrescrever por nó)',
-        defaultValue: '#616161',
+        defaultValue: '#8f3bb8',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorSubmap',
         name: 'Cor submapa',
-        defaultValue: '#1565C0',
+        defaultValue: '#56A64B',
         category: ['Aparência'],
       })
       .addColorPicker({
@@ -173,14 +178,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'colorLinkDownload',
         name: 'Cor download (→ origem)',
         description: 'Faixa animada no sentido da origem',
-        defaultValue: '#4FC3F7',
+        defaultValue: '#C0D8FF',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorLinkUpload',
         name: 'Cor upload (→ destino)',
         description: 'Faixa animada no sentido do destino (seta)',
-        defaultValue: '#FFB74D',
+        defaultValue: '#FADE2A',
         category: ['Aparência'],
       })
       .addNumberInput({
@@ -229,32 +234,32 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'legendSubmap',
         name: 'Submapa',
-        defaultValue: false,
+        defaultValue: true,
         category: ['Legenda'],
       })
       .addBooleanSwitch({
         path: 'legendLink',
         name: 'Cabo',
-        defaultValue: false,
+        defaultValue: true,
         category: ['Legenda'],
       })
       .addBooleanSwitch({
         path: 'legendDownload',
         name: 'Download (origem)',
-        defaultValue: false,
+        defaultValue: true,
         category: ['Legenda'],
       })
       .addBooleanSwitch({
         path: 'legendUpload',
         name: 'Upload (destino)',
-        defaultValue: false,
+        defaultValue: true,
         category: ['Legenda'],
       })
       .addBooleanSwitch({
         path: 'legendHostTypes',
         name: 'Cores por tipo de ícone',
         description: 'Lista os tipos configurados em "Ícone → cor por tipo" com a cor de cada um',
-        defaultValue: false,
+        defaultValue: true,
         category: ['Legenda'],
       })
       .addCustomEditor({

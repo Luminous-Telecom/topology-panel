@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Topology Panel">
+  <rect width="64" height="64" rx="14" fill="#0B4F75"/>
+  <g fill="none" stroke="#3ED6FF" stroke-width="3" stroke-linecap="round">
+    <path d="M32 16 L16 28 L16 44 L32 56 L48 44 L48 28 Z"/>
+    <path d="M32 16 L32 56"/>
+    <path d="M16 28 L48 44"/>
+    <path d="M48 28 L16 44"/>
+  </g>
+  <circle cx="32" cy="16" r="5" fill="#FFFFFF"/>
+  <circle cx="16" cy="28" r="4.5" fill="#28eb0e"/>
+  <circle cx="48" cy="28" r="4.5" fill="#FFFFFF"/>
+  <circle cx="16" cy="44" r="4.5" fill="#FFFFFF"/>
+  <circle cx="48" cy="44" r="4.5" fill="#ff0101"/>
+  <circle cx="32" cy="56" r="5" fill="#FFFFFF"/>
+  <circle cx="32" cy="36" r="6" fill="#3ED6FF"/>
+</svg>

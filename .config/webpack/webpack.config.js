@@ -74,7 +74,10 @@ module.exports = (env) => {
     },
     plugins: [
       new CopyWebpackPlugin({
-        patterns: [{ from: 'src/plugin.json', to: '.' }],
+        patterns: [
+          { from: 'src/plugin.json', to: '.' },
+          { from: 'src/img/plugin-icon.svg', to: 'img/plugin-icon.svg' },
+        ],
       }),
     ],
   };
