@@ -16,13 +16,13 @@ export const HOST_ICON_SIZE = 28;
 export const HOST_ICON_GAP = 6;
 
 /** Escala horizontal — equipamentos rack/chassis mais largos que altos. */
-export const HOST_ICON_WIDTH_SCALE: Partial<Record<TopologyHostIcon, number>> = {
+const HOST_ICON_WIDTH_SCALE: Partial<Record<TopologyHostIcon, number>> = {
   olt: 2,
   dvr: 1.35,
 };
 
 /** Escala por tipo — switches e equipamentos largos um pouco maiores no mapa. */
-export const HOST_ICON_SIZE_SCALE: Partial<Record<TopologyHostIcon, number>> = {
+const HOST_ICON_SIZE_SCALE: Partial<Record<TopologyHostIcon, number>> = {
   switch_managed: 1.45,
   switch_unmanaged: 1.45,
   camera: 1.3,
@@ -117,7 +117,7 @@ const BRAND_ICON_COLORS: Partial<Record<TopologyHostIcon, string>> = {
 };
 
 /** Equipamentos gerenciáveis — mesma cor padrão no mapa. */
-export const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
+const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
   'router',
   'bras',
   'switch_managed',
@@ -131,20 +131,20 @@ export const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
 ];
 
 /** Cor padrão dos ícones gerenciáveis no mapa. */
-export const MANAGED_ICON_COLOR = '#4FC3F7';
+const MANAGED_ICON_COLOR = '#4FC3F7';
 
 /** Switch não gerenciável e demais ícones passivos — branco. */
-export const PASSIVE_ICON_COLOR = 'rgba(255,255,255,0.92)';
+const PASSIVE_ICON_COLOR = 'rgba(255,255,255,0.92)';
 
-export function isManagedHostIcon(icon: TopologyHostIcon): boolean {
+function isManagedHostIcon(icon: TopologyHostIcon): boolean {
   return MANAGED_HOST_ICONS.includes(icon);
 }
 
-export function isPassiveCustomIcon(icon: TopologyHostIcon): boolean {
+function isPassiveCustomIcon(icon: TopologyHostIcon): boolean {
   return PASSIVE_CUSTOM_ICONS.includes(icon);
 }
 
-export function hostIconColor(icon: TopologyHostIcon): string {
+function hostIconColor(icon: TopologyHostIcon): string {
   if (isCustomAssetIcon(icon)) {
     return isPassiveCustomIcon(icon) ? PASSIVE_ICON_COLOR : MANAGED_ICON_COLOR;
   }

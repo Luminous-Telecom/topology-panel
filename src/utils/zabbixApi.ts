@@ -235,7 +235,7 @@ function parseFloatOrNull(value?: string): number | null {
 
 let cachedPingScriptIds: { panel?: string; continuous?: string } | undefined;
 
-export interface PingScriptResult {
+interface PingScriptResult {
   success: boolean;
   output: string;
   error?: string;

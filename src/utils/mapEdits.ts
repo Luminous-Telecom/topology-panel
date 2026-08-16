@@ -398,7 +398,7 @@ export function moveStoredNodesBulk(
 
 export { clientToMapCoords } from './mapCoords';
 
-export function nextManualHostId(map: TopologyMap): string {
+function nextManualHostId(map: TopologyMap): string {
   const manual = map.nodes.filter((n) => n.type === 'host' && !n.zabbixHost);
   return `device-${manual.length + 1}`;
 }

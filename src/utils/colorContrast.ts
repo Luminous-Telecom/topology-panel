@@ -33,7 +33,7 @@ function parseRgb(value: string): [number, number, number] | null {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-export function parseCssColor(value: string): [number, number, number] | null {
+function parseCssColor(value: string): [number, number, number] | null {
   if (!value?.trim()) {
     return null;
   }

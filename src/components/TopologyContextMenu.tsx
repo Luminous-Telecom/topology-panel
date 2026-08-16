@@ -100,7 +100,7 @@ const searchEmptyStyle = css`
 `;
 
 /** Painel flutuante da pesquisa (o botão fica na toolbar). */
-export function TopologySearch({
+function TopologySearch({
   nodes,
   open,
   onOpenChange,
@@ -515,29 +515,6 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
   return createPortal(menu, document.body);
 }
 
-const hintStyle = css`
-  position: absolute;
-  top: 44px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  padding: 6px 12px;
-  border-radius: 4px;
-  background: rgba(21, 101, 192, 0.92);
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.35;
-  pointer-events: none;
-  text-align: center;
-  white-space: normal;
-  max-width: min(560px, calc(100% - 280px));
-  box-sizing: border-box;
-`;
-
-export function TopologyEditHint({ children }: { children: React.ReactNode }) {
-  return <div className={hintStyle}>{children}</div>;
-}
-
 const legendStyle = css`
   position: absolute;
   top: 50%;
@@ -584,7 +561,7 @@ const legendSwatchStyle = css`
   box-sizing: border-box;
 `;
 
-export type TopologyLegendItem = { label: string; color: string };
+type TopologyLegendItem = { label: string; color: string };
 
 const legendCountdownStyle = css`
   margin-top: 6px;

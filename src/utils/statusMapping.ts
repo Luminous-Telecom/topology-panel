@@ -59,7 +59,7 @@ export function resolveMappingLabel(
   return undefined;
 }
 
-export interface ResolvedHostStatusDisplay {
+interface ResolvedHostStatusDisplay {
   value: number;
   status: TopologyHostStatus;
   color: string;

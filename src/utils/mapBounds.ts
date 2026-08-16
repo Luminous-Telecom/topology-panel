@@ -55,7 +55,7 @@ export function isNetworkNode(node: TopologyNode): boolean {
 }
 
 /** Tamanho da área rolável e posição do scroll equivalentes ao pan atual. */
-export interface MapScrollMetrics {
+interface MapScrollMetrics {
   contentWidth: number;
   contentHeight: number;
   scrollLeft: number;

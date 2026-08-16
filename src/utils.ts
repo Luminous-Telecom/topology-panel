@@ -367,7 +367,7 @@ export function collectHostHiddenKeys(
 }
 
 /** Host da Query oculto pelo usuário (hiddenHosts pode ter IP ou nome). */
-export function isQueryHostHidden(
+function isQueryHostHidden(
   hostName: string,
   meta: HostMetadataMap[string] | undefined,
   hidden: Set<string>
@@ -567,7 +567,7 @@ function collectHostDisplayFromFrame(
   }
 }
 
-export function extractHostDisplay(
+function extractHostDisplay(
   data: PanelData,
   statusOptions: StatusColorOptions
 ): HostDisplayMap {
@@ -890,7 +890,7 @@ function resolveQueryHostOptionIp(
   return undefined;
 }
 
-export function formatQueryHostOptionLabel(host: QueryHostOption): string {
+function formatQueryHostOptionLabel(host: QueryHostOption): string {
   if (host.ip && isIpv4(host.ip)) {
     return `${host.visibleName} (${host.ip})`;
   }

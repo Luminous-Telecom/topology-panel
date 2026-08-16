@@ -77,7 +77,6 @@ describe('normalizeStoredPanelColors', () => {
     colorLinkUpload: '#FFB74D',
     colorNetworkFill: 'rgba(0,0,0,0.2)',
     colorNetworkBorder: '#FFFFFF',
-    colorNetworkLabel: '#FFFFFF',
   } as unknown as TopologyPanelOptions;
 
   it('converte nomes de tema salvos (ex.: "green") para hex e marca changed=true', () => {

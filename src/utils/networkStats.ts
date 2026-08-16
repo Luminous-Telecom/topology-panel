@@ -79,7 +79,7 @@ function resolveRegionHostStatus(
   return display.status;
 }
 
-export function countRegionStats(
+function countRegionStats(
   hostNames: string[],
   hostDisplay: HostDisplayMap,
   hostMetadata?: HostMetadataMap
@@ -122,7 +122,7 @@ function pointInRect(px: number, py: number, x: number, y: number, w: number, h:
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
-export function hostsInsideNetwork(
+function hostsInsideNetwork(
   networkId: string,
   networkLayout: NodeLayout & { x: number; y: number },
   hostNodes: TopologyNode[],

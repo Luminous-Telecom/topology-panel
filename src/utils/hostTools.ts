@@ -2,7 +2,7 @@ import { isIpv4 } from './ipv4';
 
 export type HostToolId = 'ping' | 'web' | 'winbox' | 'telnet' | 'winboxNovo' | 'ssh';
 
-export interface HostToolDef {
+interface HostToolDef {
   id: HostToolId;
   label: string;
 }

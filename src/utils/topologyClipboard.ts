@@ -78,7 +78,7 @@ export function subscribeTopologyClipboard(listener: () => void): () => void {
   };
 }
 
-export function setTopologyClipboard(payload: TopologyClipboardPayload | null): void {
+function setTopologyClipboard(payload: TopologyClipboardPayload | null): void {
   sharedClipboard = payload;
   writeStoredClipboard(payload);
   notifyClipboardListeners();
@@ -235,7 +235,7 @@ export function copyTopologySelection(
   return payload;
 }
 
-export interface PasteTopologyResult {
+interface PasteTopologyResult {
   map: TopologyMap;
   pastedNodeIds: string[];
 }

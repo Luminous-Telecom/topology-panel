@@ -2,7 +2,7 @@ import { createTheme, GrafanaTheme2 } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { TopologyHostIcon, TopologyPanelOptions } from '../types';
 
-export const PANEL_COLOR_OPTION_KEYS = [
+const PANEL_COLOR_OPTION_KEYS = [
   'colorOnline',
   'colorOffline',
   'colorAlert',
@@ -14,7 +14,6 @@ export const PANEL_COLOR_OPTION_KEYS = [
   'colorLinkUpload',
   'colorNetworkFill',
   'colorNetworkBorder',
-  'colorNetworkLabel',
 ] as const satisfies ReadonlyArray<keyof TopologyPanelOptions>;
 
 function isCssColor(value: string): boolean {
@@ -208,7 +207,6 @@ export function resolvePanelOptionsColors(
     colorLinkUpload: resolve(options.colorLinkUpload),
     colorNetworkFill: resolve(options.colorNetworkFill),
     colorNetworkBorder: resolve(options.colorNetworkBorder),
-    colorNetworkLabel: resolve(options.colorNetworkLabel),
     hostTypeColors: resolveHostTypeColorsMap(options.hostTypeColors, resolve),
   };
 }

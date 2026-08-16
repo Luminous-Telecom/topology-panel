@@ -50,7 +50,7 @@ function fieldMatchesHost(field: Field, candidates: Set<string>): boolean {
 }
 
 /** Métrica ICMP detectada pelos item_key das séries da Query (sem opções do painel). */
-export function effectiveHoverMetric(data?: PanelData, displayQueryRefIds: string[] = []): TopologyHoverMetric {
+function effectiveHoverMetric(data?: PanelData, displayQueryRefIds: string[] = []): TopologyHoverMetric {
   const allowed =
     displayQueryRefIds.length > 0
       ? new Set(displayQueryRefIds.map((refId) => refId.trim().toUpperCase()).filter(Boolean))
@@ -299,7 +299,7 @@ export function hostHoverPeriodLabel(series?: HostHoverSeries, timeRange?: TimeR
   return 'Período do dashboard';
 }
 
-export function formatHoverMetricValue(metric: TopologyHoverMetric, value: number): string {
+function formatHoverMetricValue(metric: TopologyHoverMetric, value: number): string {
   if (metric === 'packet_loss') {
     return `${value.toFixed(1)}%`;
   }

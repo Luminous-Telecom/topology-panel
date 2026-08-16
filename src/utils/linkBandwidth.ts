@@ -2,7 +2,7 @@
 
 export type LinkBandwidthUnit = 'mbps' | 'gbps';
 
-export function mbpsFromValue(value: number, unit: LinkBandwidthUnit): number {
+function mbpsFromValue(value: number, unit: LinkBandwidthUnit): number {
   if (!Number.isFinite(value) || value <= 0) {
     return 0;
   }

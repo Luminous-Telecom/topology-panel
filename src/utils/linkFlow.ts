@@ -1,7 +1,7 @@
 /** Animação contínua das faixas RX/TX — período = soma do stroke-dasharray. */
 export const LINK_FLOW_DASH = '8 22';
-export const LINK_FLOW_PERIOD = 30;
-export const LINK_FLOW_SPEED = 0.55;
+const LINK_FLOW_PERIOD = 30;
+const LINK_FLOW_SPEED = 0.55;
 
 export type LinkFlowController = {
   stop: () => void;

@@ -1,4 +1,4 @@
-export interface EdgePanVelocity {
+interface EdgePanVelocity {
   vx: number;
   vy: number;
 }

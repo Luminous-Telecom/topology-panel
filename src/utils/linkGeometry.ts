@@ -12,7 +12,7 @@ export interface LinkBox {
   h: number;
 }
 
-export interface LinkGeometry {
+interface LinkGeometry {
   d: string;
   start: LinkPoint;
   end: LinkPoint;
@@ -169,7 +169,7 @@ export function nearestWaypointIndex(
 }
 
 /** Desloca a polilinha perpendicularmente (px) — duas faixas lado a lado no link. */
-export function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[] {
+function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[] {
   if (points.length < 2 || offset === 0) {
     return points.map((p) => ({ ...p }));
   }

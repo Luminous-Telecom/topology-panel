@@ -197,7 +197,6 @@ export interface TopologyPanelOptions {
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
   colorNetworkBorder: string;
-  colorNetworkLabel: string;
   /** Node appearance */
   nodeFontSize: number;
   showSubtitle: boolean;
@@ -314,7 +313,6 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorLinkWidth: 2,
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
-  colorNetworkLabel: '#bdbdbd',
   nodeFontSize: 11,
   showSubtitle: true,
   enablePan: true,
