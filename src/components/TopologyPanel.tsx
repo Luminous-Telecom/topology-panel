@@ -42,7 +42,6 @@ import {
   sameQueryRefInfos,
   sameStringList,
 } from '../utils';
-import { fetchDashboardTopologyHosts, isIncludedInParentStats } from '../utils/submapHosts';
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
@@ -151,7 +150,7 @@ function parentMapHostKeys(map: TopologyMap, hostMetadata?: HostMetadataMap): Se
 }
 
 /**
- * Lista de hosts para agregar status do submapa (query refId ou dashboard filho).
+ * Lista de hosts para agregar status do submapa (host group da query refId).
  * Remove hosts já desenhados como nó no mapa pai — um host compartilhado (ex.: link entre
  * redes) não deve contar como parte do submapa só porque também está no host group da query B.
  */
@@ -160,27 +159,22 @@ function submapHostListForNode(
   hostDisplayByRefId: Record<string, HostDisplayMap>,
   queryHostsByRefId: Record<string, string[]>,
   queryReady: boolean,
-  fetchedFromDashboard: string[] | null | undefined,
   parentHostKeys: Set<string>,
   hostMetadata?: HostMetadataMap
-): string[] | null | undefined {
+): string[] | undefined {
   const refId = node.queryRefId?.trim();
-  let keys: string[] | null | undefined;
-  if (refId) {
-    if (!queryReady) {
-      return undefined;
-    }
-    const normalized = refId.toUpperCase();
-    const fromLabels =
-      queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
-    const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
-    const raw =
-      fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
-    keys = canonicalizeHostKeys(raw, hostMetadata);
-  } else {
-    keys = fetchedFromDashboard;
+  if (!refId) {
+    return [];
   }
-  if (!keys || !parentHostKeys.size) {
+  if (!queryReady) {
+    return undefined;
+  }
+  const normalized = refId.toUpperCase();
+  const fromLabels = queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
+  const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
+  const raw = fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
+  const keys = canonicalizeHostKeys(raw, hostMetadata);
+  if (!parentHostKeys.size) {
     return keys;
   }
   return keys.filter((key) => !parentHostKeys.has(key.toLowerCase()));
@@ -197,10 +191,6 @@ export function TopologyPanel({
   const dashboardEditing = useDashboardEditMode();
   useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
 
-  /** Hosts lidos do JSON do dashboard filho (submapas sem queryRefId). */
-  const [fetchedSubmapHosts, setFetchedSubmapHosts] = useState<
-    Record<string, string[] | null | undefined>
-  >({});
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
 
   const latestOptionsRef = useRef(options);
@@ -407,13 +397,12 @@ export function TopologyPanel({
         hostDisplayByRefId,
         queryHostsByRefId,
         queryReady,
-        fetchedSubmapHosts[node.id],
         parentHostKeys,
         hostMetadata
       );
     }
     return result;
-  }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, fetchedSubmapHosts, parentHostKeys, hostMetadata]);
+  }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, parentHostKeys, hostMetadata]);
 
   useEffect(() => {
     if (!onOptionsChange) {
@@ -437,46 +426,6 @@ export function TopologyPanel({
     syncInterval();
     return locationService.getHistory().listen(syncInterval);
   }, []);
-
-  const legacySubmapFetchKey = useMemo(
-    () =>
-      submapNodes
-        .filter((n) => !n.queryRefId?.trim() && n.submapUid?.trim())
-        .map((n) => `${n.id}\0${n.submapUid}\0${isIncludedInParentStats(n) ? '1' : '0'}`)
-        .join('\n'),
-    [submapNodes]
-  );
-
-  useEffect(() => {
-    const legacyNodes = submapNodes.filter((n) => !n.queryRefId?.trim() && n.submapUid?.trim());
-    if (!legacyNodes.length) {
-      setFetchedSubmapHosts({});
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      const entries = await Promise.all(
-        legacyNodes.map(async (node) => {
-          try {
-            const hosts = await fetchDashboardTopologyHosts(node.submapUid!.trim(), {
-              includeNested: isIncludedInParentStats(node),
-            });
-            return [node.id, hosts] as const;
-          } catch {
-            return [node.id, null] as const;
-          }
-        })
-      );
-      if (!cancelled) {
-        setFetchedSubmapHosts(Object.fromEntries(entries));
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legacySubmapFetchKey]);
 
   useEffect(() => {
     if (!onOptionsChange || mapValidationErrors.length > 0) {

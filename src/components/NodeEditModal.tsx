@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Button, ColorPickerInput, Field, InlineSwitch, Input, Modal, Select } from '@grafana/ui';
+import { Button, ColorPickerInput, Field, Input, Modal, Select } from '@grafana/ui';
 import {
   TopologyDashboardChoice,
   TopologyHostIcon,
@@ -69,9 +69,6 @@ export function NodeEditModal({
   const [queryRefId, setQueryRefId] = useState(node.queryRefId ?? '');
   const [dashboardChoices, setDashboardChoices] = useState<TopologyDashboardChoice[]>(
     node.dashboardChoices ?? []
-  );
-  const [includeInParentStats, setIncludeInParentStats] = useState(
-    node.includeInParentStats !== false && node.showStatusStats !== false
   );
   const [icon, setIcon] = useState<TopologyHostIcon>(node.icon ?? 'network');
   const [width, setWidth] = useState(node.width !== undefined ? String(node.width) : '');
@@ -190,8 +187,6 @@ export function NodeEditModal({
       patch.width = width.trim() ? Math.max(40, Number(width) || 40) : undefined;
       patch.height = height.trim() ? Math.max(24, Number(height) || 24) : undefined;
       patch.queryRefId = queryRefId.trim().toUpperCase() || undefined;
-      patch.includeInParentStats = includeInParentStats ? undefined : false;
-      patch.showStatusStats = undefined;
     }
     if (type === 'dashboard_picker') {
       patch.dashboardChoices = dashboardChoices.filter((c) => c.uid.trim());
@@ -318,22 +313,6 @@ export function NodeEditModal({
               value={queryRefId}
               queryRefs={queryRefInfos}
               onChange={setQueryRefId}
-            />
-          </Field>
-          <Field
-            label="Incluir submapas internos"
-            description={
-              queryRefId.trim()
-                ? 'Ignorado quando há query refId — o host group da query define os hosts'
-                : 'Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)'
-            }
-          >
-            <InlineSwitch
-              id={`${uid}-submap-include-stats`}
-              label={includeInParentStats ? 'Ativado' : 'Desativado'}
-              value={includeInParentStats}
-              disabled={Boolean(queryRefId.trim())}
-              onChange={(e) => setIncludeInParentStats(e.currentTarget.checked)}
             />
           </Field>
           <Field label="Largura (px)" description="Vazio = automático pelo texto">

@@ -17,7 +17,7 @@ export interface RegionHostStats {
   /** Hosts do mapa sem valor/status na Query */
   unknown: number;
   loadFailed?: boolean;
-  /** Hosts do submapa ainda não resolvidos (query ou dashboard filho). */
+  /** Hosts do submapa ainda não resolvidos (query refId). */
   loadPending?: boolean;
 }
 

@@ -7,7 +7,6 @@ import {
   Field,
   Icon,
   IconButton,
-  InlineSwitch,
   Input,
   Select,
   Stack,
@@ -136,14 +135,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
           if (n.id !== target.id) {
             return n;
           }
-          const next: TopologyNode = { ...n, ...patch };
-          if (Object.prototype.hasOwnProperty.call(patch, 'includeInParentStats') && patch.includeInParentStats === undefined) {
-            delete next.includeInParentStats;
-          }
-          if (Object.prototype.hasOwnProperty.call(patch, 'showStatusStats') && patch.showStatusStats === undefined) {
-            delete next.showStatusStats;
-          }
-          return next;
+          return { ...n, ...patch };
         }),
       });
     },
@@ -442,31 +434,6 @@ export function TopologyEditor({ value, onChange, context }: Props) {
                       disabled={locked}
                       onChange={(refId) =>
                         updateSubmap(idx, { queryRefId: refId.trim().toUpperCase() || undefined })
-                      }
-                    />
-                  </Field>
-                  <Field
-                    label="Incluir submapas internos"
-                    description={
-                      node.queryRefId?.trim()
-                        ? 'Ignorado quando há query refId'
-                        : 'Desative para monitorar só os hosts deste dashboard, ignorando submapas dentro dele (ex.: outra rede)'
-                    }
-                  >
-                    <InlineSwitch
-                      id={`${uid}-submap-${idx}-include-stats`}
-                      label={
-                        node.includeInParentStats !== false && node.showStatusStats !== false
-                          ? 'Ativado'
-                          : 'Desativado'
-                      }
-                      value={node.includeInParentStats !== false && node.showStatusStats !== false}
-                      disabled={locked || Boolean(node.queryRefId?.trim())}
-                      onChange={(e) =>
-                        updateSubmap(idx, {
-                          includeInParentStats: e.currentTarget.checked ? undefined : false,
-                          showStatusStats: undefined,
-                        })
                       }
                     />
                   </Field>

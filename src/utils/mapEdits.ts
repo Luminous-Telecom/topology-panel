@@ -221,8 +221,6 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
       'width',
       'height',
       'fontSize',
-      'includeInParentStats',
-      'showStatusStats',
       'dashboardChoices',
       'networkId',
     ] as const) {
@@ -300,14 +298,13 @@ export function updateHostsIconBulk(
   return next;
 }
 
-/** Aplica largura/altura e flag de submapas internos a vários submapas. */
+/** Aplica largura/altura a vários submapas. */
 export function updateSubmapsBulk(
   map: TopologyMap,
   selectedNodes: TopologyNode[],
   patch: {
     width?: number;
     height?: number;
-    includeInParentStats: boolean;
   }
 ): TopologyMap {
   let next = map;
@@ -319,16 +316,15 @@ export function updateSubmapsBulk(
     if (!stored || !isSubmapNode(stored)) {
       continue;
     }
-    const nodePatch: Partial<TopologyNode> = {
-      // Só persiste false; true/omitido = inclui no pai (padrão)
-      includeInParentStats: patch.includeInParentStats ? undefined : false,
-      showStatusStats: undefined,
-    };
+    const nodePatch: Partial<TopologyNode> = {};
     if (patch.width !== undefined) {
       nodePatch.width = patch.width;
     }
     if (patch.height !== undefined) {
       nodePatch.height = patch.height;
+    }
+    if (Object.keys(nodePatch).length === 0) {
+      continue;
     }
     next = updateStoredNode(next, stored, nodePatch);
   }

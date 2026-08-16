@@ -33,7 +33,7 @@ export function QueryRefSelect({
   const normalized = value.trim().toUpperCase();
 
   const options = useMemo(() => {
-    const items: SelectableValue<string>[] = [{ value: '', label: 'Nenhuma — usar dashboard filho' }];
+    const items: SelectableValue<string>[] = [{ value: '', label: 'Nenhuma' }];
     for (const info of queryRefs) {
       items.push(queryRefToOption(info));
     }

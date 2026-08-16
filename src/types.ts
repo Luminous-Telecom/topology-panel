@@ -74,14 +74,6 @@ export interface TopologyNode {
    * Em visualização o clique abre a lista para escolher e navegar.
    */
   dashboardChoices?: TopologyDashboardChoice[];
-  /**
-   * Quando false: conta só hosts diretos do dashboard linkado (ignora submapas internos)
-   * e este submapa não entra na contagem de mapas pai.
-   * Padrão: true (inclui submapas internos no status).
-   */
-  includeInParentStats?: boolean;
-  /** @deprecated Use includeInParentStats */
-  showStatusStats?: boolean;
   x: number;
   y: number;
   width?: number;

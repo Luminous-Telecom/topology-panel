@@ -35,7 +35,7 @@ alwaysApply: true
 - Status online/offline vem exclusivamente da aba **Query** do painel (`data.series`, via
   `resolveNodeStatus` em `utils.ts`). **Nunca** use a API Zabbix para ICMP, histórico, cores ou hover no
   mapa — ver regra `no-zabbix-api.mdc`. **Exceção:** modal **Tools → Ping** (`PingModal` + `zabbixApi.ts`).
-- Erros de chamadas assíncronas (`fetchGrafanaDashboards`, `fetchDashboardTopologyHosts`)
+- Erros de chamadas assíncronas (`fetchGrafanaDashboards`)
   sempre tratados com `try/catch`/`finally`, retornando um valor vazio/seguro (`[]`, `{}`, `null`) mais
   um estado de erro visível quando fizer sentido para o usuário (ver `PingModal.tsx`,
   `AddZabbixHostModal.tsx` para o padrão de `loadError`/`loading`). Nunca deixe uma `Promise` rejeitar

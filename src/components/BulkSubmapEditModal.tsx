@@ -1,13 +1,11 @@
 import React, { useId, useState } from 'react';
-import { Button, Field, InlineSwitch, Input, Modal } from '@grafana/ui';
+import { Button, Field, Input, Modal } from '@grafana/ui';
 
 export type BulkSubmapPatch = {
   /** undefined = não alterar */
   width?: number;
   /** undefined = não alterar */
   height?: number;
-  /** true = incluir (padrão); false = só hosts diretos */
-  includeInParentStats: boolean;
 };
 
 interface Props {
@@ -20,21 +18,9 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
   const uid = useId();
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
-  const [includeInParentStats, setIncludeInParentStats] = useState(true);
 
   return (
     <Modal title={`Editar submapas (${count})`} isOpen onDismiss={onClose}>
-      <Field
-        label="Incluir submapas internos"
-        description="Desative para monitorar só os hosts de cada dashboard, ignorando submapas dentro dele"
-      >
-        <InlineSwitch
-          id={`${uid}-include-stats`}
-          label={includeInParentStats ? 'Ativado' : 'Desativado'}
-          value={includeInParentStats}
-          onChange={(e) => setIncludeInParentStats(e.currentTarget.checked)}
-        />
-      </Field>
       <Field label="Largura (px)" description="Vazio = manter a largura atual de cada submapa">
         <Input
           id={`${uid}-width`}
@@ -59,7 +45,7 @@ export function BulkSubmapEditModal({ count, onSave, onClose }: Props) {
         </Button>
         <Button
           onClick={() => {
-            const patch: BulkSubmapPatch = { includeInParentStats };
+            const patch: BulkSubmapPatch = {};
             if (width.trim()) {
               patch.width = Math.max(40, Number(width) || 40);
             }
