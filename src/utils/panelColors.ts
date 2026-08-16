@@ -22,6 +22,26 @@ function isCssColor(value: string): boolean {
   return v.startsWith('#') || v.startsWith('rgb') || v.startsWith('hsl');
 }
 
+/** hsl() do color picker → hex, para SVG e contraste de texto. */
+function hslToHex(raw: string): string {
+  const m = raw.trim().match(/^hsla?\(\s*([\d.]+)\s*(?:,\s*|\s+)([\d.]+)%\s*(?:,\s*|\s+)([\d.]+)%/i);
+  if (!m) {
+    return '';
+  }
+  const h = Number(m[1]);
+  const s = Number(m[2]) / 100;
+  const l = Number(m[3]) / 100;
+  const a = s * Math.min(l, 1 - l);
+  const toHex = (n: number): string => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${toHex(0)}${toHex(8)}${toHex(4)}`;
+}
+
 function rawColorString(color: unknown): string {
   if (color == null) {
     return '';
@@ -86,6 +106,12 @@ export function resolvePanelColor(theme: GrafanaTheme2, color?: unknown): string
   const raw = rawColorString(color);
   if (!raw) {
     return '';
+  }
+  if (raw.startsWith('hsl')) {
+    const hex = hslToHex(raw);
+    if (hex) {
+      return hex;
+    }
   }
   if (isCssColor(raw)) {
     return raw;

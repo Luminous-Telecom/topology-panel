@@ -15,9 +15,9 @@ describe('resolvePanelColor', () => {
     expect(resolvePanelColor(theme, '#FF0000')).toBe('#FF0000');
   });
 
-  it('rgb()/hsl() passam direto', () => {
+  it('rgb() passa direto; hsl() vira hex', () => {
     expect(resolvePanelColor(theme, 'rgb(10, 20, 30)')).toBe('rgb(10, 20, 30)');
-    expect(resolvePanelColor(theme, 'hsl(0, 100%, 50%)')).toBe('hsl(0, 100%, 50%)');
+    expect(resolvePanelColor(theme, 'hsl(0, 100%, 50%)')).toBe('#ff0000');
   });
 
   it('nome de tema Grafana resolve via theme.visualization.hues', () => {

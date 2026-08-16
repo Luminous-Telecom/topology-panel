@@ -37,10 +37,10 @@ import {
 import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, findNodeById, isHostNode, isSubmapNode, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostIp, resolveHostLayoutKey, resolveLinkMedium, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HOST_ICON_LABELS, HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
-import { subtextOnBackground, textOnBackground } from '../utils/colorContrast';
+import { textOnBackground } from '../utils/colorContrast';
 import { hostTypeFillColor, resolvePanelColor } from '../utils/panelColors';
 import { AlignGuideLine } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStatsTextColor, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
+import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
 import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
@@ -1701,7 +1701,7 @@ export function TopologyCanvas({
                       y={statsY}
                       textAnchor="start"
                       dominantBaseline="middle"
-                      fill={regionStatsTextColor(stats)}
+                      fill={textOnBackground(fill)}
                       fontSize={statsFontSize}
                       fontFamily="Inter, Helvetica, Arial, sans-serif"
                       pointerEvents="none"
@@ -1837,16 +1837,6 @@ export function TopologyCanvas({
               node.type === 'static' && node.labelColor
                 ? resolveColor(node.labelColor)
                 : textOnBackground(fill);
-            const subtitleColor =
-              node.type === 'static' && node.labelColor
-                ? resolveColor(node.labelColor)
-                : region
-                  ? region.offline > 0
-                    ? '#ffcdd2'
-                    : region.alert > 0
-                      ? '#ffcc80'
-                      : '#c8e6c9'
-                  : subtextOnBackground(fill);
             const displaySub = regionLabel ?? sub;
             const statsSubFontSize = Math.max(9, subFontSize);
             const displaySubY =
@@ -1978,7 +1968,7 @@ export function TopologyCanvas({
                     y={y + displaySubY}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill={subtitleColor}
+                    fill={labelColor}
                     fontSize={Math.max(9, subFontSize)}
                     fontFamily="Inter, Helvetica, Arial, sans-serif"
                     pointerEvents="none"
@@ -1991,7 +1981,7 @@ export function TopologyCanvas({
                     x={x + w - 8}
                     y={y + 12}
                     textAnchor="end"
-                    fill="rgba(255,255,255,0.7)"
+                    fill={labelColor}
                     fontSize={10}
                     pointerEvents="none"
                   >
@@ -2003,7 +1993,7 @@ export function TopologyCanvas({
                     x={x + w - 8}
                     y={y + 12}
                     textAnchor="end"
-                    fill="rgba(255,255,255,0.7)"
+                    fill={labelColor}
                     fontSize={10}
                     pointerEvents="none"
                   >

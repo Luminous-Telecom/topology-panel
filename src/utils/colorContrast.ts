@@ -1,4 +1,4 @@
-/** Luminância relativa (0–1) para contraste de texto/ícone sobre o fundo do card. */
+/** Luminância relativa (0–1) para contraste de texto sobre o fundo do card. */
 function channel(value: number): number {
   const v = value / 255;
   return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
@@ -40,18 +40,15 @@ export function parseCssColor(value: string): [number, number, number] | null {
   return parseHex(value) ?? parseRgb(value);
 }
 
-export function isDarkBackground(fill: string, threshold = 0.45): boolean {
+/** Texto branco vs preto: mesmo contraste em luminância ≈ 0.179 (WCAG). */
+export function isDarkBackground(fill: string): boolean {
   const rgb = parseCssColor(fill);
   if (!rgb) {
     return true;
   }
-  return luminance(...rgb) < threshold;
+  return luminance(...rgb) < 0.179;
 }
 
 export function textOnBackground(fill: string): string {
   return isDarkBackground(fill) ? '#ffffff' : '#1a1a1a';
-}
-
-export function subtextOnBackground(fill: string): string {
-  return isDarkBackground(fill) ? 'rgba(255,255,255,0.85)' : 'rgba(26,26,26,0.72)';
 }

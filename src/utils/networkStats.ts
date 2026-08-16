@@ -259,19 +259,6 @@ export function regionStrokeColor(
   return fallbackBorder ?? options.colorNetworkBorder;
 }
 
-export function regionStatsTextColor(stats: RegionHostStats | undefined): string {
-  if (!stats) {
-    return '#c8e6c9';
-  }
-  if (stats.offline > 0) {
-    return '#ffcdd2';
-  }
-  if (stats.alert > 0) {
-    return '#ffcc80';
-  }
-  return '#c8e6c9';
-}
-
 export function regionHasOfflineHosts(
   stats: RegionHostStats | undefined,
   queryReady = true
