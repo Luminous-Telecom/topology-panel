@@ -1,6 +1,5 @@
 import React from 'react';
-import { CanvasTool, TopologyMap, TopologyPanelOptions } from '../../types';
-import { DashboardNavButton } from '../DashboardNavButton';
+import { CanvasTool, TopologyMap } from '../../types';
 import { MapNavigationControls } from './MapNavigationControls';
 import { TopologyQueryErrorBadge } from './TopologyQueryErrorBadge';
 import { TopologyToolbar } from './TopologyToolbar';
@@ -9,7 +8,6 @@ import { canvasStyles } from './canvasStyles';
 interface Props {
   hidden: boolean;
   map: TopologyMap;
-  options: TopologyPanelOptions;
   tool: CanvasTool;
   setTool: (tool: CanvasTool) => void;
   networksLocked: boolean;
@@ -51,12 +49,11 @@ interface Props {
   onMapNavigateForward?: () => void;
 }
 
-/** Controles fixos sobre o mapa: barra de ferramentas, atalho de dashboards, aviso de erro da
+/** Controles fixos sobre o mapa: barra de ferramentas, navegação hierárquica, aviso de erro da
  * Query e a dica que aparece no mapa vazio. */
 export function CanvasControlsOverlay({
   hidden,
   map,
-  options,
   tool,
   setTool,
   networksLocked,
@@ -97,9 +94,6 @@ export function CanvasControlsOverlay({
   onMapNavigateBack,
   onMapNavigateForward,
 }: Props) {
-  const navVisible =
-    canMapNavigateBack || canMapNavigateForward || mapNavigationBreadcrumb.length > 0;
-
   return (
     <>
       {!hidden && onMapNavigateBack && onMapNavigateForward ? (
@@ -149,15 +143,6 @@ export function CanvasControlsOverlay({
           nocModeActive={nocModeActive}
           onToggleNocMode={onToggleNocMode}
         />
-      )}
-
-      {!hidden && options.showDashboardNav !== false && (
-        <div style={navVisible ? { position: 'absolute', top: 8, left: 220, zIndex: 3 } : undefined}>
-          <DashboardNavButton
-            label={options.dashboardNavLabel?.trim() || 'Dashboards'}
-            choices={options.dashboardNavChoices ?? []}
-          />
-        </div>
       )}
 
       <TopologyQueryErrorBadge visible={queryError} />

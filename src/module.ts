@@ -2,95 +2,118 @@ import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import {
   ChildMapsEditor,
-  DashboardNavChoicesEditor,
   HostTypeColorsEditor,
   QueryDisplayRefIdsEditor,
   StatusValueMappingsEditor,
-  TopologyEditor,
+  TopologyHostsEditor,
+  TopologyLayoutEditor,
+  TopologyLinksEditor,
+  TopologySubmapsEditor,
   TopologyTemplatesEditor,
 } from './editor/lazyPanelEditors';
+import { addMapSection, MAP_SECTION_ROOT } from './editor/mapSectionNested';
 import {
   TopologyPanelOptions,
   defaultHostTypeColors,
-  defaultOptions,
   defaultStatusValueMappings,
 } from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
   .setPanelOptions((builder) => {
+    addMapSection(builder, ['Layout'], (section) => {
+      section.addCustomEditor({
+        id: 'mapLayout',
+        path: MAP_SECTION_ROOT,
+        name: 'Dimensões e JSON',
+        description:
+          'Largura e altura do canvas, trava de edição e importação/exportação JSON.',
+        editor: TopologyLayoutEditor,
+      });
+    });
+
     builder
-      .addCustomEditor({
-        id: 'map',
-        path: 'map',
-        name: 'Layout e links',
-        description:
-          'Layout e links. Query Zabbix (time_series). Status e cores: mapeamento de valor nas opções do painel.',
-        editor: TopologyEditor,
-        category: ['Topologia'],
-        defaultValue: defaultOptions().map,
-      })
-      .addCustomEditor({
-        id: 'childMaps',
-        path: 'childMaps',
-        name: 'Mapas internos',
-        description:
-          'Mapas filhos navegáveis dentro do painel. Vincule pelo campo Mapa interno nos submapas.',
-        editor: ChildMapsEditor,
-        category: ['Topologia'],
-        defaultValue: undefined,
-      })
-      .addBooleanSwitch({
-        path: 'showDashboardNav',
-        name: 'Botão extra no mapa',
-        description:
-          'Opcional. O select principal é a variável Grafana na barra do painel de controle (Configurações → Variáveis → mapa)',
-        defaultValue: false,
-        category: ['Navegação'],
-      })
-      .addTextInput({
-        path: 'dashboardNavVariable',
-        name: 'Nome da variável Grafana',
-        description: 'Variável na barra do dashboard (ex.: mapa). Ao trocar, abre o dashboard do valor (UID).',
-        defaultValue: 'mapa',
-        category: ['Navegação'],
-      })
-      .addTextInput({
-        path: 'dashboardNavLabel',
-        name: 'Rótulo do botão no mapa',
-        defaultValue: 'Dashboards',
-        category: ['Navegação'],
-        showIf: (opts) => opts.showDashboardNav === true,
-      })
-      .addCustomEditor({
-        id: 'dashboardNavChoices',
-        path: 'dashboardNavChoices',
-        name: 'Dashboards do botão no mapa',
-        description: 'Só para o botão opcional no canvas. A lista da variável Grafana é editada em Configurações → Variáveis.',
-        editor: DashboardNavChoicesEditor,
-        category: ['Navegação'],
-        defaultValue: [],
-        showIf: (opts) => opts.showDashboardNav === true,
-      })
       .addBooleanSwitch({
         path: 'showGrid',
         name: 'Mostrar grade',
         defaultValue: false,
-        category: ['Topologia'],
+        category: ['Layout'],
       })
       .addNumberInput({
         path: 'gridSize',
         name: 'Tamanho da grade',
         description: 'Passo da grade em pixels (ex.: 10)',
         defaultValue: 10,
-        category: ['Topologia'],
+        category: ['Layout'],
       })
       .addBooleanSwitch({
         path: 'snapToGrid',
         name: 'Alinhar à grade',
         description: 'Encaixa hosts e retângulos nas linhas da grade ao mover ou redimensionar',
         defaultValue: true,
-        category: ['Topologia'],
+        category: ['Layout'],
       })
+
+    addMapSection(builder, ['Hosts Zabbix'], (section) => {
+      section.addCustomEditor({
+        id: 'mapHosts',
+        path: MAP_SECTION_ROOT,
+        name: 'Hosts no mapa',
+        description: 'Lista dos hosts Zabbix importados da Query. Nome e IP vêm do Zabbix.',
+        editor: TopologyHostsEditor,
+      });
+    });
+
+    builder
+      .addCustomEditor({
+        id: 'displayQueryRefIds',
+        path: 'displayQueryRefIds',
+        name: 'Mostrar hosts da query no mapa',
+        editor: QueryDisplayRefIdsEditor,
+        category: ['Hosts Zabbix'],
+        defaultValue: undefined,
+      })
+      .addCustomEditor({
+        id: 'templateRules',
+        path: 'templateRules',
+        name: 'Regras de template',
+        description: 'Regras extras além das padrão (Router, OLT, Switch…).',
+        editor: TopologyTemplatesEditor,
+        category: ['Hosts Zabbix'],
+        defaultValue: undefined,
+      })
+
+    addMapSection(builder, ['Submapas'], (section) => {
+      section.addCustomEditor({
+        id: 'mapSubmaps',
+        path: MAP_SECTION_ROOT,
+        name: 'Submapas e seletores',
+        description: 'Nós de submapa e seletores de dashboard no mapa atual.',
+        editor: TopologySubmapsEditor,
+      });
+    });
+
+    builder
+      .addCustomEditor({
+        id: 'childMaps',
+        path: 'childMaps',
+        name: 'Mapas internos',
+        description: 'Vincule nos submapas pelo campo Mapa interno.',
+        editor: ChildMapsEditor,
+        category: ['Submapas'],
+        defaultValue: undefined,
+      })
+
+    addMapSection(builder, ['Links'], (section) => {
+      section.addCustomEditor({
+        id: 'mapLinks',
+        path: MAP_SECTION_ROOT,
+        name: 'Links entre nós',
+        description: 'Cabos entre hosts, submapas e outros nós do mapa.',
+        editor: TopologyLinksEditor,
+      });
+    });
+
+    builder
       .addBooleanSwitch({
         path: 'enablePan',
         name: 'Permitir arrastar mapa',
@@ -165,16 +188,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         editor: StatusValueMappingsEditor,
         category: ['Aparência'],
         defaultValue: defaultStatusValueMappings(),
-      })
-      .addCustomEditor({
-        id: 'templateRules',
-        path: 'templateRules',
-        name: 'Templates e regras de host',
-        description:
-          'Associação automática de template visual (ícone e campos) por grupo Zabbix, tag ou hostname',
-        editor: TopologyTemplatesEditor,
-        category: ['Topologia'],
-        defaultValue: undefined,
       })
       .addColorPicker({
         path: 'colorUnknown',
@@ -326,14 +339,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         description: 'Lista os tipos configurados em "Ícone → cor por tipo" com a cor de cada um',
         defaultValue: true,
         category: ['Legenda'],
-      })
-      .addCustomEditor({
-        id: 'displayQueryRefIds',
-        path: 'displayQueryRefIds',
-        name: 'Mostrar hosts da query no mapa',
-        editor: QueryDisplayRefIdsEditor,
-        category: ['Zabbix'],
-        defaultValue: undefined,
       })
       .addTextInput({
         path: 'toolUsername',

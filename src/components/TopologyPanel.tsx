@@ -19,7 +19,6 @@ import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
-import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
@@ -42,8 +41,6 @@ export function TopologyPanel({
   const theme = useTheme2();
   const dashboardEditing = useDashboardEditMode();
   const playlistPlayback = useGrafanaPlaylistPlayback();
-  useDashboardVariableNav(options.dashboardNavVariable?.trim() || 'mapa');
-
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
 
   const latestOptionsRef = useRef(options);

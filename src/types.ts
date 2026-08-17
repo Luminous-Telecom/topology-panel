@@ -316,8 +316,8 @@ export interface TopologyPanelOptions {
   map: TopologyMap;
   /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
   view?: TopologyView;
-  /** Mapas filhos indexados por id estável (ex.: "map-fortaleza") */
-  childMaps?: Record<string, TopologyMap>;
+  /** Mapas filhos indexados por id estável (ex.: "map-fortaleza"). Valor `undefined` = removido (merge do Grafana). */
+  childMaps?: Record<string, TopologyMap | undefined>;
   /** Posição e zoom por mapa filho (persiste ao salvar o dashboard) */
   childMapViews?: Record<string, TopologyView>;
   /** Id do mapa raiz; implícito = "root" usando `map` */
@@ -402,19 +402,6 @@ export interface TopologyPanelOptions {
   legendUpload?: boolean;
   /** Cores por tipo/ícone configuradas em hostTypeColors */
   legendHostTypes?: boolean;
-  /**
-   * Nome da variável Grafana na barra do painel de controle (ex.: mapa → $mapa / var-mapa).
-   * Configure as opções em: Dashboard → Configurações → Variáveis.
-   */
-  dashboardNavVariable?: string;
-  /**
-   * Seletor extra no canto do mapa (opcional). Preferir a variável Grafana do dashboard.
-   */
-  showDashboardNav?: boolean;
-  /** Rótulo do botão do seletor no mapa (só se showDashboardNav) */
-  dashboardNavLabel?: string;
-  /** Dashboards do botão no mapa (só se showDashboardNav) */
-  dashboardNavChoices?: TopologyDashboardChoice[];
   /** Templates visuais de host (sobrescrevem os padrão por id). */
   nodeTemplates?: TopologyNodeTemplate[];
   /** Regras automáticas host → template. */
@@ -511,10 +498,6 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   legendDownload: true,
   legendUpload: true,
   legendHostTypes: true,
-  dashboardNavVariable: 'mapa',
-  showDashboardNav: false,
-  dashboardNavLabel: 'Dashboards',
-  dashboardNavChoices: [],
   nocMode: false,
   showHostBadges: true,
 });

@@ -12,6 +12,7 @@ import {
   TopologyPanelOptions,
 } from '../../types';
 import { addZabbixHostAt } from '../../utils/mapEdits';
+import { activeChildMaps } from '../../utils/childMapEdits';
 import { updateLinkProps } from '../../utils/mapLinkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
@@ -98,7 +99,7 @@ export function CanvasModals({
           queryRefInfos={options.queryRefInfosAvailable ?? []}
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
-          childMapIds={Object.keys(options.childMaps ?? {}).sort()}
+          childMapIds={Object.keys(activeChildMaps(options.childMaps)).sort()}
           onClose={() => setEditNode(null)}
           onSave={(payload: NodeEditSavePayload) =>
             persist(applyNodeEditSave(storedMap, editNode, payload))

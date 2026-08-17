@@ -479,12 +479,12 @@ export function TopologyCanvas({
       }
       const uid = node.submapUid?.trim();
       if (uid) {
-        openDashboardUrl(uid, node.submapSlug, options.dashboardNavVariable?.trim() || 'mapa');
+        openDashboardUrl(uid, node.submapSlug);
         return;
       }
       showToast('Submapa sem destino configurado');
     },
-    [onNavigateToChildMap, options.childMaps, options.dashboardNavVariable, showToast]
+    [onNavigateToChildMap, options.childMaps, showToast]
   );
 
   /** Entra no modo link sem origem: o próximo clique num nó define o ponto de partida. */
@@ -905,7 +905,6 @@ export function TopologyCanvas({
       <CanvasControlsOverlay
         hidden={Boolean(hideOverlayControls)}
         map={map}
-        options={options}
         mapNavigationBreadcrumb={mapNavigationBreadcrumb}
         canMapNavigateBack={canMapNavigateBack}
         canMapNavigateForward={canMapNavigateForward}

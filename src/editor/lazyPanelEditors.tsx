@@ -14,13 +14,17 @@ const loading = <span>Carregando…</span>;
 const LazyChildMapsEditor = lazy(() =>
   import('./ChildMapsEditor').then((m) => ({ default: m.ChildMapsEditor }))
 );
-const LazyTopologyEditor = lazy(() =>
-  import('./TopologyEditor').then((m) => ({ default: m.TopologyEditor }))
+const LazyTopologyLayoutEditor = lazy(() =>
+  import('./TopologyLayoutEditor').then((m) => ({ default: m.TopologyLayoutEditor }))
 );
-const LazyDashboardNavChoicesEditor = lazy(() =>
-  import('../components/DashboardNavChoicesEditor').then((m) => ({
-    default: m.DashboardNavChoicesEditor,
-  }))
+const LazyTopologyHostsEditor = lazy(() =>
+  import('./TopologyHostsEditor').then((m) => ({ default: m.TopologyHostsEditor }))
+);
+const LazyTopologySubmapsEditor = lazy(() =>
+  import('./TopologySubmapsEditor').then((m) => ({ default: m.TopologySubmapsEditor }))
+);
+const LazyTopologyLinksEditor = lazy(() =>
+  import('./TopologyLinksEditor').then((m) => ({ default: m.TopologyLinksEditor }))
 );
 const LazyQueryDisplayRefIdsEditor = lazy(() =>
   import('../components/QueryDisplayRefIdsEditor').then((m) => ({
@@ -41,10 +45,42 @@ const LazyTopologyTemplatesEditor = lazy(() =>
   }))
 );
 
-export function TopologyEditor(props: ComponentProps<typeof LazyTopologyEditor>): JSX.Element {
+export function TopologyLayoutEditor(
+  props: ComponentProps<typeof LazyTopologyLayoutEditor>
+): JSX.Element {
   return (
     <Suspense fallback={loading}>
-      <LazyTopologyEditor {...props} />
+      <LazyTopologyLayoutEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function TopologyHostsEditor(
+  props: ComponentProps<typeof LazyTopologyHostsEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyTopologyHostsEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function TopologySubmapsEditor(
+  props: ComponentProps<typeof LazyTopologySubmapsEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyTopologySubmapsEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function TopologyLinksEditor(
+  props: ComponentProps<typeof LazyTopologyLinksEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyTopologyLinksEditor {...props} />
     </Suspense>
   );
 }
@@ -53,16 +89,6 @@ export function ChildMapsEditor(props: ComponentProps<typeof LazyChildMapsEditor
   return (
     <Suspense fallback={loading}>
       <LazyChildMapsEditor {...props} />
-    </Suspense>
-  );
-}
-
-export function DashboardNavChoicesEditor(
-  props: ComponentProps<typeof LazyDashboardNavChoicesEditor>
-): JSX.Element {
-  return (
-    <Suspense fallback={loading}>
-      <LazyDashboardNavChoicesEditor {...props} />
     </Suspense>
   );
 }

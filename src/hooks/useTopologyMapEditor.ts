@@ -1,6 +1,5 @@
-import React, { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { StandardEditorProps } from '@grafana/data';
-import { Alert, Button, Field, Input, Stack } from '@grafana/ui';
 import {
   TopologyLink,
   TopologyMap,
@@ -10,22 +9,19 @@ import {
   parseTopologyJson,
   topologyToJson,
 } from '../types';
+import { activeChildMaps } from '../utils/childMapEdits';
 import { inferLinkMedium } from '../utils/linkMedium';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
-import { parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
-import { DashboardPickersSection } from './sections/DashboardPickersSection';
-import { EditorLockBar } from './sections/EditorLockBar';
-import { HostNodesSection } from './sections/HostNodesSection';
-import { LinkEditField, LinksSection } from './sections/LinksSection';
-import { SubmapsSection } from './sections/SubmapsSection';
-import { TopologyJsonEditor } from './sections/TopologyJsonEditor';
+import { LinkBandwidthUnit, parseBandwidthInput } from '../utils/linkBandwidth';
+import { LinkEditField } from '../editor/sections/LinksSection';
 
-type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
+type EditorProps = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
 
-export function TopologyEditor({ value, onChange, context }: Props) {
+export function useTopologyMapEditor({ value, onChange, context }: EditorProps) {
   const uid = useId();
-  const map = value ?? defaultTopologyMap();
-  const queryRefInfos = context.options.queryRefInfosAvailable ?? [];
+  const panelOptions = context.options;
+  const map = value ?? panelOptions.map ?? defaultTopologyMap();
+  const queryRefInfos = panelOptions.queryRefInfosAvailable ?? [];
   const locked = Boolean(map.locked);
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonText, setJsonText] = useState(() => topologyToJson(map));
@@ -35,8 +31,8 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   const hostNodes = useMemo(() => map.nodes.filter((n) => isHostNode(n)), [map.nodes]);
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
   const childMapIds = useMemo(
-    () => Object.keys(context.options.childMaps ?? {}).sort(),
-    [context.options.childMaps]
+    () => Object.keys(activeChildMaps(panelOptions.childMaps)).sort(),
+    [panelOptions.childMaps]
   );
   const dashboardPickerNodes = useMemo(
     () => map.nodes.filter((n) => n.type === 'dashboard_picker'),
@@ -61,7 +57,6 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     setOpenNodes((prev) => ({ ...prev, [nodeId]: open }));
   }, []);
 
-  /** Patch por índice dentro de uma sublista (submapas, seletores), aplicado no mapa inteiro. */
   const updateNodeInSection = useCallback(
     (section: TopologyNode[], index: number, patch: Partial<TopologyNode>) => {
       const target = section[index];
@@ -75,7 +70,6 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     [map.nodes, updateMap]
   );
 
-  /** Remover nó também remove os links presos nele — senão sobrariam cabos soltos no mapa. */
   const removeNodeInSection = useCallback(
     (section: TopologyNode[], index: number) => {
       const node = section[index];
@@ -207,121 +201,49 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     setJsonMode(false);
   }, [jsonText, onChange]);
 
-  const nodeOptions = map.nodes.map((n) => ({
-    label: n.label?.trim() ? `${n.label.trim()} (${n.id})` : n.id,
-    value: n.id,
-  }));
-
-  if (jsonMode) {
-    return (
-      <Stack direction="column" gap={2}>
-        <EditorLockBar locked={locked} onToggle={toggleLock} />
-        <TopologyJsonEditor
-          uid={uid}
-          locked={locked}
-          text={jsonText}
-          error={jsonError}
-          onTextChange={setJsonText}
-          onApply={applyJson}
-          onBack={() => setJsonMode(false)}
-        />
-      </Stack>
-    );
-  }
-
-  return (
-    <Stack direction="column" gap={2}>
-      <EditorLockBar locked={locked} onToggle={toggleLock} />
-
-      {locked && (
-        <Alert title="Edição bloqueada" severity="warning">
-          Posições, submapas e links estão travados. Clique no cadeado para destravar.
-        </Alert>
-      )}
-
-      {!locked && (
-        <Alert title="Edição no mapa" severity="info">
-          Nome e IP dos hosts vêm do <strong>Zabbix</strong>. Posição: <strong>arraste</strong> no mapa (destravado).
-          Botão direito para links e submapas.
-        </Alert>
-      )}
-
-      <Field label="Largura do mapa">
-        <Input
-          id={`${uid}-map-width`}
-          type="number"
-          value={map.width}
-          disabled={locked}
-          onChange={(e) => {
-            const width = Number(e.currentTarget.value);
-            if (Number.isFinite(width) && width > 0) {
-              updateMap({ width: Math.round(width) });
-            }
-          }}
-        />
-      </Field>
-      <Field label="Altura do mapa">
-        <Input
-          id={`${uid}-map-height`}
-          type="number"
-          value={map.height}
-          disabled={locked}
-          onChange={(e) => {
-            const height = Number(e.currentTarget.value);
-            if (Number.isFinite(height) && height > 0) {
-              updateMap({ height: Math.round(height) });
-            }
-          }}
-        />
-      </Field>
-
-      <HostNodesSection hostNodes={hostNodes} />
-
-      <SubmapsSection
-        uid={uid}
-        locked={locked}
-        submapNodes={submapNodes}
-        queryRefInfos={queryRefInfos}
-        childMapIds={childMapIds}
-        openNodes={openNodes}
-        onToggleNode={toggleNodeOpen}
-        onUpdate={updateSubmap}
-        onRemove={removeSubmap}
-        onAdd={addSubmap}
-      />
-
-      <DashboardPickersSection
-        uid={uid}
-        locked={locked}
-        pickerNodes={dashboardPickerNodes}
-        openNodes={openNodes}
-        onToggleNode={toggleNodeOpen}
-        onUpdate={updateDashboardPicker}
-        onRemove={removeDashboardPicker}
-        onAdd={addDashboardPicker}
-      />
-
-      <LinksSection
-        uid={uid}
-        locked={locked}
-        links={map.links}
-        nodeCount={map.nodes.length}
-        nodeOptions={nodeOptions}
-        onUpdate={updateLink}
-        onRemove={removeLink}
-        onAdd={addLink}
-      />
-
-      <Button
-        variant="secondary"
-        disabled={locked}
-        onClick={() => {
-          setJsonText(topologyToJson(map));
-          setJsonMode(true);
-        }}
-      >
-        Importar / exportar JSON
-      </Button>
-    </Stack>
+  const nodeOptions = useMemo(
+    () =>
+      map.nodes.map((n) => ({
+        label: n.label?.trim() ? `${n.label.trim()} (${n.id})` : n.id,
+        value: n.id,
+      })),
+    [map.nodes]
   );
+
+  const openJsonMode = useCallback(() => {
+    setJsonText(topologyToJson(map));
+    setJsonMode(true);
+  }, [map]);
+
+  return {
+    uid,
+    map,
+    locked,
+    jsonMode,
+    jsonText,
+    jsonError,
+    setJsonText,
+    setJsonMode,
+    queryRefInfos,
+    hostNodes,
+    submapNodes,
+    childMapIds,
+    dashboardPickerNodes,
+    nodeOptions,
+    openNodes,
+    updateMap,
+    toggleLock,
+    toggleNodeOpen,
+    addSubmap,
+    addDashboardPicker,
+    updateSubmap,
+    removeSubmap,
+    updateDashboardPicker,
+    removeDashboardPicker,
+    addLink,
+    updateLink,
+    removeLink,
+    applyJson,
+    openJsonMode,
+  };
 }
