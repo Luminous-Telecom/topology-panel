@@ -1,30 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
-import {
-  CanvasTool,
-  HostDisplayMap,
-  NodeEditSavePayload,
-  HostMetadataMap,
-  TopologyHostIcon,
-  TopologyLink,
-  TopologyMap,
-  TopologyNode,
-  TopologyPanelOptions,
-  TopologyView,
-} from '../types';
+import { CanvasTool, HostDisplayMap, NodeEditSavePayload, HostMetadataMap, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { addLinkToMap, addZabbixHostAt, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps } from '../utils/mapEdits';
 import { resolveHostIp } from '../utils/hostLookup';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode } from '../utils/topologyNodes';
-import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { resolvePanelColor } from '../utils/panelColors';
+import { buildLegendItems } from '../utils/legendItems';
 import { applyNodeEditSave } from '../utils/nodeEditSave';
-import { resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
 import { AlignGuideLine } from '../utils/alignGuides';
-import { regionStrokeColor } from '../utils/networkStats';
-import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
+import { computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { TopologyContextMenu } from './TopologyContextMenu';
@@ -54,6 +41,7 @@ import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
+import { useMinimapColors } from '../hooks/useMinimapColors';
 import { useNodeLayouts } from '../hooks/useNodeLayouts';
 import { useRenderLinks } from '../hooks/useRenderLinks';
 import { useTopologyMenuItems } from '../hooks/useTopologyMenuItems';
@@ -762,101 +750,16 @@ export function TopologyCanvas({
     viewport,
   });
 
-  const legendItems = useMemo(() => {
-    if (options.showLegend === false) {
-      return [];
-    }
-    const items: Array<{ label: string; color: string }> = [];
-    if (options.legendUnknown !== false) {
-      items.push({ label: 'Sem query', color: options.colorUnknown });
-    }
-    if (options.legendOnline !== false) {
-      items.push({ label: 'Online', color: options.colorOnline });
-    }
-    if (options.legendOffline !== false) {
-      items.push({ label: 'Offline', color: options.colorOffline });
-    }
-    if (options.legendAlert !== false) {
-      items.push({ label: 'Alerta', color: options.colorAlert });
-    }
-    if (options.legendStatic) {
-      items.push({ label: 'Estático', color: options.colorStatic });
-    }
-    if (options.legendSubmap) {
-      items.push({ label: 'Submapa', color: options.colorSubmap });
-    }
-    if (options.legendLink) {
-      items.push({ label: 'Cabos', color: options.colorLink });
-    }
-    if (options.legendDownload) {
-      items.push({ label: 'Download (origem)', color: options.colorLinkDownload });
-    }
-    if (options.legendUpload) {
-      items.push({ label: 'Upload (destino)', color: options.colorLinkUpload });
-    }
-    if (options.legendHostTypes) {
-      for (const [icon, color] of Object.entries(options.hostTypeColors ?? {})) {
-        const trimmed = color?.trim();
-        if (!trimmed) {
-          continue;
-        }
-        items.push({ label: HOST_ICON_LABELS[icon as TopologyHostIcon], color: trimmed });
-      }
-    }
-    return items;
-  }, [
-    options.showLegend,
-    options.legendUnknown,
-    options.legendOnline,
-    options.legendOffline,
-    options.legendAlert,
-    options.legendStatic,
-    options.legendSubmap,
-    options.legendLink,
-    options.legendDownload,
-    options.legendUpload,
-    options.legendHostTypes,
-    options.colorUnknown,
-    options.colorOnline,
-    options.colorOffline,
-    options.colorAlert,
-    options.colorStatic,
-    options.colorSubmap,
-    options.colorLink,
-    options.colorLinkDownload,
-    options.colorLinkUpload,
-    options.hostTypeColors,
-  ]);
+  const legendItems = useMemo(() => buildLegendItems(options), [options]);
 
-  const resolveMiniNodeFill = useCallback(
-    (node: TopologyNode): string => {
-      const region = regionStats.get(node.id);
-      if (isNetworkNode(node)) {
-        return resolveNetworkFill(node, region, options, queryReady, resolveColor);
-      }
-      return resolveNodeFill(
-        node,
-        node.type === 'submap' ? region : undefined,
-        options,
-        queryReady,
-        hostMetadata,
-        hostDisplay,
-        resolveColor
-      );
-    },
-    [regionStats, options, queryReady, hostMetadata, hostDisplay, resolveColor]
-  );
-
-  const resolveMiniNetworkStroke = useCallback(
-    (node: TopologyNode): string => {
-      const stats = regionStats.get(node.id);
-      const strokeRaw = regionStrokeColor(stats, options, queryReady, node.borderColor);
-      return resolveColor(strokeRaw);
-    },
-    [regionStats, options, queryReady, resolveColor]
-  );
-
-  const miniLinkColor = resolveColor(options.colorLink);
+  const { resolveMiniNodeFill, resolveMiniNetworkStroke, miniLinkColor } = useMinimapColors({
+    regionStats,
+    options,
+    queryReady,
+    hostMetadata,
+    hostDisplay,
+    resolveColor,
+  });
 
   return (
     <div
