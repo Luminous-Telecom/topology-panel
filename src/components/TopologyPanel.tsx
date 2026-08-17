@@ -15,17 +15,11 @@ import {
 } from '../types';
 import {
   collectSubmapQueryRefIds,
-  collectQueryRefIdsFromPanelData,
-  collectQueryRefInfosFromPanelData,
   canonicalizeHostKeys,
   enrichHostDisplayFromMap,
   enrichHostMetadataFromMap,
   extractDisplayQueryHosts,
-  extractHostDisplayByRefId,
-  extractHostMetadataFromData,
   extractQueryHostOptions,
-  extractQueryHosts,
-  extractQueryHostsByRefId,
   enrichQueryHostOptionsFromMap,
   filterQueryHostOptionsByDisplayHosts,
   findHostDisplayBucket,
@@ -38,10 +32,14 @@ import {
   resolveDisplayQueryRefIds,
   resolveHostIp,
   resolveHostLookupKey,
-  resolveZabbixDatasourceUid,
   sameQueryRefInfos,
   sameStringList,
 } from '../utils';
+import {
+  buildQueryIndex,
+  hostDisplayByRefIdFromIndex,
+  queryHostsByRefIdFromIndex,
+} from '../services/queryIndex';
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
@@ -241,10 +239,14 @@ export function TopologyPanel({
     ]
   );
 
-  const queryMeta = useMemo(() => extractHostMetadataFromData(data), [data]);
-  const queryHosts = useMemo(() => extractQueryHosts(data), [data]);
-
-  const zabbixDatasourceUid = useMemo(() => resolveZabbixDatasourceUid(data), [data]);
+  /**
+   * Leitura única das séries da Query. Metadata, hosts, refIds e status por refId saem todos
+   * daqui — antes cada um percorria `data.series` por conta própria a cada refresh.
+   */
+  const queryIndex = useMemo(() => buildQueryIndex(data), [data]);
+  const queryMeta = queryIndex.metadata;
+  const queryHosts = queryIndex.hosts;
+  const zabbixDatasourceUid = queryIndex.datasourceUid;
 
   const { metadata: apiHostMetadata, loading: zabbixMetadataLoading } = useZabbixHostMetadata(
     zabbixDatasourceUid,
@@ -264,13 +266,13 @@ export function TopologyPanel({
   const queryError = data.state === LoadingState.Error;
 
   const liveHostDisplayByRefId = useMemo(() => {
-    const byRef = extractHostDisplayByRefId(data, statusColorOptions);
+    const byRef = hostDisplayByRefIdFromIndex(queryIndex, statusColorOptions);
     const enriched: Record<string, HostDisplayMap> = {};
     for (const [refId, bucket] of Object.entries(byRef)) {
       enriched[refId] = enrichHostDisplayFromMap(bucket, resolvedOptions.map, dataMeta);
     }
     return enriched;
-  }, [data, statusColorOptions, resolvedOptions.map, dataMeta]);
+  }, [queryIndex, statusColorOptions, resolvedOptions.map, dataMeta]);
 
   const hostDisplayByRefId = useMemo(
     () =>
@@ -298,15 +300,8 @@ export function TopologyPanel({
     [hostDisplayByRefId, resolvedOptions.map, dataMeta]
   );
 
-  const queryRefIdsAvailable = useMemo(
-    () => collectQueryRefIdsFromPanelData(data),
-    [data]
-  );
-
-  const queryRefInfosAvailable = useMemo(
-    () => collectQueryRefInfosFromPanelData(data),
-    [data]
-  );
+  const queryRefIdsAvailable = queryIndex.refIds;
+  const queryRefInfosAvailable = queryIndex.refInfos;
 
   useEffect(() => {
     if (!onOptionsChange) {
@@ -368,7 +363,7 @@ export function TopologyPanel({
     );
   }, [resolvedOptions.map.nodes]);
 
-  const liveQueryHostsByRefId = useMemo(() => extractQueryHostsByRefId(data), [data]);
+  const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
   const queryHostsByRefId = useMemo(
     () =>
