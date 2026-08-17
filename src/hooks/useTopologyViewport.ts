@@ -1,8 +1,9 @@
 import { MutableRefObject, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyView } from '../types';
-import { eventTargetsElement, findScrollParents } from '../utils/domScroll';
-import { clamp } from '../utils/mapCoords';
 import { computeFitToViewTransform } from '../utils/mapBounds';
+import { useCanvasZoomGestures } from './useCanvasZoomGestures';
+import { useFullscreen } from './useFullscreen';
+import { useViewportSize } from './useViewportSize';
 
 interface UseTopologyViewportParams {
   wrapRef: RefObject<HTMLDivElement>;
@@ -40,10 +41,10 @@ interface UseTopologyViewportResult {
 }
 
 /**
- * Pan/zoom/fullscreen do canvas — view (x/y/scale), viewport (tamanho do painel), fitToView
- * inicial, ResizeObserver e o listener nativo de wheel/pinch (2 dedos). Não inclui o pan de 1
- * dedo nem a máquina de estado de arraste de nó/rede/marquee, que ficam em
- * `useTopologyDragController` (acionado a partir de `onPointerMove`/`onPointerDown` do React).
+ * View do canvas (x/y/scale) e o fitToView inicial, compondo `useViewportSize` (medida do painel),
+ * `useFullscreen` e `useCanvasZoomGestures` (roda e pinch). Não inclui o pan de 1 dedo nem a
+ * máquina de estado de arraste de nó/rede/marquee, que ficam em `useTopologyDragController`
+ * (acionado a partir de `onPointerMove`/`onPointerDown` do React).
  */
 export function useTopologyViewport({
   wrapRef,
@@ -58,7 +59,7 @@ export function useTopologyViewport({
   onFullscreenChange,
   showToast,
 }: UseTopologyViewportParams): UseTopologyViewportResult {
-  const sizeElementRef = useRef(sizeElement);
+  const sizeElementRef = useRef<HTMLElement | null>(sizeElement);
   sizeElementRef.current = sizeElement;
   const resolveSizeEl = useCallback((): HTMLElement | null => sizeElementRef.current ?? wrapRef.current, [wrapRef]);
   const [view, setView] = useState<TopologyView>(() =>
@@ -77,44 +78,9 @@ export function useTopologyViewport({
     viewRef.current = next;
     setView(next);
   }, []);
-  const [viewport, setViewport] = useState({ w: 0, h: 0 });
-  const viewportRef = useRef(viewport);
-  viewportRef.current = viewport;
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { viewport, viewportRef } = useViewportSize({ wrapRef, sizeElement, sizeElementRef });
+  const { isFullscreen, toggleFullscreen } = useFullscreen({ wrapRef, onFullscreenChange, showToast });
   const pinchActiveRef = useRef(false);
-
-  useEffect(() => {
-    const syncFullscreen = () => {
-      const el = wrapRef.current;
-      const fs = Boolean(el && document.fullscreenElement === el);
-      setIsFullscreen(fs);
-      onFullscreenChange?.(fs);
-    };
-    document.addEventListener('fullscreenchange', syncFullscreen);
-    syncFullscreen();
-    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    const el = wrapRef.current;
-    if (!el) {
-      return;
-    }
-    try {
-      if (document.fullscreenElement === el) {
-        await document.exitFullscreen();
-      } else if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        await el.requestFullscreen();
-      } else {
-        await el.requestFullscreen();
-      }
-    } catch {
-      showToast('Não foi possível alternar a tela cheia neste navegador');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const fitToView = useCallback(() => {
     const el = resolveSizeEl();
@@ -141,32 +107,7 @@ export function useTopologyViewport({
     didInitialFitRef.current = true;
   }, [commitView, fitToView, mapWidth, mapHeight, savedView]);
 
-  useEffect(() => {
-    const wrap = wrapRef.current;
-    const sizeEl = sizeElement ?? wrap;
-    if (!sizeEl) {
-      return;
-    }
-    const onResize = () => {
-      const target = sizeElementRef.current ?? wrapRef.current;
-      if (!target) {
-        return;
-      }
-      const w = target.clientWidth;
-      const h = target.clientHeight;
-      if (w > 0 && h > 0) {
-        setViewport({ w, h });
-      }
-    };
-    const ro = new ResizeObserver(onResize);
-    ro.observe(sizeEl);
-    if (wrap && wrap !== sizeEl) {
-      ro.observe(wrap);
-    }
-    onResize();
-    return () => ro.disconnect();
-  }, [sizeElement, wrapRef]);
-
+  // Grava a view no mapa só depois que o usuário para de mexer, para não persistir cada frame.
   useEffect(() => {
     if (!onViewChange || !didInitialFitRef.current) {
       return;
@@ -178,188 +119,16 @@ export function useTopologyViewport({
     return () => window.clearTimeout(timer);
   }, [onViewChange, savedView, view]);
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el || !enableZoom) {
-      return;
-    }
-
-    const scrollParents = findScrollParents(el);
-
-    // Não mutar `overflow` dos ancestrais do Grafana: no modo edição isso
-    // colapsa o grid do card (`height: -1` / 0px). O zoom já chama
-    // preventDefault no wheel sobre o painel.
-
-    type PinchState = {
-      dist0: number;
-      mid0x: number;
-      mid0y: number;
-      view0: TopologyView;
-    };
-    let pinch: PinchState | null = null;
-    let pinchRaf: number | null = null;
-    let pinchPending: TopologyView | null = null;
-
-    const isOverPanel = (e: Event) => eventTargetsElement(e, el);
-
-    const applyZoomAt = (clientX: number, clientY: number, nextScale: number, from: TopologyView) => {
-      const sizeEl = resolveSizeEl() ?? el;
-      const rect = sizeEl.getBoundingClientRect();
-      const mx = clientX - rect.left;
-      const my = clientY - rect.top;
-      const ns = clamp(nextScale, 0.1, 4);
-      return {
-        scale: ns,
-        x: mx - ((mx - from.x) * ns) / from.scale,
-        y: my - ((my - from.y) * ns) / from.scale,
-      };
-    };
-
-    const applyZoom = (clientX: number, clientY: number, deltaY: number) => {
-      commitView((v) => {
-        const delta = deltaY > 0 ? 0.9 : 1.1;
-        return applyZoomAt(clientX, clientY, v.scale * delta, v);
-      });
-    };
-
-    const flushPinch = () => {
-      pinchRaf = null;
-      if (!pinchPending) {
-        return;
-      }
-      const next = pinchPending;
-      pinchPending = null;
-      commitView(next);
-    };
-
-    const touchPair = (touches: TouchList) => {
-      if (touches.length < 2) {
-        return null;
-      }
-      const a = touches[0];
-      const b = touches[1];
-      const sizeEl = resolveSizeEl() ?? el;
-      const rect = sizeEl.getBoundingClientRect();
-      return {
-        dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
-        midX: (a.clientX + b.clientX) / 2 - rect.left,
-        midY: (a.clientY + b.clientY) / 2 - rect.top,
-      };
-    };
-
-    const endPinch = () => {
-      pinchActiveRef.current = false;
-      pinch = null;
-      if (pinchRaf != null) {
-        cancelAnimationFrame(pinchRaf);
-        pinchRaf = null;
-      }
-      if (pinchPending) {
-        flushPinch();
-      }
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
-        return;
-      }
-      const pair = touchPair(e.touches);
-      if (!pair) {
-        return;
-      }
-      e.preventDefault();
-      // Interrompe pan/drag de 1 dedo — pinch assume o gesto.
-      onPinchStart();
-      pinchActiveRef.current = true;
-      pinch = {
-        dist0: pair.dist,
-        mid0x: pair.midX,
-        mid0y: pair.midY,
-        view0: { ...viewRef.current },
-      };
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (!pinch || e.touches.length < 2) {
-        return;
-      }
-      const pair = touchPair(e.touches);
-      if (!pair) {
-        return;
-      }
-      e.preventDefault();
-      const ns = clamp(pinch.view0.scale * (pair.dist / pinch.dist0), 0.1, 4);
-      // Mantém o ponto do mapa sob o meio dos dedos (zoom + pan com 2 dedos).
-      pinchPending = {
-        scale: ns,
-        x: pair.midX - ((pinch.mid0x - pinch.view0.x) * ns) / pinch.view0.scale,
-        y: pair.midY - ((pinch.mid0y - pinch.view0.y) * ns) / pinch.view0.scale,
-      };
-      if (pinchRaf == null) {
-        pinchRaf = requestAnimationFrame(flushPinch);
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
-        endPinch();
-      }
-    };
-
-    const freezeScrollPosition = () => {
-      const tops = scrollParents.map((sp) => ({ sp, top: sp.scrollTop }));
-      return () => {
-        for (const { sp, top } of tops) {
-          sp.scrollTop = top;
-        }
-      };
-    };
-
-    let lastWheelTs = -1;
-    // Listener genérico (Event) — attachado em document/el/scrollParents, tipos mistos
-    // não compartilham o overload específico de WheelEvent do addEventListener.
-    const onWheel = (evt: Event) => {
-      if (!(evt instanceof WheelEvent)) {
-        return;
-      }
-      const e = evt;
-      if (e.timeStamp === lastWheelTs || !isOverPanel(e)) {
-        return;
-      }
-      lastWheelTs = e.timeStamp;
-
-      const restoreScroll = freezeScrollPosition();
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      applyZoom(e.clientX, e.clientY, e.deltaY);
-      restoreScroll?.();
-      requestAnimationFrame(() => restoreScroll?.());
-    };
-
-    const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
-    const wheelTargets = [document, el, ...scrollParents];
-
-    for (const target of wheelTargets) {
-      target.addEventListener('wheel', onWheel, wheelOpts);
-    }
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    el.addEventListener('touchcancel', onTouchEnd);
-
-    return () => {
-      for (const target of wheelTargets) {
-        target.removeEventListener('wheel', onWheel, wheelOpts);
-      }
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-      endPinch();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commitView, enableZoom, mapNodesLength, onPinchStart]);
+  useCanvasZoomGestures({
+    wrapRef,
+    resolveSizeEl,
+    viewRef,
+    commitView,
+    enableZoom,
+    mapNodesLength,
+    onPinchStart,
+    pinchActiveRef,
+  });
 
   return {
     view,
