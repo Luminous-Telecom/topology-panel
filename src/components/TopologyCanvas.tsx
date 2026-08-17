@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
-import { addLinkToMap, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
-import { resolveHostIp } from '../utils/hostLookup';
+import { addLinkToMap, areNetworksLocked, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode } from '../utils/topologyNodes';
@@ -34,6 +33,7 @@ import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardAction
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
+import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
 import { useMinimapColors } from '../hooks/useMinimapColors';
 import { useNodeLayouts } from '../hooks/useNodeLayouts';
@@ -79,15 +79,6 @@ interface Props {
   /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). */
   hideOverlayControls?: boolean;
 }
-
-type ContextState = {
-  screenX: number;
-  screenY: number;
-  mapX: number;
-  mapY: number;
-  node?: TopologyNode;
-  link?: TopologyLink;
-};
 
 export function TopologyCanvas({
   map: liveMap,
@@ -222,8 +213,6 @@ export function TopologyCanvas({
     onFullscreenChange,
     showToast,
   });
-  const [contextMenu, setContextMenu] = useState<ContextState | null>(null);
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const {
     selectedNodeIds,
     setSelectedNodeIds,
@@ -233,6 +222,19 @@ export function TopologyCanvas({
     selectedSubmapNodes,
     selectedNodes,
   } = useTopologySelection(map.nodes);
+  const { contextMenu, closeContextMenu, handleContextMenu, handleNodeContextMenu } =
+    useCanvasContextMenu({
+      wrapRef,
+      map,
+      storedMap,
+      view,
+      canEditCanvas,
+      canPersist,
+      hostMetadata,
+      selectedNodeIds,
+      setSelectedNodeIds,
+      showToast,
+    });
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
@@ -358,7 +360,7 @@ export function TopologyCanvas({
       setSelectedNodeIds([nodeId]);
       setSelectedLink(null);
       setLinkFromId(null);
-      setContextMenu(null);
+      closeContextMenu();
       setMarqueeRect(null);
       setAlignGuides([]);
     },
@@ -377,7 +379,7 @@ export function TopologyCanvas({
 
   const beginLinkFrom = useCallback((nodeId: string) => {
     setLinkFromId(nodeId);
-    setContextMenu(null);
+    closeContextMenu();
   }, []);
 
   const completeLink = useCallback(
@@ -535,70 +537,6 @@ export function TopologyCanvas({
     [editable, openDashboardPicker, openNodeProperties, openSubmap, resetDoubleTapState]
   );
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, target?: { node?: TopologyNode; link?: TopologyLink }) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const rawNode = target?.node;
-      const node =
-        rawNode?.type === 'network' && areNetworksLocked(storedMap) ? undefined : rawNode;
-      const isCanvas = !node && !target?.link;
-      const isHost = Boolean(node && isHostNode(node));
-      const hasTools = Boolean(node && isHost && resolveHostIp(node, hostMetadata));
-
-      if (isCanvas) {
-        if (!canEditCanvas) {
-          if (map.locked) {
-            showToast('Destrave o mapa (cadeado) para adicionar dispositivos, redes e submapas');
-          } else if (!canPersist) {
-            showToast('Entre no modo edição do dashboard (ícone lápis) para editar o mapa');
-          }
-          return;
-        }
-      } else if (target?.link) {
-        if (!canEditCanvas) {
-          return;
-        }
-      } else if (node && !hasTools && !canEditCanvas) {
-        return;
-      }
-
-      if (node && !selectedNodeIds.includes(node.id)) {
-        if (selectedNodeIds.length === 0 || !(e.shiftKey || e.ctrlKey || e.metaKey)) {
-          setSelectedNodeIds([node.id]);
-        } else {
-          setSelectedNodeIds((prev) => (prev.includes(node.id) ? prev : [...prev, node.id]));
-        }
-      }
-
-      const el = wrapRef.current;
-      if (!el) {
-        return;
-      }
-      const rect = el.getBoundingClientRect();
-      const { x: mapX, y: mapY } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-      setContextMenu({
-        screenX: e.clientX,
-        screenY: e.clientY,
-        mapX,
-        mapY,
-        node,
-        link: target?.link,
-      });
-    },
-    [canEditCanvas, canPersist, map.locked, selectedNodeIds, showToast, storedMap, view]
-  );
-
-  /**
-   * Handlers por nó ficam aqui e recebem o nó como argumento: se fossem criados dentro do `.map()`
-   * do render, cada nó ganharia uma função nova a cada render e a memoização das formas cairia.
-   */
-  const handleNodeContextMenu = useCallback(
-    (e: React.MouseEvent, node: TopologyNode) => handleContextMenu(e, { node }),
-    [handleContextMenu]
-  );
-
   const handleNodeMouseEnter = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
       setLinkHoverId(node.id);
@@ -635,9 +573,9 @@ export function TopologyCanvas({
       persist(removeNodesFromMap(storedMap, nodesToRemove));
       setSelectedNodeIds((prev) => prev.filter((id) => !removedIds.has(id)));
       clearNodeDragUi();
-      setContextMenu(null);
+      closeContextMenu();
     },
-    [clearNodeDragUi, persist, storedMap]
+    [clearNodeDragUi, closeContextMenu, persist, setSelectedNodeIds, storedMap]
   );
 
   const deleteSelectedNodes = useCallback(() => {
@@ -658,7 +596,7 @@ export function TopologyCanvas({
   /** Esc: abandona o modo link, fecha menu e zera seleção, marquee e guias de alinhamento. */
   const cancelInteractions = useCallback(() => {
     setLinkFromId(null);
-    setContextMenu(null);
+    closeContextMenu();
     setSelectedNodeIds([]);
     setMarqueeRect(null);
     setAlignGuides([]);
