@@ -20,6 +20,9 @@ credentials.json
 examples/
 dashboards/
 
+# Log local do hook de deploy automático
+.cursor/hooks/auto-deploy.log
+
 # SO / IDE
 .DS_Store
 Thumbs.db

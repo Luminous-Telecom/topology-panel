@@ -145,6 +145,69 @@ export interface NocMapSummary {
   congestedLinkCount: number;
 }
 
+export type HostAlertListReason = 'offline' | 'alert';
+
+export interface HostAlertListEntry {
+  nodeId: string;
+  label: string;
+  reason: HostAlertListReason;
+}
+
+const ALERT_REASON_ORDER: Record<HostAlertListReason, number> = {
+  offline: 0,
+  alert: 1,
+};
+
+function hostDisplayLabel(node: TopologyNode): string {
+  const label = node.label?.trim();
+  if (label) {
+    return label;
+  }
+  const host = node.zabbixHost?.trim();
+  if (host) {
+    return host;
+  }
+  return node.id;
+}
+
+/** Hosts offline ou em alerta (status da Query) — para a lista do canto inferior. */
+export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertListEntry[] {
+  const entries: HostAlertListEntry[] = [];
+
+  for (const node of ctx.map.nodes) {
+    if (!isHostNode(node)) {
+      continue;
+    }
+
+    const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
+
+    let reason: HostAlertListReason | null = null;
+    if (status === 'offline') {
+      reason = 'offline';
+    } else if (status === 'alert') {
+      reason = 'alert';
+    }
+
+    if (!reason) {
+      continue;
+    }
+
+    entries.push({
+      nodeId: node.id,
+      label: hostDisplayLabel(node),
+      reason,
+    });
+  }
+
+  return entries.sort((a, b) => {
+    const order = ALERT_REASON_ORDER[a.reason] - ALERT_REASON_ORDER[b.reason];
+    if (order !== 0) {
+      return order;
+    }
+    return a.label.localeCompare(b.label, 'pt-BR');
+  });
+}
+
 export function computeNocMapSummary(ctx: TopologyFilterContext): NocMapSummary {
   const hosts = ctx.map.nodes.filter((n) => isHostNode(n));
   let offlineCount = 0;

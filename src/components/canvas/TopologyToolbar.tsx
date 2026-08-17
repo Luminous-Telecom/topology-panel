@@ -116,30 +116,28 @@ export function TopologyToolbar({
 
   return (
     <div className={toolbarStyle}>
-      {!isFullscreen && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button
-            type="button"
-            onClick={() => onToolChange('select')}
-            title="Selecionar (seta)"
-            aria-label="Selecionar"
-            aria-pressed={tool === 'select'}
-            style={toolBtnStyle(tool === 'select')}
-          >
-            <FaArrowPointer size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onToolChange('pan')}
-            title="Arrastar mapa (mão)"
-            aria-label="Arrastar mapa"
-            aria-pressed={tool === 'pan'}
-            style={toolBtnStyle(tool === 'pan')}
-          >
-            <FaHand size={13} />
-          </button>
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button
+          type="button"
+          onClick={() => onToolChange('select')}
+          title="Selecionar (seta)"
+          aria-label="Selecionar"
+          aria-pressed={tool === 'select'}
+          style={toolBtnStyle(tool === 'select')}
+        >
+          <FaArrowPointer size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToolChange('pan')}
+          title="Arrastar mapa (mão)"
+          aria-label="Arrastar mapa"
+          aria-pressed={tool === 'pan'}
+          style={toolBtnStyle(tool === 'pan')}
+        >
+          <FaHand size={13} />
+        </button>
+      </div>
       {onToggleNocMode ? (
         <button
           type="button"
@@ -261,60 +259,56 @@ export function TopologyToolbar({
           </button>
         </>
       )}
-      {!isFullscreen && (
-        <>
-          <button
-            type="button"
-            onClick={onToggleFlow}
-            title={
-              flowPaused
-                ? 'Retomar animação de tráfego nas linhas'
-                : 'Pausar animação de tráfego nas linhas'
-            }
-            aria-label={flowPaused ? 'Retomar tráfego' : 'Pausar tráfego'}
-            style={toolBtnStyle(!flowPaused)}
-          >
-            <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
-          </button>
-          <div className={searchWrapStyle}>
-            <button
-              type="button"
-              onClick={() => onSearchOpenChange(!searchOpen)}
-              title="Pesquisar no mapa (Ctrl+F)"
-              aria-label="Pesquisar no mapa"
-              aria-pressed={searchOpen}
-              style={toolBtnStyle(searchOpen)}
-            >
-              <Icon name="search" size="sm" />
-            </button>
-            <TopologySearch
-              nodes={searchNodes}
-              open={searchOpen}
-              onOpenChange={onSearchOpenChange}
-              onFocusNode={onSearchFocusNode}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={onToggleLegend}
-            title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
-            aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
-            aria-pressed={showLegend}
-            style={toolBtnStyle(showLegend)}
-          >
-            <FaListUl size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={onToggleFullscreen}
-            title="Abrir mapa em tela cheia"
-            aria-label="Tela cheia"
-            style={toolBtnStyle(false)}
-          >
-            <Icon name="expand-arrows-alt" size="sm" />
-          </button>
-        </>
-      )}
+      <button
+        type="button"
+        onClick={onToggleFlow}
+        title={
+          flowPaused
+            ? 'Retomar animação de tráfego nas linhas'
+            : 'Pausar animação de tráfego nas linhas'
+        }
+        aria-label={flowPaused ? 'Retomar tráfego' : 'Pausar tráfego'}
+        style={toolBtnStyle(!flowPaused)}
+      >
+        <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
+      </button>
+      <div className={searchWrapStyle}>
+        <button
+          type="button"
+          onClick={() => onSearchOpenChange(!searchOpen)}
+          title="Pesquisar no mapa (Ctrl+F)"
+          aria-label="Pesquisar no mapa"
+          aria-pressed={searchOpen}
+          style={toolBtnStyle(searchOpen)}
+        >
+          <Icon name="search" size="sm" />
+        </button>
+        <TopologySearch
+          nodes={searchNodes}
+          open={searchOpen}
+          onOpenChange={onSearchOpenChange}
+          onFocusNode={onSearchFocusNode}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onToggleLegend}
+        title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+        aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+        aria-pressed={showLegend}
+        style={toolBtnStyle(showLegend)}
+      >
+        <FaListUl size={13} />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        title={isFullscreen ? 'Sair da tela cheia' : 'Abrir mapa em tela cheia'}
+        aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+        style={toolBtnStyle(isFullscreen)}
+      >
+        <Icon name={isFullscreen ? 'compress-arrows' : 'expand-arrows-alt'} size="sm" />
+      </button>
     </div>
   );
 }

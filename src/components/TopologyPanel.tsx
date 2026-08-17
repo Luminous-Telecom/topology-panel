@@ -372,9 +372,10 @@ export function TopologyPanel({
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
 
-  const { problems: hostProblems, loading: hostProblemsLoading } = useZabbixHostProblems(
+  const { problems: hostProblems } = useZabbixHostProblems(
     zabbixDatasourceUid,
-    hostMetadata
+    hostMetadata,
+    data
   );
 
   const handleNocModeChange = useCallback(
@@ -492,7 +493,6 @@ export function TopologyPanel({
         zabbixMetadataLoading={zabbixMetadataLoading}
         linkMetricsByLink={linkMetricsByLink}
         hostProblems={hostProblems}
-        hostProblemsLoading={hostProblemsLoading}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? commitChange : undefined}
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}

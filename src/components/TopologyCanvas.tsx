@@ -3,9 +3,9 @@ import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
-import { computeNocMapSummary, isLinkVisibleForFilters, TopologyFilterContext } from '../utils/noc/topologyFilters';
+import { collectAlertHostEntries, isLinkVisibleForFilters, TopologyFilterContext } from '../utils/noc/topologyFilters';
 import { TopologyFilterBar } from './canvas/TopologyFilterBar';
-import { NocStatusBanner } from './canvas/NocStatusBanner';
+import { TopologyHostAlertList } from './canvas/TopologyHostAlertList';
 import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
 import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
@@ -89,7 +89,6 @@ interface Props {
   linkMetricsByLink?: LinkRuntimeMetricsMap;
   /** Problemas Zabbix para badges NOC */
   hostProblems?: HostProblemsMap;
-  hostProblemsLoading?: boolean;
   onNocModeChange?: (enabled: boolean) => void;
   /** Buscando IP da interface principal no Zabbix (fallback quando a Query não traz IP). */
   zabbixMetadataLoading?: boolean;
@@ -132,7 +131,6 @@ export function TopologyCanvas({
   zabbixDatasourceUid,
   linkMetricsByLink = {},
   hostProblems,
-  hostProblemsLoading = false,
   onNocModeChange,
   zabbixMetadataLoading = false,
   onMapChange,
@@ -344,7 +342,8 @@ export function TopologyCanvas({
     [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options]
   );
 
-  const nocSummary = useMemo(() => computeNocMapSummary(filterContext), [filterContext]);
+  const alertHostEntries = useMemo(() => collectAlertHostEntries(filterContext), [filterContext]);
+  const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
 
   const toggleFilter = useCallback((filter: TopologyMapFilterId) => {
     setActiveFilters((prev) => {
@@ -391,6 +390,10 @@ export function TopologyCanvas({
     viewport,
     suspendSyncRef: suspendScrollSyncRef,
   });
+
+  useEffect(() => {
+    requestAnimationFrame(() => syncScrollFromView());
+  }, [isFullscreen, syncScrollFromView, viewport.w, viewport.h]);
 
   const { validLinks, renderLinks } = useRenderLinks(map.links, nodeLayouts, selectedLink);
   const filteredRenderLinks = useMemo(() => {
@@ -999,11 +1002,19 @@ export function TopologyCanvas({
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 
+      {!hideOverlayControls ? (
+        <TopologyHostAlertList
+          entries={alertHostEntries}
+          colorOffline={resolveColor(options.colorOffline)}
+          colorAlert={resolveColor(options.colorAlert)}
+          queryReady={queryReady}
+          showMinimap={minimapVisible}
+          onFocusHost={focusNodeOnMap}
+        />
+      ) : null}
+
       {effectiveNocMode && !hideOverlayControls ? (
-        <>
-          <TopologyFilterBar activeFilters={activeFilters} onToggle={toggleFilter} />
-          <NocStatusBanner summary={nocSummary} problemsLoading={hostProblemsLoading} />
-        </>
+        <TopologyFilterBar activeFilters={activeFilters} onToggle={toggleFilter} />
       ) : null}
 
       <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
@@ -1020,8 +1031,8 @@ export function TopologyCanvas({
       <svg
         ref={svgRef}
         className={canvasStyles.svg}
-        width={viewport.w > 0 ? viewport.w : '100%'}
-        height={viewport.h > 0 ? viewport.h : '100%'}
+        width="100%"
+        height="100%"
         onContextMenu={(e) => handleContextMenu(e)}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
@@ -1123,7 +1134,7 @@ export function TopologyCanvas({
       </svg>
 
       <CanvasHudOverlay
-        showMinimap={canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0}
+        showMinimap={minimapVisible}
         map={map}
         links={validLinks}
         nodeLayouts={nodeLayouts}

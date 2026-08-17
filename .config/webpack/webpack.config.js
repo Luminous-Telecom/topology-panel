@@ -15,11 +15,9 @@ module.exports = (env) => {
     output: {
       path: path.resolve(__dirname, '../../dist'),
       filename: '[name].js',
-      // Chunk assíncrono (modais via React.lazy) é buscado em runtime pelo browser: sem
-      // `publicPath` o webpack pede `/<chunk>.js` na raiz do Grafana e toma 404.
-      // Hash na query (convenção do create-plugin do Grafana) em vez de no nome do arquivo:
-      // o cache do browser continua invalidando a cada build, mas o deploy sobrescreve sempre
-      // os mesmos arquivos, sem acumular chunks órfãos no servidor.
+      // Chunks assíncronos: hash na query (convenção create-plugin). O entry module.js mantém nome
+      // fixo — o Grafana busta o cache do browser com plugin.json info.version (?_cache=X.Y.Z).
+      // Por isso deploy.sh incrementa o patch antes de cada build.
       chunkFilename: isProd ? '[name].js?_cache=[contenthash]' : '[name].js',
       publicPath: `public/plugins/${PLUGIN_ID}/`,
       // Evita colisão do runtime de chunk com outros plugins carregados no mesmo dashboard.

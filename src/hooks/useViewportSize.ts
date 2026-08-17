@@ -7,6 +7,16 @@ interface UseViewportSizeParams {
   sizeElementRef: MutableRefObject<HTMLElement | null>;
 }
 
+function resolveMeasureTarget(
+  wrap: HTMLElement | null,
+  sizeElementRef: MutableRefObject<HTMLElement | null>
+): HTMLElement | null {
+  if (wrap && document.fullscreenElement === wrap) {
+    return wrap;
+  }
+  return sizeElementRef.current ?? wrap;
+}
+
 /** Tamanho útil do painel, observado no elemento de medida e no wrap. */
 export function useViewportSize({ wrapRef, sizeElement, sizeElementRef }: UseViewportSizeParams) {
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
@@ -20,7 +30,7 @@ export function useViewportSize({ wrapRef, sizeElement, sizeElementRef }: UseVie
       return;
     }
     const onResize = () => {
-      const target = sizeElementRef.current ?? wrapRef.current;
+      const target = resolveMeasureTarget(wrapRef.current, sizeElementRef);
       if (!target) {
         return;
       }
@@ -32,13 +42,20 @@ export function useViewportSize({ wrapRef, sizeElement, sizeElementRef }: UseVie
         setViewport({ w, h });
       }
     };
+    const onFullscreenChange = () => {
+      requestAnimationFrame(onResize);
+    };
     const ro = new ResizeObserver(onResize);
     ro.observe(sizeEl);
     if (wrap && wrap !== sizeEl) {
       ro.observe(wrap);
     }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
     onResize();
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
   }, [sizeElement, sizeElementRef, wrapRef]);
 
   return { viewport, viewportRef };

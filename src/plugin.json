@@ -7,15 +7,19 @@
     "author": {
       "name": "Luminous Telecom"
     },
-    "keywords": ["topology", "network", "zabbix", "map"],
+    "keywords": [
+      "topology",
+      "network",
+      "zabbix",
+      "map"
+    ],
     "logos": {
       "small": "img/plugin-icon.svg",
       "large": "img/plugin-icon.svg"
     },
-    "version": "1.4.159",
+    "version": "1.4.163",
     "updated": "2026-08-17"
   },
-
   "dependencies": {
     "grafanaDependency": ">=10.0.0",
     "plugins": []

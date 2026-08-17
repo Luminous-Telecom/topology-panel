@@ -20,9 +20,12 @@ Toda tarefa e todo commit deste repositório.
 3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
 4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
 5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.
-6. Deploy só quando o usuário pedir, e sempre por `./scripts/deploy.sh` — não copie `dist/` na mão
-  nem reinicie serviço por outro caminho. Sem alvo, publica em `homolog`; `prod` exige pedido
-  explícito. O script é local (ignorado pelo git): não o versione nem o cite no README.
+6. **Deploy automático em homolog** ao encerrar qualquer tarefa que alterou `src/`, `package.json`,
+  `.config/webpack/**` ou `tsconfig.json`: rode `./scripts/deploy.sh homolog` depois dos passos
+  1–3. O script incrementa o patch em `package.json`/`plugin.json` antes do build — o Grafana usa
+  essa versão em `module.js?_cache=…` e o navegador busca o JS novo sem limpar dados do site.
+  Informe sucesso ou falha na resposta. Nunca publique em `prod` sem pedido explícito com `prod`.
+7. Tarefa só de leitura (pergunta, revisão sem diff) **não** dispara deploy.
 
 ## Commits
 
