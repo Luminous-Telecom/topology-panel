@@ -5,6 +5,7 @@ import {
   ROOT_MAP_ID,
   applyTopologyMapToPanelOptions,
   buildTopologyBreadcrumb,
+  computeBreadcrumbNavigation,
   isValidChildMapId,
   resolveTopologyMapById,
   resolveTopologyMapView,
@@ -60,9 +61,54 @@ describe('buildTopologyBreadcrumb', () => {
         { mapId: ROOT_MAP_ID, view: { x: 0, y: 0, scale: 1 }, label: 'Brasil' },
         { mapId: 'ne', view: { x: 0, y: 0, scale: 1 }, label: 'Nordeste' },
       ],
+      'fortaleza',
       'Fortaleza'
     );
-    expect(trail).toEqual(['Brasil', 'Nordeste', 'Fortaleza']);
+    expect(trail).toEqual([
+      { mapId: ROOT_MAP_ID, label: 'Brasil' },
+      { mapId: 'ne', label: 'Nordeste' },
+      { mapId: 'fortaleza', label: 'Fortaleza' },
+    ]);
+  });
+
+  it('fica vazio no mapa raiz sem navegação', () => {
+    expect(buildTopologyBreadcrumb([], ROOT_MAP_ID, '')).toEqual([]);
+  });
+});
+
+describe('computeBreadcrumbNavigation', () => {
+  const view = { x: 0, y: 0, scale: 1 };
+
+  it('salta para um segmento anterior e empilha o restante no avançar', () => {
+    const backStack = [
+      { mapId: ROOT_MAP_ID, view, label: 'Brasil' },
+      { mapId: 'ne', view, label: 'Nordeste' },
+    ];
+    const result = computeBreadcrumbNavigation(
+      0,
+      backStack,
+      [],
+      'fortaleza',
+      'Fortaleza',
+      { x: 5, y: 5, scale: 2 }
+    );
+    expect(result).toEqual({
+      backStack: [],
+      forwardStack: [
+        { mapId: 'fortaleza', view: { x: 5, y: 5, scale: 2 }, label: 'Fortaleza' },
+        { mapId: 'ne', view, label: 'Nordeste' },
+      ],
+      currentMapId: ROOT_MAP_ID,
+      currentLabel: 'Brasil',
+      restoredView: view,
+    });
+  });
+
+  it('ignora clique no segmento atual', () => {
+    const backStack = [{ mapId: ROOT_MAP_ID, view, label: 'Início' }];
+    expect(
+      computeBreadcrumbNavigation(1, backStack, [], 'ne', 'Nordeste', view)
+    ).toBeNull();
   });
 });
 

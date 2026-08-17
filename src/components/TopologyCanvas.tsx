@@ -11,6 +11,7 @@ import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } f
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
+import { TopologyBreadcrumbItem } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
@@ -106,11 +107,12 @@ interface Props {
   savedView?: TopologyView;
   /** Chave do mapa ativo — reinicia pan/zoom ao trocar. */
   mapNavigationKey?: string;
-  mapNavigationBreadcrumb?: string[];
+  mapNavigationBreadcrumb?: TopologyBreadcrumbItem[];
   canMapNavigateBack?: boolean;
   canMapNavigateForward?: boolean;
   onMapNavigateBack?: (currentView: TopologyView) => void;
   onMapNavigateForward?: (currentView: TopologyView) => void;
+  onMapNavigateBreadcrumb?: (index: number, currentView: TopologyView) => void;
   onNavigateToChildMap?: (childMapId: string, label: string, currentView: TopologyView) => void;
 }
 
@@ -144,11 +146,12 @@ export function TopologyCanvas({
   hideOverlayControls = false,
   savedView: savedViewProp,
   mapNavigationKey = 'root',
-  mapNavigationBreadcrumb = [],
+  mapNavigationBreadcrumb = [] as TopologyBreadcrumbItem[],
   canMapNavigateBack = false,
   canMapNavigateForward = false,
   onMapNavigateBack,
   onMapNavigateForward,
+  onMapNavigateBreadcrumb,
   onNavigateToChildMap,
 }: Props) {
   const theme = useTheme2();
@@ -277,7 +280,19 @@ export function TopologyCanvas({
   const [suggestedReviewOpen, setSuggestedReviewOpen] = useState(false);
   const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
-  const effectiveNocMode = Boolean(options.nocMode) || Boolean(hideOverlayControls);
+  /** Sobrescreve `options.nocMode` na sessão quando o dashboard não está em modo edição. */
+  const [nocModeLocalOverride, setNocModeLocalOverride] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    setNocModeLocalOverride(undefined);
+  }, [options.nocMode]);
+  const effectiveNocMode =
+    Boolean(hideOverlayControls) || (nocModeLocalOverride ?? Boolean(options.nocMode));
+  const handleToggleNocMode = useCallback(() => {
+    const current = nocModeLocalOverride ?? Boolean(options.nocMode);
+    const next = !current;
+    setNocModeLocalOverride(next);
+    onNocModeChange?.(next);
+  }, [nocModeLocalOverride, onNocModeChange, options.nocMode]);
   const viewEditable = editable && !effectiveNocMode;
   const [discoveringNeighbors, setDiscoveringNeighbors] = useState(false);
   const [neighborReport, setNeighborReport] = useState<NeighborDiscoveryReport | undefined>();
@@ -941,6 +956,11 @@ export function TopologyCanvas({
         onMapNavigateForward={
           onMapNavigateForward ? () => onMapNavigateForward(viewRef.current) : undefined
         }
+        onMapNavigateBreadcrumb={
+          onMapNavigateBreadcrumb
+            ? (index: number) => onMapNavigateBreadcrumb(index, viewRef.current)
+            : undefined
+        }
         tool={tool}
         setTool={setTool}
         networksLocked={networksLocked}
@@ -951,9 +971,7 @@ export function TopologyCanvas({
         canPersist={canPersist}
         editable={viewEditable}
         nocModeActive={effectiveNocMode}
-        onToggleNocMode={
-          onNocModeChange ? () => onNocModeChange(!options.nocMode) : undefined
-        }
+        onToggleNocMode={onNocModeChange ? handleToggleNocMode : undefined}
         onUndo={onUndo}
         onRedo={onRedo}
         onCopy={copySelection}

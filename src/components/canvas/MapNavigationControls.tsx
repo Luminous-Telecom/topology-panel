@@ -2,13 +2,15 @@ import React from 'react';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { TopologyBreadcrumbItem } from '../../utils/topologyMapNavigation';
 
 interface Props {
-  breadcrumb: string[];
+  breadcrumb: TopologyBreadcrumbItem[];
   canGoBack: boolean;
   canGoForward: boolean;
   onBack: () => void;
   onForward: () => void;
+  onBreadcrumbClick?: (index: number) => void;
 }
 
 const barStyle = css`
@@ -44,19 +46,59 @@ const btnDisabled: React.CSSProperties = {
   cursor: 'default',
 };
 
-const crumbStyle = css`
+const crumbBarStyle = css`
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
   margin-left: 4px;
-  padding: 4px 8px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+`;
+
+const crumbSegmentStyle = css`
+  display: flex;
+  align-items: center;
+  min-width: 0;
+`;
+
+const crumbLinkStyle = css`
+  display: block;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
   color: #fff;
   font-size: 11px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+`;
+
+const crumbCurrentStyle = css`
+  display: block;
+  padding: 4px 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const crumbSeparatorStyle = css`
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  user-select: none;
 `;
 
 /** Voltar/avançar e breadcrumb da navegação hierárquica de submapas internos. */
@@ -66,8 +108,10 @@ export function MapNavigationControls({
   canGoForward,
   onBack,
   onForward,
+  onBreadcrumbClick,
 }: Props) {
   const visible = canGoBack || canGoForward || breadcrumb.length > 0;
+  const breadcrumbTitle = breadcrumb.map((item) => item.label).join(' › ');
 
   useEscapeKey(onBack, visible && canGoBack);
 
@@ -112,8 +156,31 @@ export function MapNavigationControls({
         <Icon name="arrow-right" size="sm" />
       </button>
       {breadcrumb.length > 0 ? (
-        <div className={crumbStyle} title={breadcrumb.join(' › ')}>
-          {breadcrumb.join(' › ')}
+        <div className={crumbBarStyle} title={breadcrumbTitle}>
+          {breadcrumb.map((item, index) => {
+            const isLast = index === breadcrumb.length - 1;
+            return (
+              <div key={`${item.mapId}-${index}`} className={crumbSegmentStyle}>
+                {index > 0 ? <span className={crumbSeparatorStyle} aria-hidden="true">›</span> : null}
+                {isLast || !onBreadcrumbClick ? (
+                  <span className={crumbCurrentStyle}>{item.label}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className={crumbLinkStyle}
+                    title={`Ir para ${item.label}`}
+                    aria-label={`Ir para ${item.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onBreadcrumbClick(index);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </div>

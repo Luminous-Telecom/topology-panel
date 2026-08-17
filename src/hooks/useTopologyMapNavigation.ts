@@ -2,8 +2,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { TopologyView } from '../types';
 import {
   ROOT_MAP_ID,
+  TopologyBreadcrumbItem,
   TopologyNavFrame,
   buildTopologyBreadcrumb,
+  computeBreadcrumbNavigation,
   resolveTopologyMapView,
 } from '../utils/topologyMapNavigation';
 
@@ -16,11 +18,12 @@ interface UseTopologyMapNavigationParams {
 interface UseTopologyMapNavigationResult {
   currentMapId: string;
   currentLabel: string;
-  breadcrumb: string[];
+  breadcrumb: TopologyBreadcrumbItem[];
   canGoBack: boolean;
   canGoForward: boolean;
   savedViewForCurrent: TopologyView | undefined;
   navigateToChild: (childMapId: string, label: string, currentView: TopologyView) => void;
+  navigateToBreadcrumb: (index: number, currentView: TopologyView) => void;
   goBack: (currentView: TopologyView) => void;
   goForward: (currentView: TopologyView) => void;
   resetNavigation: () => void;
@@ -56,8 +59,8 @@ export function useTopologyMapNavigation({
   );
 
   const breadcrumb = useMemo(
-    () => buildTopologyBreadcrumb(backStack, currentLabel),
-    [backStack, currentLabel]
+    () => buildTopologyBreadcrumb(backStack, currentMapId, currentLabel),
+    [backStack, currentMapId, currentLabel]
   );
 
   const navigateToChild = useCallback(
@@ -76,6 +79,29 @@ export function useTopologyMapNavigation({
       setCurrentLabel(label.trim() || trimmedId);
     },
     [currentLabel, currentMapId, persistView]
+  );
+
+  const navigateToBreadcrumb = useCallback(
+    (index: number, currentView: TopologyView) => {
+      const next = computeBreadcrumbNavigation(
+        index,
+        backStack,
+        forwardStack,
+        currentMapId,
+        currentLabel,
+        currentView
+      );
+      if (!next) {
+        return;
+      }
+      persistView(currentMapId, currentView);
+      setBackStack(next.backStack);
+      setForwardStack(next.forwardStack);
+      setCurrentMapId(next.currentMapId);
+      setCurrentLabel(next.currentLabel);
+      sessionViewsRef.current[next.currentMapId] = next.restoredView;
+    },
+    [backStack, currentLabel, currentMapId, forwardStack, persistView]
   );
 
   const goBack = useCallback(
@@ -144,6 +170,7 @@ export function useTopologyMapNavigation({
     canGoForward: forwardStack.length > 0,
     savedViewForCurrent,
     navigateToChild,
+    navigateToBreadcrumb,
     goBack,
     goForward,
     resetNavigation,

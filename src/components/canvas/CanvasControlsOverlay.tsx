@@ -1,5 +1,6 @@
 import React from 'react';
 import { CanvasTool, TopologyMap } from '../../types';
+import { TopologyBreadcrumbItem } from '../../utils/topologyMapNavigation';
 import { MapNavigationControls } from './MapNavigationControls';
 import { TopologyQueryErrorBadge } from './TopologyQueryErrorBadge';
 import { TopologyToolbar } from './TopologyToolbar';
@@ -42,11 +43,12 @@ interface Props {
   onInsertBlueprint?: () => void;
   nocModeActive?: boolean;
   onToggleNocMode?: () => void;
-  mapNavigationBreadcrumb?: string[];
+  mapNavigationBreadcrumb?: TopologyBreadcrumbItem[];
   canMapNavigateBack?: boolean;
   canMapNavigateForward?: boolean;
   onMapNavigateBack?: () => void;
   onMapNavigateForward?: () => void;
+  onMapNavigateBreadcrumb?: (index: number) => void;
 }
 
 /** Controles fixos sobre o mapa: barra de ferramentas, navegação hierárquica, aviso de erro da
@@ -88,11 +90,12 @@ export function CanvasControlsOverlay({
   onInsertBlueprint,
   nocModeActive = false,
   onToggleNocMode,
-  mapNavigationBreadcrumb = [],
+  mapNavigationBreadcrumb = [] as TopologyBreadcrumbItem[],
   canMapNavigateBack = false,
   canMapNavigateForward = false,
   onMapNavigateBack,
   onMapNavigateForward,
+  onMapNavigateBreadcrumb,
 }: Props) {
   return (
     <>
@@ -103,6 +106,7 @@ export function CanvasControlsOverlay({
           canGoForward={canMapNavigateForward}
           onBack={onMapNavigateBack}
           onForward={onMapNavigateForward}
+          onBreadcrumbClick={onMapNavigateBreadcrumb}
         />
       ) : null}
 
