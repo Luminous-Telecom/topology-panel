@@ -86,4 +86,22 @@ describe('TopologyPanel — inicialização de mapas', () => {
     renderTopologyPanel(options, { data: emptyPanelData(LoadingState.Error) });
     expect(screen.getByText(/falha na query do painel/i)).toBeInTheDocument();
   });
+
+  it('mapa com rede, host, submapa e cabo desenha todas as camadas', () => {
+    const options = defaultOptions();
+    options.map = {
+      width: 1200,
+      height: 800,
+      nodes: [
+        { id: 'rede-1', type: 'network', x: 100, y: 100, width: 300, height: 200, label: 'Sala 1' },
+        { id: 'host-1', type: 'host', x: 150, y: 150, label: 'RB-01', subtitle: '10.0.0.1' },
+        { id: 'submapa-1', type: 'submap', x: 500, y: 150, label: 'Filial' },
+      ],
+      links: [{ from: 'host-1', to: 'submapa-1' }],
+    };
+    renderTopologyPanel(options);
+    expect(screen.getByText('Sala 1')).toBeInTheDocument();
+    expect(screen.getByText('RB-01')).toBeInTheDocument();
+    expect(screen.getByText('Filial')).toBeInTheDocument();
+  });
 });
