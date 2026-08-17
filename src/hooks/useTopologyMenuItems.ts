@@ -9,15 +9,21 @@ import {
 import { ContextMenuItem } from '../components/TopologyContextMenu';
 import { resolveHostIp } from '../utils/hostLookup';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
-import { resolveLinkMedium } from '../utils/linkMedium';
+import {
+  buildLinkMenuItems,
+  bulkHostItems,
+  bulkSubmapItem,
+  copySelectionItem,
+  deleteNodeMenuLabel,
+  deleteSelectionItem,
+  pasteItem,
+} from '../utils/contextMenuItems';
 import {
   addDashboardPickerAt,
   addManualDeviceAt,
   addNetworkAt,
   addStaticAt,
   addSubmapAt,
-  removeLinkByEndpoints,
-  updateLinkProps,
 } from '../utils/mapEdits';
 import { hasTopologyClipboard } from '../utils/topologyClipboard';
 import { isHostNode, isSubmapNode } from '../utils/topologyNodes';
@@ -62,29 +68,6 @@ export interface TopologyMenuItemsParams {
   setPingTarget: (target: PingTarget) => void;
   /** Aceita `undefined` porque `runHostTool` pode resolver sem mensagem. */
   showToast: (message: string | undefined) => void;
-}
-
-function deleteNodesMenuLabel(count: number): string {
-  return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
-}
-
-function copySelectionMenuLabel(count: number): string {
-  return count > 1 ? `Copiar seleção (${count})` : 'Copiar seleção';
-}
-
-function deleteNodeMenuLabel(node: TopologyNode): string {
-  switch (node.type) {
-    case 'submap':
-      return 'Excluir submapa';
-    case 'dashboard_picker':
-      return 'Excluir seletor';
-    case 'static':
-      return 'Excluir estático';
-    case 'network':
-      return 'Excluir rede';
-    default:
-      return 'Excluir host';
-  }
 }
 
 /**
@@ -160,52 +143,28 @@ export function useTopologyMenuItems({
     const items: ContextMenuItem[] = [];
 
     if (selectedNodeIds.length > 0 || selectedLink) {
-      items.push({
-        id: 'copy-selection',
-        label: copySelectionMenuLabel(selectedNodeIds.length),
-        onClick: () => {
+      items.push(
+        copySelectionItem(selectedNodeIds.length, () => {
           closeMenu();
           copySelection();
-        },
-      });
+        })
+      );
     }
 
     if (hasTopologyClipboard()) {
-      items.push({
-        id: 'paste-here',
-        label: 'Colar aqui',
-        onClick: () => pasteAt(snapCoord(mapX), snapCoord(mapY)),
-      });
+      items.push(pasteItem('Colar aqui', () => pasteAt(snapCoord(mapX), snapCoord(mapY))));
     }
 
     if (selectedHostNodes.length >= 1) {
-      items.push({
-        id: 'bulk-icon',
-        label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
-        onClick: openBulkIconEdit,
-      });
-      items.push({
-        id: 'bulk-creds',
-        label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
-        onClick: openBulkCredsEdit,
-      });
+      items.push(...bulkHostItems(selectedHostNodes.length, openBulkIconEdit, openBulkCredsEdit));
     }
 
     if (selectedSubmapNodes.length >= 1) {
-      items.push({
-        id: 'bulk-submap',
-        label: `Editar submapas (${selectedSubmapNodes.length})`,
-        onClick: openBulkSubmapEdit,
-      });
+      items.push(bulkSubmapItem(selectedSubmapNodes.length, openBulkSubmapEdit));
     }
 
     if (selectedNodes.length > 0) {
-      items.push({
-        id: 'delete-selection',
-        label: deleteNodesMenuLabel(selectedNodes.length),
-        variant: 'delete',
-        onClick: deleteSelectedNodes,
-      });
+      items.push(deleteSelectionItem(selectedNodes.length, deleteSelectedNodes));
     }
 
     items.push(
@@ -272,43 +231,8 @@ export function useTopologyMenuItems({
   ]);
 
   const linkMenuItems = useCallback(
-    (link: TopologyLink): ContextMenuItem[] => {
-      const medium = resolveLinkMedium(link);
-      return [
-        {
-          id: 'link-edit',
-          label: 'Editar link…',
-          onClick: () => {
-            closeMenu();
-            openLinkEdit(link);
-          },
-        },
-        {
-          id: 'link-straight',
-          label: 'Linha reta (remover desvios)',
-          onClick: () => {
-            closeMenu();
-            resetLinkRoute(link);
-          },
-        },
-        {
-          id: 'link-fiber',
-          label: medium === 'fiber' ? '✓ Fibra (linha contínua)' : 'Marcar como fibra',
-          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'fiber' })),
-        },
-        {
-          id: 'link-radio',
-          label: medium === 'radio' ? '✓ Rádio (linha tracejada)' : 'Marcar como rádio',
-          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'radio' })),
-        },
-        {
-          id: 'delete-link',
-          label: 'Excluir link',
-          variant: 'delete',
-          onClick: () => persist(removeLinkByEndpoints(storedMap, link.from, link.to)),
-        },
-      ];
-    },
+    (link: TopologyLink): ContextMenuItem[] =>
+      buildLinkMenuItems({ link, storedMap, persist, closeMenu, openLinkEdit, resetLinkRoute }),
     [closeMenu, openLinkEdit, persist, resetLinkRoute, storedMap]
   );
 
@@ -326,48 +250,31 @@ export function useTopologyMenuItems({
       }
 
       if (selectedNodeIds.length > 0) {
-        items.push({
-          id: 'copy-selection',
-          label: copySelectionMenuLabel(selectedNodeIds.length),
-          onClick: () => {
+        items.push(
+          copySelectionItem(selectedNodeIds.length, () => {
             closeMenu();
             copySelection();
-          },
-        });
+          })
+        );
       }
 
       if (hasTopologyClipboard()) {
-        items.push({
-          id: 'paste-here',
-          label: 'Colar',
-          onClick: () => {
+        items.push(
+          pasteItem('Colar', () => {
             const at = anchor ?? { mapX: node.x, mapY: node.y };
             pasteAt(snapCoord(at.mapX), snapCoord(at.mapY));
-          },
-        });
+          })
+        );
       }
 
       const nodeInSelection = selectedNodeIds.includes(node.id);
 
       if (nodeInSelection && isHostNode(node) && selectedHostNodes.length >= 1) {
-        items.push({
-          id: 'bulk-icon',
-          label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
-          onClick: openBulkIconEdit,
-        });
-        items.push({
-          id: 'bulk-creds',
-          label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
-          onClick: openBulkCredsEdit,
-        });
+        items.push(...bulkHostItems(selectedHostNodes.length, openBulkIconEdit, openBulkCredsEdit));
       }
 
       if (nodeInSelection && isSubmapNode(node) && selectedSubmapNodes.length >= 1) {
-        items.push({
-          id: 'bulk-submap',
-          label: `Editar submapas (${selectedSubmapNodes.length})`,
-          onClick: openBulkSubmapEdit,
-        });
+        items.push(bulkSubmapItem(selectedSubmapNodes.length, openBulkSubmapEdit));
       }
 
       // Propriedades é sempre de um nó só: some quando há seleção múltipla incluindo este nó.
@@ -390,12 +297,7 @@ export function useTopologyMenuItems({
       const multiDelete = selectedNodeIds.length >= 2 && nodeInSelection && selectedNodes.length >= 2;
 
       if (multiDelete) {
-        items.push({
-          id: 'delete-selection',
-          label: deleteNodesMenuLabel(selectedNodes.length),
-          variant: 'delete',
-          onClick: deleteSelectedNodes,
-        });
+        items.push(deleteSelectionItem(selectedNodes.length, deleteSelectedNodes));
       } else {
         items.push({
           id: 'delete',
