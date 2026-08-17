@@ -29,6 +29,7 @@ import {
   DragState,
   NODE_DRAG_THRESHOLD_PX,
 } from '../utils/dragState';
+import { computeGroupPositions, computeGuideBounds, guideReferenceNodes } from '../utils/dragMove';
 import { nodesInMarquee, normalizeRect } from '../utils/marqueeSelection';
 import { useEdgePanLoop } from './useEdgePanLoop';
 import { useLinkWaypointGestures } from './useLinkWaypointGestures';
@@ -320,19 +321,7 @@ export function useTopologyDragController({
         return;
       }
       const primary = members.find((m) => m.id === d.node.id) ?? members[0];
-      const primarySnapped = snapNodeCenterToGrid(rawPrimaryX, rawPrimaryY, d.startW, d.startH, gridStep);
-      const sdx = primarySnapped.x - d.startX;
-      const sdy = primarySnapped.y - d.startY;
-      const positions: Record<string, { x: number; y: number }> = {};
-      for (const member of members) {
-        positions[member.id] = snapNodeCenterToGrid(
-          member.startX + sdx,
-          member.startY + sdy,
-          member.startW,
-          member.startH,
-          gridStep
-        );
-      }
+      const positions = computeGroupPositions(members, primary, rawPrimaryX, rawPrimaryY, gridStep);
 
       const primaryPos = positions[primary.id];
       if (!primaryPos) {
@@ -343,43 +332,14 @@ export function useTopologyDragController({
       setDragPreview({ positions });
 
       const draggedIds = new Set(Object.keys(positions));
-      const guideThreshold = Math.max(6, gridStep * 0.5);
-      const pad = gridStep * 2;
-      const vp = viewportRef.current;
-      let x0 = 0;
-      let y0 = 0;
-      let x1 = map.width;
-      let y1 = map.height;
-      if (vp.w > 0 && vp.h > 0 && currentView.scale > 0) {
-        x0 = Math.min(x0, -currentView.x / currentView.scale);
-        y0 = Math.min(y0, -currentView.y / currentView.scale);
-        x1 = Math.max(x1, (vp.w - currentView.x) / currentView.scale);
-        y1 = Math.max(y1, (vp.h - currentView.y) / currentView.scale);
-      }
-      const bounds = {
-        x0: Math.floor((x0 - pad) / gridStep) * gridStep,
-        y0: Math.floor((y0 - pad) / gridStep) * gridStep,
-        x1: Math.ceil((x1 + pad) / gridStep) * gridStep,
-        y1: Math.ceil((y1 + pad) / gridStep) * gridStep,
-      };
-      const others = map.nodes
-        .filter((n) => !draggedIds.has(n.id))
-        .flatMap((n) => {
-          const layout = nodeLayouts.get(n.id);
-          if (!layout) {
-            return [];
-          }
-          return [
-            {
-              id: n.id,
-              x: layout.x,
-              y: layout.y,
-              w: layout.w,
-              h: layout.h,
-              type: n.type,
-            },
-          ];
-        });
+      const bounds = computeGuideBounds({
+        mapWidth: map.width,
+        mapHeight: map.height,
+        view: currentView,
+        viewport: viewportRef.current,
+        gridStep,
+      });
+      const others = guideReferenceNodes(map.nodes, draggedIds, nodeLayouts);
       setAlignGuides(
         computeAlignGuides({
           dragged: {
@@ -391,7 +351,7 @@ export function useTopologyDragController({
           },
           others,
           bounds,
-          threshold: guideThreshold,
+          threshold: Math.max(6, gridStep * 0.5),
         })
       );
     },
@@ -820,7 +780,7 @@ export function useTopologyDragController({
       panRafRef.current = null;
     }
     panPendingRef.current = null;
-  }, []);
+  }, [edgePan]);
 
   return {
     dragRef,
