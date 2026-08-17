@@ -31,6 +31,8 @@ Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado
   então todo teste precisa de jsdom.
 - Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em
   `vitest.setup.ts`, não com stub duplicado dentro de cada teste.
+- Mapa e nó de teste vêm de `utils/testMapFixtures.ts` (`emptyMap`, `hostNode`) — não recrie a
+  fábrica dentro de cada arquivo.
 - Rode `npm run test` antes de encerrar qualquer tarefa que toque `src/`.
 
 ## Faça / Não faça

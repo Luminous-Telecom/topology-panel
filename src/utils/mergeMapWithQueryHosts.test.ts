@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { HostMetadataMap, TopologyMap } from '../types';
+import { HostMetadataMap } from '../types';
 import { mergeMapWithQueryHosts } from './mapSync';
-
-function emptyMap(overrides?: Partial<TopologyMap>): TopologyMap {
-  return { width: 800, height: 600, nodes: [], links: [], ...overrides };
-}
+import { emptyMap } from './testMapFixtures';
 
 describe('mergeMapWithQueryHosts', () => {
   it('mapa vazio + hosts da Query cria nós em grade (posições incrementais)', () => {

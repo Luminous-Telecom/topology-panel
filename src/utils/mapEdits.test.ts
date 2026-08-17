@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TopologyMap, TopologyNode } from '../types';
 import { ensureUniqueNodeIds, moveStoredNode, moveStoredNodesBulk, rebindZabbixHost, removeNodeFromMap, removeNodesFromMap } from './mapEdits';
-
-function emptyMap(overrides?: Partial<TopologyMap>): TopologyMap {
-  return { width: 800, height: 600, nodes: [], links: [], ...overrides };
-}
-
-function hostNode(overrides?: Partial<TopologyNode>): TopologyNode {
-  return { id: 'a', type: 'host', x: 10, y: 10, ...overrides };
-}
+import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('removeNodeFromMap', () => {
   it('remove o nó e os links conectados a ele', () => {

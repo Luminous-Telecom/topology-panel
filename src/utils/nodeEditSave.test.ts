@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { NodeEditSavePayload, TopologyMap, TopologyNode } from '../types';
+import { NodeEditSavePayload } from '../types';
 import { applyNodeEditSave } from './nodeEditSave';
-
-function emptyMap(overrides?: Partial<TopologyMap>): TopologyMap {
-  return { width: 800, height: 600, nodes: [], links: [], ...overrides };
-}
-
-function hostNode(overrides?: Partial<TopologyNode>): TopologyNode {
-  return { id: 'host-a', type: 'host', x: 10, y: 20, label: 'A', ...overrides };
-}
+import { emptyMap, hostNode } from './testMapFixtures';
 
 function payload(overrides?: Partial<NodeEditSavePayload>): NodeEditSavePayload {
   return { patch: {}, ...overrides };
