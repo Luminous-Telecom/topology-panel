@@ -3,6 +3,7 @@ import { css } from '@emotion/css';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import {
+  CanvasTool,
   HostDisplayMap,
   HostMetadataMap,
   TopologyHostIcon,
@@ -51,15 +52,11 @@ import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOffli
 import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
-import {
-  CanvasTool,
-  ContextMenuItem,
-  TopologyColorLegend,
-  TopologyContextMenu,
-  TopologyQueryErrorBadge,
-  TopologyToast,
-  TopologyToolbar,
-} from './TopologyContextMenu';
+import { ContextMenuItem, TopologyContextMenu } from './TopologyContextMenu';
+import { TopologyColorLegend } from './canvas/TopologyColorLegend';
+import { TopologyQueryErrorBadge } from './canvas/TopologyQueryErrorBadge';
+import { TopologyToast } from './canvas/TopologyToast';
+import { TopologyToolbar } from './canvas/TopologyToolbar';
 import { DashboardNavButton } from './DashboardNavButton';
 import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
 import type { NodeEditSavePayload } from './NodeEditModal';

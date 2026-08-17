@@ -148,6 +148,9 @@ export interface TopologyView {
   scale: number;
 }
 
+/** Ferramenta ativa na toolbar do canvas: seta (seleção) ou mão (arrastar o mapa). */
+export type CanvasTool = 'select' | 'pan';
+
 export type TopologyHostStatus = 'online' | 'offline' | 'alert';
 
 /** Mapeamento de valor da Query → status (configurado no painel). */

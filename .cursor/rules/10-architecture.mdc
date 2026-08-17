@@ -20,6 +20,7 @@ Qualquer arquivo em `src/`.
 |---|---|
 | Render SVG, pan/zoom, links | `components/TopologyCanvas.tsx` |
 | Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` |
+| Toolbar, busca, legenda, toast e badge do canvas | `components/canvas/*` (um arquivo por peça) |
 | Opções do painel e wiring do Grafana | `components/TopologyPanel.tsx`, `module.ts` |
 | Editor de JSON, nós e links | `editor/TopologyEditor.tsx` |
 | Leitura única da aba Query | `services/queryIndex.ts` |

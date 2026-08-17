@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from 'react';
-import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
+import { CanvasTool, TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import {
   areNetworksLocked,
   clientToMapCoords,
@@ -28,7 +28,6 @@ import {
   LinkPoint,
 } from '../utils/linkGeometry';
 import { computeEdgePanVelocity } from '../utils/edgePan';
-import { CanvasTool } from '../components/TopologyContextMenu';
 
 /** Faixa nas bordas do painel que dispara pan automático ao arrastar nó/rede. */
 const EDGE_PAN_THRESHOLD = 64;
