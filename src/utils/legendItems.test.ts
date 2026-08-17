@@ -28,7 +28,7 @@ describe('buildLegendItems', () => {
 
   it('tipo de host sem cor definida não vira item', () => {
     const items = buildLegendItems(
-      options({ legendHostTypes: true, hostTypeColors: { router: '  ', switch: '#123456' } })
+      options({ legendHostTypes: true, hostTypeColors: { router: '  ', firewall: '#123456' } })
     );
     expect(items.map((i) => i.color)).not.toContain('  ');
     expect(items.map((i) => i.color)).toContain('#123456');
