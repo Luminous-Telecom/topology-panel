@@ -1,0 +1,226 @@
+import React from 'react';
+import { TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { formatLinkBandwidth, linkStrokeWidth } from '../../utils/linkBandwidth';
+import { LINK_FLOW_DASH } from '../../utils/linkFlow';
+import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from '../../utils/linkGeometry';
+import { resolveLinkMedium } from '../../utils/linkMedium';
+import { NodeLayout } from '../../utils/nodeLayout';
+
+interface LinkLineProps {
+  link: TopologyLink;
+  waypoints: LinkPoint[];
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>;
+  options: TopologyPanelOptions;
+  editable: boolean;
+  panTool: boolean;
+  selected: boolean;
+  hovered: boolean;
+  onSelect: () => void;
+  onHoverChange: (active: boolean) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onPathPointerDown: (e: React.PointerEvent) => void;
+  onPathDoubleClick: (e: React.MouseEvent) => void;
+}
+
+function LinkLineComponent({
+  link,
+  waypoints,
+  nodeLayouts,
+  options,
+  editable,
+  panTool,
+  selected,
+  hovered,
+  onSelect,
+  onHoverChange,
+  onContextMenu,
+  onPathPointerDown,
+  onPathDoubleClick,
+}: LinkLineProps) {
+  const from = nodeLayouts.get(link.from);
+  const to = nodeLayouts.get(link.to);
+  if (!from || !to) {
+    return null;
+  }
+  const gridStep = options.gridSize ?? 10;
+  const geom = computeLinkGeometry(from, to, gridStep, waypoints);
+  const { d, pathPoints } = geom;
+  const hasWaypoints = waypoints.length > 0;
+  const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
+  const active = selected || hovered;
+  const medium = resolveLinkMedium(link);
+  const dashArray = medium === 'radio' ? '10 6' : undefined;
+  const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
+  const laneOffset = Math.max(2, strokeWidth * 0.75);
+  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
+  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
+  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps);
+  const mid = linkLabelAnchor(pathPoints, from, to);
+  const bandwidthLabelWidth = bandwidthLabel ? bandwidthLabel.length * 6 : 0;
+  const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
+  const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const markerStart = selected
+    ? 'url(#link-dot-start-active)'
+    : hovered
+      ? 'url(#link-dot-start-hover)'
+      : 'url(#link-dot-start)';
+  const markerEnd = selected
+    ? 'url(#link-arrow-end-active)'
+    : hovered
+      ? 'url(#link-arrow-end-hover)'
+      : 'url(#link-arrow-end)';
+  const downloadColor = options.colorLinkDownload;
+  const uploadColor = options.colorLinkUpload;
+  const flowStroke = Math.max(1.5, strokeWidth - 1);
+
+  return (
+    <g
+      onContextMenu={editable ? onContextMenu : undefined}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
+    >
+      <path
+        d={d}
+        stroke="transparent"
+        strokeWidth={hitWidth}
+        fill="none"
+        pointerEvents="stroke"
+        style={{ cursor: panTool ? 'grab' : 'pointer' }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onPathPointerDown(e);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          // Seleção quando a mão não captura o ponteiro.
+          if (!panTool && !editable) {
+            onSelect();
+          }
+        }}
+        onDoubleClick={(e) => {
+          if (editable) {
+            onPathDoubleClick(e);
+          }
+        }}
+      />
+      {active && (
+        <path
+          d={d}
+          stroke="#4FC3F7"
+          strokeWidth={strokeWidth + 8}
+          strokeOpacity={selected ? 0.35 : 0.2}
+          strokeDasharray={dashArray}
+          fill="none"
+          pointerEvents="none"
+          {...lineCap}
+        />
+      )}
+      <path
+        d={d}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
+        strokeDasharray={dashArray}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
+        fill="none"
+        pointerEvents="none"
+        {...lineCap}
+      />
+      <path
+        d={downloadD}
+        data-link-flow="download"
+        stroke={downloadColor}
+        strokeWidth={flowStroke}
+        strokeDasharray={LINK_FLOW_DASH}
+        strokeDashoffset="0"
+        fill="none"
+        pointerEvents="none"
+        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
+        {...lineCap}
+      />
+      <path
+        d={uploadD}
+        data-link-flow="upload"
+        stroke={uploadColor}
+        strokeWidth={flowStroke}
+        strokeDasharray={LINK_FLOW_DASH}
+        strokeDashoffset="0"
+        fill="none"
+        pointerEvents="none"
+        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
+        {...lineCap}
+      />
+      {bandwidthLabel && (
+        <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
+          <rect
+            x={-bandwidthLabelWidth / 2}
+            y={-7}
+            width={bandwidthLabelWidth}
+            height={14}
+            rx={3}
+            fill="rgba(18,18,20,0.82)"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={0.5}
+          />
+          <text
+            x={0}
+            y={0}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#E3F2FD"
+            fontSize={9}
+            fontFamily="Inter, Helvetica, Arial, sans-serif"
+            fontWeight={500}
+          >
+            {bandwidthLabel}
+          </text>
+        </g>
+      )}
+    </g>
+  );
+}
+
+/**
+ * Só redesenha quando algo que o link realmente usa muda: estado visual, endpoints, waypoints,
+ * caixa dos dois nós e as opções de cor/espessura. Sem isso, arrastar um nó redesenha todos os
+ * links do mapa.
+ */
+export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
+  if (
+    prev.selected !== next.selected ||
+    prev.hovered !== next.hovered ||
+    prev.editable !== next.editable ||
+    prev.panTool !== next.panTool
+  ) {
+    return false;
+  }
+  if (prev.link.from !== next.link.from || prev.link.to !== next.link.to) {
+    return false;
+  }
+  if (prev.link.medium !== next.link.medium || prev.link.bandwidthMbps !== next.link.bandwidthMbps) {
+    return false;
+  }
+  if (JSON.stringify(prev.waypoints) !== JSON.stringify(next.waypoints)) {
+    return false;
+  }
+  const pf = prev.nodeLayouts.get(prev.link.from);
+  const pt = prev.nodeLayouts.get(prev.link.to);
+  const nf = next.nodeLayouts.get(next.link.from);
+  const nt = next.nodeLayouts.get(next.link.to);
+  if (!pf || !pt || !nf || !nt) {
+    return false;
+  }
+  if (pf.x !== nf.x || pf.y !== nf.y || pf.w !== nf.w || pf.h !== nf.h) {
+    return false;
+  }
+  if (pt.x !== nt.x || pt.y !== nt.y || pt.w !== nt.w || pt.h !== nt.h) {
+    return false;
+  }
+  return (
+    prev.options.colorLink === next.options.colorLink &&
+    prev.options.colorLinkDownload === next.options.colorLinkDownload &&
+    prev.options.colorLinkUpload === next.options.colorLinkUpload &&
+    prev.options.colorLinkWidth === next.options.colorLinkWidth &&
+    prev.options.gridSize === next.options.gridSize
+  );
+});

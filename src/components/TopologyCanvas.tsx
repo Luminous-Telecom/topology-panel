@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { css } from '@emotion/css';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import {
@@ -39,20 +38,24 @@ import { resolveHostIp, resolveHostLayoutKey } from '../utils/hostLookup';
 import { resolveLinkMedium } from '../utils/linkMedium';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { upsertHostLayout, withLiveZabbixMeta } from '../utils/mapSync';
-import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, measureTextWidth, NodeLayout } from '../utils/nodeLayout';
+import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, NodeLayout } from '../utils/nodeLayout';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { lookupHostDisplay } from '../utils/queryHosts';
 import { findNodeById, isHostNode, isSubmapNode } from '../utils/topologyNodes';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
-import { HOST_ICON_LABELS, HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
-import { textOnBackground } from '../utils/colorContrast';
-import { hostTypeFillColor, resolvePanelColor } from '../utils/panelColors';
+import { HOST_ICON_LABELS } from '../utils/hostIcons';
+import { resolvePanelColor } from '../utils/panelColors';
+import { resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
 import { AlignGuideLine } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, regionFillColor, regionHasOfflineHosts, regionStrokeColor, resolveHostNodeStatus } from '../utils/networkStats';
+import { buildRegionStatsMap, formatRegionStats, regionStrokeColor } from '../utils/networkStats';
 import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { ContextMenuItem, TopologyContextMenu } from './TopologyContextMenu';
+import { canvasStyles } from './canvas/canvasStyles';
+import { HostNodeShape } from './canvas/HostNodeShape';
+import { LinkLine } from './canvas/LinkLine';
+import { LinkMarkers } from './canvas/LinkMarkers';
+import { NetworkNodeShape } from './canvas/NetworkNodeShape';
 import { TopologyColorLegend } from './canvas/TopologyColorLegend';
 import { TopologyQueryErrorBadge } from './canvas/TopologyQueryErrorBadge';
 import { TopologyToast } from './canvas/TopologyToast';
@@ -71,15 +74,7 @@ import {
   ZabbixHostPickerModal,
 } from './lazyModals';
 import { TopologyMinimap } from './TopologyMinimap';
-import { formatLinkBandwidth, linkStrokeWidth } from '../utils/linkBandwidth';
-import {
-  buildLinkPathD,
-  computeLinkGeometry,
-  linkLabelAnchor,
-  LinkPoint,
-  nearestWaypointIndex,
-} from '../utils/linkGeometry';
-import { LINK_FLOW_DASH } from '../utils/linkFlow';
+import { LinkPoint, nearestWaypointIndex } from '../utils/linkGeometry';
 import { hasTopologyClipboard } from '../utils/topologyClipboard';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
@@ -131,96 +126,6 @@ interface Props {
   hideOverlayControls?: boolean;
 }
 
-const styles = {
-  wrap: css`
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    position: relative;
-    background: #111217;
-    overscroll-behavior: none;
-    touch-action: none;
-    &:fullscreen {
-      width: 100vw;
-      height: 100vh;
-      background: #111217;
-    }
-    &:-webkit-full-screen {
-      width: 100vw;
-      height: 100vh;
-      background: #111217;
-    }
-  `,
-  scrollPane: css`
-    position: absolute;
-    inset: 0;
-    overflow: auto;
-    z-index: 0;
-    overscroll-behavior: contain;
-    /* Deixa a faixa das barras clicável; o SVG cobre só a client area. */
-    &::-webkit-scrollbar {
-      width: 22px;
-      height: 22px;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.28);
-      border-radius: 10px;
-    }
-    &::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.42);
-    }
-    &::-webkit-scrollbar-corner {
-      background: transparent;
-    }
-  `,
-  scrollSizer: css`
-    pointer-events: none;
-  `,
-  wrapSelect: css`
-    cursor: default;
-    &:active {
-      cursor: default;
-    }
-  `,
-  wrapPan: css`
-    cursor: grab;
-    &:active {
-      cursor: grabbing;
-    }
-  `,
-  svg: css`
-    display: block;
-    user-select: none;
-    touch-action: none;
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
-  `,
-  empty: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #8e8e8e;
-    font-size: 14px;
-    padding: 16px;
-    text-align: center;
-  `,
-  offlineBlink: css`
-    animation: topology-offline-blink 1s ease-in-out infinite;
-    @keyframes topology-offline-blink {
-      0%,
-      100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.28;
-      }
-    }
-  `,
-};
-
 type ContextState = {
   screenX: number;
   screenY: number;
@@ -232,103 +137,6 @@ type ContextState = {
 
 function deleteNodesMenuLabel(count: number): string {
   return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
-}
-
-function LinkMarkers({ colorLink }: { colorLink: string }) {
-  const arrow = (stroke: string, sw = 1.2) => (
-    <path
-      d="M1,1 L7,4 L1,7"
-      fill="none"
-      stroke={stroke}
-      strokeWidth={sw}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  );
-  const origin = (stroke: string, filled = false, sw = 1) =>
-    filled ? (
-      <circle cx="3" cy="3" r="1.4" fill={stroke} />
-    ) : (
-      <circle cx="3" cy="3" r="1.5" fill="none" stroke={stroke} strokeWidth={sw} />
-    );
-
-  return (
-    <defs>
-      <marker id="link-dot-start" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
-        {origin(colorLink)}
-      </marker>
-      <marker id="link-arrow-end" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
-        {arrow(colorLink)}
-      </marker>
-      <marker
-        id="link-dot-start-active"
-        viewBox="0 0 6 6"
-        refX="3"
-        refY="3"
-        markerWidth="4"
-        markerHeight="4"
-        orient="auto"
-      >
-        {origin('#4FC3F7', true)}
-      </marker>
-      <marker
-        id="link-arrow-end-active"
-        viewBox="0 0 8 8"
-        refX="6.5"
-        refY="4"
-        markerWidth="4.5"
-        markerHeight="4.5"
-        orient="auto"
-      >
-        {arrow('#4FC3F7', 1.5)}
-      </marker>
-      <marker id="link-dot-start-hover" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
-        {origin('#81D4FA', true)}
-      </marker>
-      <marker id="link-arrow-end-hover" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
-        {arrow('#81D4FA', 1.3)}
-      </marker>
-    </defs>
-  );
-}
-
-function nodeFill(
-  node: TopologyNode,
-  options: TopologyPanelOptions,
-  hostMetadata?: HostMetadataMap,
-  hostDisplay?: HostDisplayMap,
-  resolveMappedColor?: (color?: unknown) => string | undefined
-): string {
-  if (node.type === 'submap') {
-    return options.colorSubmap;
-  }
-  if (node.type === 'dashboard_picker') {
-    return node.fillColor || options.colorSubmap;
-  }
-  if (node.type === 'static') {
-    return node.fillColor || options.colorStatic;
-  }
-  if (!node.zabbixHost?.trim()) {
-    return options.colorUnknown;
-  }
-  const lookupRef = {
-    zabbixHost: node.zabbixHost,
-    subtitle: node.subtitle,
-    label: node.label,
-  };
-  const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  if (!mapped?.color) {
-    return options.colorUnknown;
-  }
-  const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
-  if (mapped.status === 'online' && typeFill) {
-    return typeFill;
-  }
-  const color = resolveMappedColor?.(mapped.color);
-  if (!color) {
-    return options.colorUnknown;
-  }
-  return color;
 }
 
 export function TopologyCanvas({
@@ -936,6 +744,42 @@ export function TopologyCanvas({
     [canEditCanvas, canPersist, map.locked, selectedNodeIds, showToast, storedMap, view]
   );
 
+  /**
+   * Handlers por nó ficam aqui e recebem o nó como argumento: se fossem criados dentro do `.map()`
+   * do render, cada nó ganharia uma função nova a cada render e a memoização das formas cairia.
+   */
+  const handleNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: TopologyNode) => handleContextMenu(e, { node }),
+    [handleContextMenu]
+  );
+
+  const handleNodeMouseEnter = useCallback(
+    (e: React.MouseEvent, node: TopologyNode) => {
+      setLinkHoverId(node.id);
+      if (isHostNode(node) && node.zabbixHost?.trim()) {
+        beginHostHover({ node, screenX: e.clientX, screenY: e.clientY });
+      }
+    },
+    [beginHostHover]
+  );
+
+  const handleNodeMouseMove = useCallback(
+    (e: React.MouseEvent, node: TopologyNode) => {
+      if (isHostNode(node) && node.zabbixHost?.trim()) {
+        moveHostHover({ node, screenX: e.clientX, screenY: e.clientY });
+      }
+    },
+    [moveHostHover]
+  );
+
+  const handleNodeMouseLeave = useCallback(
+    (_e: React.MouseEvent, node: TopologyNode) => {
+      setLinkHoverId(null);
+      endHostHover(node.id);
+    },
+    [endHostHover]
+  );
+
   const removeNodesFromCanvas = useCallback(
     (nodesToRemove: TopologyNode[]) => {
       if (!nodesToRemove.length) {
@@ -1450,21 +1294,19 @@ export function TopologyCanvas({
 
   const resolveMiniNodeFill = useCallback(
     (node: TopologyNode): string => {
+      const region = regionStats.get(node.id);
       if (isNetworkNode(node)) {
-        const stats = regionStats.get(node.id);
-        const fillOverride = regionFillColor(stats, options, 'network', queryReady);
-        const fillRaw = fillOverride ?? node.fillColor ?? options.colorNetworkFill;
-        return resolveColor(fillRaw);
+        return resolveNetworkFill(node, region, options, queryReady, resolveColor);
       }
-      const fillOverride =
-        node.type === 'submap'
-          ? regionFillColor(regionStats.get(node.id), options, 'submap', queryReady)
-          : undefined;
-      const fillRaw =
-        fillOverride ??
-        (node.fillColor ? node.fillColor : undefined) ??
-        nodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
-      return resolveColor(fillRaw);
+      return resolveNodeFill(
+        node,
+        node.type === 'submap' ? region : undefined,
+        options,
+        queryReady,
+        hostMetadata,
+        hostDisplay,
+        resolveColor
+      );
     },
     [regionStats, options, queryReady, hostMetadata, hostDisplay, resolveColor]
   );
@@ -1483,7 +1325,7 @@ export function TopologyCanvas({
   return (
     <div
       ref={wrapRef}
-      className={`${styles.wrap} ${panTool ? styles.wrapPan : styles.wrapSelect}`}
+      className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}`}
       onPointerDownCapture={(e) => {
         // Fase de captura — dispara mesmo quando um filho (nó, link, scrollbar) chama
         // stopPropagation() no pointerdown. Congela `liveDataSnapshot` (useDeferredDuringGesture)
@@ -1559,15 +1401,15 @@ export function TopologyCanvas({
       <TopologyQueryErrorBadge visible={queryError} />
 
       {editable && showEmptyHint && (
-        <div className={styles.empty} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
+        <div className={canvasStyles.empty} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
           Clique com o <strong>botão direito</strong> para adicionar dispositivos, redes, submapas, seletores e links. Hosts
           Zabbix vêm da aba <strong>Query</strong>.
         </div>
       )}
 
-      <div ref={bindScrollRef} className={styles.scrollPane} onScroll={onScroll}>
+      <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
         <div
-          className={styles.scrollSizer}
+          className={canvasStyles.scrollSizer}
           style={{
             width: Math.max(contentWidth, 1),
             height: Math.max(contentHeight, 1),
@@ -1578,7 +1420,7 @@ export function TopologyCanvas({
 
       <svg
         ref={svgRef}
-        className={styles.svg}
+        className={canvasStyles.svg}
         width={viewport.w > 0 ? viewport.w : '100%'}
         height={viewport.h > 0 ? viewport.h : '100%'}
         onContextMenu={(e) => handleContextMenu(e)}
@@ -1643,120 +1485,25 @@ export function TopologyCanvas({
               if (!layout) {
                 return null;
               }
-              const { w, h, label, x, y } = layout;
-              const stats = regionStats.get(node.id);
-              const fillOverride = regionFillColor(stats, options, 'network', queryReady);
-              const fillRaw =
-                fillOverride ??
-                (node.fillColor ? node.fillColor : undefined) ??
-                options.colorNetworkFill;
-              const fill = resolveColor(fillRaw);
-              const networkOffline = regionHasOfflineHosts(stats, queryReady);
-              const stroke = resolveColor(
-                regionStrokeColor(stats, options, queryReady, node.borderColor)
-              );
-              const statsLabel = stats ? formatRegionStats(stats, queryReady) : undefined;
-              const statsPad = 8;
-              const statsFontSize = Math.max(9, options.nodeFontSize - 1);
-              const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : undefined;
-
-              const titleFs = options.nodeFontSize;
-              const titlePadX = 8;
-              const titlePadY = 4;
-              const titleMargin = 8;
-              const titleH = Math.ceil(titleFs + titlePadY * 2);
-              const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs) + titlePadX * 2));
-              const titleX = x + (w - titleW) / 2;
-              const titleY = y + titleMargin;
-              const titleFill = resolveColor(options.colorStatic);
-              const titleText = textOnBackground(titleFill);
-
-              const isSelected = selectedNodeIds.includes(node.id);
-
               return (
-                <g
+                <NetworkNodeShape
                   key={node.id}
-                  data-node-id={node.id}
-                  className={networkOffline ? styles.offlineBlink : undefined}
-                  pointerEvents="auto"
-                  onPointerDown={(e) => onNetworkPointerDown(e, node)}
-                  onDoubleClick={(e) => onNodeDoubleClick(e, node)}
-                  onContextMenu={(e) => handleContextMenu(e, { node })}
-                  style={{
-                    cursor: panTool
-                      ? options.enablePan
-                        ? 'grab'
-                        : 'default'
-                      : editable && !networksLocked
-                        ? 'move'
-                        : 'default',
-                  }}
-                >
-                  <rect
-                    x={x}
-                    y={y}
-                    width={w}
-                    height={h}
-                    rx={2}
-                    ry={2}
-                    fill={fill}
-                    stroke={isSelected ? '#4FC3F7' : stroke}
-                    strokeWidth={isSelected ? 3 : 1.5}
-                    strokeOpacity={isSelected ? 1 : 0.85}
-                  />
-                  <rect
-                    x={titleX}
-                    y={titleY}
-                    width={titleW}
-                    height={titleH}
-                    rx={4}
-                    ry={4}
-                    fill={titleFill}
-                    stroke={isSelected ? '#4FC3F7' : 'rgba(255,255,255,0.35)'}
-                    strokeWidth={isSelected ? 2 : 1}
-                    pointerEvents="none"
-                  />
-                  <text
-                    x={titleX + titleW / 2}
-                    y={titleY + titleH / 2}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill={titleText}
-                    fontSize={titleFs}
-                    fontFamily="Inter, Helvetica, Arial, sans-serif"
-                    pointerEvents="none"
-                  >
-                    {label}
-                  </text>
-                  {statsLabel && statsY !== undefined && (
-                    <text
-                      x={x + 8}
-                      y={statsY}
-                      textAnchor="start"
-                      dominantBaseline="middle"
-                      fill={textOnBackground(fill)}
-                      fontSize={statsFontSize}
-                      fontFamily="Inter, Helvetica, Arial, sans-serif"
-                      pointerEvents="none"
-                    >
-                      {statsLabel}
-                    </text>
-                  )}
-                  {editable && !networksLocked && (
-                    <rect
-                      x={x + w - 10}
-                      y={y + h - 10}
-                      width={10}
-                      height={10}
-                      fill="rgba(255,255,255,0.45)"
-                      stroke="rgba(255,255,255,0.6)"
-                      strokeWidth={1}
-                      style={{ cursor: 'nwse-resize' }}
-                      onPointerDown={(e) => onResizePointerDown(e, node)}
-                      onPointerUp={(e) => onPointerUp(e)}
-                    />
-                  )}
-                </g>
+                  node={node}
+                  layout={layout}
+                  stats={regionStats.get(node.id)}
+                  options={options}
+                  queryReady={queryReady}
+                  resolveColor={resolveColor}
+                  isSelected={selectedNodeIds.includes(node.id)}
+                  panTool={panTool}
+                  editable={editable}
+                  networksLocked={networksLocked}
+                  onPointerDown={onNetworkPointerDown}
+                  onDoubleClick={onNodeDoubleClick}
+                  onContextMenu={handleNodeContextMenu}
+                  onResizePointerDown={onResizePointerDown}
+                  onResizePointerUp={onPointerUp}
+                />
               );
             })}
 
@@ -1841,188 +1588,42 @@ export function TopologyCanvas({
           {map.nodes
             .filter((n) => n.type !== 'network')
             .map((node) => {
-            const layout = nodeLayouts.get(node.id);
-            if (!layout) {
-              return null;
-            }
-            const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout;
-              const fillOverride =
-                node.type === 'submap'
-                  ? regionFillColor(regionStats.get(node.id), options, 'submap', queryReady)
-                  : undefined;
-              const fillRaw =
-                fillOverride ??
-                (node.fillColor ? node.fillColor : undefined) ??
-                nodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
-              const fill = resolveColor(fillRaw);
-            const region = node.type === 'submap' ? regionStats.get(node.id) : undefined;
-            const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
-            const labelColor =
-              node.type === 'static' && node.labelColor
-                ? resolveColor(node.labelColor)
-                : textOnBackground(fill);
-            const displaySub = regionLabel ?? sub;
-            const statsSubFontSize = Math.max(9, subFontSize);
-            const displaySubY =
-              subY ??
-              (displaySub
-                ? labelY !== undefined && labelY < h * 0.45
-                  ? h - 8 - statsSubFontSize / 2
-                  : labelY !== undefined
-                    ? labelY + labelFontSize / 2 + 4 + statsSubFontSize / 2
-                    : h - 8 - statsSubFontSize / 2
-                : undefined);
-            const nodeIsHost = isHostNode(node);
-            const hostStatus = nodeIsHost
-              ? resolveHostNodeStatus(node, hostDisplay, hostMetadata)
-              : undefined;
-            const submapOffline = regionHasOfflineHosts(region, queryReady);
-            const isOfflineBlink = hostStatus === 'offline' || submapOffline;
-            const hostIcon = nodeIsHost ? node.icon ?? null : null;
-            const textCenterX = x + w / 2;
-            const iconX = x + w / 2;
-            const iconY = iconCenterY !== undefined ? y + iconCenterY : y + h / 2;
-            const isLinkSource = linkFromId === node.id;
-            const isLinkTarget = linkFromId !== null && linkHoverId === node.id;
-            const isSelected = selectedNodeIds.includes(node.id);
-            const isSelectedLinkEndpoint =
-              selectedLink !== null && (node.id === selectedLink.from || node.id === selectedLink.to);
-
-            return (
-              <g
-                key={node.id}
-                data-node-id={node.id}
-                className={isOfflineBlink ? styles.offlineBlink : undefined}
-                onPointerDown={(e) => onNodePointerDown(e, node)}
-                onClick={(e) => onNodeClick(e, node)}
-                onDoubleClick={(e) => onNodeDoubleClick(e, node)}
-                onContextMenu={(e) => handleContextMenu(e, { node })}
-                onMouseEnter={(e) => {
-                  setLinkHoverId(node.id);
-                  if (nodeIsHost && node.zabbixHost?.trim()) {
-                    beginHostHover({ node, screenX: e.clientX, screenY: e.clientY });
+              const layout = nodeLayouts.get(node.id);
+              if (!layout) {
+                return null;
+              }
+              return (
+                <HostNodeShape
+                  key={node.id}
+                  node={node}
+                  layout={layout}
+                  region={node.type === 'submap' ? regionStats.get(node.id) : undefined}
+                  options={options}
+                  queryReady={queryReady}
+                  hostDisplay={hostDisplay}
+                  hostMetadata={hostMetadata}
+                  resolveColor={resolveColor}
+                  isSelected={selectedNodeIds.includes(node.id)}
+                  isSelectedLinkEndpoint={
+                    selectedLink !== null && (node.id === selectedLink.from || node.id === selectedLink.to)
                   }
-                }}
-                onMouseMove={(e) => {
-                  if (nodeIsHost && node.zabbixHost?.trim()) {
-                    moveHostHover({ node, screenX: e.clientX, screenY: e.clientY });
-                  }
-                }}
-                onMouseLeave={() => {
-                  setLinkHoverId(null);
-                  endHostHover(node.id);
-                }}
-                style={{
-                  cursor: panTool
-                    ? options.enablePan
-                      ? 'grab'
-                      : 'default'
-                    : editable
-                      ? linkFromId !== null
-                        ? 'crosshair'
-                        : 'move'
-                      : isHostNode(node) && resolveHostIp(node, hostMetadata)
-                        ? 'context-menu'
-                        : node.type === 'submap' || node.type === 'dashboard_picker'
-                          ? 'pointer'
-                          : 'default',
-                }}
-              >
-                <rect
-                  x={x}
-                  y={y}
-                  width={w}
-                  height={h}
-                  rx={4}
-                  ry={4}
-                  fill={fill}
-                  stroke={
-                    isSelected || isSelectedLinkEndpoint
-                      ? '#4FC3F7'
-                      : isLinkSource || isLinkTarget
-                        ? '#fff'
-                        : 'rgba(255,255,255,0.35)'
-                  }
-                  strokeWidth={isSelected || isSelectedLinkEndpoint ? 3 : isLinkSource || isLinkTarget ? 2 : 1}
+                  isLinkSource={linkFromId === node.id}
+                  isLinkTarget={linkFromId !== null && linkHoverId === node.id}
+                  linkMode={linkFromId !== null}
+                  panTool={panTool}
+                  editable={editable}
+                  onPointerDown={onNodePointerDown}
+                  onClick={onNodeClick}
+                  onDoubleClick={onNodeDoubleClick}
+                  onContextMenu={handleNodeContextMenu}
+                  onMouseEnter={handleNodeMouseEnter}
+                  onMouseMove={handleNodeMouseMove}
+                  onMouseLeave={handleNodeMouseLeave}
+                  onResizePointerDown={onResizePointerDown}
+                  onResizePointerUp={onPointerUp}
                 />
-                {hostIcon && (
-                  <HostIconGlyph
-                    icon={hostIcon}
-                    x={iconX}
-                    y={iconY}
-                    size={hostIconRenderSize(hostIcon)}
-                  />
-                )}
-                {editable &&
-                  (node.type === 'static' ||
-                    node.type === 'submap' ||
-                    node.type === 'dashboard_picker') && (
-                  <rect
-                    x={x + w - 10}
-                    y={y + h - 10}
-                    width={10}
-                    height={10}
-                    fill="rgba(255,255,255,0.45)"
-                    stroke="rgba(255,255,255,0.6)"
-                    strokeWidth={1}
-                    style={{ cursor: 'nwse-resize' }}
-                    onPointerDown={(e) => onResizePointerDown(e, node)}
-                    onPointerUp={(e) => onPointerUp(e)}
-                  />
-                )}
-                <text
-                  x={textCenterX}
-                  y={y + labelY}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={labelColor}
-                  fontSize={labelFontSize}
-                  fontFamily="Inter, Helvetica, Arial, sans-serif"
-                  pointerEvents="none"
-                >
-                  {label}
-                </text>
-                {displaySub && displaySubY !== undefined && (
-                  <text
-                    x={textCenterX}
-                    y={y + displaySubY}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill={labelColor}
-                    fontSize={Math.max(9, subFontSize)}
-                    fontFamily="Inter, Helvetica, Arial, sans-serif"
-                    pointerEvents="none"
-                  >
-                    {displaySub}
-                  </text>
-                )}
-                {node.type === 'submap' && (
-                  <text
-                    x={x + w - 8}
-                    y={y + 12}
-                    textAnchor="end"
-                    fill={labelColor}
-                    fontSize={10}
-                    pointerEvents="none"
-                  >
-                    ↗
-                  </text>
-                )}
-                {node.type === 'dashboard_picker' && (
-                  <text
-                    x={x + w - 8}
-                    y={y + 12}
-                    textAnchor="end"
-                    fill={labelColor}
-                    fontSize={10}
-                    pointerEvents="none"
-                  >
-                    ▾
-                  </text>
-                )}
-              </g>
-            );
-          })}
+              );
+            })}
         </g>
       </svg>
 
@@ -2232,215 +1833,3 @@ export function TopologyCanvas({
     </div>
   );
 }
-
-function LinkLineComponent({
-  link,
-  waypoints,
-  nodeLayouts,
-  options,
-  editable,
-  panTool,
-  selected,
-  hovered,
-  onSelect,
-  onHoverChange,
-  onContextMenu,
-  onPathPointerDown,
-  onPathDoubleClick,
-}: {
-  link: TopologyLink;
-  waypoints: LinkPoint[];
-  nodeLayouts: Map<string, NodeLayout & TopologyNode>;
-  options: TopologyPanelOptions;
-  editable: boolean;
-  panTool: boolean;
-  selected: boolean;
-  hovered: boolean;
-  onSelect: () => void;
-  onHoverChange: (active: boolean) => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-  onPathPointerDown: (e: React.PointerEvent) => void;
-  onPathDoubleClick: (e: React.MouseEvent) => void;
-}) {
-  const from = nodeLayouts.get(link.from);
-  const to = nodeLayouts.get(link.to);
-  if (!from || !to) {
-    return null;
-  }
-  const gridStep = options.gridSize ?? 10;
-  const geom = computeLinkGeometry(from, to, gridStep, waypoints);
-  const { d, pathPoints } = geom;
-  const hasWaypoints = waypoints.length > 0;
-  const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
-  const active = selected || hovered;
-  const medium = resolveLinkMedium(link);
-  const dashArray = medium === 'radio' ? '10 6' : undefined;
-  const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
-  const laneOffset = Math.max(2, strokeWidth * 0.75);
-  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
-  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
-  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps);
-  const mid = linkLabelAnchor(pathPoints, from, to);
-  const bandwidthLabelWidth = bandwidthLabel ? bandwidthLabel.length * 6 : 0;
-  const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
-  const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  const markerStart = selected
-    ? 'url(#link-dot-start-active)'
-    : hovered
-      ? 'url(#link-dot-start-hover)'
-      : 'url(#link-dot-start)';
-  const markerEnd = selected
-    ? 'url(#link-arrow-end-active)'
-    : hovered
-      ? 'url(#link-arrow-end-hover)'
-      : 'url(#link-arrow-end)';
-  const downloadColor = options.colorLinkDownload;
-  const uploadColor = options.colorLinkUpload;
-  const flowStroke = Math.max(1.5, strokeWidth - 1);
-
-  return (
-    <g
-      onContextMenu={editable ? onContextMenu : undefined}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
-    >
-      <path
-        d={d}
-        stroke="transparent"
-        strokeWidth={hitWidth}
-        fill="none"
-        pointerEvents="stroke"
-        style={{ cursor: panTool ? 'grab' : 'pointer' }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onPathPointerDown(e);
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          // Seleção quando a mão não captura o ponteiro.
-          if (!panTool && !editable) {
-            onSelect();
-          }
-        }}
-        onDoubleClick={(e) => {
-          if (editable) {
-            onPathDoubleClick(e);
-          }
-        }}
-      />
-      {active && (
-        <path
-          d={d}
-          stroke="#4FC3F7"
-          strokeWidth={strokeWidth + 8}
-          strokeOpacity={selected ? 0.35 : 0.2}
-          strokeDasharray={dashArray}
-          fill="none"
-          pointerEvents="none"
-          {...lineCap}
-        />
-      )}
-      <path
-        d={d}
-        stroke={strokeColor}
-        strokeWidth={strokeWidth}
-        strokeDasharray={dashArray}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
-        fill="none"
-        pointerEvents="none"
-        {...lineCap}
-      />
-      <path
-        d={downloadD}
-        data-link-flow="download"
-        stroke={downloadColor}
-        strokeWidth={flowStroke}
-        strokeDasharray={LINK_FLOW_DASH}
-        strokeDashoffset="0"
-        fill="none"
-        pointerEvents="none"
-        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
-        {...lineCap}
-      />
-      <path
-        d={uploadD}
-        data-link-flow="upload"
-        stroke={uploadColor}
-        strokeWidth={flowStroke}
-        strokeDasharray={LINK_FLOW_DASH}
-        strokeDashoffset="0"
-        fill="none"
-        pointerEvents="none"
-        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
-        {...lineCap}
-      />
-      {bandwidthLabel && (
-        <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
-          <rect
-            x={-bandwidthLabelWidth / 2}
-            y={-7}
-            width={bandwidthLabelWidth}
-            height={14}
-            rx={3}
-            fill="rgba(18,18,20,0.82)"
-            stroke="rgba(255,255,255,0.2)"
-            strokeWidth={0.5}
-          />
-          <text
-            x={0}
-            y={0}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#E3F2FD"
-            fontSize={9}
-            fontFamily="Inter, Helvetica, Arial, sans-serif"
-            fontWeight={500}
-          >
-            {bandwidthLabel}
-          </text>
-        </g>
-      )}
-    </g>
-  );
-}
-
-const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
-  if (
-    prev.selected !== next.selected ||
-    prev.hovered !== next.hovered ||
-    prev.editable !== next.editable ||
-    prev.panTool !== next.panTool
-  ) {
-    return false;
-  }
-  if (prev.link.from !== next.link.from || prev.link.to !== next.link.to) {
-    return false;
-  }
-  if (prev.link.medium !== next.link.medium || prev.link.bandwidthMbps !== next.link.bandwidthMbps) {
-    return false;
-  }
-  if (JSON.stringify(prev.waypoints) !== JSON.stringify(next.waypoints)) {
-    return false;
-  }
-  const pf = prev.nodeLayouts.get(prev.link.from);
-  const pt = prev.nodeLayouts.get(prev.link.to);
-  const nf = next.nodeLayouts.get(next.link.from);
-  const nt = next.nodeLayouts.get(next.link.to);
-  if (!pf || !pt || !nf || !nt) {
-    return false;
-  }
-  if (pf.x !== nf.x || pf.y !== nf.y || pf.w !== nf.w || pf.h !== nf.h) {
-    return false;
-  }
-  if (pt.x !== nt.x || pt.y !== nt.y || pt.w !== nt.w || pt.h !== nt.h) {
-    return false;
-  }
-  return (
-    prev.options.colorLink === next.options.colorLink &&
-    prev.options.colorLinkDownload === next.options.colorLinkDownload &&
-    prev.options.colorLinkUpload === next.options.colorLinkUpload &&
-    prev.options.colorLinkWidth === next.options.colorLinkWidth &&
-    prev.options.gridSize === next.options.gridSize
-  );
-});
