@@ -18,6 +18,7 @@ import {
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
+import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
@@ -31,6 +32,7 @@ import {
   applyTopologyMapToPanelOptions,
   resolveTopologyMapById,
 } from '../utils/topologyMapNavigation';
+import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -42,8 +44,8 @@ export function TopologyPanel({
   onOptionsChange,
 }: Props) {
   const theme = useTheme2();
-  /** Grafana só passa `onOptionsChange` quando o dashboard/painel pode ser editado. */
-  const canPersistOptions = Boolean(onOptionsChange);
+  const dashboardEditing = useDashboardEditMode();
+  const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
 
@@ -83,7 +85,7 @@ export function TopologyPanel({
 
   const handlePersistNavView = useCallback(
     (mapId: string, view: TopologyView) => {
-      if (!onOptionsChange) {
+      if (!canPersistOptions) {
         return;
       }
       if (mapId === ROOT_MAP_ID) {
@@ -98,7 +100,7 @@ export function TopologyPanel({
         },
       });
     },
-    [onOptionsChange]
+    [canPersistOptions, onOptionsChange]
   );
 
   const {
@@ -208,7 +210,7 @@ export function TopologyPanel({
   const queryRefInfosAvailable = queryIndex.refInfos;
 
   useEffect(() => {
-    if (!onOptionsChange) {
+    if (!canPersistOptions) {
       return;
     }
     const currentIds = latestOptionsRef.current.queryRefIdsAvailable ?? [];
@@ -224,7 +226,7 @@ export function TopologyPanel({
       queryRefIdsAvailable,
       queryRefInfosAvailable,
     });
-  }, [onOptionsChange, queryRefIdsAvailable, queryRefInfosAvailable]);
+  }, [canPersistOptions, onOptionsChange, queryRefIdsAvailable, queryRefInfosAvailable]);
 
   const submapQueryRefIds = useMemo(
     () => collectSubmapQueryRefIds(activeStoredMap),
@@ -308,7 +310,7 @@ export function TopologyPanel({
   }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, parentHostKeys, hostMetadata]);
 
   useEffect(() => {
-    if (!onOptionsChange) {
+    if (!canPersistOptions) {
       return;
     }
     const merged = {
@@ -320,7 +322,7 @@ export function TopologyPanel({
     if (changed) {
       onOptionsChange(normalized);
     }
-  }, [options, theme, onOptionsChange]);
+  }, [canPersistOptions, options, theme, onOptionsChange]);
 
   useEffect(() => {
     const syncInterval = () => {
@@ -331,7 +333,7 @@ export function TopologyPanel({
   }, []);
 
   useEffect(() => {
-    if (!onOptionsChange || mapValidationErrors.length > 0) {
+    if (!canPersistOptions || mapValidationErrors.length > 0) {
       return;
     }
     const currentMap = latestOptionsRef.current.map;
@@ -355,16 +357,16 @@ export function TopologyPanel({
       }
       onOptionsChange({ ...latestOptionsRef.current, map: candidate });
     }
-  }, [dataMeta, mapValidationErrors, onOptionsChange]);
+  }, [canPersistOptions, dataMeta, mapValidationErrors, onOptionsChange]);
 
   const applyActiveMap = useCallback(
     (map: TopologyMap) => {
-      if (!onOptionsChange) {
+      if (!canPersistOptions || !onOptionsChange) {
         return;
       }
       onOptionsChange(applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map));
     },
-    [currentMapId, onOptionsChange]
+    [canPersistOptions, currentMapId, onOptionsChange]
   );
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
@@ -376,14 +378,17 @@ export function TopologyPanel({
 
   const handleNocModeChange = useCallback(
     (enabled: boolean) => {
-      onOptionsChange?.({ ...latestOptionsRef.current, nocMode: enabled });
+      if (!canPersistOptions) {
+        return;
+      }
+      onOptionsChange({ ...latestOptionsRef.current, nocMode: enabled });
     },
-    [onOptionsChange]
+    [canPersistOptions, onOptionsChange]
   );
 
   const handleActiveViewChange = useCallback(
     (view: TopologyView) => {
-      if (!onOptionsChange) {
+      if (!canPersistOptions) {
         return;
       }
       if (currentMapId === ROOT_MAP_ID) {
@@ -398,21 +403,27 @@ export function TopologyPanel({
         },
       });
     },
-    [currentMapId, onOptionsChange]
+    [canPersistOptions, currentMapId, onOptionsChange]
   );
 
   const handleShowMinimapChange = useCallback(
     (show: boolean) => {
+      if (!canPersistOptions) {
+        return;
+      }
       onOptionsChange({ ...latestOptionsRef.current, showMinimap: show });
     },
-    [onOptionsChange]
+    [canPersistOptions, onOptionsChange]
   );
 
   const handleShowLegendChange = useCallback(
     (show: boolean) => {
+      if (!canPersistOptions) {
+        return;
+      }
       onOptionsChange({ ...latestOptionsRef.current, showLegend: show });
     },
-    [onOptionsChange]
+    [canPersistOptions, onOptionsChange]
   );
 
   if (width < 1 || height < 1) {

@@ -10,7 +10,7 @@ import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLoc
 import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { isHostNode, findNodeById } from '../utils/topologyNodes';
+import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
@@ -44,7 +44,7 @@ import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useTopologySelection } from '../hooks/useTopologySelection';
 import { useBulkEditModals } from '../hooks/useBulkEditModals';
-import { nodeSupportsProperties, useNodePropertiesModals } from '../hooks/useNodePropertiesModals';
+import { nodeSupportsProperties, NODE_DOUBLE_TAP_MS, useNodePropertiesModals } from '../hooks/useNodePropertiesModals';
 import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardActions';
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
@@ -487,6 +487,26 @@ export function TopologyCanvas({
     [onNavigateToChildMap, options.childMaps, showToast]
   );
 
+  const lastChildMapTapRef = useRef<{ nodeId: string; time: number } | null>(null);
+
+  const tryDoubleTapEnterChildMap = useCallback(
+    (tapNode: TopologyNode): boolean => {
+      if (!editable || !submapHasChildMapId(tapNode)) {
+        return false;
+      }
+      const now = Date.now();
+      const last = lastChildMapTapRef.current;
+      if (last && last.nodeId === tapNode.id && now - last.time <= NODE_DOUBLE_TAP_MS) {
+        lastChildMapTapRef.current = null;
+        openSubmap(tapNode);
+        return true;
+      }
+      lastChildMapTapRef.current = { nodeId: tapNode.id, time: now };
+      return false;
+    },
+    [editable, openSubmap]
+  );
+
   /** Entra no modo link sem origem: o próximo clique num nó define o ponto de partida. */
   const beginLinkFromCanvas = useCallback(() => setLinkFromId(''), []);
 
@@ -630,6 +650,7 @@ export function TopologyCanvas({
     linkFromId,
     completeLink,
     tryDoubleTapOpenProperties,
+    tryDoubleTapEnterChildMap,
     openSubmap,
     openDashboardPicker,
     onLinkSelect,
@@ -711,6 +732,11 @@ export function TopologyCanvas({
     (e: React.MouseEvent, node: TopologyNode) => {
       e.stopPropagation();
       if (editable) {
+        if (submapHasChildMapId(node)) {
+          resetDoubleTapState();
+          openSubmap(node);
+          return;
+        }
         if (nodeSupportsProperties(node)) {
           resetDoubleTapState();
           openNodeProperties(node);
@@ -834,6 +860,7 @@ export function TopologyCanvas({
     openBulkCredsEdit,
     openBulkSubmapEdit,
     openNodeProperties,
+    openSubmap,
     openAddHost: setAddHostAt,
     openLinkEdit: setEditLink,
     openLinkDetails,

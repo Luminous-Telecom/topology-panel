@@ -53,6 +53,7 @@ interface UseTopologyDragControllerParams {
   linkFromId: string | null;
   completeLink: (targetId: string) => void;
   tryDoubleTapOpenProperties: (node: TopologyNode) => boolean;
+  tryDoubleTapEnterChildMap: (node: TopologyNode) => boolean;
   openSubmap: (node: TopologyNode) => void;
   openDashboardPicker: (node: TopologyNode) => void;
   onLinkSelect: (link: TopologyLink) => void;
@@ -121,6 +122,7 @@ export function useTopologyDragController({
   linkFromId,
   completeLink,
   tryDoubleTapOpenProperties,
+  tryDoubleTapEnterChildMap,
   openSubmap,
   openDashboardPicker,
   onLinkSelect,
@@ -655,9 +657,12 @@ export function useTopologyDragController({
         onLinkSelect(drag.tapLink);
         return true;
       }
+      if (editable && tap && tryDoubleTapEnterChildMap(tap)) {
+        return true;
+      }
       return Boolean(editable && tap && tryDoubleTapOpenProperties(tap));
     },
-    [editable, onLinkSelect, openDashboardPicker, openSubmap, tryDoubleTapOpenProperties]
+    [editable, onLinkSelect, openDashboardPicker, openSubmap, tryDoubleTapEnterChildMap, tryDoubleTapOpenProperties]
   );
 
   /** Fecha o laço de seleção: abaixo de 4px foi clique, não laço — não mexe na seleção. */
@@ -704,6 +709,9 @@ export function useTopologyDragController({
         completeLink(tapNode.id);
         return;
       }
+      if (tryDoubleTapEnterChildMap(tapNode)) {
+        return;
+      }
       if (tryDoubleTapOpenProperties(tapNode)) {
         return;
       }
@@ -716,7 +724,7 @@ export function useTopologyDragController({
       }
       setSelectedLink(null);
     },
-    [completeLink, linkFromId, setSelectedLink, setSelectedNodeIds, tryDoubleTapOpenProperties]
+    [completeLink, linkFromId, setSelectedLink, setSelectedNodeIds, tryDoubleTapEnterChildMap, tryDoubleTapOpenProperties]
   );
 
   const onPointerUp = useCallback(

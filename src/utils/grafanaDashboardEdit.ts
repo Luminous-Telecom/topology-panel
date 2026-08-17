@@ -36,3 +36,11 @@ export function documentIndicatesDashboardEdit(root?: ParentNode | null): boolea
   }
   return DASHBOARD_EDIT_MODE_SELECTORS.some((sel) => Boolean(root.querySelector(sel)));
 }
+
+/** True quando o painel pode gravar opções no dashboard (API + modo edição ativo). */
+export function canPersistTopologyPanelOptions(
+  onOptionsChange: unknown,
+  dashboardEditing: boolean
+): boolean {
+  return Boolean(onOptionsChange) && dashboardEditing;
+}

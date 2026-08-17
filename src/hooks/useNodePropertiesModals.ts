@@ -4,7 +4,7 @@ import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { openDashboardUrl } from '../components/DashboardPickerModal';
 
 /** Intervalo máximo entre dois cliques para abrir propriedades (pointer capture bloqueia dblclick nativo). */
-const NODE_DOUBLE_TAP_MS = 400;
+export const NODE_DOUBLE_TAP_MS = 400;
 
 export function nodeSupportsProperties(node: TopologyNode): boolean {
   return (

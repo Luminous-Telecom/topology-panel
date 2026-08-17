@@ -21,7 +21,7 @@ function readDashboardEditMode(): boolean {
 
 /**
  * Heurística de edição do dashboard (URL + chrome do Grafana).
- * Preferir `Boolean(onOptionsChange)` no painel — é o sinal oficial de persistência.
+ * Use com `canPersistTopologyPanelOptions` — `onOptionsChange` sozinho não basta.
  */
 export function useDashboardEditMode(): boolean {
   const [editing, setEditing] = useState(() => readDashboardEditMode());

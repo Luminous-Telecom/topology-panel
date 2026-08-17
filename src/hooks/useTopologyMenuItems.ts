@@ -16,11 +16,12 @@ import {
   copySelectionItem,
   deleteNodeMenuLabel,
   deleteSelectionItem,
+  enterChildMapItem,
   pasteItem,
 } from '../utils/contextMenuItems';
 import { addDashboardPickerAt, addManualDeviceAt, addNetworkAt, addStaticAt, addSubmapAt } from '../utils/mapEdits';
 import { hasTopologyClipboard } from '../utils/topologyClipboard';
-import { isHostNode, isSubmapNode } from '../utils/topologyNodes';
+import { isHostNode, isSubmapNode, submapHasChildMapId } from '../utils/topologyNodes';
 
 /** Alvo do modal de ping — host resolvido para IP. */
 export interface PingTarget {
@@ -61,6 +62,7 @@ export interface TopologyMenuItemsParams {
   /** Entra no modo link sem origem definida — o próximo clique escolhe o nó inicial. */
   beginLinkFromCanvas: () => void;
   setPingTarget: (target: PingTarget) => void;
+  openSubmap: (node: TopologyNode) => void;
   /** Aceita `undefined` porque `runHostTool` pode resolver sem mensagem. */
   showToast: (message: string | undefined) => void;
 }
@@ -100,6 +102,7 @@ export function useTopologyMenuItems({
   beginLinkFrom,
   beginLinkFromCanvas,
   setPingTarget,
+  openSubmap,
   showToast,
 }: TopologyMenuItemsParams) {
   /** Submenu "Tools" — só existe quando o host tem IP resolvido. */
@@ -245,6 +248,15 @@ export function useTopologyMenuItems({
         return items;
       }
 
+      if (submapHasChildMapId(node)) {
+        items.push(
+          enterChildMapItem(() => {
+            closeMenu();
+            openSubmap(node);
+          })
+        );
+      }
+
       if (selectedNodeIds.length > 0) {
         items.push(
           copySelectionItem(selectedNodeIds.length, () => {
@@ -324,6 +336,7 @@ export function useTopologyMenuItems({
       openBulkIconEdit,
       openBulkSubmapEdit,
       openNodeProperties,
+      openSubmap,
       pasteAt,
       removeNodes,
       selectedHostNodes.length,

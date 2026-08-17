@@ -6,6 +6,7 @@ import {
   copySelectionItem,
   deleteNodeMenuLabel,
   deleteSelectionItem,
+  enterChildMapItem,
 } from './contextMenuItems';
 
 describe('rótulos por quantidade', () => {
@@ -29,6 +30,10 @@ describe('rótulos por quantidade', () => {
       'Alterar tipo / ícone (4 hosts)',
       'Usuário / senha Tools (4 hosts)',
     ]);
+  });
+
+  it('entrada em mapa interno tem rótulo fixo', () => {
+    expect(enterChildMapItem(() => {}).label).toBe('Entrar no mapa interno');
   });
 });
 

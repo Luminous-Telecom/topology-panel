@@ -50,6 +50,10 @@ export function bulkSubmapItem(count: number, openSubmapEdit: () => void): Conte
   return { id: 'bulk-submap', label: `Editar submapas (${count})`, onClick: openSubmapEdit };
 }
 
+export function enterChildMapItem(onEnter: () => void): ContextMenuItem {
+  return { id: 'enter-child-map', label: 'Entrar no mapa interno', onClick: onEnter };
+}
+
 export function deleteSelectionItem(count: number, onDelete: () => void): ContextMenuItem {
   return {
     id: 'delete-selection',
