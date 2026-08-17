@@ -18,7 +18,6 @@ import {
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
-import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
@@ -27,7 +26,11 @@ import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
 import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
 import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
-import { ROOT_MAP_ID, resolveTopologyMapById } from '../utils/topologyMapNavigation';
+import {
+  ROOT_MAP_ID,
+  applyTopologyMapToPanelOptions,
+  resolveTopologyMapById,
+} from '../utils/topologyMapNavigation';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -39,7 +42,8 @@ export function TopologyPanel({
   onOptionsChange,
 }: Props) {
   const theme = useTheme2();
-  const dashboardEditing = useDashboardEditMode();
+  /** Grafana só passa `onOptionsChange` quando o dashboard/painel pode ser editado. */
+  const canPersistOptions = Boolean(onOptionsChange);
   const playlistPlayback = useGrafanaPlaylistPlayback();
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
 
@@ -79,7 +83,7 @@ export function TopologyPanel({
 
   const handlePersistNavView = useCallback(
     (mapId: string, view: TopologyView) => {
-      if (!dashboardEditing || !onOptionsChange) {
+      if (!onOptionsChange) {
         return;
       }
       if (mapId === ROOT_MAP_ID) {
@@ -94,7 +98,7 @@ export function TopologyPanel({
         },
       });
     },
-    [dashboardEditing, onOptionsChange]
+    [onOptionsChange]
   );
 
   const {
@@ -353,14 +357,17 @@ export function TopologyPanel({
     }
   }, [dataMeta, mapValidationErrors, onOptionsChange]);
 
-  const applyMap = useCallback(
+  const applyActiveMap = useCallback(
     (map: TopologyMap) => {
-      onOptionsChange({ ...latestOptionsRef.current, map });
+      if (!onOptionsChange) {
+        return;
+      }
+      onOptionsChange(applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map));
     },
-    [onOptionsChange]
+    [currentMapId, onOptionsChange]
   );
 
-  const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(resolvedOptions.map, applyMap);
+  const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
 
   const { problems: hostProblems, loading: hostProblemsLoading } = useZabbixHostProblems(
     zabbixDatasourceUid,
@@ -474,14 +481,14 @@ export function TopologyPanel({
         hostProblems={hostProblems}
         hostProblemsLoading={hostProblemsLoading}
         onNocModeChange={handleNocModeChange}
-        onMapChange={dashboardEditing && currentMapId === ROOT_MAP_ID ? commitChange : undefined}
-        onViewChange={dashboardEditing ? handleActiveViewChange : undefined}
+        onMapChange={canPersistOptions ? commitChange : undefined}
+        onViewChange={canPersistOptions ? handleActiveViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}
         onShowLegendChange={handleShowLegendChange}
-        onUndo={dashboardEditing && currentMapId === ROOT_MAP_ID ? undo : undefined}
-        onRedo={dashboardEditing && currentMapId === ROOT_MAP_ID ? redo : undefined}
-        canUndo={dashboardEditing && currentMapId === ROOT_MAP_ID && canUndo}
-        canRedo={dashboardEditing && currentMapId === ROOT_MAP_ID && canRedo}
+        onUndo={canPersistOptions ? undo : undefined}
+        onRedo={canPersistOptions ? redo : undefined}
+        canUndo={canPersistOptions && canUndo}
+        canRedo={canPersistOptions && canRedo}
         hideOverlayControls={playlistPlayback}
       />
     </div>

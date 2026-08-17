@@ -1,44 +1,57 @@
 import { useEffect, useState } from 'react';
+import { locationService } from '@grafana/runtime';
+import {
+  documentIndicatesDashboardEdit,
+  searchIndicatesDashboardEdit,
+} from '../utils/grafanaDashboardEdit';
 
-/** Botões do chrome Grafana quando o dashboard está em modo edição (ícone lápis). */
-const EDIT_MODE_SELECTORS = [
-  '[data-testid="data-testid Save dashboard button"]',
-  '[data-testid="data-testid Exit edit mode button"]',
-  'button[aria-label="Save dashboard"]',
-  'button[aria-label="Exit edit mode"]',
-  'button[aria-label="Exit edit"]',
-  'button[aria-label="Salvar dashboard"]',
-  'button[aria-label="Sair do modo de edição"]',
-];
-
-function detectDashboardEditMode(): boolean {
+function readDashboardEditMode(): boolean {
+  try {
+    if (searchIndicatesDashboardEdit(locationService.getSearchObject())) {
+      return true;
+    }
+  } catch {
+    // locationService pode falhar fora do Grafana.
+  }
   if (typeof document === 'undefined') {
     return false;
   }
-
-  return EDIT_MODE_SELECTORS.some((sel) => Boolean(document.querySelector(sel)));
+  return documentIndicatesDashboardEdit(document);
 }
 
-/** True quando o dashboard Grafana está em modo edição (ícone lápis — não confundir com ?editPanel). */
+/**
+ * Heurística de edição do dashboard (URL + chrome do Grafana).
+ * Preferir `Boolean(onOptionsChange)` no painel — é o sinal oficial de persistência.
+ */
 export function useDashboardEditMode(): boolean {
-  const [editing, setEditing] = useState(() => detectDashboardEditMode());
+  const [editing, setEditing] = useState(() => readDashboardEditMode());
 
   useEffect(() => {
     const sync = () => {
-      setEditing(detectDashboardEditMode());
+      setEditing(readDashboardEditMode());
     };
 
     sync();
 
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = locationService.getHistory().listen(sync);
+    } catch {
+      unlisten = undefined;
+    }
 
-    // Reforço periódico — MutationObserver cobre a maioria dos casos
-    const interval = window.setInterval(sync, 1500);
+    if (typeof document !== 'undefined') {
+      const observer = new MutationObserver(sync);
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      return () => {
+        unlisten?.();
+        observer.disconnect();
+      };
+    }
 
     return () => {
-      observer.disconnect();
-      window.clearInterval(interval);
+      unlisten?.();
     };
   }, []);
 

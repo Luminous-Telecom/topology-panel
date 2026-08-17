@@ -3,6 +3,7 @@ import { defaultOptions } from '../types';
 import { emptyMap } from './testMapFixtures';
 import {
   ROOT_MAP_ID,
+  applyTopologyMapToPanelOptions,
   buildTopologyBreadcrumb,
   isValidChildMapId,
   resolveTopologyMapById,
@@ -62,5 +63,25 @@ describe('buildTopologyBreadcrumb', () => {
       'Fortaleza'
     );
     expect(trail).toEqual(['Brasil', 'Nordeste', 'Fortaleza']);
+  });
+});
+
+describe('applyTopologyMapToPanelOptions', () => {
+  it('grava no mapa raiz quando mapId é ROOT_MAP_ID', () => {
+    const options = defaultOptions();
+    const next = emptyMap();
+    next.nodes.push({ id: 'host-1', x: 10, y: 20, type: 'host' });
+    const updated = applyTopologyMapToPanelOptions(options, ROOT_MAP_ID, next);
+    expect(updated.map).toBe(next);
+    expect(updated.childMaps).toEqual(options.childMaps);
+  });
+
+  it('grava em childMaps quando mapId é de mapa interno', () => {
+    const options = defaultOptions();
+    const child = emptyMap();
+    child.nodes.push({ id: 'swv-1', x: 30, y: 40, type: 'host', label: 'SWV01' });
+    const updated = applyTopologyMapToPanelOptions(options, 'swv', child);
+    expect(updated.map).toBe(options.map);
+    expect(updated.childMaps?.swv).toBe(child);
   });
 });

@@ -3,6 +3,24 @@ import { TopologyMap, TopologyPanelOptions, TopologyView } from '../types';
 /** Id do mapa raiz — corresponde a `options.map`. */
 export const ROOT_MAP_ID = 'root';
 
+/** Aplica alterações do mapa ativo (raiz ou filho) nas opções do painel. */
+export function applyTopologyMapToPanelOptions(
+  options: TopologyPanelOptions,
+  mapId: string,
+  map: TopologyMap
+): TopologyPanelOptions {
+  if (mapId === ROOT_MAP_ID) {
+    return { ...options, map };
+  }
+  return {
+    ...options,
+    childMaps: {
+      ...(options.childMaps ?? {}),
+      [mapId]: map,
+    },
+  };
+}
+
 export const CHILD_MAP_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export interface TopologyNavFrame {
