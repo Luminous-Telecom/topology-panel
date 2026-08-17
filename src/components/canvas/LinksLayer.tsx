@@ -1,0 +1,81 @@
+import React from 'react';
+import { TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { LinkPoint } from '../../utils/linkGeometry';
+import { linkKey } from '../../utils/mapEdits';
+import { NodeLayout } from '../../utils/nodeLayout';
+import { LinkLine } from './LinkLine';
+
+interface Props {
+  renderLinks: Array<{ link: TopologyLink; key: string }>;
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>;
+  options: TopologyPanelOptions;
+  editable: boolean;
+  panTool: boolean;
+  selectedLink: TopologyLink | null;
+  hoveredLinkKey: string | null;
+  setHoveredLinkKey: (key: string | null) => void;
+  resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
+  onLinkSelect: (link: TopologyLink) => void;
+  onLinkContextMenu: (e: React.MouseEvent, link: TopologyLink) => void;
+  beginPan: (e: React.PointerEvent, node?: TopologyNode, link?: TopologyLink) => void;
+  beginWaypointDragFromPath: (e: React.PointerEvent, link: TopologyLink) => void;
+  removeWaypointNearPointer: (e: React.MouseEvent, link: TopologyLink) => void;
+}
+
+/** Todos os cabos do mapa, já filtrados e ordenados por `useRenderLinks`. */
+export function LinksLayer({
+  renderLinks,
+  nodeLayouts,
+  options,
+  editable,
+  panTool,
+  selectedLink,
+  hoveredLinkKey,
+  setHoveredLinkKey,
+  resolveLinkWaypoints,
+  onLinkSelect,
+  onLinkContextMenu,
+  beginPan,
+  beginWaypointDragFromPath,
+  removeWaypointNearPointer,
+}: Props) {
+  return (
+    <>
+      {renderLinks.map(({ link, key }) => (
+        <LinkLine
+          key={key}
+          link={link}
+          waypoints={resolveLinkWaypoints(link)}
+          nodeLayouts={nodeLayouts}
+          options={options}
+          editable={editable}
+          panTool={panTool}
+          selected={Boolean(selectedLink && linkKey(selectedLink) === linkKey(link))}
+          hovered={hoveredLinkKey === linkKey(link)}
+          onSelect={() => onLinkSelect(link)}
+          onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
+          onContextMenu={(e) => onLinkContextMenu(e, link)}
+          onPathPointerDown={(e) => {
+            if (panTool || !editable) {
+              // Mão: pan no cabo; seta em visualização: só seleciona.
+              if (panTool && options.enablePan) {
+                beginPan(e, undefined, link);
+              } else {
+                onLinkSelect(link);
+              }
+              return;
+            }
+            beginWaypointDragFromPath(e, link);
+          }}
+          onPathDoubleClick={(e) => {
+            if (!editable) {
+              return;
+            }
+            e.stopPropagation();
+            removeWaypointNearPointer(e, link);
+          }}
+        />
+      ))}
+    </>
+  );
+}

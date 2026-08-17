@@ -15,11 +15,12 @@ import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { TopologyContextMenu } from './TopologyContextMenu';
 import { canvasStyles } from './canvas/canvasStyles';
-import { HostNodeShape } from './canvas/HostNodeShape';
-import { LinkLine } from './canvas/LinkLine';
+import { CanvasGridLayer } from './canvas/CanvasGridLayer';
 import { CanvasModals } from './canvas/CanvasModals';
+import { CanvasSelectionShapes } from './canvas/CanvasSelectionShapes';
+import { LinksLayer } from './canvas/LinksLayer';
+import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
-import { NetworkNodeShape } from './canvas/NetworkNodeShape';
 import { TopologyColorLegend } from './canvas/TopologyColorLegend';
 import { TopologyQueryErrorBadge } from './canvas/TopologyQueryErrorBadge';
 import { TopologyToast } from './canvas/TopologyToast';
@@ -844,190 +845,79 @@ export function TopologyCanvas({
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
           <LinkMarkers colorLink={options.colorLink} />
-          <rect
-            x={gridBounds.x0}
-            y={gridBounds.y0}
-            width={gridBounds.x1 - gridBounds.x0}
-            height={gridBounds.y1 - gridBounds.y0}
-            fill="transparent"
-            style={{ cursor: panTool && options.enablePan ? 'grab' : 'default' }}
+          <CanvasGridLayer
+            bounds={gridBounds}
+            verticalLines={gridVerticalLines}
+            horizontalLines={gridHorizontalLines}
+            isMajorLine={isMajorGridLine}
+            showGrid={Boolean(options.showGrid)}
+            grabCursor={panTool && Boolean(options.enablePan)}
             onPointerDown={onCanvasPointerDown}
             onContextMenu={(e) => handleContextMenu(e)}
           />
 
-          {options.showGrid && (
-            <>
-              {gridVerticalLines.map((x) => (
-                <line
-                  key={`gv-${x}`}
-                  x1={x}
-                  y1={gridBounds.y0}
-                  x2={x}
-                  y2={gridBounds.y1}
-                  stroke="#2a2a2e"
-                  strokeWidth={isMajorGridLine(x) ? 1.2 : 0.5}
-                  strokeOpacity={isMajorGridLine(x) ? 0.5 : 0.22}
-                  pointerEvents="none"
-                />
-              ))}
-              {gridHorizontalLines.map((y) => (
-                <line
-                  key={`gh-${y}`}
-                  x1={gridBounds.x0}
-                  y1={y}
-                  x2={gridBounds.x1}
-                  y2={y}
-                  stroke="#2a2a2e"
-                  strokeWidth={isMajorGridLine(y) ? 1.2 : 0.5}
-                  strokeOpacity={isMajorGridLine(y) ? 0.5 : 0.22}
-                  pointerEvents="none"
-                />
-              ))}
-            </>
-          )}
-
-          <rect
-            x={0}
-            y={0}
-            width={map.width}
-            height={map.height}
-            fill="none"
-            pointerEvents="none"
+          <NetworkNodesLayer
+            nodes={map.nodes}
+            nodeLayouts={nodeLayouts}
+            regionStats={regionStats}
+            options={options}
+            queryReady={queryReady}
+            resolveColor={resolveColor}
+            selectedNodeIds={selectedNodeIds}
+            panTool={panTool}
+            editable={editable}
+            networksLocked={networksLocked}
+            onPointerDown={onNetworkPointerDown}
+            onDoubleClick={onNodeDoubleClick}
+            onContextMenu={handleNodeContextMenu}
+            onResizePointerDown={onResizePointerDown}
+            onResizePointerUp={onPointerUp}
           />
 
-          {map.nodes
-            .filter((n) => n.type === 'network')
-            .map((node) => {
-              const layout = nodeLayouts.get(node.id);
-              if (!layout) {
-                return null;
-              }
-              return (
-                <NetworkNodeShape
-                  key={node.id}
-                  node={node}
-                  layout={layout}
-                  stats={regionStats.get(node.id)}
-                  options={options}
-                  queryReady={queryReady}
-                  resolveColor={resolveColor}
-                  isSelected={selectedNodeIds.includes(node.id)}
-                  panTool={panTool}
-                  editable={editable}
-                  networksLocked={networksLocked}
-                  onPointerDown={onNetworkPointerDown}
-                  onDoubleClick={onNodeDoubleClick}
-                  onContextMenu={handleNodeContextMenu}
-                  onResizePointerDown={onResizePointerDown}
-                  onResizePointerUp={onPointerUp}
-                />
-              );
-            })}
+          <LinksLayer
+            renderLinks={renderLinks}
+            nodeLayouts={nodeLayouts}
+            options={options}
+            editable={editable}
+            panTool={panTool}
+            selectedLink={selectedLink}
+            hoveredLinkKey={hoveredLinkKey}
+            setHoveredLinkKey={setHoveredLinkKey}
+            resolveLinkWaypoints={resolveLinkWaypoints}
+            onLinkSelect={onLinkSelect}
+            onLinkContextMenu={(e, link) => handleContextMenu(e, { link })}
+            beginPan={beginPan}
+            beginWaypointDragFromPath={beginWaypointDragFromPath}
+            removeWaypointNearPointer={removeWaypointNearPointer}
+          />
 
-          {renderLinks.map(({ link, key }) => (
-            <LinkLine
-              key={key}
-              link={link}
-              waypoints={resolveLinkWaypoints(link)}
-              nodeLayouts={nodeLayouts}
-              options={options}
-              editable={editable}
-              panTool={panTool}
-              selected={Boolean(selectedLink && linkKey(selectedLink) === linkKey(link))}
-              hovered={hoveredLinkKey === linkKey(link)}
-              onSelect={() => onLinkSelect(link)}
-              onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
-              onContextMenu={(e) => handleContextMenu(e, { link })}
-              onPathPointerDown={(e) => {
-                if (panTool || !editable) {
-                  // Mão: pan no cabo; seta em visualização: só seleciona.
-                  if (panTool && options.enablePan) {
-                    beginPan(e, undefined, link);
-                  } else {
-                    onLinkSelect(link);
-                  }
-                  return;
-                }
-                beginWaypointDragFromPath(e, link);
-              }}
-              onPathDoubleClick={(e) => {
-                if (!editable) {
-                  return;
-                }
-                e.stopPropagation();
-                removeWaypointNearPointer(e, link);
-              }}
-            />
-          ))}
+          <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
 
-          {alignGuides.map((guide, i) => (
-            <line
-              key={`guide-${guide.orientation}-${guide.position}-${guide.kind}-${i}`}
-              x1={guide.x1}
-              y1={guide.y1}
-              x2={guide.x2}
-              y2={guide.y2}
-              stroke={guide.kind === 'center' ? '#FF4081' : '#00E5FF'}
-              strokeWidth={guide.kind === 'center' ? 1.5 : 1}
-              strokeDasharray={guide.kind === 'center' ? undefined : '6 4'}
-              strokeOpacity={0.95}
-              pointerEvents="none"
-            />
-          ))}
-
-          {marqueeRect && (
-            <rect
-              x={Math.min(marqueeRect.x0, marqueeRect.x1)}
-              y={Math.min(marqueeRect.y0, marqueeRect.y1)}
-              width={Math.abs(marqueeRect.x1 - marqueeRect.x0)}
-              height={Math.abs(marqueeRect.y1 - marqueeRect.y0)}
-              fill="rgba(79,195,247,0.12)"
-              stroke="#4FC3F7"
-              strokeWidth={1}
-              strokeDasharray="4 3"
-              pointerEvents="none"
-            />
-          )}
-
-          {map.nodes
-            .filter((n) => n.type !== 'network')
-            .map((node) => {
-              const layout = nodeLayouts.get(node.id);
-              if (!layout) {
-                return null;
-              }
-              return (
-                <HostNodeShape
-                  key={node.id}
-                  node={node}
-                  layout={layout}
-                  region={node.type === 'submap' ? regionStats.get(node.id) : undefined}
-                  options={options}
-                  queryReady={queryReady}
-                  hostDisplay={hostDisplay}
-                  hostMetadata={hostMetadata}
-                  resolveColor={resolveColor}
-                  isSelected={selectedNodeIds.includes(node.id)}
-                  isSelectedLinkEndpoint={
-                    selectedLink !== null && (node.id === selectedLink.from || node.id === selectedLink.to)
-                  }
-                  isLinkSource={linkFromId === node.id}
-                  isLinkTarget={linkFromId !== null && linkHoverId === node.id}
-                  linkMode={linkFromId !== null}
-                  panTool={panTool}
-                  editable={editable}
-                  onPointerDown={onNodePointerDown}
-                  onClick={onNodeClick}
-                  onDoubleClick={onNodeDoubleClick}
-                  onContextMenu={handleNodeContextMenu}
-                  onMouseEnter={handleNodeMouseEnter}
-                  onMouseMove={handleNodeMouseMove}
-                  onMouseLeave={handleNodeMouseLeave}
-                  onResizePointerDown={onResizePointerDown}
-                  onResizePointerUp={onPointerUp}
-                />
-              );
-            })}
+          <HostNodesLayer
+            nodes={map.nodes}
+            nodeLayouts={nodeLayouts}
+            regionStats={regionStats}
+            options={options}
+            queryReady={queryReady}
+            hostDisplay={hostDisplay}
+            hostMetadata={hostMetadata}
+            resolveColor={resolveColor}
+            selectedNodeIds={selectedNodeIds}
+            selectedLink={selectedLink}
+            linkFromId={linkFromId}
+            linkHoverId={linkHoverId}
+            panTool={panTool}
+            editable={editable}
+            onPointerDown={onNodePointerDown}
+            onClick={onNodeClick}
+            onDoubleClick={onNodeDoubleClick}
+            onContextMenu={handleNodeContextMenu}
+            onMouseEnter={handleNodeMouseEnter}
+            onMouseMove={handleNodeMouseMove}
+            onMouseLeave={handleNodeMouseLeave}
+            onResizePointerDown={onResizePointerDown}
+            onResizePointerUp={onPointerUp}
+          />
         </g>
       </svg>
 
