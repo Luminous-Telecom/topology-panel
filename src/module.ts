@@ -1,10 +1,12 @@
 import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
-import { DashboardNavChoicesEditor } from './components/DashboardNavChoicesEditor';
-import { QueryDisplayRefIdsEditor } from './components/QueryDisplayRefIdsEditor';
-import { HostTypeColorsEditor } from './components/HostTypeColorsEditor';
-import { StatusValueMappingsEditor } from './components/StatusValueMappingsEditor';
-import { TopologyEditor } from './editor/TopologyEditor';
+import {
+  DashboardNavChoicesEditor,
+  HostTypeColorsEditor,
+  QueryDisplayRefIdsEditor,
+  StatusValueMappingsEditor,
+  TopologyEditor,
+} from './editor/lazyPanelEditors';
 import {
   TopologyPanelOptions,
   defaultHostTypeColors,

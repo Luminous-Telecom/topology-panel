@@ -47,6 +47,9 @@ hooks de arraste/viewport.
 - Importe ícones pelo caminho profundo (`react-icons/fa6`, `react-icons/si`). Nunca do barrel raiz
   `react-icons`, que arrasta o pacote inteiro; do raiz só o tipo `IconType`.
 - Proibido `import * as X` de pacote de runtime e proibido criar arquivo barrel (`index.ts`).
+- Código que só aparece depois de um clique explícito entra por `React.lazy`: modais em
+  `components/lazyModals.tsx` e editores do painel de opções em `editor/lazyPanelEditors.tsx`.
+  Editor novo do `module.ts` passa por lá — quem só visualiza o dashboard não baixa esse código.
 - SVG de ícone entra como asset estático em build-time (`src/img/topology/*.svg` via `asset/source`),
   registrado em `utils/customIcons.ts` — não carregue SVG por rede em runtime.
 
