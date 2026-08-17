@@ -85,6 +85,7 @@ import { nodeSupportsProperties, useNodePropertiesModals } from '../hooks/useNod
 import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardActions';
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
+import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 
 interface Props {
   map: TopologyMap;
@@ -487,11 +488,7 @@ export function TopologyCanvas({
     resetDoubleTapState,
   } = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
-  const [hostHover, setHostHover] = useState<{
-    node: TopologyNode;
-    screenX: number;
-    screenY: number;
-  } | null>(null);
+  const { hostHover, beginHostHover, moveHostHover, endHostHover, clearHostHover } = useHostHoverTarget();
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
   const [dragPreview, setDragPreview] = useState<{
     nodeId?: string;
@@ -569,7 +566,10 @@ export function TopologyCanvas({
     }
 
     return { nodeLayouts: layouts, regionStats: stats };
-  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, options, submapHosts, hostMetadata, queryReady]);
+    // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
+    // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
+    // de todos os nós sem necessidade.
+  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady]);
 
   const contentBounds = useMemo(
     () => computeTopologyContentBounds(map, nodeLayouts),
@@ -594,6 +594,27 @@ export function TopologyCanvas({
       return from && to && from.type !== 'network' && to.type !== 'network';
     });
   }, [map.links, nodeLayouts]);
+
+  /**
+   * Links na ordem de desenho (selecionado por último, para ficar por cima), com uma chave estável
+   * por link. A chave não pode ser o índice do array ordenado: selecionar um cabo reordena a lista
+   * e faria o React remontar todos os `LinkLine` em vez de atualizar o que mudou.
+   */
+  const renderLinks = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    const keyed = validLinks.map((link) => {
+      const base = linkKey(link);
+      const seen = occurrences.get(base) ?? 0;
+      occurrences.set(base, seen + 1);
+      return { link, key: seen === 0 ? base : `${base}#${seen}` };
+    });
+    const selectedKey = selectedLink ? linkKey(selectedLink) : null;
+    return keyed.sort((a, b) => {
+      const aActive = selectedKey === linkKey(a.link) ? 1 : 0;
+      const bActive = selectedKey === linkKey(b.link) ? 1 : 0;
+      return aActive - bActive;
+    });
+  }, [validLinks, selectedLink]);
 
   const persist = useCallback(
     (next: TopologyMap) => {
@@ -731,7 +752,7 @@ export function TopologyCanvas({
     openSubmap,
     openDashboardPicker,
     onLinkSelect,
-    setHostHover,
+    clearHostHover,
     closeContextMenu,
     persist,
     dragPreview,
@@ -1735,18 +1756,9 @@ export function TopologyCanvas({
               );
             })}
 
-          {validLinks
-            .slice()
-            .sort((a, b) => {
-              const aKey = linkKey(a);
-              const bKey = linkKey(b);
-              const aActive = selectedLink && linkKey(selectedLink) === aKey ? 1 : 0;
-              const bActive = selectedLink && linkKey(selectedLink) === bKey ? 1 : 0;
-              return aActive - bActive;
-            })
-            .map((link, i) => (
+          {renderLinks.map(({ link, key }) => (
             <LinkLine
-              key={`${link.from}-${link.to}-${i}`}
+              key={key}
               link={link}
               waypoints={resolveLinkWaypoints(link)}
               nodeLayouts={nodeLayouts}
@@ -1884,21 +1896,17 @@ export function TopologyCanvas({
                 onMouseEnter={(e) => {
                   setLinkHoverId(node.id);
                   if (nodeIsHost && node.zabbixHost?.trim()) {
-                    setHostHover({ node, screenX: e.clientX, screenY: e.clientY });
+                    beginHostHover({ node, screenX: e.clientX, screenY: e.clientY });
                   }
                 }}
                 onMouseMove={(e) => {
                   if (nodeIsHost && node.zabbixHost?.trim()) {
-                    setHostHover((prev) =>
-                      prev?.node.id === node.id
-                        ? { node, screenX: e.clientX, screenY: e.clientY }
-                        : prev
-                    );
+                    moveHostHover({ node, screenX: e.clientX, screenY: e.clientY });
                   }
                 }}
                 onMouseLeave={() => {
                   setLinkHoverId(null);
-                  setHostHover((prev) => (prev?.node.id === node.id ? null : prev));
+                  endHostHover(node.id);
                 }}
                 style={{
                   cursor: panTool

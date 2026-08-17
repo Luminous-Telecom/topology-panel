@@ -1,4 +1,13 @@
-import React, { Dispatch, MutableRefObject, RefObject, SetStateAction, useCallback, useEffect, useRef } from 'react';
+import React, {
+  Dispatch,
+  MutableRefObject,
+  RefObject,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import {
   areNetworksLocked,
@@ -159,7 +168,7 @@ interface UseTopologyDragControllerParams {
   openSubmap: (node: TopologyNode) => void;
   openDashboardPicker: (node: TopologyNode) => void;
   onLinkSelect: (link: TopologyLink) => void;
-  setHostHover: Dispatch<SetStateAction<{ node: TopologyNode; screenX: number; screenY: number } | null>>;
+  clearHostHover: () => void;
   closeContextMenu: () => void;
   persist: (next: TopologyMap) => void;
   /** Preview de posição/tamanho durante o arraste — estado do componente pai (alimenta `nodeLayouts`). */
@@ -225,7 +234,7 @@ export function useTopologyDragController({
   openSubmap,
   openDashboardPicker,
   onLinkSelect,
-  setHostHover,
+  clearHostHover,
   closeContextMenu,
   persist,
   dragPreview,
@@ -244,6 +253,23 @@ export function useTopologyDragController({
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const startEdgePanLoopRef = useRef<() => void>(() => {});
+
+  /**
+   * Ids que podem se mover no arraste atual (redes travadas ficam de fora).
+   *
+   * Consultado a cada `pointermove`; como conjunto pronto evita o `map.nodes.find()` por membro
+   * selecionado, que tornava o arraste de uma seleção grande O(seleção × nós) por frame.
+   */
+  const movableNodeIds = useMemo(() => {
+    const networksLocked = areNetworksLocked(storedMap);
+    const ids = new Set<string>();
+    for (const node of map.nodes) {
+      if (canMoveSelectedNode(node, networksLocked)) {
+        ids.add(node.id);
+      }
+    }
+    return ids;
+  }, [map.nodes, storedMap]);
 
   const beginPan = useCallback(
     (e: React.PointerEvent, tapNode?: TopologyNode, tapLink?: TopologyLink) => {
@@ -443,7 +469,6 @@ export function useTopologyDragController({
       const pointerWorld = clientToMapCoords(clientX, clientY, rect, currentView);
       const rawPrimaryX = pointerWorld.x - d.grabOffsetWorld.x;
       const rawPrimaryY = pointerWorld.y - d.grabOffsetWorld.y;
-      const networksLocked = areNetworksLocked(storedMap);
       const rawMembers =
         d.group && d.group.length > 1
           ? d.group
@@ -456,10 +481,7 @@ export function useTopologyDragController({
                 startH: d.startH,
               },
             ];
-      const members = rawMembers.filter((m) => {
-        const n = map.nodes.find((node) => node.id === m.id);
-        return Boolean(n && canMoveSelectedNode(n, networksLocked));
-      });
+      const members = rawMembers.filter((m) => movableNodeIds.has(m.id));
       if (members.length === 0) {
         return;
       }
@@ -539,7 +561,7 @@ export function useTopologyDragController({
         })
       );
     },
-    [edgePanRect, enablePan, gridStep, map.height, map.nodes, map.width, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
+    [edgePanRect, enablePan, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
   );
 
   const runEdgePanFrame = useCallback(
@@ -614,10 +636,10 @@ export function useTopologyDragController({
         moved: false,
         group,
       };
-      setHostHover(null);
+      clearHostHover();
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
-    [map.nodes, nodeLayouts, selectedNodeIds, setHostHover, storedMap, viewRef, wrapRef]
+    [clearHostHover, map.nodes, nodeLayouts, selectedNodeIds, storedMap, viewRef, wrapRef]
   );
 
   useEffect(() => () => stopEdgePanLoop(), [stopEdgePanLoop]);

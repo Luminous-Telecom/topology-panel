@@ -185,6 +185,10 @@ export function useTopologyViewport({
 
     const scrollParents = findScrollParents(el);
 
+    // Não mutar `overflow` dos ancestrais do Grafana: no modo edição isso
+    // colapsa o grid do card (`height: -1` / 0px). O zoom já chama
+    // preventDefault no wheel sobre o painel.
+
     type PinchState = {
       dist0: number;
       mid0x: number;
