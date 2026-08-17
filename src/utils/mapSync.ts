@@ -1,4 +1,4 @@
-import { HostMetadataMap, TopologyMap, TopologyNode } from '../types';
+import { HostMetadata, HostMetadataMap, TopologyMap, TopologyNode } from '../types';
 import { hostToNodeId, isQueryHostHidden, resolveHostIp } from './hostLookup';
 import { isIpv4 } from './ipv4';
 import { isHostNode } from './topologyNodes';
@@ -269,4 +269,85 @@ export function withLiveZabbixMeta(node: TopologyNode, metadata?: HostMetadataMa
     subtitle: nextIp || node.subtitle,
     zabbixHostId: undefined,
   };
+}
+
+/** Localiza metadata da Query — IP primeiro; nome só se não houver IP. */
+export function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap): HostMetadata | undefined {
+  const ip = resolveHostIp(node);
+  if (ip) {
+    const byKey = meta[ip];
+    if (byKey) {
+      return byKey;
+    }
+    for (const entry of Object.values(meta)) {
+      if (entry.ip?.trim() === ip) {
+        return entry;
+      }
+    }
+  }
+
+  const name = node.zabbixHost?.trim();
+  if (name && !isIpv4(name) && meta[name]) {
+    return meta[name];
+  }
+  const label = node.label?.trim();
+  if (label && !isIpv4(label) && meta[label]) {
+    return meta[label];
+  }
+  return undefined;
+}
+
+/** Persiste nome/IP da Query no mapa salvo (migrate + rename). Preferência: IP. */
+export function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
+  let changed = false;
+  const nodes = map.nodes.map((node) => {
+    if (!isHostNode(node)) {
+      return node;
+    }
+    if (!node.zabbixHost?.trim()) {
+      return node;
+    }
+    const name = node.zabbixHost?.trim();
+    const label = node.label?.trim();
+    const entry = findQueryMetaForNode(node, meta);
+    if (!entry) {
+      if (node.zabbixHostId) {
+        changed = true;
+        const { zabbixHostId: _legacy, ...rest } = node;
+        return rest;
+      }
+      return node;
+    }
+
+    const nextName = entry.name?.trim() || label || (name && !isIpv4(name) ? name : undefined);
+    const nextIp = entry.ip?.trim() && isIpv4(entry.ip) ? entry.ip.trim() : resolveHostIp(node);
+    const nextHostKey = nextIp || (nextName && !isIpv4(nextName) ? nextName : name);
+    const patch: typeof node = { ...node };
+    let nodeChanged = false;
+
+    if (node.zabbixHostId) {
+      patch.zabbixHostId = undefined;
+      nodeChanged = true;
+    }
+    if (nextHostKey && nextHostKey !== name) {
+      patch.zabbixHost = nextHostKey;
+      nodeChanged = true;
+    }
+    if (nextName && nextName !== (node.label?.trim() || '')) {
+      patch.label = nextName;
+      nodeChanged = true;
+    }
+    if (nextIp && nextIp !== (node.subtitle?.trim() || '')) {
+      patch.subtitle = nextIp;
+      nodeChanged = true;
+    }
+
+    if (nodeChanged) {
+      changed = true;
+      return patch;
+    }
+    return node;
+  });
+
+  return changed ? { ...map, nodes } : null;
 }

@@ -3,22 +3,12 @@ import { LoadingState, PanelProps } from '@grafana/data';
 import { locationService } from '@grafana/runtime';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
-import {
-  HostDisplayMap,
-  HostMetadata,
-  HostMetadataMap,
-  TopologyMap,
-  TopologyNode,
-  TopologyPanelOptions,
-  TopologyView,
-  defaultOptions,
-} from '../types';
-import { canonicalizeHostKeys, enrichHostDisplayFromMap, enrichHostMetadataFromMap, resolveHostIp, resolveHostLookupKey } from '../utils/hostLookup';
-import { isIpv4 } from '../utils/ipv4';
-import { mergeMapWithQueryHosts } from '../utils/mapSync';
+import { HostDisplayMap, TopologyMap, TopologyPanelOptions, TopologyView, defaultOptions } from '../types';
+import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { mergeMapWithQueryHosts, syncMapWithQueryMeta } from '../utils/mapSync';
+import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
-import { collectSubmapQueryRefIds, extractDisplayQueryHosts, findHostDisplayBucket, flattenHostDisplayByRefId, mergeHostDisplayByRefId, mergeQueryHostsByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
-import { isHostNode } from '../utils/topologyNodes';
+import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, mergeHostDisplayByRefId, mergeQueryHostsByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
 import {
   buildQueryIndex,
   hostDisplayByRefIdFromIndex,
@@ -35,133 +25,6 @@ import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/
 import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
-
-/** Localiza metadata da Query — IP primeiro; nome só se não houver IP. */
-function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap): HostMetadata | undefined {
-  const ip = resolveHostIp(node);
-  if (ip) {
-    const byKey = meta[ip];
-    if (byKey) {
-      return byKey;
-    }
-    for (const entry of Object.values(meta)) {
-      if (entry.ip?.trim() === ip) {
-        return entry;
-      }
-    }
-  }
-
-  const name = node.zabbixHost?.trim();
-  if (name && !isIpv4(name) && meta[name]) {
-    return meta[name];
-  }
-  const label = node.label?.trim();
-  if (label && !isIpv4(label) && meta[label]) {
-    return meta[label];
-  }
-  return undefined;
-}
-
-/** Persiste nome/IP da Query no mapa salvo (migrate + rename). Preferência: IP. */
-function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
-  let changed = false;
-  const nodes = map.nodes.map((node) => {
-    if (!isHostNode(node)) {
-      return node;
-    }
-    if (!node.zabbixHost?.trim()) {
-      return node;
-    }
-    const name = node.zabbixHost?.trim();
-    const label = node.label?.trim();
-    const entry = findQueryMetaForNode(node, meta);
-    if (!entry) {
-      if (node.zabbixHostId) {
-        changed = true;
-        const { zabbixHostId: _legacy, ...rest } = node;
-        return rest;
-      }
-      return node;
-    }
-
-    const nextName = entry.name?.trim() || label || (name && !isIpv4(name) ? name : undefined);
-    const nextIp = entry.ip?.trim() && isIpv4(entry.ip) ? entry.ip.trim() : resolveHostIp(node);
-    const nextHostKey = nextIp || (nextName && !isIpv4(nextName) ? nextName : name);
-    const patch: typeof node = { ...node };
-    let nodeChanged = false;
-
-    if (node.zabbixHostId) {
-      patch.zabbixHostId = undefined;
-      nodeChanged = true;
-    }
-    if (nextHostKey && nextHostKey !== name) {
-      patch.zabbixHost = nextHostKey;
-      nodeChanged = true;
-    }
-    if (nextName && nextName !== (node.label?.trim() || '')) {
-      patch.label = nextName;
-      nodeChanged = true;
-    }
-    if (nextIp && nextIp !== (node.subtitle?.trim() || '')) {
-      patch.subtitle = nextIp;
-      nodeChanged = true;
-    }
-
-    if (nodeChanged) {
-      changed = true;
-      return patch;
-    }
-    return node;
-  });
-
-  return changed ? { ...map, nodes } : null;
-}
-
-/** Chaves canônicas (IP ou nome) dos hosts type=host já desenhados neste mapa. */
-function parentMapHostKeys(map: TopologyMap, hostMetadata?: HostMetadataMap): Set<string> {
-  const keys = new Set<string>();
-  for (const node of map.nodes) {
-    if (!isHostNode(node)) {
-      continue;
-    }
-    const key = resolveHostLookupKey(node, hostMetadata);
-    if (key) {
-      keys.add(key.toLowerCase());
-    }
-  }
-  return keys;
-}
-
-/**
- * Lista de hosts para agregar status do submapa (host group da query refId).
- * Remove hosts já desenhados como nó no mapa pai — um host compartilhado (ex.: link entre
- * redes) não deve contar como parte do submapa só porque também está no host group da query B.
- */
-function submapHostListForNode(
-  node: TopologyNode,
-  hostDisplayByRefId: Record<string, HostDisplayMap>,
-  queryHostsByRefId: Record<string, string[]>,
-  queryReady: boolean,
-  parentHostKeys: Set<string>,
-  hostMetadata?: HostMetadataMap
-): string[] | undefined {
-  const refId = node.queryRefId?.trim();
-  if (!refId) {
-    return [];
-  }
-  if (!queryReady) {
-    return undefined;
-  }
-  const normalized = refId.toUpperCase();
-  const fromLabels = queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
-  const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
-  const raw = fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
-  const keys = canonicalizeHostKeys(raw, hostMetadata);
-  if (!parentHostKeys.size) {
-    return keys;
-  }
-  return keys.filter((key) => !parentHostKeys.has(key.toLowerCase()));
-}
 
 export function TopologyPanel({
   options,

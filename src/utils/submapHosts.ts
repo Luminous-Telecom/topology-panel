@@ -1,54 +1,50 @@
-import { TopologyMap } from '../types';
-import { isIpv4 } from './ipv4';
+import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode } from '../types';
+import { canonicalizeHostKeys, resolveHostLookupKey } from './hostLookup';
+import { findHostDisplayBucket } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 
-/** Nós type=host visíveis do mapa (fora da lista hiddenHosts), com nome/IP já trim(). */
-function visibleHostRefs(map: TopologyMap): Array<{ name?: string; ip?: string }> {
-  const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
-  const refs: Array<{ name?: string; ip?: string }> = [];
-
-  for (const node of map.nodes ?? []) {
+/** Chaves canônicas (IP ou nome) dos hosts type=host já desenhados neste mapa. */
+export function parentMapHostKeys(map: TopologyMap, hostMetadata?: HostMetadataMap): Set<string> {
+  const keys = new Set<string>();
+  for (const node of map.nodes) {
     if (!isHostNode(node)) {
       continue;
     }
-    const name = node.zabbixHost?.trim();
-    const subtitle = node.subtitle?.trim();
-    const ip = subtitle && isIpv4(subtitle) ? subtitle : name && isIpv4(name) ? name : undefined;
-    const hiddenKey = ip ?? name;
-    if (hiddenKey && hidden.has(hiddenKey)) {
-      continue;
+    const key = resolveHostLookupKey(node, hostMetadata);
+    if (key) {
+      keys.add(key.toLowerCase());
     }
-    if (name && hidden.has(name)) {
-      continue;
-    }
-    refs.push({ name, ip });
   }
-
-  return refs;
+  return keys;
 }
 
-/** Hosts type=host do mapa — prefer IP, senão nome (não hostid). */
-export function extractTopologyHostNames(map: TopologyMap): string[] {
-  const seen = new Set<string>();
-  const hosts: string[] = [];
-
-  for (const { name, ip } of visibleHostRefs(map)) {
-    const key = ip ?? name;
-    if (!key) {
-      continue;
-    }
-    const dedupe = key.toLowerCase();
-    if (seen.has(dedupe)) {
-      continue;
-    }
-    seen.add(dedupe);
-    hosts.push(key);
+/**
+ * Lista de hosts para agregar status do submapa (host group da query refId).
+ * Remove hosts já desenhados como nó no mapa pai — um host compartilhado (ex.: link entre
+ * redes) não deve contar como parte do submapa só porque também está no host group da query B.
+ */
+export function submapHostListForNode(
+  node: TopologyNode,
+  hostDisplayByRefId: Record<string, HostDisplayMap>,
+  queryHostsByRefId: Record<string, string[]>,
+  queryReady: boolean,
+  parentHostKeys: Set<string>,
+  hostMetadata?: HostMetadataMap
+): string[] | undefined {
+  const refId = node.queryRefId?.trim();
+  if (!refId) {
+    return [];
   }
-
-  return hosts;
-}
-
-/** Refs visíveis (nome/IP) dos hosts type=host do mapa. */
-export function extractTopologyHostRefs(map: TopologyMap): Array<{ name?: string; ip?: string }> {
-  return visibleHostRefs(map);
+  if (!queryReady) {
+    return undefined;
+  }
+  const normalized = refId.toUpperCase();
+  const fromLabels = queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
+  const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
+  const raw = fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
+  const keys = canonicalizeHostKeys(raw, hostMetadata);
+  if (!parentHostKeys.size) {
+    return keys;
+  }
+  return keys.filter((key) => !parentHostKeys.has(key.toLowerCase()));
 }
