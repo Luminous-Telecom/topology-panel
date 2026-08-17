@@ -1,0 +1,59 @@
+---
+description: Acessibilidade de formulário nos componentes e editores (Field, label, id único)
+globs: src/components/**/*.tsx,src/editor/**/*.tsx
+alwaysApply: false
+---
+
+# UI — formulários e acessibilidade
+
+## Objetivo
+
+Evitar `<label>` órfão e id duplicado nos formulários do painel, problemas que o DevTools do
+navegador acusa e que quebram leitor de tela.
+
+## Escopo
+
+Componentes em `src/components/` e editores em `src/editor/`.
+
+## Como o `Field` do Grafana funciona
+
+`<Field label="...">` sempre renderiza um `<label>` e infere o `htmlFor` a partir do `id` (ou
+`inputId`) do **filho direto**. Sem esse id o label fica órfão ("No label associated with a form
+field", "Duplicate form field id").
+
+## Regras obrigatórias
+
+- Gere `const uid = useId();` no topo do componente e passe ``id={`${uid}-sufixo`}`` para
+  `Input`/`TextArea`/`ColorPickerInput`/`InlineSwitch`, ou ``inputId={`${uid}-sufixo`}`` para
+  `Select`/`MultiSelect`.
+- Isso vale também para os wrappers do projeto (`DashboardPickerSelect`, `QueryRefSelect`,
+  `DashboardMultiSelect`), que só repassam a prop — não crie wrapper novo sem `inputId`.
+- Dentro de `.map()` (submapas, links, linhas repetidas), inclua o índice no sufixo
+  (`` `${uid}-link-${idx}-from` ``) para não colidir entre linhas.
+- Conteúdo que **não** é um único form control (texto só de leitura, grade de botões do
+  `HostIconPicker`, bloco de resultado) usa `FieldReadout`, não `Field` — ele não renderiza `<label>`,
+  só um `role="group"` com `aria-label`.
+- Dois controles sob o mesmo rótulo visual (ex.: valor + unidade de "Capacidade"): `FieldReadout` no
+  rótulo externo e `aria-label` descrevendo cada controle interno.
+- Overlay fechável responde a Esc via `hooks/useEscapeKey.ts`.
+- Todo texto visível em português, incluindo `aria-label` e mensagem de erro.
+
+## Faça / Não faça
+
+```tsx
+// ❌ BAD — label órfão e id fixo que colide entre instâncias
+<Field label="Rótulo">
+  <Input id="label" value={label} onChange={onChange} />
+</Field>
+
+// ✅ GOOD — id único por instância, derivado de useId()
+const uid = useId();
+<Field label="Rótulo">
+  <Input id={`${uid}-label`} value={label} onChange={onChange} />
+</Field>
+```
+
+## Exceções
+
+Nenhuma. Se o controle não aceita `id`/`inputId`, envolva com `FieldReadout` em vez de deixar o
+`<label>` sem destino.

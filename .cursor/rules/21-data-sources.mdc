@@ -1,0 +1,77 @@
+---
+description: De onde vêm os dados — Query do painel, APIs oficiais do Grafana e uso restrito da API Zabbix
+globs: src/**/*
+alwaysApply: false
+---
+
+# Fontes de dados
+
+## Objetivo
+
+Manter uma fonte única para o status do mapa (a Query) e a API Zabbix restrita a exceções nomeadas.
+
+## Escopo
+
+Qualquer arquivo em `src/`.
+
+## A Query é a fonte do mapa
+
+Status, cores, latência, perda e gráfico de hover vêm **só** da aba Query
+(`PanelData` / `data.series`).
+
+- Leia a Query uma única vez por `buildQueryIndex` (`services/queryIndex.ts`) e derive todo o resto
+  do índice. Não varra `data.series` por conta própria em componente ou helper novo.
+- Cor e rótulo de status saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`), a partir dos
+  thresholds e value mappings configurados nas opções do painel.
+- Série do gráfico de hover: `extractHostHoverSeries` (`utils/hostTimeSeries.ts`). O período é o
+  intervalo de tempo do dashboard.
+- Nunca colora o mapa nem calcule status a partir de chamada de API.
+
+## API Zabbix — só nas exceções autorizadas
+
+`utils/zabbixApi.ts` é o **único** arquivo que fala com a API Zabbix, e só pode ser importado por:
+
+| Consumidor autorizado | Uso permitido |
+|---|---|
+| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
+| `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote), só para resolver IP/metadata de host |
+
+- Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto testes desses dois fluxos.
+- Proibido usar essas funções para status do mapa, cor, histórico, problemas ou polling.
+- Ampliar a superfície da API (método novo, `history.get`, `trend.get`, `trigger.get`,
+  `problem.get`, ou metadata para outra finalidade) exige **aprovação explícita** do usuário antes de
+  implementar. Se a tarefa parecer exigir isso, pare e pergunte.
+
+## APIs do Grafana
+
+- Toda leitura de dado do Grafana passa por `getBackendSrv()` (`@grafana/runtime`) — nunca `fetch`
+  ou `XMLHttpRequest` direto, que perdem header de auth e roteamento do proxy.
+- Tempo vem de `PanelData` / `DateTime` / `getDefaultTimeRange()` (`@grafana/data`). Nunca crie um
+  `TimeRange` com números crus.
+- Navegação entre dashboards só por `openDashboardUrl` (`DashboardPickerModal.tsx`), que valida uid e
+  encoda slug. Não implemente outro caminho com `window.location.href`.
+- Proibido percorrer o DOM fora do próprio painel (`document.querySelector` no chrome do Grafana ou
+  em outro painel) e mutar `style` de elementos ancestrais.
+- `document.createElement` só para elemento efêmero e desanexado do próprio plugin (`a`/`iframe` de
+  `winbox://` e `ssh://` em `hostTools.ts`, `canvas` em memória).
+- `VerticalGroup` e `HorizontalGroup` (`@grafana/ui`) estão depreciados: use `Stack` com `gap`
+  numérico (`0.5`≈xs, `1`≈sm, `2`≈md, `3`≈lg).
+- Opção nova em `module.ts` sempre com `defaultValue` e categoria em português, e valor ausente
+  tratado em `defaultOptions()` (`types.ts`), nunca em cada callsite.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — status do mapa vindo da API
+const items = await zabbixCall(uid, 'item.get', { hostids, search: { key_: 'icmpping' } });
+
+// ✅ GOOD — status derivado do índice da Query
+const index = buildQueryIndex(data);
+const display = hostDisplayByRefIdFromIndex(index, statusOptions);
+```
+
+## Exceções
+
+Leitura de DOM do Grafana é tolerada apenas em `hooks/useDashboardEditMode.ts` e
+`hooks/useGrafanaPlaylistPlayback.ts`, porque o Grafana não expõe esses estados por API. Não copie o
+padrão para casos novos.

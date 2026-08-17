@@ -1,0 +1,59 @@
+---
+description: Onde cada tipo de código deve morar no plugin (render, estado, mutação, lógica pura)
+globs: src/**/*
+alwaysApply: false
+---
+
+# Arquitetura — onde cada coisa vai
+
+## Objetivo
+
+Manter separados render, estado, mutação do mapa e lógica pura.
+
+## Escopo
+
+Qualquer arquivo em `src/`.
+
+## Mapa de responsabilidades
+
+| Área | Arquivo |
+|---|---|
+| Render SVG, pan/zoom, links | `components/TopologyCanvas.tsx` |
+| Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` |
+| Opções do painel e wiring do Grafana | `components/TopologyPanel.tsx`, `module.ts` |
+| Editor de JSON, nós e links | `editor/TopologyEditor.tsx` |
+| Leitura única da aba Query | `services/queryIndex.ts` |
+| Mutações do `TopologyMap` | `utils/mapEdits.ts` |
+| Lógica pura, sem estado | `utils.ts`, `utils/*` |
+| Lógica com estado ou efeito | `hooks/*` |
+| Tipos compartilhados e `defaultOptions()` | `types.ts` |
+
+## Regras obrigatórias
+
+- Mutação de `TopologyMap` acontece **só** em `utils/mapEdits.ts`. Componente não monta objeto de
+  mapa na mão nem faz spread de `nodes`/`links` para inserir item.
+- Modal (`*Modal.tsx`) é só UI e validação de formulário. A mutação real delega para `mapEdits.ts`.
+- Modal novo segue o esqueleto já usado: `Modal` + `Field`/`Input` controlados + `Modal.ButtonRow`
+  com "Cancelar" e a ação primária. Não invente outro layout.
+- Lógica com estado vira hook em `hooks/`, não bloco novo dentro de `TopologyCanvas.tsx`.
+- O projeto não usa arquivos barrel (`index.ts`) — importe direto do arquivo de origem e não crie
+  barrels novos.
+- Tipos do domínio: nó é `host` | `network` | `submap` | `static`; link é
+  `{ from, to, medium?: 'fiber' | 'radio' }`; mapa tem `locked`, `networksLocked`, `nodes`, `links`.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — componente montando o mapa na mão
+const next = { ...map, nodes: [...map.nodes, { id: `submap-${n}`, x, y, type: 'submap' }] };
+onChange(next);
+
+// ✅ GOOD — mutação centralizada e testada
+import { addSubmapAt } from '../utils/mapEdits';
+onChange(addSubmapAt(map, x, y));
+```
+
+## Exceções
+
+Arquivos grandes já existentes (`TopologyCanvas.tsx`, `utils.ts`) não precisam ser quebrados numa
+tarefa não relacionada — mas código **novo** entra no lugar certo desde o começo.

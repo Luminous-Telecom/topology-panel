@@ -1,0 +1,58 @@
+---
+description: Padrão dos testes Vitest — quando escrever, onde colocar e como isolar Grafana/Zabbix
+globs: src/**/*.test.ts,src/**/*.test.tsx,vitest.config.ts,vitest.setup.ts
+alwaysApply: false
+---
+
+# Testes
+
+## Objetivo
+
+Proteger a lógica pura do mapa e do status com testes rápidos, sem rede e sem dependência de ambiente.
+
+## Escopo
+
+Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado do código.
+
+## Regras obrigatórias
+
+- Arquivo de teste fica **ao lado** do fonte, com sufixo `.test.ts` / `.test.tsx`
+  (ex.: `utils/statusMapping.ts` → `utils/statusMapping.test.ts`).
+- Importe explicitamente de `vitest` (`import { describe, expect, it } from 'vitest'`). O projeto
+  **não** usa `globals: true`.
+- `describe` nomeia a função ou hook sob teste; `it` descreve o comportamento **em português**,
+  incluindo o caso de borda ("valor não finito não casa com nenhum mapeamento").
+- Cubra com teste toda lógica pura nova ou alterada em `utils/`, `utils.ts`, `services/` e `hooks/`
+  — principalmente status, geometria, coordenadas, undo/redo e mutações do mapa.
+- Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
+  `vitest.setup.ts`.
+- Nada de rede em teste: `getBackendSrv` e `utils/zabbixApi.ts` são mockados com `vi.mock`.
+- Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
+  então todo teste precisa de jsdom.
+- Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em
+  `vitest.setup.ts`, não com stub duplicado dentro de cada teste.
+- Rode `npm run test` antes de encerrar qualquer tarefa que toque `src/`.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — depende de rede e não diz o que valida
+it('works', async () => {
+  const r = await fetchZabbixHostMetadata('uid', ['host-a']);
+  expect(r).toBeTruthy();
+});
+
+// ✅ GOOD — comportamento nomeado, dependência externa isolada
+vi.mock('./zabbixApi', () => ({ fetchZabbixHostMetadata: vi.fn().mockResolvedValue({}) }));
+
+describe('resolveHostStatusFromValue', () => {
+  it('casa por faixa from/to com limites inclusivos', () => {
+    expect(resolveHostStatusFromValue(5, [{ from: 1, to: 5, status: 'alert' }])).toBe('alert');
+  });
+});
+```
+
+## Exceções
+
+Componente de render puro coberto de forma indireta por `TopologyPanel.test.tsx` não precisa de teste
+próprio. Wiring de UI sem lógica (modal que só chama `mapEdits`) também não.

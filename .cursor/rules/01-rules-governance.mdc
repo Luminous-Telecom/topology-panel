@@ -1,0 +1,54 @@
+---
+description: Como criar e manter os rules deste repositório (numeração, front-matter, estrutura)
+globs: .cursor/rules/**/*.mdc
+alwaysApply: false
+---
+
+# Governança dos rules
+
+## Objetivo
+
+Manter o conjunto de rules pequeno, sem sobreposição e com escopo previsível.
+
+## Escopo
+
+Qualquer criação ou edição de arquivo em `.cursor/rules/`.
+
+## Numeração
+
+O prefixo define a categoria e a ordem de leitura:
+
+| Faixa | Categoria |
+|---|---|
+| `00-` | Núcleo do projeto (sempre ativo) |
+| `01-` | Meta — governança dos próprios rules |
+| `10-` | Arquitetura e organização do código |
+| `20-` | Segurança e fontes de dados |
+| `30-` | Performance |
+| `40-` | Testes |
+| `50-` a `61-` | Tipagem, estilo, UI e identidade visual |
+| `90-` | Fluxo de trabalho (checklist, commits) |
+
+## Regras obrigatórias
+
+- Front-matter sempre com as chaves nesta ordem: `description`, `globs`, `alwaysApply`. Em rule com
+  `alwaysApply: true`, **omita** `globs`.
+- `globs` é lista separada por vírgula, sem aspas e **sem chaves** — use
+  `src/**/*.ts,src/**/*.tsx`, nunca `src/**/*.{ts,tsx}`, porque a expansão de chaves não é confiável.
+- `description` em uma linha dizendo **quando** a regra se aplica, não apenas o tema.
+- Estrutura interna fixa, nesta ordem: `## Objetivo`, `## Escopo`, `## Regras obrigatórias`,
+  `## Faça / Não faça` (quando houver código), `## Exceções`.
+- Alvo de ~60 linhas por arquivo, teto de 80. Passou disso, divida por concern.
+- Tom imperativo e verificável ("rode `npm run typecheck`"). Proibido texto vago do tipo "escreva
+  código limpo" ou "prefira boas práticas".
+- `alwaysApply: true` só para o que vale em **toda** conversa. Hoje apenas `00-core-project`,
+  `20-security` e `90-workflow`. Todo o resto entra por `globs`.
+- Antes de criar rule novo, procure um existente para estender. Dois rules com o mesmo glob e tema
+  próximo devem virar um só.
+- Ao citar arquivo, função ou hook, **confirme que ele existe** no código antes de escrever. Rule que
+  aponta para símbolo inexistente é pior que rule ausente.
+
+## Exceções
+
+Um rule pode chegar perto do teto quando for tabela de referência (caso de
+`11-anti-duplication.mdc`). Fora isso, prefira dividir.

@@ -1,0 +1,40 @@
+---
+description: Projeto, stack e convenções gerais válidas em qualquer tarefa do Topology Panel
+alwaysApply: true
+---
+
+# Topology Panel — núcleo
+
+## Objetivo
+
+Contexto mínimo sempre ativo: o que é o projeto, qual é a stack e o que vale para qualquer tarefa.
+
+## Escopo
+
+Todas as tarefas deste repositório.
+
+## O projeto
+
+Plugin de painel Grafana (`luminous-topology-panel`, definido em `src/plugin.json`) que desenha mapas
+de topologia de rede com status vindo do Zabbix.
+
+- Stack: TypeScript 5.5 + React 18, build webpack 5 + `swc-loader`, testes Vitest 2 em jsdom.
+- `react`, `react-dom` e `@grafana/data|ui|runtime|schema` são **externals** do webpack: vêm do host
+  Grafana em runtime e não entram no bundle.
+- Scripts existentes: `npm run build`, `npm run dev`, `npm run typecheck`, `npm run test`,
+  `npm run test:watch`. **Não existe** script de lint — não sugira `npm run lint`.
+
+## Regras obrigatórias
+
+- Escreva toda a UI (labels, menus, hints, mensagens de erro) em **português**.
+- Faça o **menor diff possível**: não refatore, renomeie nem reformate fora do escopo pedido.
+- Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
+  (ver `.gitignore`).
+- Ao mudar a versão, faça bump de `package.json` e `src/plugin.json` **juntos**, com o mesmo número.
+- Deploy é **manual** pelo usuário: `npm run build`, cópia de `dist/` para a pasta de plugins do
+  Grafana e restart do serviço. Não execute nem automatize deploy.
+
+## Exceções
+
+Nenhuma. Regras de escopo específico ficam nos rules numerados (`10-` arquitetura, `20-` segurança,
+`30-` performance, `40-` testes, `50-`/`60-` estilo e UI, `90-` fluxo de trabalho).

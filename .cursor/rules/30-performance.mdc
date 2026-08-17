@@ -1,0 +1,67 @@
+---
+description: Performance do painel — leitura da Query, re-render do canvas, gestos e tamanho do bundle
+globs: src/**/*.ts,src/**/*.tsx
+alwaysApply: false
+---
+
+# Performance
+
+## Objetivo
+
+O painel redesenha um SVG com dezenas de nós a cada refresh do dashboard. Custo de render e de
+varredura de dados precisa ficar linear e fora do caminho do gesto do usuário.
+
+## Escopo
+
+Qualquer arquivo em `src/`, com atenção redobrada em `TopologyCanvas.tsx`, `TopologyPanel.tsx` e nos
+hooks de arraste/viewport.
+
+## Dados da Query
+
+- Varra `data.series` **uma vez** por refresh, via `buildQueryIndex` (`services/queryIndex.ts`), que
+  já tem cache por identidade do `PanelData` (`WeakMap`). Nunca adicione uma varredura paralela.
+- Derive display de status com `hostDisplayByRefIdFromIndex`: custo O(hosts), não O(hosts × pontos).
+- Não recalcule por nó dentro do laço de render. Monte `Map`/`Set` antes do laço e consulte por
+  chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).
+
+## Render e re-render
+
+- Memoize com `useMemo`/`useCallback` tudo que é passado como prop para o canvas, minimapa ou lista
+  de nós. Dependência precisa ser estável: não construa objeto ou array literal dentro do array de
+  deps.
+- Estado de alta frequência (pointermove, wheel, pan, resize) vai em `ref` + `requestAnimationFrame`.
+  Não chame `setState` por evento de ponteiro.
+- Durante gesto (arraste, pan, resize), congele os dados com `useDeferredDuringGesture` e chame o
+  `flush` ao soltar o ponteiro — evita que um auto-refresh troque cores e posições no meio do gesto.
+- Não faça deep clone (`JSON.parse(JSON.stringify(map))`) em render nem por nó. Use os helpers
+  imutáveis de `utils/mapEdits.ts`.
+- Trabalho pesado só quando visível: nada de calcular geometria de submapa fechado ou de nó fora do
+  viewport.
+
+## Imports e bundle
+
+- `react`, `react-dom` e os pacotes `@grafana/*` são externals — nunca importe cópia própria deles
+  nem adicione dependência que os embuta.
+- Importe ícones pelo caminho profundo (`react-icons/fa6`, `react-icons/si`). Nunca do barrel raiz
+  `react-icons`, que arrasta o pacote inteiro; do raiz só o tipo `IconType`.
+- Proibido `import * as X` de pacote de runtime e proibido criar arquivo barrel (`index.ts`).
+- SVG de ícone entra como asset estático em build-time (`src/img/topology/*.svg` via `asset/source`),
+  registrado em `utils/customIcons.ts` — não carregue SVG por rede em runtime.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — busca linear por nó dentro do render (O(n²)) e barrel de ícones
+import { FaServer } from 'react-icons';
+links.map((l) => nodes.find((n) => n.id === l.from));
+
+// ✅ GOOD — índice montado uma vez, import profundo
+import { FaServer } from 'react-icons/fa6';
+const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+links.map((l) => byId.get(l.from));
+```
+
+## Exceções
+
+Otimização que prejudique a legibilidade só entra com medição que a justifique. Não memoize valor
+escalar barato só por hábito.

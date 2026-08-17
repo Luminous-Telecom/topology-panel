@@ -1,0 +1,50 @@
+---
+description: Checklist de conclusão de tarefa e padrão de mensagem de commit
+alwaysApply: true
+---
+
+# Fluxo de trabalho
+
+## Objetivo
+
+Encerrar toda tarefa no mesmo estado verificado e registrar no git o que realmente mudou.
+
+## Escopo
+
+Toda tarefa e todo commit deste repositório.
+
+## Antes de encerrar a tarefa
+
+1. `npm run typecheck` — zero erros.
+2. `npm run test` — verde, se tocou em `src/`.
+3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
+4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
+5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.
+6. Deploy é manual pelo usuário: não copie `dist/` para servidor nem reinicie serviço.
+
+## Commits
+
+Só commite quando o usuário pedir. Antes de redigir a mensagem, rode e **leia**: `git status`,
+`git diff`, `git diff --staged` e `git log` (para seguir o estilo recente).
+
+A mensagem descreve o que mudou e o efeito prático, com escopo concreto, em português e no
+imperativo. Quando a tarefa incluir bump de versão, encerre com `(vX.Y.Z)` — padrão do repositório.
+
+## Faça / Não faça
+
+```
+# ❌ BAD — não diz nada sobre o diff
+update
+fix bugs
+ajustes
+wip
+
+# ✅ GOOD — o quê, onde e, quando não é óbvio, o porquê
+Adiciona modal de seleção de dashboard no painel de topologia
+Corrige status offline dos links após refresh do Zabbix
+Remove código morto e loaders CSS sem uso (v1.4.149)
+```
+
+## Exceções
+
+Nenhuma. Não agrupe mudanças sem relação sob uma mensagem genérica — faça commits separados.

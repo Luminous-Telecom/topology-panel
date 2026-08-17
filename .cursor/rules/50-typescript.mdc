@@ -1,0 +1,68 @@
+---
+description: Tipagem estrita, legibilidade e proibição de fallbacks silenciosos
+globs: src/**/*.ts,src/**/*.tsx
+alwaysApply: false
+---
+
+# TypeScript — tipagem, legibilidade e fallbacks
+
+## Objetivo
+
+Manter o compilador como rede de segurança real e impedir que dado ausente seja mascarado por valor
+inventado.
+
+## Escopo
+
+Qualquer `.ts` ou `.tsx` em `src/`.
+
+## Tipagem
+
+- **Nunca** use `any` — nem `: any`, `as any`, `<any>`, `Record<string, any>` ou `<T = any>`. Se o
+  tipo é difícil de expressar, modele uma `interface`/`type` local, use `unknown` + narrowing, ou
+  reaproveite um tipo de `@grafana/data` / `@grafana/runtime`.
+- **Nunca** use `@ts-ignore` ou `@ts-nocheck`. Se o TypeScript reclama, o tipo está errado — conserte
+  o tipo, não silencie o compilador.
+- Tipe entrada e saída de toda função exportada de `utils.ts`, `utils/*`, `services/*` e `hooks/*`.
+- Prefira anotar a variável de destino (`const next: TopologyLink = {...}`) a castar o literal com
+  `as X`; prefira guard clause (`if (v.value == null) return;`) a non-null assertion (`!`).
+- Em `addEventListener` de alvo misto (`document`, `window`, `HTMLElement`), não force
+  `as EventListener`: tipe o handler como `(e: Event) => void` e estreite com `instanceof`.
+- `npm run typecheck` precisa passar com zero erros antes de encerrar a tarefa.
+
+## Legibilidade
+
+- Máximo de **3 níveis** de aninhamento condicional por função. Passou disso, extraia função auxiliar
+  ou use guard clause no topo.
+- Nada de ternário aninhado (`a ? b : c ? d : e`) — use `if/else` nomeado ou uma função `resolveX()`.
+- Função com mais de ~80 linhas se divide em passos nomeados, seguindo o estilo de `utils.ts` e
+  `mapEdits.ts` (muitas funções pequenas e puras).
+- Uma responsabilidade por função. Se o nome precisa de "e" (`fetchAndSync...`), separe.
+
+## Sem fallbacks silenciosos
+
+Não invente valor para a UI não quebrar: sem default "mágico", sem `??`/`||` mascarando dado ausente,
+sem label, id, cor ou ícone de reserva.
+
+- Falhe de forma explícita, valide a entrada, ou exija que o dado exista na fonte correta.
+- Prefira ignorar a entrada inválida com guard clause, ou propagar estado de erro visível.
+- Precisa mesmo de um fallback num caso concreto? **Pare e pergunte** ao usuário, explicando o
+  cenário, o risco de não ter e a alternativa sem fallback. Só implemente após resposta afirmativa.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — esconde dado faltando e some com o erro
+const label = node.label || node.id || 'Sem nome';
+const color = (options as any).colorOnline ?? '#2E7D32';
+
+// ✅ GOOD — o dado ausente vira caso tratado, não valor inventado
+if (!node.label) {
+  return null;
+}
+const color = resolvePanelColor(theme, options.colorOnline);
+```
+
+## Exceções
+
+Valor default declarado em `defaultOptions()` (`types.ts`) e em parâmetro de função de `mapEdits.ts`
+(ex.: `label = 'Rede'`) é configuração padrão do painel, não fallback — é o comportamento correto.

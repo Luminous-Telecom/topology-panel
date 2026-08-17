@@ -1,0 +1,67 @@
+---
+description: Identidade visual do mapa — links, redes, grade, cores e ícones (não alterar sem pedido)
+globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
+alwaysApply: false
+---
+
+# Visual do mapa
+
+## Objetivo
+
+Preservar a aparência já aprovada do mapa: qualquer mudança visual é decisão do usuário, não efeito
+colateral de refatoração.
+
+## Escopo
+
+Render do canvas e do minimapa, resolução de cores e ícones.
+
+## Links — não alterar sem pedido explícito
+
+- Linha **reta** (não ortogonal/Manhattan).
+- Saída no **centro** do host de origem; chegada na **borda** do host de destino, com seta visível.
+- Fibra: linha contínua. Rádio: tracejada (`10 6`).
+- Marcadores SVG pequenos (chevron, e anel na origem).
+- Seleção: destaque azul e hint `Origem → Destino`.
+
+## Redes e grade
+
+- Caixas de rede são **travadas por padrão** (`networksLocked !== false`).
+- Travada: o clique arrasta o **mapa**. Destravada: arrasta a **caixa**. Resize só pelo canto
+  inferior direito.
+- A toolbar expõe "Mapa editável" e "Redes livres".
+- Grade com `gridSize: 10` e snap ativo; cobre a **área visível do painel**, não só
+  `map.width`/`map.height`; linhas com `pointerEvents: none`.
+
+## Cores
+
+- Defaults em `types.ts` sempre em **hex** (`#2E7D32`, `#C62828`, …).
+- O color picker do Grafana pode salvar nome de paleta (`light-green`, `semi-dark-red`) — isso é
+  esperado.
+- Toda cor que chega ao SVG passa antes por `resolvePanelColor()` (`utils/panelColors.ts`): hex/rgb
+  segue direto, nome de tema resolve via `theme.visualization.hues` + `getColorByName`.
+- Proibido mandar nome de tema direto para `fill=`/`stroke=` (renderiza preto) e proibido fallback
+  para o nome cru ou para mapa estático hardcoded.
+- Texto sobre fundo colorido usa `utils/colorContrast.ts`.
+
+## Ícones
+
+- Arquivos em `src/img/topology/{nome}.svg`; registro em `utils/customIcons.ts`
+  (`CUSTOM_ICON_SVGS`); render por `HostIconImage` / `HostIconGlyph` (`utils/hostIcons.tsx`).
+- No mapa (`onMap={true}`): silhueta **branca** (`brightness(0) invert(1)`) sobre o card colorido.
+- No picker/modal (`onMap={false}`): SVG com as **cores originais** do arquivo.
+- Mudou ícone? Bump de versão, `npm run build` e deploy manual — o SVG é embutido em build-time.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — nome de paleta direto no SVG (fica preto)
+<circle fill={options.colorOnline} />
+
+// ✅ GOOD — resolvido para uma cor que o SVG entende
+<circle fill={resolvePanelColor(theme, options.colorOnline)} />
+```
+
+## Exceções
+
+Só mude geometria de link, comportamento de rede, grade ou aparência de ícone quando o usuário pedir
+essa mudança explicitamente.

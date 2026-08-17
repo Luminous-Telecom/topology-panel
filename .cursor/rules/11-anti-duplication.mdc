@@ -1,0 +1,77 @@
+---
+description: Inventário de helpers e hooks já existentes — reutilize antes de escrever lógica nova
+globs: src/**/*
+alwaysApply: false
+---
+
+# Anti-duplicação — reutilize antes de criar
+
+## Objetivo
+
+Evitar reimplementar lógica que já existe e está testada.
+
+## Escopo
+
+Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
+
+## Regras obrigatórias
+
+- Precisa de um caso novo numa área da tabela? **Estenda a função existente** (parâmetro opcional,
+  novo branch) em vez de criar equivalente em outro arquivo.
+- Notou 2+ blocos quase idênticos enquanto edita? Extraia na mesma tarefa: lógica pura para
+  `utils/`, lógica com estado para `hooks/`.
+- Não duplique leitura da Query: tudo deriva de `services/queryIndex.ts`.
+
+## Dados da Query e status
+
+| Necessidade | Já existe em |
+|---|---|
+| Ler a aba Query uma única vez (com cache por identidade) | `buildQueryIndex` em `services/queryIndex.ts` |
+| Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
+| Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
+| Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
+| Série temporal do gráfico de hover | `extractHostHoverSeries` em `utils/hostTimeSeries.ts` |
+| Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
+| Casar hosts do mapa com hosts da Query | `mergeMapWithQueryHosts` em `utils.ts` |
+| Metadata/IP de host via Zabbix (uso restrito) | `hooks/useZabbixHostMetadata.ts` |
+
+## Mapa, geometria e interação
+
+| Necessidade | Já existe em |
+|---|---|
+| Add/move/update/remove de nó e link, edição em lote | `utils/mapEdits.ts` |
+| Validar estrutura do mapa | `validateTopologyMap` em `utils/mapValidation.ts` |
+| Converter coordenada de tela para coordenada do mapa | `utils/mapCoords.ts` |
+| Limites/bounding box do mapa | `utils/mapBounds.ts` |
+| Guias de alinhamento durante o arraste | `computeAlignGuides` em `utils/alignGuides.ts` |
+| Pan automático ao arrastar na borda | `utils/edgePan.ts` |
+| Geometria do link: path, waypoint mais próximo, âncora do rótulo | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
+| Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
+| Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
+| Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
+| Undo/redo | `hooks/useMapHistory.ts` |
+| Seleção, arraste e viewport | `hooks/useTopologySelection.ts`, `useTopologyDragController.ts`, `useTopologyViewport.ts` |
+| Grade do mapa | `hooks/useGridLines.ts` |
+| Hosts visíveis de um mapa (nomes/refs) | `extractTopologyHostNames`, `extractTopologyHostRefs` em `utils/submapHosts.ts` |
+
+## Grafana, aparência e UI
+
+| Necessidade | Já existe em |
+|---|---|
+| Buscar dashboards (`dash-db`) com estado de loading | `hooks/useGrafanaDashboards.ts` |
+| Opções de `Select`/`MultiSelect` de dashboard, filtro por tag | `utils/grafanaDashboards.ts` |
+| Detectar modo de edição do dashboard | `hooks/useDashboardEditMode.ts` |
+| Detectar lista de reprodução / kiosk | `hooks/useGrafanaPlaylistPlayback.ts` + `utils/grafanaPlaylist.ts` |
+| Ler intervalo de refresh do dashboard | `utils/dashboardRefresh.ts` |
+| Navegar por variável de dashboard | `hooks/useDashboardVariableNav.ts` |
+| Resolver cor de opção do painel (hex/rgb/nome de tema) | `resolvePanelColor` em `utils/panelColors.ts` |
+| Contraste de texto sobre fundo colorido | `utils/colorContrast.ts` |
+| Ícone de host e de rede | `utils/hostIcons.tsx`, `utils/networkIcons.tsx`, registro em `utils/customIcons.ts` |
+| Abrir Winbox/SSH/Telnet e validar IPv4 | `utils/hostTools.ts`, `utils/ipv4.ts` |
+| Fechar overlay com Esc | `hooks/useEscapeKey.ts` |
+| Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
+
+## Exceções
+
+Nenhuma. Se a função existente realmente não serve, explique o porquê na resposta antes de criar
+outra.

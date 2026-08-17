@@ -1,0 +1,68 @@
+---
+description: Segurança — segredos, dados não confiáveis, URLs, logs e tratamento de erro
+alwaysApply: true
+---
+
+# Segurança
+
+## Objetivo
+
+Impedir vazamento de dado sensível e execução de conteúdo não confiável dentro do painel.
+
+## Escopo
+
+Todo o repositório, em qualquer tarefa.
+
+## Segredos e dependências
+
+- Nunca escreva segredo, token, senha ou endereço de servidor interno em código, rule, teste ou
+  mensagem de commit. Segredo fica em `.env` (já ignorado) ou na configuração do datasource.
+- Nunca commite `.env`, `*.pem`, `credentials.json`, `examples/` ou `dashboards/`.
+- Não adicione dependência sem necessidade real: confira antes se `@grafana/ui` já resolve e cheque
+  vulnerabilidades conhecidas (`npm audit`). Dependência nova vai para o bundle entregue ao Grafana —
+  peça aprovação antes de incluir.
+
+## Dados não confiáveis
+
+Trate como não confiável **todo** dado que não veio do bundle: retorno de query, nome de host, label
+e IP digitados no editor, uid/slug de dashboard, credencial de Tools.
+
+- Nunca passe esse dado para `dangerouslySetInnerHTML`.
+- Renderize texto como filho JSX (`<text>{label}</text>`), nunca por interpolação em HTML/SVG cru.
+- Valide antes de montar URL: IPv4 pelas regex de `utils/hostTools.ts`, uid de dashboard pela
+  allowlist `[A-Za-z0-9_-]+`, e `encodeURIComponent` em usuário, senha e slug.
+- `window.open` sempre com `'noopener,noreferrer'`.
+- Não confie em dado do client para decidir permissão — o Grafana é a fonte de autorização, via
+  `getBackendSrv()`.
+
+## Logs e erros
+
+- Nunca logue payload da API Zabbix, credencial ou conteúdo do `TopologyMap`. Não deixe `console.*`
+  em código de produção; hoje `src/` está limpo, mantenha assim.
+- Mensagem de erro na UI descreve a ação que falhou, sem stack, sem URL interna e sem corpo de
+  resposta.
+- Toda chamada assíncrona tem `try`/`catch`/`finally`, devolve valor vazio seguro (`[]`, `{}`,
+  `undefined`) e expõe estado de erro visível quando o usuário precisa saber — padrão
+  `loading`/`loadError` de `PingModal.tsx` e `AddZabbixHostModal.tsx`. `loading` nunca fica preso em
+  `true` quando a chamada falha.
+
+## Faça / Não faça
+
+```typescript
+// ❌ BAD — dado editável do mapa direto na URL e no HTML
+window.open(`/d/${node.submapUid}/${node.submapSlug}`);
+el.innerHTML = `<title>${node.label}</title>`;
+
+// ✅ GOOD — uid validado por allowlist, slug encodado, texto como filho JSX
+openDashboardUrl(node.submapUid, node.submapSlug);
+<title>{node.label}</title>
+```
+
+## Exceções
+
+- `HostIconImage` (`utils/hostIcons.tsx`) usa `dangerouslySetInnerHTML` com SVG importado em
+  build-time (`src/img/topology/*.svg`, via `asset/source` do webpack). Nunca passe por ali SVG
+  vindo de rede, upload ou texto digitado.
+- Credenciais de Tools (`toolUsername`/`toolPassword`) ficam em texto plano no JSON do mapa — decisão
+  de produto já comunicada na UI. Não remova o `type="password"`, não abrande o aviso e não crie
+  outro canal (log, clipboard, export) que exponha a senha. Mudar isso exige aprovação do usuário.
