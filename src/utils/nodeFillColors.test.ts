@@ -12,7 +12,7 @@ function node(overrides?: Partial<TopologyNode>): TopologyNode {
 }
 
 function stats(overrides?: Partial<RegionHostStats>): RegionHostStats {
-  return { total: 2, online: 2, offline: 0, unknown: 0, ...overrides };
+  return { total: 2, online: 2, offline: 0, alert: 0, unknown: 0, ...overrides };
 }
 
 describe('hostNodeFill', () => {
@@ -25,7 +25,7 @@ describe('hostNodeFill', () => {
   });
 
   it('usa a cor do status quando a Query trouxe o host', () => {
-    const display: HostDisplayMap = { 'rb-01': { status: 'offline', color: '#ff0000' } };
+    const display: HostDisplayMap = { 'rb-01': { status: 'offline', color: '#ff0000', value: 0 } };
     expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, display, identity)).toBe('#ff0000');
   });
 

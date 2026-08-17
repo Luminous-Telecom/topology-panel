@@ -12,128 +12,26 @@ import { CanvasTool, TopologyLink, TopologyMap, TopologyNode, TopologyView } fro
 import {
   areNetworksLocked,
   clientToMapCoords,
-  linkKey,
-  linksMatchEndpoints,
   moveStoredNodesBulk,
-  updateLinkProps,
   updateStoredNode,
 } from '../utils/mapEdits';
 import { snapNodeCenterToGrid } from '../utils/mapCoords';
-import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, NodeLayout } from '../utils/nodeLayout';
+import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, NodeLayout } from '../utils/nodeLayout';
 import { findNodeById } from '../utils/topologyNodes';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
+import { LinkPoint } from '../utils/linkGeometry';
 import {
-  closestPointOnPolyline,
-  computeLinkGeometry,
-  LinkPoint,
-} from '../utils/linkGeometry';
-import { computeEdgePanVelocity } from '../utils/edgePan';
-
-/** Faixa nas bordas do painel que dispara pan automático ao arrastar nó/rede. */
-const EDGE_PAN_THRESHOLD = 64;
-/** Velocidade máxima do pan automático (px de tela por segundo). */
-const EDGE_PAN_MAX_SPEED = 720;
-/** Movimento mínimo em px de tela antes de arrastar nó (clique vs drag). */
-const NODE_DRAG_THRESHOLD_PX = 8;
-
-type DragGroupMember = { id: string; startX: number; startY: number; startW: number; startH: number };
-
-type DragState =
-  | {
-      kind: 'pan';
-      ox: number;
-      oy: number;
-      nx: number;
-      ny: number;
-      moved: boolean;
-      tapNode?: TopologyNode;
-      tapLink?: TopologyLink;
-    }
-  | {
-      kind: 'node';
-      node: TopologyNode;
-      grabOffsetWorld: { x: number; y: number };
-      pointerOx: number;
-      pointerOy: number;
-      startX: number;
-      startY: number;
-      startW: number;
-      startH: number;
-      moved: boolean;
-      group?: DragGroupMember[];
-    }
-  | { kind: 'resize'; node: TopologyNode; ox: number; oy: number; startW: number; startH: number; moved: boolean }
-  | { kind: 'marquee'; mapX0: number; mapY0: number; additive?: boolean }
-  | {
-      kind: 'link-waypoint';
-      link: TopologyLink;
-      ox: number;
-      oy: number;
-      waypointIndex: number;
-      waypoints: LinkPoint[];
-      moved: boolean;
-      /** Inserção só após limiar de arraste — evita dobrar a linha no toque/clique. */
-      pendingInsert: { x: number; y: number; insertIndex: number } | null;
-    };
-
-type DragPreview = {
-  nodeId?: string;
-  positions?: Record<string, { x: number; y: number }>;
-  width?: number;
-  height?: number;
-  linkWaypoints?: { from: string; to: string; waypoints: LinkPoint[] };
-} | null;
-
-function canMoveSelectedNode(node: TopologyNode, networksLocked: boolean): boolean {
-  return node.type === 'network' ? !networksLocked : true;
-}
-
-function buildDragGroupMembers(
-  selectedNodeIds: string[],
-  nodes: TopologyNode[],
-  nodeLayouts: Map<string, NodeLayout & TopologyNode>,
-  networksLocked: boolean
-): DragGroupMember[] {
-  return selectedNodeIds
-    .map((id) => findNodeById(nodes, id))
-    .filter((n): n is TopologyNode => Boolean(n && canMoveSelectedNode(n, networksLocked)))
-    .map((n) => {
-      const memberLayout = nodeLayouts.get(n.id);
-      const defaultW =
-        n.type === 'network' ? DEFAULT_NETWORK_WIDTH : n.type === 'static' ? DEFAULT_STATIC_WIDTH : 48;
-      const defaultH =
-        n.type === 'network' ? DEFAULT_NETWORK_HEIGHT : n.type === 'static' ? DEFAULT_STATIC_HEIGHT : 28;
-      return {
-        id: n.id,
-        startX: n.x,
-        startY: n.y,
-        startW: memberLayout?.w ?? n.width ?? defaultW,
-        startH: memberLayout?.h ?? n.height ?? defaultH,
-      };
-    });
-}
-
-function normalizeRect(x0: number, y0: number, x1: number, y1: number) {
-  return {
-    x: Math.min(x0, x1),
-    y: Math.min(y0, y1),
-    w: Math.abs(x1 - x0),
-    h: Math.abs(y1 - y0),
-  };
-}
-
-function rectsOverlap(
-  ax: number,
-  ay: number,
-  aw: number,
-  ah: number,
-  bx: number,
-  by: number,
-  bw: number,
-  bh: number
-): boolean {
-  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-}
+  buildDragGroupMembers,
+  canMoveSelectedNode,
+  defaultResizeSize,
+  DragGroupMember,
+  DragPreview,
+  DragState,
+  NODE_DRAG_THRESHOLD_PX,
+} from '../utils/dragState';
+import { nodesInMarquee, normalizeRect } from '../utils/marqueeSelection';
+import { useEdgePanLoop } from './useEdgePanLoop';
+import { useLinkWaypointGestures } from './useLinkWaypointGestures';
 
 interface UseTopologyDragControllerParams {
   wrapRef: RefObject<HTMLDivElement>;
@@ -239,13 +137,31 @@ export function useTopologyDragController({
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
   const panRafRef = useRef<number | null>(null);
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
-  /** Pan automático ao arrastar nó/rede perto da borda do painel. */
-  const edgePanRafRef = useRef<number | null>(null);
-  const edgePanPrevTsRef = useRef<number | null>(null);
-  const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
-  const startEdgePanLoopRef = useRef<() => void>(() => {});
+  const applyNodeDragMoveRef = useRef<(clientX: number, clientY: number) => void>(() => {});
+
+  const edgePan = useEdgePanLoop({
+    wrapRef,
+    svgRef,
+    enablePan,
+    viewRef,
+    commitView,
+    dragRef,
+    applyMoveRef: applyNodeDragMoveRef,
+  });
+
+  /** Coordenada do mapa sob o ponteiro, na view atual. */
+  const clientToMap = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = wrapRef.current;
+      if (!el) {
+        return null;
+      }
+      return clientToMapCoords(clientX, clientY, el.getBoundingClientRect(), view);
+    },
+    [view, wrapRef]
+  );
 
   /**
    * Ids que podem se mover no arraste atual (redes travadas ficam de fora).
@@ -303,88 +219,29 @@ export function useTopologyDragController({
     [setMarqueeRect, setSelectedNodeIds, wrapRef]
   );
 
-  const resolveLinkWaypoints = useCallback(
-    (link: TopologyLink): LinkPoint[] => {
-      const preview = dragPreview?.linkWaypoints;
-      if (preview && linksMatchEndpoints(preview, link)) {
-        return preview.waypoints;
-      }
-      const stored = storedMap.links.find((l) => linkKey(l) === linkKey(link));
-      return stored?.waypoints ?? link.waypoints ?? [];
-    },
-    [dragPreview?.linkWaypoints, storedMap.links]
-  );
-
-  const beginLinkWaypointDrag = useCallback(
-    (e: React.PointerEvent, link: TopologyLink, mapX: number, mapY: number, waypointIndex?: number) => {
-      if (!editable || e.button !== 0) {
-        return;
-      }
-      e.stopPropagation();
-      const from = nodeLayouts.get(link.from);
-      const to = nodeLayouts.get(link.to);
-      if (!from || !to) {
-        return;
-      }
-
-      const currentWaypoints = resolveLinkWaypoints(link).map((p) => ({ ...p }));
-      const geom = computeLinkGeometry(from, to, gridStep, currentWaypoints);
-      const point = { x: mapX, y: mapY };
-      const hitRadius = Math.max(8, 10 / view.scale);
-      let index = waypointIndex;
-      let pendingInsert: { x: number; y: number; insertIndex: number } | null = null;
-
-      if (index === undefined) {
-        index = currentWaypoints.findIndex((wp) => Math.hypot(wp.x - mapX, wp.y - mapY) <= hitRadius);
-      }
-
-      if (index < 0) {
-        const hit = closestPointOnPolyline(geom.pathPoints, point);
-        if (hit.distance > hitRadius * 1.25) {
-          return;
-        }
-        // Não insere ainda: o snap na grade no pointerdown já entortava a linha só de tocar.
-        pendingInsert = { x: hit.x, y: hit.y, insertIndex: hit.insertIndex };
-        index = -1;
-      }
-
-      setSelectedNodeIds([]);
-      setSelectedLink(link);
-      dragRef.current = {
-        kind: 'link-waypoint',
-        link,
-        ox: e.clientX,
-        oy: e.clientY,
-        waypointIndex: index,
-        waypoints: currentWaypoints,
-        moved: false,
-        pendingInsert,
-      };
-      wrapRef.current?.setPointerCapture(e.pointerId);
-    },
-    [editable, gridStep, nodeLayouts, resolveLinkWaypoints, setSelectedLink, setSelectedNodeIds, view.scale, wrapRef]
-  );
-
-  const removeLinkWaypoint = useCallback(
-    (link: TopologyLink, waypointIndex: number) => {
-      const current = resolveLinkWaypoints(link);
-      if (waypointIndex < 0 || waypointIndex >= current.length) {
-        return;
-      }
-      const waypoints = current.filter((_, i) => i !== waypointIndex);
-      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints }));
-      setDragPreview(null);
-    },
-    [persist, resolveLinkWaypoints, setDragPreview, storedMap]
-  );
-
-  const resetLinkRoute = useCallback(
-    (link: TopologyLink) => {
-      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints: [] }));
-      setDragPreview(null);
-    },
-    [persist, setDragPreview, storedMap]
-  );
+  const {
+    resolveLinkWaypoints,
+    beginLinkWaypointDrag,
+    moveLinkWaypoint,
+    commitLinkWaypoint,
+    removeLinkWaypoint,
+    resetLinkRoute,
+  } = useLinkWaypointGestures({
+    wrapRef,
+    dragRef,
+    storedMap,
+    nodeLayouts,
+    editable,
+    gridStep,
+    snapCoord,
+    view,
+    dragPreview,
+    setDragPreview,
+    setSelectedNodeIds,
+    setSelectedLink,
+    persist,
+    clientToMap,
+  });
 
   const onWrapPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -399,41 +256,21 @@ export function useTopologyDragController({
         return;
       }
       if (editable) {
-        const el = wrapRef.current;
-        if (!el) {
+        const point = clientToMap(e.clientX, e.clientY);
+        if (!point) {
           return;
         }
-        const rect = el.getBoundingClientRect();
-        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
         setSelectedLink(null);
         closeContextMenu();
-        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        if (!additive) {
-          setSelectedNodeIds([]);
-        }
-        dragRef.current = { kind: 'marquee', mapX0: x, mapY0: y, additive };
-        setMarqueeRect({ x0: x, y0: y, x1: x, y1: y });
-        wrapRef.current?.setPointerCapture(e.pointerId);
+        beginMarquee(e, point.x, point.y);
         return;
       }
       setSelectedNodeIds([]);
       setSelectedLink(null);
       closeContextMenu();
     },
-    [beginPan, closeContextMenu, editable, setMarqueeRect, setSelectedLink, setSelectedNodeIds, toolRef, view, wrapRef]
+    [beginMarquee, beginPan, clientToMap, closeContextMenu, editable, setSelectedLink, setSelectedNodeIds, toolRef]
   );
-
-  const stopEdgePanLoop = useCallback(() => {
-    if (edgePanRafRef.current != null) {
-      cancelAnimationFrame(edgePanRafRef.current);
-      edgePanRafRef.current = null;
-    }
-    edgePanPrevTsRef.current = null;
-  }, []);
-
-  const edgePanRect = useCallback((): DOMRect | null => {
-    return svgRef.current?.getBoundingClientRect() ?? wrapRef.current?.getBoundingClientRect() ?? null;
-  }, [svgRef, wrapRef]);
 
   const applyNodeDragMove = useCallback(
     (clientX: number, clientY: number, e?: React.PointerEvent) => {
@@ -448,13 +285,13 @@ export function useTopologyDragController({
         }
         d.moved = true;
         if (enablePan && canMoveSelectedNode(d.node, areNetworksLocked(storedMap))) {
-          startEdgePanLoopRef.current();
+          edgePan.start();
         }
       }
       if (d.moved && e) {
         e.preventDefault();
       }
-      const rect = edgePanRect();
+      const rect = edgePan.rect();
       if (!rect) {
         return;
       }
@@ -554,50 +391,10 @@ export function useTopologyDragController({
         })
       );
     },
-    [edgePanRect, enablePan, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
+    [edgePan, enablePan, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
   );
 
-  const runEdgePanFrame = useCallback(
-    (timestamp: number) => {
-      const d = dragRef.current;
-      const ptr = dragPointerRef.current;
-      if (!d || d.kind !== 'node' || !d.moved || !enablePan || !ptr) {
-        edgePanRafRef.current = null;
-        edgePanPrevTsRef.current = null;
-        return;
-      }
-
-      const rect = edgePanRect();
-      if (!rect) {
-        edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
-        return;
-      }
-
-      const prevTs = edgePanPrevTsRef.current ?? timestamp;
-      edgePanPrevTsRef.current = timestamp;
-      const dt = Math.min((timestamp - prevTs) / 1000, 0.05);
-
-      const { vx, vy } = computeEdgePanVelocity(ptr.clientX, ptr.clientY, rect, EDGE_PAN_THRESHOLD, EDGE_PAN_MAX_SPEED);
-
-      if (vx !== 0 || vy !== 0) {
-        const v = viewRef.current;
-        commitView({ ...v, x: v.x + vx * dt, y: v.y + vy * dt });
-        applyNodeDragMove(ptr.clientX, ptr.clientY);
-      }
-
-      edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
-    },
-    [applyNodeDragMove, commitView, edgePanRect, enablePan, viewRef]
-  );
-
-  const startEdgePanLoop = useCallback(() => {
-    if (edgePanRafRef.current != null) {
-      return;
-    }
-    edgePanPrevTsRef.current = null;
-    edgePanRafRef.current = requestAnimationFrame(runEdgePanFrame);
-  }, [runEdgePanFrame]);
-  startEdgePanLoopRef.current = startEdgePanLoop;
+  applyNodeDragMoveRef.current = applyNodeDragMove;
 
   const beginNodeDrag = useCallback(
     (e: React.PointerEvent, node: TopologyNode, startX: number, startY: number, startW: number, startH: number) => {
@@ -615,7 +412,7 @@ export function useTopologyDragController({
         group = buildDragGroupMembers(selectedNodeIds, map.nodes, nodeLayouts, networksLocked);
       }
       dragPositionsRef.current = null;
-      dragPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+      edgePan.pointerRef.current = { clientX: e.clientX, clientY: e.clientY };
       dragRef.current = {
         kind: 'node',
         node,
@@ -634,8 +431,6 @@ export function useTopologyDragController({
     },
     [clearHostHover, map.nodes, nodeLayouts, selectedNodeIds, storedMap, viewRef, wrapRef]
   );
-
-  useEffect(() => () => stopEdgePanLoop(), [stopEdgePanLoop]);
 
   /** Cancela o rAF de pan coalescido se o painel desmontar no meio de um arraste. */
   useEffect(
@@ -659,25 +454,14 @@ export function useTopologyDragController({
       }
       e.stopPropagation();
       const layout = nodeLayouts.get(node.id);
-      const defaultW =
-        node.type === 'static'
-          ? DEFAULT_STATIC_WIDTH
-          : node.type === 'submap' || node.type === 'dashboard_picker'
-            ? 120
-            : DEFAULT_NETWORK_WIDTH;
-      const defaultH =
-        node.type === 'static'
-          ? DEFAULT_STATIC_HEIGHT
-          : node.type === 'submap' || node.type === 'dashboard_picker'
-            ? 36
-            : DEFAULT_NETWORK_HEIGHT;
+      const fallback = defaultResizeSize(node);
       dragRef.current = {
         kind: 'resize',
         node,
         ox: e.clientX,
         oy: e.clientY,
-        startW: layout?.w ?? node.width ?? defaultW,
-        startH: layout?.h ?? node.height ?? defaultH,
+        startW: layout?.w ?? node.width ?? fallback.w,
+        startH: layout?.h ?? node.height ?? fallback.h,
         moved: false,
       };
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -724,11 +508,9 @@ export function useTopologyDragController({
 
       if (networksLocked) {
         if (editable) {
-          const el = wrapRef.current;
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-            beginMarquee(e, x, y);
+          const point = clientToMap(e.clientX, e.clientY);
+          if (point) {
+            beginMarquee(e, point.x, point.y);
           }
         }
         return;
@@ -745,7 +527,7 @@ export function useTopologyDragController({
         );
       }
     },
-    [beginMarquee, beginNodeDrag, beginPan, editable, nodeLayouts, setSelectedLink, storedMap, toolRef, view, wrapRef]
+    [beginMarquee, beginNodeDrag, beginPan, clientToMap, editable, nodeLayouts, setSelectedLink, storedMap, toolRef]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -763,18 +545,16 @@ export function useTopologyDragController({
       // Seta: arrastar no fundo = caixa de seleção (como mouse de seleção múltipla).
       if (editable) {
         e.stopPropagation();
-        const el = wrapRef.current;
-        if (!el) {
+        const point = clientToMap(e.clientX, e.clientY);
+        if (!point) {
           return;
         }
-        const rect = el.getBoundingClientRect();
-        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        beginMarquee(e, x, y);
+        beginMarquee(e, point.x, point.y);
         return;
       }
       setSelectedNodeIds([]);
     },
-    [beginMarquee, beginPan, closeContextMenu, editable, setSelectedLink, setSelectedNodeIds, toolRef, view, wrapRef]
+    [beginMarquee, beginPan, clientToMap, closeContextMenu, editable, setSelectedLink, setSelectedNodeIds, toolRef]
   );
 
   const onPointerMove = useCallback(
@@ -814,7 +594,7 @@ export function useTopologyDragController({
         return;
       }
       if (d.kind === 'node') {
-        dragPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+        edgePan.pointerRef.current = { clientX: e.clientX, clientY: e.clientY };
         applyNodeDragMove(e.clientX, e.clientY, e);
         return;
       }
@@ -832,49 +612,30 @@ export function useTopologyDragController({
         return;
       }
       if (d.kind === 'link-waypoint') {
-        const el = wrapRef.current;
-        if (!el) {
-          return;
-        }
-        // Limiar em px de tela — evita dobrar ao “triscar” ou selecionar o cabo.
-        const dragDist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
-        if (!d.moved) {
-          if (dragDist < 10) {
-            return;
-          }
-          d.moved = true;
-          if (d.pendingInsert) {
-            const insert = d.pendingInsert;
-            d.waypoints = [...d.waypoints];
-            d.waypoints.splice(insert.insertIndex, 0, {
-              x: snapCoord(insert.x),
-              y: snapCoord(insert.y),
-            });
-            d.waypointIndex = insert.insertIndex;
-            d.pendingInsert = null;
-          }
-        }
-        if (d.waypointIndex < 0) {
-          return;
-        }
-        const rect = el.getBoundingClientRect();
-        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        const waypoints = d.waypoints.map((wp, i) => (i === d.waypointIndex ? { x: snapCoord(x), y: snapCoord(y) } : wp));
-        d.waypoints = waypoints;
-        setDragPreview({ linkWaypoints: { from: d.link.from, to: d.link.to, waypoints } });
+        moveLinkWaypoint(e, d);
         return;
       }
       if (d.kind === 'marquee') {
-        const el = wrapRef.current;
-        if (!el) {
+        const point = clientToMap(e.clientX, e.clientY);
+        if (!point) {
           return;
         }
-        const rect = el.getBoundingClientRect();
-        const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-        setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: x, y1: y });
+        setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: point.x, y1: point.y });
       }
     },
-    [applyNodeDragMove, commitView, pinchActiveRef, setDragPreview, setMarqueeRect, snapCoord, view, wrapRef, gridStep]
+    [
+      applyNodeDragMove,
+      clientToMap,
+      commitView,
+      edgePan,
+      gridStep,
+      moveLinkWaypoint,
+      pinchActiveRef,
+      setDragPreview,
+      setMarqueeRect,
+      snapCoord,
+      view.scale,
+    ]
   );
 
   const clearDragUi = useCallback(() => {
@@ -897,8 +658,8 @@ export function useTopologyDragController({
         applyNodeDragMove(e.clientX, e.clientY, e);
       }
       dragRef.current = null;
-      dragPointerRef.current = null;
-      stopEdgePanLoop();
+      edgePan.pointerRef.current = null;
+      edgePan.stop();
       if (panRafRef.current != null) {
         cancelAnimationFrame(panRafRef.current);
         panRafRef.current = null;
@@ -942,29 +703,12 @@ export function useTopologyDragController({
 
       if (d?.kind === 'marquee') {
         setMarqueeRect(null);
-        const el = wrapRef.current;
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          const { x: x1, y: y1 } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-          const sel = normalizeRect(d.mapX0, d.mapY0, x1, y1);
+        const corner = clientToMap(e.clientX, e.clientY);
+        if (corner) {
+          const sel = normalizeRect(d.mapX0, d.mapY0, corner.x, corner.y);
+          // Abaixo de 4px foi clique, não laço — não mexe na seleção.
           if (sel.w > 4 || sel.h > 4) {
-            const ids: string[] = [];
-            for (const n of map.nodes) {
-              const layout = nodeLayouts.get(n.id);
-              if (!layout) {
-                continue;
-              }
-              if (n.type === 'network' && areNetworksLocked(storedMap)) {
-                continue;
-              }
-              const lx = layout.x;
-              const ly = layout.y;
-              const lw = layout.w;
-              const lh = layout.h;
-              if (rectsOverlap(sel.x, sel.y, sel.w, sel.h, lx, ly, lw, lh)) {
-                ids.push(n.id);
-              }
-            }
+            const ids = nodesInMarquee(sel, map.nodes, nodeLayouts, areNetworksLocked(storedMap));
             if (d.additive) {
               setSelectedNodeIds((prev) => [...new Set([...prev, ...ids])]);
             } else {
@@ -976,10 +720,7 @@ export function useTopologyDragController({
       }
 
       if (d?.kind === 'link-waypoint') {
-        if (d.moved && d.waypointIndex >= 0) {
-          persist(updateLinkProps(storedMap, d.link.from, d.link.to, { waypoints: d.waypoints }));
-        }
-        setDragPreview(null);
+        commitLinkWaypoint(d);
         return;
       }
 
@@ -1042,9 +783,12 @@ export function useTopologyDragController({
     [
       applyNodeDragMove,
       clearDragUi,
+      clientToMap,
+      commitLinkWaypoint,
       commitView,
       completeLink,
       dragPreview,
+      edgePan,
       editable,
       linkFromId,
       map.nodes,
@@ -1057,21 +801,16 @@ export function useTopologyDragController({
       setMarqueeRect,
       setSelectedLink,
       setSelectedNodeIds,
-      stopEdgePanLoop,
       storedMap,
       tryDoubleTapOpenProperties,
-      view,
       wrapRef,
     ]
   );
 
   const cancelActiveDrag = useCallback(() => {
     dragRef.current = null;
-    if (edgePanRafRef.current != null) {
-      cancelAnimationFrame(edgePanRafRef.current);
-      edgePanRafRef.current = null;
-    }
-    dragPointerRef.current = null;
+    edgePan.stop();
+    edgePan.pointerRef.current = null;
     if (panRafRef.current != null) {
       cancelAnimationFrame(panRafRef.current);
       panRafRef.current = null;
