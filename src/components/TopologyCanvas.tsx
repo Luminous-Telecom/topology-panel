@@ -12,36 +12,13 @@ import {
   TopologyPanelOptions,
   TopologyView,
 } from '../types';
-import {
-  addDashboardPickerAt,
-  addLinkToMap,
-  addManualDeviceAt,
-  addNetworkAt,
-  addStaticAt,
-  addSubmapAt,
-  addZabbixHostAt,
-  areNetworksLocked,
-  rebindZabbixHost,
-  clientToMapCoords,
-  linkKey,
-  removeLinkByEndpoints,
-  removeNodesFromMap,
-  toggleMapLock,
-  toggleNetworksLock,
-  updateLinkProps,
-  updateStoredNode,
-  updateHostsIconBulk,
-  updateHostsCredentialsBulk,
-  updateSubmapsBulk,
-} from '../utils/mapEdits';
+import { addLinkToMap, addZabbixHostAt, areNetworksLocked, rebindZabbixHost, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps, updateStoredNode, updateHostsIconBulk, updateHostsCredentialsBulk, updateSubmapsBulk } from '../utils/mapEdits';
 import { resolveHostIp, resolveHostLayoutKey } from '../utils/hostLookup';
-import { resolveLinkMedium } from '../utils/linkMedium';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { upsertHostLayout, withLiveZabbixMeta } from '../utils/mapSync';
 import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, NodeLayout } from '../utils/nodeLayout';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { findNodeById, isHostNode, isSubmapNode } from '../utils/topologyNodes';
-import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
+import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { resolvePanelColor } from '../utils/panelColors';
 import { resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
@@ -50,7 +27,7 @@ import { buildRegionStatsMap, formatRegionStats, regionStrokeColor } from '../ut
 import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
-import { ContextMenuItem, TopologyContextMenu } from './TopologyContextMenu';
+import { TopologyContextMenu } from './TopologyContextMenu';
 import { canvasStyles } from './canvas/canvasStyles';
 import { HostNodeShape } from './canvas/HostNodeShape';
 import { LinkLine } from './canvas/LinkLine';
@@ -85,6 +62,7 @@ import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardAction
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
+import { useTopologyMenuItems } from '../hooks/useTopologyMenuItems';
 
 interface Props {
   map: TopologyMap;
@@ -134,10 +112,6 @@ type ContextState = {
   node?: TopologyNode;
   link?: TopologyLink;
 };
-
-function deleteNodesMenuLabel(count: number): string {
-  return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
-}
 
 export function TopologyCanvas({
   map: liveMap,
@@ -498,6 +472,9 @@ export function TopologyCanvas({
     openDashboardUrl(node.submapUid, node.submapSlug);
   }, []);
 
+  /** Entra no modo link sem origem: o próximo clique num nó define o ponto de partida. */
+  const beginLinkFromCanvas = useCallback(() => setLinkFromId(''), []);
+
   const beginLinkFrom = useCallback((nodeId: string) => {
     setLinkFromId(nodeId);
     setContextMenu(null);
@@ -656,37 +633,6 @@ export function TopologyCanvas({
       }
     },
     [editable, openDashboardPicker, openNodeProperties, openSubmap, resetDoubleTapState]
-  );
-
-  const buildToolsMenu = useCallback(
-    (node: TopologyNode): ContextMenuItem | null => {
-      const ip = resolveHostIp(node, hostMetadata);
-      if (!ip) {
-        return null;
-      }
-      return {
-        id: 'tools',
-        label: 'Tools',
-        variant: 'submenu',
-        children: HOST_TOOLS.map((tool) => ({
-          id: `tool-${tool.id}`,
-          label: tool.label,
-          variant: 'tool' as const,
-          onClick: () => {
-            if (tool.id === 'ping') {
-              setPingTarget({
-                label: node.label?.trim() ?? '',
-                ip,
-                zabbixHost: node.zabbixHost,
-              });
-              return;
-            }
-            void runHostTool(tool.id, ip, resolveToolAuth(node, options)).then(showToast);
-          },
-        })),
-      };
-    },
-    [hostMetadata, options, showToast]
   );
 
   const handleContextMenu = useCallback(
@@ -919,302 +865,36 @@ export function TopologyCanvas({
     openBulkSubmapEdit,
   } = useBulkEditModals({ selectedHostNodes, selectedSubmapNodes, showToast, closeContextMenu });
 
-  const canvasMenuItems = useCallback((): ContextMenuItem[] => {
-    const { mapX, mapY } = contextMenu ?? { mapX: 0, mapY: 0 };
-    const items: ContextMenuItem[] = [];
-
-    if (selectedNodeIds.length > 0 || selectedLink) {
-      items.push({
-        id: 'copy-selection',
-        label:
-          selectedNodeIds.length > 1
-            ? `Copiar seleção (${selectedNodeIds.length})`
-            : 'Copiar seleção',
-        onClick: () => {
-          setContextMenu(null);
-          copySelection();
-        },
-      });
-    }
-
-    if (hasTopologyClipboard()) {
-      items.push({
-        id: 'paste-here',
-        label: 'Colar aqui',
-        onClick: () => pasteAt(snapCoord(mapX), snapCoord(mapY)),
-      });
-    }
-
-    if (selectedHostNodes.length >= 1) {
-      items.push({
-        id: 'bulk-icon',
-        label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
-        onClick: openBulkIconEdit,
-      });
-      items.push({
-        id: 'bulk-creds',
-        label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
-        onClick: openBulkCredsEdit,
-      });
-    }
-
-    if (selectedSubmapNodes.length >= 1) {
-      items.push({
-        id: 'bulk-submap',
-        label: `Editar submapas (${selectedSubmapNodes.length})`,
-        onClick: openBulkSubmapEdit,
-      });
-    }
-
-    if (selectedNodes.length > 0) {
-      items.push({
-        id: 'delete-selection',
-        label: deleteNodesMenuLabel(selectedNodes.length),
-        variant: 'delete',
-        onClick: deleteSelectedNodes,
-      });
-    }
-
-    items.push(
-      {
-        id: 'add-host',
-        label: 'Adicionar host',
-        onClick: () => {
-          setContextMenu(null);
-          setAddHostAt({ mapX: snapCoord(mapX), mapY: snapCoord(mapY) });
-        },
-      },
-      {
-        id: 'add-device',
-        label: 'Adicionar dispositivo manual',
-        onClick: () => persist(addManualDeviceAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
-      },
-      {
-        id: 'add-submap',
-        label: 'Adicionar submapa',
-        onClick: () => persist(addSubmapAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
-      },
-      {
-        id: 'add-dashboard-picker',
-        label: 'Adicionar seletor de dashboards',
-        onClick: () => persist(addDashboardPickerAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
-      },
-      {
-        id: 'add-network',
-        label: 'Adicionar rede',
-        onClick: () => persist(addNetworkAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
-      },
-      {
-        id: 'add-static',
-        label: 'Adicionar estático',
-        onClick: () => persist(addStaticAt(storedMap, snapCoord(mapX), snapCoord(mapY))),
-      },
-      {
-        id: 'add-link',
-        label: 'Adicionar link',
-        onClick: () => setLinkFromId(''),
-      }
-    );
-
-    return items;
-  }, [
-    contextMenu,
-    copySelection,
-    deleteSelectedNodes,
-    openBulkCredsEdit,
-    openBulkIconEdit,
-    openBulkSubmapEdit,
-    pasteAt,
-    persist,
-    selectedHostNodes.length,
-    selectedLink,
-    selectedNodes.length,
-    selectedSubmapNodes.length,
-    snapCoord,
+  const { canvasMenuItems, nodeMenuItems, linkMenuItems } = useTopologyMenuItems({
     storedMap,
-  ]);
-
-  const linkMenuItems = useCallback(
-    (link: TopologyLink): ContextMenuItem[] => {
-      const medium = resolveLinkMedium(link);
-      return [
-        {
-          id: 'link-edit',
-          label: 'Editar link…',
-          onClick: () => {
-            setContextMenu(null);
-            setEditLink(link);
-          },
-        },
-        {
-          id: 'link-straight',
-          label: 'Linha reta (remover desvios)',
-          onClick: () => {
-            setContextMenu(null);
-            resetLinkRoute(link);
-          },
-        },
-        {
-          id: 'link-fiber',
-          label: medium === 'fiber' ? '✓ Fibra (linha contínua)' : 'Marcar como fibra',
-          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'fiber' })),
-        },
-        {
-          id: 'link-radio',
-          label: medium === 'radio' ? '✓ Rádio (linha tracejada)' : 'Marcar como rádio',
-          onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'radio' })),
-        },
-        {
-          id: 'delete-link',
-          label: 'Excluir link',
-          variant: 'delete',
-          onClick: () => persist(removeLinkByEndpoints(storedMap, link.from, link.to)),
-        },
-      ];
-    },
-    [persist, resetLinkRoute, storedMap]
-  );
-
-  const nodeMenuItems = useCallback(
-    (node: TopologyNode): ContextMenuItem[] => {
-      const items: ContextMenuItem[] = [];
-      const tools = buildToolsMenu(node);
-      if (tools) {
-        items.push(tools);
-      }
-
-      if (!editable) {
-        return items;
-      }
-
-      if (selectedNodeIds.length > 0) {
-        items.push({
-          id: 'copy-selection',
-          label:
-            selectedNodeIds.length > 1
-              ? `Copiar seleção (${selectedNodeIds.length})`
-              : 'Copiar seleção',
-          onClick: () => {
-            setContextMenu(null);
-            copySelection();
-          },
-        });
-      }
-
-      if (hasTopologyClipboard()) {
-        items.push({
-          id: 'paste-here',
-          label: 'Colar',
-          onClick: () => {
-            const anchor = contextMenu ?? { mapX: node.x, mapY: node.y };
-            pasteAt(snapCoord(anchor.mapX), snapCoord(anchor.mapY));
-          },
-        });
-      }
-
-      if (selectedNodeIds.includes(node.id) && isHostNode(node) && selectedHostNodes.length >= 1) {
-        items.push({
-          id: 'bulk-icon',
-          label: `Alterar tipo / ícone (${selectedHostNodes.length} hosts)`,
-          onClick: openBulkIconEdit,
-        });
-        items.push({
-          id: 'bulk-creds',
-          label: `Usuário / senha Tools (${selectedHostNodes.length} hosts)`,
-          onClick: openBulkCredsEdit,
-        });
-      }
-
-      if (selectedNodeIds.includes(node.id) && isSubmapNode(node) && selectedSubmapNodes.length >= 1) {
-        items.push({
-          id: 'bulk-submap',
-          label: `Editar submapas (${selectedSubmapNodes.length})`,
-          onClick: openBulkSubmapEdit,
-        });
-      }
-
-      if (
-        isHostNode(node) ||
-        node.type === 'network' ||
-        node.type === 'static' ||
-        node.type === 'submap' ||
-        node.type === 'dashboard_picker'
-      ) {
-        if (selectedNodeIds.length < 2 || !selectedNodeIds.includes(node.id)) {
-          items.push({
-            id: 'props',
-            label: 'Propriedades',
-            onClick: () => openNodeProperties(node),
-          });
-        }
-      }
-      if (node.type !== 'network') {
-        items.push({
-          id: 'link-from',
-          label: 'Adicionar link daqui',
-          onClick: () => beginLinkFrom(node.id),
-        });
-      }
-
-      const multiDelete =
-        selectedNodeIds.length >= 2 && selectedNodeIds.includes(node.id) && selectedNodes.length >= 2;
-
-      if (multiDelete) {
-        items.push({
-          id: 'delete-selection',
-          label: deleteNodesMenuLabel(selectedNodes.length),
-          variant: 'delete',
-          onClick: deleteSelectedNodes,
-        });
-      } else {
-        const deleteLabel =
-          node.type === 'submap'
-            ? 'Excluir submapa'
-            : node.type === 'dashboard_picker'
-              ? 'Excluir seletor'
-              : node.type === 'static'
-                ? 'Excluir estático'
-                : node.type === 'network'
-                  ? 'Excluir rede'
-                  : 'Excluir host';
-
-        items.push({
-          id: 'delete',
-          label: deleteLabel,
-          variant: 'delete',
-          onClick: () =>
-            removeNodesFromCanvas([
-              {
-                ...node,
-                zabbixHost: node.zabbixHost,
-                subtitle: node.subtitle,
-                label: node.label,
-              },
-            ]),
-        });
-      }
-      return items;
-    },
-    [
-      beginLinkFrom,
-      buildToolsMenu,
-      contextMenu,
-      copySelection,
-      deleteSelectedNodes,
-      editable,
-      openBulkCredsEdit,
-      openBulkIconEdit,
-      openBulkSubmapEdit,
-      openNodeProperties,
-      pasteAt,
-      removeNodesFromCanvas,
-      selectedHostNodes.length,
-      selectedNodeIds,
-      selectedNodes.length,
-      selectedSubmapNodes.length,
-      snapCoord,
-    ]
-  );
+    editable,
+    options,
+    hostMetadata,
+    anchor: contextMenu,
+    selectedNodeIds,
+    selectedNodes,
+    selectedHostNodes,
+    selectedSubmapNodes,
+    selectedLink,
+    snapCoord,
+    persist,
+    closeMenu: closeContextMenu,
+    copySelection,
+    pasteAt,
+    deleteSelectedNodes,
+    removeNodes: removeNodesFromCanvas,
+    openBulkIconEdit,
+    openBulkCredsEdit,
+    openBulkSubmapEdit,
+    openNodeProperties,
+    openAddHost: setAddHostAt,
+    openLinkEdit: setEditLink,
+    resetLinkRoute,
+    beginLinkFrom,
+    beginLinkFromCanvas,
+    setPingTarget,
+    showToast,
+  });
 
   const showEmptyHint = map.nodes.length === 0;
 
