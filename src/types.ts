@@ -382,3 +382,13 @@ export function parseTopologyJson(raw: string): TopologyMap | null {
 export function topologyToJson(map: TopologyMap): string {
   return JSON.stringify(map, null, 2);
 }
+
+/** O que o modal de propriedades devolve ao salvar: patch do nó e, opcionalmente, troca de host. */
+export interface NodeEditSavePayload {
+  patch: Partial<TopologyNode>;
+  rebind?: {
+    visibleName: string;
+    ip: string;
+    icon: TopologyHostIcon;
+  };
+}

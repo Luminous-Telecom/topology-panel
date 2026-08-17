@@ -4,6 +4,7 @@ import { useTheme2 } from '@grafana/ui';
 import {
   CanvasTool,
   HostDisplayMap,
+  NodeEditSavePayload,
   HostMetadataMap,
   TopologyHostIcon,
   TopologyLink,
@@ -12,15 +13,16 @@ import {
   TopologyPanelOptions,
   TopologyView,
 } from '../types';
-import { addLinkToMap, addZabbixHostAt, areNetworksLocked, rebindZabbixHost, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps, updateStoredNode, updateHostsIconBulk, updateHostsCredentialsBulk, updateSubmapsBulk } from '../utils/mapEdits';
-import { resolveHostIp, resolveHostLayoutKey } from '../utils/hostLookup';
+import { addLinkToMap, addZabbixHostAt, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps } from '../utils/mapEdits';
+import { resolveHostIp } from '../utils/hostLookup';
 import { clamp, snapToGrid } from '../utils/mapCoords';
-import { upsertHostLayout, withLiveZabbixMeta } from '../utils/mapSync';
+import { withLiveZabbixMeta } from '../utils/mapSync';
 import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, NodeLayout } from '../utils/nodeLayout';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { findNodeById, isHostNode } from '../utils/topologyNodes';
+import { isHostNode } from '../utils/topologyNodes';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { resolvePanelColor } from '../utils/panelColors';
+import { applyNodeEditSave } from '../utils/nodeEditSave';
 import { resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
 import { AlignGuideLine } from '../utils/alignGuides';
 import { buildRegionStatsMap, formatRegionStats, regionStrokeColor } from '../utils/networkStats';
@@ -28,6 +30,7 @@ import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds'
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { TopologyContextMenu } from './TopologyContextMenu';
+import { BulkEditModals } from './canvas/BulkEditModals';
 import { canvasStyles } from './canvas/canvasStyles';
 import { HostNodeShape } from './canvas/HostNodeShape';
 import { LinkLine } from './canvas/LinkLine';
@@ -39,20 +42,10 @@ import { TopologyToast } from './canvas/TopologyToast';
 import { TopologyToolbar } from './canvas/TopologyToolbar';
 import { DashboardNavButton } from './DashboardNavButton';
 import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
-import type { NodeEditSavePayload } from './NodeEditModal';
 import { HostHoverPopover } from './HostHoverPopover';
-import {
-  BulkHostCredentialsModal,
-  BulkHostIconModal,
-  BulkSubmapEditModal,
-  LinkEditModal,
-  NodeEditModal,
-  PingModal,
-  ZabbixHostPickerModal,
-} from './lazyModals';
+import { LinkEditModal, NodeEditModal, PingModal, ZabbixHostPickerModal } from './lazyModals';
 import { TopologyMinimap } from './TopologyMinimap';
 import { LinkPoint, nearestWaypointIndex } from '../utils/linkGeometry';
-import { hasTopologyClipboard } from '../utils/topologyClipboard';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useTopologySelection } from '../hooks/useTopologySelection';
@@ -62,6 +55,7 @@ import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardAction
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
+import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
 import { useTopologyMenuItems } from '../hooks/useTopologyMenuItems';
 
 interface Props {
@@ -747,105 +741,39 @@ export function TopologyCanvas({
     removeNodesFromCanvas(selectedNodes);
   }, [removeNodesFromCanvas, selectedNodes]);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const inField =
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target instanceof HTMLElement && e.target.isContentEditable);
+  const deleteSelectedLink = useCallback(() => {
+    if (!selectedLink) {
+      return;
+    }
+    persist(removeLinkByEndpoints(storedMap, selectedLink.from, selectedLink.to));
+    setSelectedLink(null);
+  }, [persist, selectedLink, setSelectedLink, storedMap]);
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        const el = wrapRef.current;
-        if (el && (searchOpen || el.matches(':hover') || el.contains(document.activeElement))) {
-          e.preventDefault();
-          setSearchOpen(true);
-        }
-        return;
-      }
+  /** Esc: abandona o modo link, fecha menu e zera seleção, marquee e guias de alinhamento. */
+  const cancelInteractions = useCallback(() => {
+    setLinkFromId(null);
+    setContextMenu(null);
+    setSelectedNodeIds([]);
+    setMarqueeRect(null);
+    setAlignGuides([]);
+  }, [setSelectedNodeIds]);
 
-      if (e.key === 'Escape' && searchOpen) {
-        e.preventDefault();
-        setSearchOpen(false);
-        return;
-      }
-
-      if (canPersist && !inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        onUndo?.();
-        return;
-      }
-      if (
-        canPersist &&
-        !inField &&
-        (e.ctrlKey || e.metaKey) &&
-        (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))
-      ) {
-        e.preventDefault();
-        onRedo?.();
-        return;
-      }
-
-      const el = wrapRef.current;
-      const panelActive = Boolean(el && (el.matches(':hover') || el.contains(document.activeElement)));
-
-      if (canEditCanvas && !inField && panelActive) {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-          if (selectedNodeIds.length > 0 || selectedLink) {
-            e.preventDefault();
-            copySelection();
-          }
-          return;
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-          if (hasTopologyClipboard()) {
-            e.preventDefault();
-            pasteAtViewCenter();
-          }
-          return;
-        }
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          if (selectedNodeIds.length > 0) {
-            e.preventDefault();
-            deleteSelectedNodes();
-            return;
-          }
-          if (selectedLink) {
-            e.preventDefault();
-            persist(removeLinkByEndpoints(storedMap, selectedLink.from, selectedLink.to));
-            setSelectedLink(null);
-            return;
-          }
-        }
-      }
-
-      if (!canEditCanvas) {
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        setLinkFromId(null);
-        setContextMenu(null);
-        setSelectedNodeIds([]);
-        setMarqueeRect(null);
-        setAlignGuides([]);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [
-    canEditCanvas,
+  useCanvasKeyboardShortcuts({
+    wrapRef,
     canPersist,
-    copySelection,
-    deleteSelectedNodes,
-    onRedo,
-    onUndo,
-    pasteAtViewCenter,
-    persist,
+    canEditCanvas,
     searchOpen,
-    selectedLink,
+    setSearchOpen,
     selectedNodeIds,
-    storedMap,
-  ]);
+    selectedLink,
+    onUndo,
+    onRedo,
+    copySelection,
+    pasteAtViewCenter,
+    deleteSelectedNodes,
+    deleteSelectedLink,
+    cancelInteractions,
+  });
 
   const {
     bulkIconEditOpen,
@@ -1352,60 +1280,9 @@ export function TopologyCanvas({
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
           onClose={() => setEditNode(null)}
-          onSave={(payload: NodeEditSavePayload) => {
-            let next = storedMap;
-            if (payload.rebind) {
-              next = rebindZabbixHost(
-                next,
-                editNode.id,
-                payload.rebind.visibleName,
-                payload.rebind.ip,
-                payload.rebind.icon,
-                editNode
-              );
-            }
-
-            const findSavedNode = () =>
-              findNodeById(next.nodes, editNode.id) ??
-              (editNode.zabbixHost?.trim()
-                ? next.nodes.find(
-                    (n) => isHostNode(n) && n.zabbixHost?.trim() === editNode.zabbixHost?.trim()
-                  )
-                : undefined) ??
-              (payload.rebind?.ip
-                ? next.nodes.find(
-                    (n) =>
-                      isHostNode(n) &&
-                      (n.subtitle?.trim() === payload.rebind?.ip ||
-                        n.zabbixHost?.trim() === payload.rebind?.ip)
-                  )
-                : undefined);
-
-            let savedNode = findSavedNode();
-
-            if (!savedNode && !payload.rebind && Object.keys(payload.patch).length > 0) {
-              const key = resolveHostLayoutKey(editNode);
-              if (key) {
-                next = upsertHostLayout(next, key, {
-                  id: editNode.id,
-                  x: editNode.x,
-                  y: editNode.y,
-                  width: editNode.width,
-                  height: editNode.height,
-                  label: editNode.label,
-                  subtitle: editNode.subtitle ?? key,
-                  type: 'host',
-                  ...payload.patch,
-                });
-                savedNode = findSavedNode();
-              }
-            }
-
-            if (savedNode && Object.keys(payload.patch).length > 0) {
-              next = updateStoredNode(next, savedNode, payload.patch);
-            }
-            persist(next);
-          }}
+          onSave={(payload: NodeEditSavePayload) =>
+            persist(applyNodeEditSave(storedMap, editNode, payload))
+          }
         />
       )}
 
@@ -1433,50 +1310,23 @@ export function TopologyCanvas({
         />
       )}
 
-      {bulkIconEditOpen && bulkIconTargets.length >= 1 && (
-        <BulkHostIconModal
-          count={bulkIconTargets.length}
-          onClose={() => {
-            setBulkIconEditOpen(false);
-            setBulkIconTargets([]);
-          }}
-          onSave={(icon) => {
-            persist(updateHostsIconBulk(storedMap, bulkIconTargets, icon));
-            showToast(`Tipo aplicado a ${bulkIconTargets.length} hosts`);
-            setBulkIconTargets([]);
-          }}
-        />
-      )}
-
-      {bulkCredsEditOpen && bulkCredsTargets.length >= 1 && (
-        <BulkHostCredentialsModal
-          count={bulkCredsTargets.length}
-          onClose={() => {
-            setBulkCredsEditOpen(false);
-            setBulkCredsTargets([]);
-          }}
-          onSave={(creds) => {
-            persist(updateHostsCredentialsBulk(storedMap, bulkCredsTargets, creds));
-            showToast(`Credenciais aplicadas a ${bulkCredsTargets.length} hosts`);
-            setBulkCredsTargets([]);
-          }}
-        />
-      )}
-
-      {bulkSubmapEditOpen && bulkSubmapTargets.length >= 1 && (
-        <BulkSubmapEditModal
-          count={bulkSubmapTargets.length}
-          onClose={() => {
-            setBulkSubmapEditOpen(false);
-            setBulkSubmapTargets([]);
-          }}
-          onSave={(patch) => {
-            persist(updateSubmapsBulk(storedMap, bulkSubmapTargets, patch));
-            showToast(`Submapas atualizados (${bulkSubmapTargets.length})`);
-            setBulkSubmapTargets([]);
-          }}
-        />
-      )}
+      <BulkEditModals
+        storedMap={storedMap}
+        iconOpen={bulkIconEditOpen}
+        iconTargets={bulkIconTargets}
+        setIconOpen={setBulkIconEditOpen}
+        setIconTargets={setBulkIconTargets}
+        credsOpen={bulkCredsEditOpen}
+        credsTargets={bulkCredsTargets}
+        setCredsOpen={setBulkCredsEditOpen}
+        setCredsTargets={setBulkCredsTargets}
+        submapOpen={bulkSubmapEditOpen}
+        submapTargets={bulkSubmapTargets}
+        setSubmapOpen={setBulkSubmapEditOpen}
+        setSubmapTargets={setBulkSubmapTargets}
+        persist={persist}
+        showToast={showToast}
+      />
 
       {pingTarget && (
         <PingModal

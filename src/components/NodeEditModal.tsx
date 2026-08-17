@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Button, ColorPickerInput, Field, Input, Modal, Select } from '@grafana/ui';
 import {
+  NodeEditSavePayload,
   TopologyDashboardChoice,
   TopologyHostIcon,
   TopologyMap,
@@ -21,15 +22,6 @@ const ipReadoutStyle: React.CSSProperties = {
   fontFamily: 'monospace',
   fontSize: 14,
 };
-
-export interface NodeEditSavePayload {
-  patch: Partial<TopologyNode>;
-  rebind?: {
-    visibleName: string;
-    ip: string;
-    icon: TopologyHostIcon;
-  };
-}
 
 interface Props {
   node: TopologyNode;
