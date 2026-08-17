@@ -34,7 +34,9 @@ hooks de arraste/viewport.
 - Durante gesto (arraste, pan, resize), congele os dados com `useDeferredDuringGesture` e chame o
   `flush` ao soltar o ponteiro — evita que um auto-refresh troque cores e posições no meio do gesto.
 - Não faça deep clone (`JSON.parse(JSON.stringify(map))`) em render nem por nó. Use os helpers
-  imutáveis de `utils/mapEdits.ts`.
+  imutáveis de `utils/mapEdits.ts`, `mapLinkEdits.ts` e `mapBulkEdits.ts`.
+- Hook que devolve objeto (ex.: `useEdgePanLoop`, `useMinimapColors`) mantém a identidade estável
+  com `useMemo`/`useCallback` — senão todo consumidor rerenderiza a cada frame.
 - Trabalho pesado só quando visível: nada de calcular geometria de submapa fechado ou de nó fora do
   viewport.
 

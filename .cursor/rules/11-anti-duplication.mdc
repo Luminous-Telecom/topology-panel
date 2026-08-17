@@ -44,9 +44,14 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 
 | Necessidade | Já existe em |
 |---|---|
-| Add/move/update/remove de nó e link, edição em lote | `utils/mapEdits.ts` |
+| Add/move/update/remove de nó, travas do mapa | `utils/mapEdits.ts` |
+| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`) | `utils/mapLinkEdits.ts` |
+| Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
+| Traduzir o formulário de propriedades em patch do nó | `buildNodeEditPayload` em `utils/nodeEditPayload.ts` |
 | Validar estrutura do mapa | `validateTopologyMap` em `utils/mapValidation.ts` |
 | Converter coordenada de tela para coordenada do mapa | `utils/mapCoords.ts` |
+| Posições do grupo arrastado, limites e vizinhos das guias | `utils/dragMove.ts` |
+| Matemática de zoom (roda e pinch), limites de escala | `utils/zoomMath.ts` |
 | Limites/bounding box do mapa | `utils/mapBounds.ts` |
 | Guias de alinhamento durante o arraste | `computeAlignGuides` em `utils/alignGuides.ts` |
 | Pan automático ao arrastar na borda | `utils/edgePan.ts` |
@@ -56,8 +61,14 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts`, `useTopologyDragController.ts`, `useTopologyViewport.ts` |
+| Medida do painel, tela cheia e gestos de zoom | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
-| Hosts visíveis de um mapa (nomes/refs) | `extractTopologyHostNames`, `extractTopologyHostRefs` em `utils/submapHosts.ts` |
+| Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
+| Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
+| Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
+| Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys` em `utils/submapHosts.ts` |
+| Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |
+| Itens da legenda a partir das opções do painel | `buildLegendItems` em `utils/legendItems.ts` |
 
 ## Grafana, aparência e UI
 

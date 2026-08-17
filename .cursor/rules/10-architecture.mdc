@@ -18,25 +18,31 @@ Qualquer arquivo em `src/`.
 
 | Área | Arquivo |
 |---|---|
-| Render SVG, pan/zoom, links | `components/TopologyCanvas.tsx` |
-| Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` |
+| Composição do canvas: junta hooks e camadas, não desenha | `components/TopologyCanvas.tsx` |
+| Camadas do `<svg>`: grid, redes, cabos, seleção, hosts | `components/canvas/CanvasGridLayer.tsx`, `NodeLayers.tsx`, `LinksLayer.tsx`, `CanvasSelectionShapes.tsx` |
+| Formas de um nó / de um cabo | `components/canvas/NetworkNodeShape.tsx`, `HostNodeShape.tsx`, `LinkLine.tsx` |
+| Camadas sobrepostas: controles, HUD e modais | `components/canvas/CanvasControlsOverlay.tsx`, `CanvasHudOverlay.tsx`, `CanvasModals.tsx` |
+| Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` (render), `hooks/useCanvasContextMenu.ts` (estado), `hooks/useTopologyMenuItems.ts` + `utils/contextMenuItems.ts` (itens) |
 | Toolbar, busca, legenda, toast e badge do canvas | `components/canvas/*` (um arquivo por peça) |
+| Modal de propriedades do nó | `components/NodeEditModal.tsx` + campos por tipo em `components/nodeEdit/*` |
 | Opções do painel e wiring do Grafana | `components/TopologyPanel.tsx`, `module.ts` |
-| Editor de JSON, nós e links | `editor/TopologyEditor.tsx` |
+| Editor de JSON, nós e links | `editor/TopologyEditor.tsx` + seções em `editor/sections/*` |
 | Leitura única da aba Query | `services/queryIndex.ts` |
-| Mutações do `TopologyMap` | `utils/mapEdits.ts` |
+| Mutações do `TopologyMap` | `utils/mapEdits.ts` (nós e travas), `utils/mapLinkEdits.ts` (cabos), `utils/mapBulkEdits.ts` (lote) |
 | Lógica pura, sem estado | `utils/*` (um módulo por tema) |
 | Lógica com estado ou efeito | `hooks/*` |
 | Tipos compartilhados e `defaultOptions()` | `types.ts` |
 
 ## Regras obrigatórias
 
-- Mutação de `TopologyMap` acontece **só** em `utils/mapEdits.ts`. Componente não monta objeto de
-  mapa na mão nem faz spread de `nodes`/`links` para inserir item.
+- Mutação de `TopologyMap` acontece **só** nos três módulos de edição (`mapEdits`, `mapLinkEdits`,
+  `mapBulkEdits`). Componente não monta objeto de mapa na mão nem faz spread de `nodes`/`links`
+  para inserir item.
 - Modal (`*Modal.tsx`) é só UI e validação de formulário. A mutação real delega para `mapEdits.ts`.
 - Modal novo segue o esqueleto já usado: `Modal` + `Field`/`Input` controlados + `Modal.ButtonRow`
   com "Cancelar" e a ação primária. Não invente outro layout.
-- Lógica com estado vira hook em `hooks/`, não bloco novo dentro de `TopologyCanvas.tsx`.
+- Lógica com estado vira hook em `hooks/`, não bloco novo dentro de `TopologyCanvas.tsx`. JSX novo
+  no canvas vira camada em `components/canvas/`, recebendo por prop só o que desenha.
 - O projeto não usa arquivos barrel (`index.ts`) — importe direto do arquivo de origem e não crie
   barrels novos.
 - Tipos do domínio: nó é `host` | `network` | `submap` | `static`; link é
@@ -56,5 +62,6 @@ onChange(addSubmapAt(map, x, y));
 
 ## Exceções
 
-Arquivos grandes já existentes (`TopologyCanvas.tsx`, `useTopologyDragController.ts`) não precisam
-ser quebrados numa tarefa não relacionada — mas código **novo** entra no lugar certo desde o começo.
+`useTopologyDragController.ts` continua grande porque é uma máquina de estado só: um gesto por vez
+num `dragRef` compartilhado. Não precisa ser quebrado numa tarefa não relacionada — mas código
+**novo** entra no lugar certo desde o começo.
