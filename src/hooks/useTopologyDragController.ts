@@ -608,6 +608,117 @@ export function useTopologyDragController({
     clearDragUi();
   }, [clearDragUi, setDragPreview]);
 
+  /** Encerra o gesto: solta refs, para o pan de borda e aplica o pan pendente. */
+  const endGestureBookkeeping = useCallback(
+    (drag: DragState, e: React.PointerEvent) => {
+      dragRef.current = null;
+      edgePan.pointerRef.current = null;
+      edgePan.stop();
+      if (panRafRef.current != null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
+      const pending = panPendingRef.current;
+      panPendingRef.current = null;
+      if (drag.kind === 'pan' && drag.moved && pending) {
+        commitView((v) => ({ ...v, x: pending.x, y: pending.y }));
+      }
+      try {
+        wrapRef.current?.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    },
+    [commitView, edgePan, wrapRef]
+  );
+
+  /**
+   * Toque curto com a mão (sem arrastar). O pointer capture no wrap mata o `click` nativo, então
+   * abrir submapa, seletor, cabo e propriedades por duplo toque acontece aqui.
+   * Devolve `true` quando o toque já foi tratado.
+   */
+  const handlePanTap = useCallback(
+    (drag: DragState, node?: TopologyNode): boolean => {
+      if (drag.kind !== 'pan' || drag.moved) {
+        return false;
+      }
+      const tap = drag.tapNode ?? node;
+      if (!editable && tap?.type === 'submap') {
+        openSubmap(tap);
+        return true;
+      }
+      if (!editable && tap?.type === 'dashboard_picker') {
+        openDashboardPicker(tap);
+        return true;
+      }
+      if (drag.tapLink) {
+        onLinkSelect(drag.tapLink);
+        return true;
+      }
+      return Boolean(editable && tap && tryDoubleTapOpenProperties(tap));
+    },
+    [editable, onLinkSelect, openDashboardPicker, openSubmap, tryDoubleTapOpenProperties]
+  );
+
+  /** Fecha o laço de seleção: abaixo de 4px foi clique, não laço — não mexe na seleção. */
+  const commitMarquee = useCallback(
+    (drag: Extract<DragState, { kind: 'marquee' }>, e: React.PointerEvent) => {
+      setMarqueeRect(null);
+      const corner = clientToMap(e.clientX, e.clientY);
+      if (!corner) {
+        return;
+      }
+      const sel = normalizeRect(drag.mapX0, drag.mapY0, corner.x, corner.y);
+      if (sel.w <= 4 && sel.h <= 4) {
+        return;
+      }
+      const ids = nodesInMarquee(sel, map.nodes, nodeLayouts, areNetworksLocked(storedMap));
+      setSelectedNodeIds((prev) => (drag.additive ? [...new Set([...prev, ...ids])] : ids));
+    },
+    [clientToMap, map.nodes, nodeLayouts, setMarqueeRect, setSelectedNodeIds, storedMap]
+  );
+
+  /** Grava as posições do arraste (um nó ou o grupo inteiro) e limpa o preview. */
+  const commitNodeDrag = useCallback(
+    (moved: boolean) => {
+      const positions = dragPositionsRef.current;
+      if (moved && positions) {
+        const moves = Object.entries(positions).map(([nodeId, pos]) => ({
+          nodeId,
+          x: pos.x,
+          y: pos.y,
+        }));
+        persist(moveStoredNodesBulk(storedMap, moves, (nodeId) => findNodeById(map.nodes, nodeId)));
+      }
+      dragPositionsRef.current = null;
+      setDragPreview(null);
+      clearDragUi();
+    },
+    [clearDragUi, map.nodes, persist, setDragPreview, storedMap]
+  );
+
+  /** Clique em nó sem arraste: fecha o link em andamento ou atualiza a seleção. */
+  const handleNodeTap = useCallback(
+    (tapNode: TopologyNode, e: React.PointerEvent) => {
+      if (linkFromId !== null) {
+        completeLink(tapNode.id);
+        return;
+      }
+      if (tryDoubleTapOpenProperties(tapNode)) {
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) {
+        setSelectedNodeIds((prev) =>
+          prev.includes(tapNode.id) ? prev.filter((id) => id !== tapNode.id) : [...prev, tapNode.id]
+        );
+      } else {
+        setSelectedNodeIds([tapNode.id]);
+      }
+      setSelectedLink(null);
+    },
+    [completeLink, linkFromId, setSelectedLink, setSelectedNodeIds, tryDoubleTapOpenProperties]
+  );
+
   const onPointerUp = useCallback(
     (e: React.PointerEvent, node?: TopologyNode) => {
       const d = dragRef.current;
@@ -617,153 +728,50 @@ export function useTopologyDragController({
       if (d.kind === 'node') {
         applyNodeDragMove(e.clientX, e.clientY, e);
       }
-      dragRef.current = null;
-      edgePan.pointerRef.current = null;
-      edgePan.stop();
-      if (panRafRef.current != null) {
-        cancelAnimationFrame(panRafRef.current);
-        panRafRef.current = null;
-      }
-      if (d?.kind === 'pan' && d.moved && panPendingRef.current) {
-        const pending = panPendingRef.current;
-        panPendingRef.current = null;
-        commitView((v) => ({ ...v, x: pending.x, y: pending.y }));
-      } else {
-        panPendingRef.current = null;
-      }
-      try {
-        wrapRef.current?.releasePointerCapture(e.pointerId);
-      } catch {
-        /* already released */
-      }
+      endGestureBookkeeping(d, e);
 
-      // Tap em submapa / seletor (visualização): pointer capture no wrap mata o click nativo.
-      if (d?.kind === 'pan' && !d.moved) {
-        const tap = d.tapNode ?? node;
-        if (!editable && tap?.type === 'submap') {
-          openSubmap(tap);
-          return;
-        }
-        if (!editable && tap?.type === 'dashboard_picker') {
-          openDashboardPicker(tap);
-          return;
-        }
-        // Tap no cabo: mesma situação — captura no wrap mata o click.
-        if (d.tapLink) {
-          onLinkSelect(d.tapLink);
-          return;
-        }
-        if (editable) {
-          const tap = d.tapNode ?? node;
-          if (tap && tryDoubleTapOpenProperties(tap)) {
-            return;
-          }
-        }
-      }
-
-      if (d?.kind === 'marquee') {
-        setMarqueeRect(null);
-        const corner = clientToMap(e.clientX, e.clientY);
-        if (corner) {
-          const sel = normalizeRect(d.mapX0, d.mapY0, corner.x, corner.y);
-          // Abaixo de 4px foi clique, não laço — não mexe na seleção.
-          if (sel.w > 4 || sel.h > 4) {
-            const ids = nodesInMarquee(sel, map.nodes, nodeLayouts, areNetworksLocked(storedMap));
-            if (d.additive) {
-              setSelectedNodeIds((prev) => [...new Set([...prev, ...ids])]);
-            } else {
-              setSelectedNodeIds(ids);
-            }
-          }
-        }
+      if (handlePanTap(d, node)) {
         return;
       }
 
-      if (d?.kind === 'link-waypoint') {
+      if (d.kind === 'marquee') {
+        commitMarquee(d, e);
+        return;
+      }
+
+      if (d.kind === 'link-waypoint') {
         commitLinkWaypoint(d);
         return;
       }
 
-      if (d?.kind === 'node' && d.moved) {
-        const positions = dragPositionsRef.current;
-        if (positions) {
-          const moves = Object.entries(positions).map(([nodeId, pos]) => ({
-            nodeId,
-            x: pos.x,
-            y: pos.y,
-          }));
-          persist(moveStoredNodesBulk(storedMap, moves, (nodeId) => findNodeById(map.nodes, nodeId)));
-        }
-        dragPositionsRef.current = null;
-        setDragPreview(null);
-        clearDragUi();
-      } else if (d?.kind === 'node') {
-        dragPositionsRef.current = null;
-        setDragPreview(null);
-        clearDragUi();
+      if (d.kind === 'node') {
+        commitNodeDrag(d.moved);
       }
 
-      if (d?.kind === 'resize' && dragPreview && d.moved) {
+      if (d.kind === 'resize' && dragPreview && d.moved) {
         persist(
-          updateStoredNode(storedMap, d.node, {
-            width: dragPreview.width,
-            height: dragPreview.height,
-          })
+          updateStoredNode(storedMap, d.node, { width: dragPreview.width, height: dragPreview.height })
         );
         setDragPreview(null);
       }
 
-      const tapNode = d?.kind === 'node' ? d.node : node;
-
-      if (tapNode && d?.kind === 'node' && !d.moved && linkFromId !== null) {
-        completeLink(tapNode.id);
-        return;
-      }
-
-      if (tapNode && d?.kind === 'node' && !d.moved && linkFromId === null) {
-        if (tryDoubleTapOpenProperties(tapNode)) {
-          return;
-        }
-        if (e.ctrlKey || e.metaKey) {
-          setSelectedNodeIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(tapNode.id)) {
-              next.delete(tapNode.id);
-            } else {
-              next.add(tapNode.id);
-            }
-            return [...next];
-          });
-        } else {
-          setSelectedNodeIds([tapNode.id]);
-        }
-        setSelectedLink(null);
+      const tapNode = d.kind === 'node' ? d.node : node;
+      if (tapNode && d.kind === 'node' && !d.moved) {
+        handleNodeTap(tapNode, e);
       }
     },
     [
       applyNodeDragMove,
-      clearDragUi,
-      clientToMap,
       commitLinkWaypoint,
-      commitView,
-      completeLink,
+      commitMarquee,
+      commitNodeDrag,
       dragPreview,
-      edgePan,
-      editable,
-      linkFromId,
-      map.nodes,
-      nodeLayouts,
-      onLinkSelect,
-      openDashboardPicker,
-      openSubmap,
+      endGestureBookkeeping,
+      handleNodeTap,
+      handlePanTap,
       persist,
       setDragPreview,
-      setMarqueeRect,
-      setSelectedLink,
-      setSelectedNodeIds,
       storedMap,
-      tryDoubleTapOpenProperties,
-      wrapRef,
     ]
   );
 
