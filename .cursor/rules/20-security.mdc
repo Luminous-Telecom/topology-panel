@@ -16,7 +16,8 @@ Todo o repositório, em qualquer tarefa.
 ## Segredos e dependências
 
 - Nunca escreva segredo, token, senha ou endereço de servidor interno em código, rule, teste ou
-  mensagem de commit. Segredo fica em `.env` (já ignorado) ou na configuração do datasource.
+  mensagem de commit. Segredo fica em `.env` (já ignorado) ou na configuração do datasource. Isso
+  vale também para o `scripts/deploy.sh` local: ele lê host, usuário e senha do `.env`.
 - Nunca commite `.env`, `*.pem`, `credentials.json`, `examples/` ou `dashboards/`.
 - Não adicione dependência sem necessidade real: confira antes se `@grafana/ui` já resolve e cheque
   vulnerabilidades conhecidas (`npm audit`). Dependência nova vai para o bundle entregue ao Grafana —

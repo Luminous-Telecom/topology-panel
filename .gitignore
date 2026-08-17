@@ -4,6 +4,7 @@ dist/
 *.log
 
 # Artefatos locais
+scripts/
 *.tar.gz
 *.tgz
 .cache/

@@ -20,7 +20,9 @@ Toda tarefa e todo commit deste repositório.
 3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
 4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
 5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.
-6. Deploy é manual pelo usuário: não copie `dist/` para servidor nem reinicie serviço.
+6. Deploy só quando o usuário pedir, e sempre por `./scripts/deploy.sh` — não copie `dist/` na mão
+  nem reinicie serviço por outro caminho. Sem alvo, publica em `homolog`; `prod` exige pedido
+  explícito. O script é local (ignorado pelo git): não o versione nem o cite no README.
 
 ## Commits
 
