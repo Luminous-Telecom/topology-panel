@@ -10,6 +10,7 @@ export interface NodeEditFormValues {
   subtitle: string;
   submapUid: string;
   submapSlug: string;
+  submapChildMapId: string;
   queryRefId: string;
   dashboardChoices: TopologyDashboardChoice[];
   icon: TopologyHostIcon;
@@ -38,6 +39,7 @@ export function initialNodeEditValues(node: TopologyNode): NodeEditFormValues {
     subtitle: node.subtitle ?? '',
     submapUid: node.submapUid ?? '',
     submapSlug: node.submapSlug ?? '',
+    submapChildMapId: node.submapChildMapId ?? '',
     queryRefId: node.queryRefId ?? '',
     dashboardChoices: node.dashboardChoices ?? [],
     icon: node.icon ?? 'network',

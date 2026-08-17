@@ -62,6 +62,7 @@ export function buildNodeEditPayload(
     subtitle: type === 'dashboard_picker' ? undefined : values.subtitle,
     submapUid: type === 'submap' ? values.submapUid : undefined,
     submapSlug: type === 'submap' ? values.submapSlug : undefined,
+    submapChildMapId: type === 'submap' ? trimmedOrUndefined(values.submapChildMapId) : undefined,
     icon: isHost ? values.icon : undefined,
   };
 

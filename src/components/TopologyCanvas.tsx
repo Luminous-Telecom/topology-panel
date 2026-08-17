@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
-import { CanvasTool, HostDisplayMap, HostMetadataMap, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
+import { computeNocMapSummary, isLinkVisibleForFilters, TopologyFilterContext } from '../utils/noc/topologyFilters';
+import { TopologyFilterBar } from './canvas/TopologyFilterBar';
+import { NocStatusBanner } from './canvas/NocStatusBanner';
 import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
-import { addLinkToMap, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
+import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { isHostNode } from '../utils/topologyNodes';
+import { isHostNode, findNodeById } from '../utils/topologyNodes';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
@@ -22,6 +26,18 @@ import { LinksLayer } from './canvas/LinksLayer';
 import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { TopologyToast } from './canvas/TopologyToast';
+import { LinkDetailsDrawer, resolveLinkDetailsMetrics } from './LinkDetailsDrawer';
+import { discoverTopologyNeighbors } from '../utils/topologyDiscovery/discoverTopologyNeighbors';
+import {
+  confirmAllSuggestedLinks,
+  confirmSuggestedLink,
+  ignoreSuggestedLink,
+  mergeSuggestedLinks,
+} from '../utils/mapSuggestedLinkEdits';
+import { SuggestedLinksReviewModal, NeighborDiscoveryReport } from './SuggestedLinksReviewModal';
+import { TopologyBlueprintModal } from './lazyModals';
+import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
+import { SuggestedLinkLine } from './canvas/SuggestedLinkLine';
 import { openDashboardUrl } from './DashboardPickerModal';
 import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
@@ -68,6 +84,12 @@ interface Props {
   queryData?: PanelData;
   /** UID do datasource Zabbix (aba Query) — usado pelo modal de ping */
   zabbixDatasourceUid?: string;
+  /** Métricas voláteis de links (RX/TX/utilização) */
+  linkMetricsByLink?: LinkRuntimeMetricsMap;
+  /** Problemas Zabbix para badges NOC */
+  hostProblems?: HostProblemsMap;
+  hostProblemsLoading?: boolean;
+  onNocModeChange?: (enabled: boolean) => void;
   /** Buscando IP da interface principal no Zabbix (fallback quando a Query não traz IP). */
   zabbixMetadataLoading?: boolean;
   onMapChange?: (map: TopologyMap) => void;
@@ -80,6 +102,16 @@ interface Props {
   canRedo?: boolean;
   /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). */
   hideOverlayControls?: boolean;
+  /** View salva do mapa ativo (raiz ou filho na navegação hierárquica). */
+  savedView?: TopologyView;
+  /** Chave do mapa ativo — reinicia pan/zoom ao trocar. */
+  mapNavigationKey?: string;
+  mapNavigationBreadcrumb?: string[];
+  canMapNavigateBack?: boolean;
+  canMapNavigateForward?: boolean;
+  onMapNavigateBack?: (currentView: TopologyView) => void;
+  onMapNavigateForward?: (currentView: TopologyView) => void;
+  onNavigateToChildMap?: (childMapId: string, label: string, currentView: TopologyView) => void;
 }
 
 export function TopologyCanvas({
@@ -96,6 +128,10 @@ export function TopologyCanvas({
   refreshIntervalSec = null,
   queryData: liveQueryData,
   zabbixDatasourceUid,
+  linkMetricsByLink = {},
+  hostProblems,
+  hostProblemsLoading = false,
+  onNocModeChange,
   zabbixMetadataLoading = false,
   onMapChange,
   onViewChange,
@@ -106,6 +142,14 @@ export function TopologyCanvas({
   canUndo = false,
   canRedo = false,
   hideOverlayControls = false,
+  savedView: savedViewProp,
+  mapNavigationKey = 'root',
+  mapNavigationBreadcrumb = [],
+  canMapNavigateBack = false,
+  canMapNavigateForward = false,
+  onMapNavigateBack,
+  onMapNavigateForward,
+  onNavigateToChildMap,
 }: Props) {
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
@@ -144,7 +188,7 @@ export function TopologyCanvas({
   }, []);
   const svgRef = useRef<SVGSVGElement>(null);
   const { flowPaused, setFlowPaused } = useLinkFlowAnimation(wrapRef);
-  const savedView = options.view;
+  const savedView = savedViewProp ?? options.view;
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
   const editable = canEditCanvas;
@@ -197,6 +241,7 @@ export function TopologyCanvas({
     onPinchStart,
     onFullscreenChange,
     showToast,
+    viewResetKey: mapNavigationKey,
   });
   const {
     selectedNodeIds,
@@ -222,6 +267,21 @@ export function TopologyCanvas({
     });
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
+  const [pendingLink, setPendingLink] = useState<{
+    from: string;
+    to: string;
+    fromNode: TopologyNode;
+    toNode: TopologyNode;
+  } | null>(null);
+  const [detailsLink, setDetailsLink] = useState<TopologyLink | null>(null);
+  const [suggestedReviewOpen, setSuggestedReviewOpen] = useState(false);
+  const [blueprintOpen, setBlueprintOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
+  const effectiveNocMode = Boolean(options.nocMode) || Boolean(hideOverlayControls);
+  const viewEditable = editable && !effectiveNocMode;
+  const [discoveringNeighbors, setDiscoveringNeighbors] = useState(false);
+  const [neighborReport, setNeighborReport] = useState<NeighborDiscoveryReport | undefined>();
+  const [neighborError, setNeighborError] = useState<string | undefined>();
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const {
     editNode,
@@ -250,9 +310,38 @@ export function TopologyCanvas({
   } | null>(null);
 
   const layoutOpts = useMemo(
-    () => ({ nodeFontSize: options.nodeFontSize, showSubtitle: options.showSubtitle }),
-    [options.nodeFontSize, options.showSubtitle]
+    () => ({
+      nodeFontSize: Math.round(options.nodeFontSize * (effectiveNocMode ? 1.2 : 1)),
+      showSubtitle: options.showSubtitle,
+    }),
+    [options.nodeFontSize, options.showSubtitle, effectiveNocMode]
   );
+
+  const filterContext = useMemo<TopologyFilterContext>(
+    () => ({
+      map,
+      hostDisplay,
+      hostMetadata,
+      hostProblems,
+      linkMetricsByLink,
+      options,
+    }),
+    [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options]
+  );
+
+  const nocSummary = useMemo(() => computeNocMapSummary(filterContext), [filterContext]);
+
+  const toggleFilter = useCallback((filter: TopologyMapFilterId) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(filter)) {
+        next.delete(filter);
+      } else {
+        next.add(filter);
+      }
+      return next;
+    });
+  }, []);
 
   const gridStep = options.gridSize ?? 10;
   const snapCoord = useCallback(
@@ -263,6 +352,7 @@ export function TopologyCanvas({
   const { nodeLayouts, regionStats } = useNodeLayouts({
     map,
     layoutOpts,
+    templateOpts: options,
     dragPreview,
     hostDisplay,
     hostDisplayByRefId,
@@ -288,12 +378,28 @@ export function TopologyCanvas({
   });
 
   const { validLinks, renderLinks } = useRenderLinks(map.links, nodeLayouts, selectedLink);
+  const filteredRenderLinks = useMemo(() => {
+    if (!activeFilters.size) {
+      return renderLinks;
+    }
+    return renderLinks.filter(({ link }) => isLinkVisibleForFilters(link, activeFilters, filterContext));
+  }, [renderLinks, activeFilters, filterContext]);
 
   const persist = useCallback(
     (next: TopologyMap) => {
       onMapChange?.(next);
     },
     [onMapChange]
+  );
+
+  const handleBlueprintApply = useCallback(
+    (blueprint: TopologyBlueprint) => {
+      const { map: next, addedNodes, addedLinks } = applyTopologyBlueprint(storedMap, blueprint);
+      persist(next);
+      setBlueprintOpen(false);
+      showToast(`Modelo inserido: ${addedNodes} nó(s), ${addedLinks} link(s).`);
+    },
+    [persist, showToast, storedMap]
   );
 
   const { clipboardReady, copySelection, pasteAt, pasteAtViewCenter } = useTopologyClipboardActions({
@@ -352,12 +458,34 @@ export function TopologyCanvas({
     [commitView, nodeLayouts, viewRef, viewportRef]
   );
 
-  const openSubmap = useCallback((node: TopologyNode) => {
-    if (node.type !== 'submap' || !node.submapUid) {
-      return;
-    }
-    openDashboardUrl(node.submapUid, node.submapSlug);
-  }, []);
+  const openSubmap = useCallback(
+    (node: TopologyNode) => {
+      if (node.type !== 'submap') {
+        return;
+      }
+      const childMapId = node.submapChildMapId?.trim();
+      if (childMapId) {
+        const childMap = options.childMaps?.[childMapId];
+        if (childMap && onNavigateToChildMap) {
+          onNavigateToChildMap(
+            childMapId,
+            node.label?.trim() || childMapId,
+            viewRef.current
+          );
+          return;
+        }
+        showToast('Mapa interno não encontrado');
+        return;
+      }
+      const uid = node.submapUid?.trim();
+      if (uid) {
+        openDashboardUrl(uid, node.submapSlug, options.dashboardNavVariable?.trim() || 'mapa');
+        return;
+      }
+      showToast('Submapa sem destino configurado');
+    },
+    [onNavigateToChildMap, options.childMaps, options.dashboardNavVariable, showToast]
+  );
 
   /** Entra no modo link sem origem: o próximo clique num nó define o ponto de partida. */
   const beginLinkFromCanvas = useCallback(() => setLinkFromId(''), []);
@@ -376,16 +504,93 @@ export function TopologyCanvas({
       if (linkFromId === targetId) {
         return;
       }
+      const fromNode = findNodeById(storedMap.nodes, linkFromId);
+      const toNode = findNodeById(storedMap.nodes, targetId);
+      if (fromNode && toNode && isHostNode(fromNode) && isHostNode(toNode) && zabbixDatasourceUid) {
+        setPendingLink({ from: linkFromId, to: targetId, fromNode, toNode });
+        setLinkFromId(null);
+        return;
+      }
       persist(addLinkToMap(storedMap, linkFromId, targetId));
       setLinkFromId(null);
     },
-    [linkFromId, persist, storedMap]
+    [linkFromId, persist, storedMap, zabbixDatasourceUid]
   );
 
-  const onLinkSelect = useCallback((link: TopologyLink) => {
+  const handlePendingLinkSave = useCallback(
+    (
+      fromInterface: TopologyInterfaceReference | undefined,
+      toInterface: TopologyInterfaceReference | undefined,
+      bandwidthMbps?: number
+    ) => {
+      if (!pendingLink) {
+        return;
+      }
+      persist(
+        addLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
+          fromInterface,
+          toInterface,
+          bandwidthMbps,
+        })
+      );
+      setPendingLink(null);
+    },
+    [pendingLink, persist, storedMap]
+  );
+
+  const onLinkSelect = useCallback(
+    (link: TopologyLink) => {
+      setSelectedNodeIds([]);
+      setSelectedLink((prev) => {
+        const isSame = prev && linkKey(prev) === linkKey(link);
+        if (!editable) {
+          setDetailsLink(isSame ? null : link);
+        }
+        return isSame ? null : link;
+      });
+    },
+    [editable]
+  );
+
+  const openLinkDetails = useCallback((link: TopologyLink) => {
+    setDetailsLink(link);
+    setSelectedLink(link);
     setSelectedNodeIds([]);
-    setSelectedLink((prev) => (prev && linkKey(prev) === linkKey(link) ? null : link));
   }, []);
+
+  const pendingSuggestions = useMemo(
+    () => (storedMap.suggestedLinks ?? []).filter((s) => s.state === 'suggested'),
+    [storedMap.suggestedLinks]
+  );
+
+  const runNeighborDiscovery = useCallback(async () => {
+    if (!zabbixDatasourceUid) {
+      setNeighborError('Configure o datasource Zabbix na aba Query do painel.');
+      setSuggestedReviewOpen(true);
+      return;
+    }
+    setDiscoveringNeighbors(true);
+    setNeighborError(undefined);
+    setSuggestedReviewOpen(true);
+    try {
+      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata);
+      const merged = mergeSuggestedLinks(storedMap, result.suggestions);
+      if (merged !== storedMap) {
+        persist(merged);
+      }
+      setNeighborReport({
+        hostsScanned: result.hostsScanned,
+        neighborRecords: result.neighborRecords,
+        lldpAvailable: result.lldpAvailable,
+        cdpAvailable: result.cdpAvailable,
+        newSuggestions: result.suggestions.length,
+      });
+    } catch {
+      setNeighborError('Não foi possível consultar vizinhos no Zabbix.');
+    } finally {
+      setDiscoveringNeighbors(false);
+    }
+  }, [hostMetadata, persist, storedMap, zabbixDatasourceUid]);
 
   const {
     dragRef,
@@ -409,7 +614,7 @@ export function TopologyCanvas({
     map,
     storedMap,
     nodeLayouts,
-    editable,
+    editable: viewEditable,
     enablePan: Boolean(options.enablePan),
     gridStep,
     snapCoord,
@@ -631,6 +836,7 @@ export function TopologyCanvas({
     openNodeProperties,
     openAddHost: setAddHostAt,
     openLinkEdit: setEditLink,
+    openLinkDetails,
     resetLinkRoute,
     beginLinkFrom,
     beginLinkFromCanvas,
@@ -700,6 +906,15 @@ export function TopologyCanvas({
         hidden={Boolean(hideOverlayControls)}
         map={map}
         options={options}
+        mapNavigationBreadcrumb={mapNavigationBreadcrumb}
+        canMapNavigateBack={canMapNavigateBack}
+        canMapNavigateForward={canMapNavigateForward}
+        onMapNavigateBack={
+          onMapNavigateBack ? () => onMapNavigateBack(viewRef.current) : undefined
+        }
+        onMapNavigateForward={
+          onMapNavigateForward ? () => onMapNavigateForward(viewRef.current) : undefined
+        }
         tool={tool}
         setTool={setTool}
         networksLocked={networksLocked}
@@ -708,7 +923,11 @@ export function TopologyCanvas({
         canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
         canPaste={canEditCanvas && clipboardReady}
         canPersist={canPersist}
-        editable={editable}
+        editable={viewEditable}
+        nocModeActive={effectiveNocMode}
+        onToggleNocMode={
+          onNocModeChange ? () => onNocModeChange(!options.nocMode) : undefined
+        }
         onUndo={onUndo}
         onRedo={onRedo}
         onCopy={copySelection}
@@ -727,7 +946,21 @@ export function TopologyCanvas({
         setSearchOpen={setSearchOpen}
         onSearchFocusNode={focusNodeOnMap}
         queryError={Boolean(queryError)}
+        onDiscoverNeighbors={
+          canEditCanvas && !effectiveNocMode && zabbixDatasourceUid ? runNeighborDiscovery : undefined
+        }
+        discoveringNeighbors={discoveringNeighbors}
+        suggestedLinksCount={pendingSuggestions.length}
+        onReviewSuggestedLinks={() => setSuggestedReviewOpen(true)}
+        onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
+
+      {effectiveNocMode && !hideOverlayControls ? (
+        <>
+          <TopologyFilterBar activeFilters={activeFilters} onToggle={toggleFilter} />
+          <NocStatusBanner summary={nocSummary} problemsLoading={hostProblemsLoading} />
+        </>
+      ) : null}
 
       <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
         <div
@@ -769,7 +1002,7 @@ export function TopologyCanvas({
             resolveColor={resolveColor}
             selectedNodeIds={selectedNodeIds}
             panTool={panTool}
-            editable={editable}
+            editable={viewEditable}
             networksLocked={networksLocked}
             onPointerDown={onNetworkPointerDown}
             onDoubleClick={onNodeDoubleClick}
@@ -778,16 +1011,30 @@ export function TopologyCanvas({
             onResizePointerUp={onPointerUp}
           />
 
+          {(storedMap.suggestedLinks ?? [])
+            .filter((s) => s.state === 'suggested')
+            .map((suggestion) => (
+              <SuggestedLinkLine
+                key={suggestion.id}
+                suggestion={suggestion}
+                nodeLayouts={nodeLayouts}
+                options={options}
+                selected={false}
+                onSelect={() => setSuggestedReviewOpen(true)}
+              />
+            ))}
+
           <LinksLayer
-            renderLinks={renderLinks}
+            renderLinks={filteredRenderLinks}
             nodeLayouts={nodeLayouts}
             options={options}
-            editable={editable}
+            editable={viewEditable}
             panTool={panTool}
             selectedLink={selectedLink}
             hoveredLinkKey={hoveredLinkKey}
             setHoveredLinkKey={setHoveredLinkKey}
             resolveLinkWaypoints={resolveLinkWaypoints}
+            linkMetricsByLink={linkMetricsByLink}
             onLinkSelect={onLinkSelect}
             onLinkContextMenu={(e, link) => handleContextMenu(e, { link })}
             beginPan={beginPan}
@@ -798,6 +1045,7 @@ export function TopologyCanvas({
           <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
 
           <HostNodesLayer
+            map={map}
             nodes={map.nodes}
             nodeLayouts={nodeLayouts}
             regionStats={regionStats}
@@ -805,13 +1053,18 @@ export function TopologyCanvas({
             queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
+            hostProblems={hostProblems}
+            linkMetricsByLink={linkMetricsByLink}
+            activeFilters={activeFilters}
+            filterContext={filterContext}
+            showHostBadges={options.showHostBadges !== false}
             resolveColor={resolveColor}
             selectedNodeIds={selectedNodeIds}
             selectedLink={selectedLink}
             linkFromId={linkFromId}
             linkHoverId={linkHoverId}
             panTool={panTool}
-            editable={editable}
+            editable={viewEditable}
             onPointerDown={onNodePointerDown}
             onClick={onNodeClick}
             onDoubleClick={onNodeDoubleClick}
@@ -865,9 +1118,56 @@ export function TopologyCanvas({
         setPingTarget={setPingTarget}
         hostHover={hostHover}
         searchOpen={searchOpen}
+        pendingLink={pendingLink}
+        onPendingLinkClose={() => setPendingLink(null)}
+        onPendingLinkSave={handlePendingLinkSave}
       />
 
       <TopologyToast message={toast} />
+
+      {detailsLink ? (
+        <LinkDetailsDrawer
+          link={detailsLink}
+          storedMap={storedMap}
+          options={options}
+          runtimeMetrics={resolveLinkDetailsMetrics(detailsLink, linkMetricsByLink)}
+          onClose={() => setDetailsLink(null)}
+          onEdit={
+            editable
+              ? () => {
+                  setEditLink(detailsLink);
+                  setDetailsLink(null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
+
+      {suggestedReviewOpen ? (
+        <SuggestedLinksReviewModal
+          map={storedMap}
+          suggestions={storedMap.suggestedLinks ?? []}
+          report={neighborReport}
+          loading={discoveringNeighbors}
+          loadError={neighborError}
+          onConfirm={(id) => persist(confirmSuggestedLink(storedMap, id))}
+          onIgnore={(id) => persist(ignoreSuggestedLink(storedMap, id))}
+          onConfirmAll={() => persist(confirmAllSuggestedLinks(storedMap))}
+          onClose={() => {
+            setSuggestedReviewOpen(false);
+            setNeighborReport(undefined);
+            setNeighborError(undefined);
+          }}
+        />
+      ) : null}
+
+      {blueprintOpen ? (
+        <TopologyBlueprintModal
+          options={options}
+          onApply={handleBlueprintApply}
+          onClose={() => setBlueprintOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

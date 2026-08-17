@@ -1,6 +1,7 @@
 import React from 'react';
 import { CanvasTool, TopologyMap, TopologyPanelOptions } from '../../types';
 import { DashboardNavButton } from '../DashboardNavButton';
+import { MapNavigationControls } from './MapNavigationControls';
 import { TopologyQueryErrorBadge } from './TopologyQueryErrorBadge';
 import { TopologyToolbar } from './TopologyToolbar';
 import { canvasStyles } from './canvasStyles';
@@ -36,6 +37,18 @@ interface Props {
   setSearchOpen: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
   queryError: boolean;
+  onDiscoverNeighbors?: () => void;
+  discoveringNeighbors?: boolean;
+  suggestedLinksCount?: number;
+  onReviewSuggestedLinks?: () => void;
+  onInsertBlueprint?: () => void;
+  nocModeActive?: boolean;
+  onToggleNocMode?: () => void;
+  mapNavigationBreadcrumb?: string[];
+  canMapNavigateBack?: boolean;
+  canMapNavigateForward?: boolean;
+  onMapNavigateBack?: () => void;
+  onMapNavigateForward?: () => void;
 }
 
 /** Controles fixos sobre o mapa: barra de ferramentas, atalho de dashboards, aviso de erro da
@@ -71,9 +84,34 @@ export function CanvasControlsOverlay({
   setSearchOpen,
   onSearchFocusNode,
   queryError,
+  onDiscoverNeighbors,
+  discoveringNeighbors,
+  suggestedLinksCount,
+  onReviewSuggestedLinks,
+  onInsertBlueprint,
+  nocModeActive = false,
+  onToggleNocMode,
+  mapNavigationBreadcrumb = [],
+  canMapNavigateBack = false,
+  canMapNavigateForward = false,
+  onMapNavigateBack,
+  onMapNavigateForward,
 }: Props) {
+  const navVisible =
+    canMapNavigateBack || canMapNavigateForward || mapNavigationBreadcrumb.length > 0;
+
   return (
     <>
+      {!hidden && onMapNavigateBack && onMapNavigateForward ? (
+        <MapNavigationControls
+          breadcrumb={mapNavigationBreadcrumb}
+          canGoBack={canMapNavigateBack}
+          canGoForward={canMapNavigateForward}
+          onBack={onMapNavigateBack}
+          onForward={onMapNavigateForward}
+        />
+      ) : null}
+
       {!hidden && (
         <TopologyToolbar
           tool={tool}
@@ -98,19 +136,28 @@ export function CanvasControlsOverlay({
           onToggleMinimap={onToggleMinimap}
           showLegend={showLegend}
           onToggleLegend={onToggleLegend}
-          showEditControls={canPersist}
+          showEditControls={canPersist && !nocModeActive}
           searchNodes={map.nodes}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
           onSearchFocusNode={onSearchFocusNode}
+          onDiscoverNeighbors={onDiscoverNeighbors}
+          discoveringNeighbors={discoveringNeighbors}
+          suggestedLinksCount={suggestedLinksCount}
+          onReviewSuggestedLinks={onReviewSuggestedLinks}
+          onInsertBlueprint={onInsertBlueprint}
+          nocModeActive={nocModeActive}
+          onToggleNocMode={onToggleNocMode}
         />
       )}
 
       {!hidden && options.showDashboardNav !== false && (
-        <DashboardNavButton
-          label={options.dashboardNavLabel?.trim() || 'Dashboards'}
-          choices={options.dashboardNavChoices ?? []}
-        />
+        <div style={navVisible ? { position: 'absolute', top: 8, left: 220, zIndex: 3 } : undefined}>
+          <DashboardNavButton
+            label={options.dashboardNavLabel?.trim() || 'Dashboards'}
+            choices={options.dashboardNavChoices ?? []}
+          />
+        </div>
       )}
 
       <TopologyQueryErrorBadge visible={queryError} />

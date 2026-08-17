@@ -55,10 +55,12 @@ export interface NodeLayout {
   h: number;
   label: string;
   sub?: string;
+  detailLines?: string[];
   labelFontSize: number;
   subFontSize: number;
   labelY: number;
   subY?: number;
+  detailLineYs?: number[];
   /** Centro Y do ícone (relativo ao topo do nó) */
   iconCenterY?: number;
 }
@@ -67,6 +69,7 @@ interface LayoutNodeRef {
   id: string;
   label?: string;
   subtitle?: string;
+  detailLines?: string[];
   width?: number;
   height?: number;
   type?: string;
@@ -140,6 +143,8 @@ function computeHostLayout(
   const lineGap = 3;
   const label = (node.label ?? '').trim();
   const sub = options.showSubtitle && node.subtitle ? node.subtitle.trim() : undefined;
+  const detailLines = (node.detailLines ?? []).filter((line) => line.trim()).slice(0, 3);
+  const detailFontSize = Math.max(8, subFontSize - 1);
   const showIcon =
     node.type !== 'submap' &&
     node.type !== 'static' &&
@@ -151,16 +156,51 @@ function computeHostLayout(
   const iconSize = iconDims.h;
   const iconRowHeight = showIcon ? iconSize + HOST_ICON_GAP : 0;
 
-  const contentW = widestText(label, sub, fontSize, subFontSize);
+  const contentW = Math.max(
+    measureTextWidth(label, fontSize),
+    sub ? measureTextWidth(sub, subFontSize) : 0,
+    ...detailLines.map((line) => measureTextWidth(line, detailFontSize))
+  );
   const w = Math.max(Math.ceil(contentW + padX * 2), showIcon ? iconDims.w + padX * 2 : 48);
-  const textBlockH = sub ? fontSize + lineGap + subFontSize : fontSize;
+  const detailBlockH =
+    detailLines.length > 0 ? detailLines.length * detailFontSize + (detailLines.length - 1) * lineGap : 0;
+  const textBlockH =
+    fontSize + (sub ? lineGap + subFontSize : 0) + (detailBlockH ? lineGap + detailBlockH : 0);
   const h = Math.max(Math.ceil(padY * 2 + iconRowHeight + textBlockH), showIcon ? iconSize + 32 : 24);
 
   const iconCenterY = showIcon ? padY + iconSize / 2 : undefined;
-  const labelY = hostLabelY({ showIcon, hasSub: Boolean(sub), padY, iconRowHeight, fontSize, h });
-  const subY = sub ? padY + iconRowHeight + fontSize + lineGap + subFontSize / 2 : undefined;
+  const labelY = hostLabelY({ showIcon, hasSub: Boolean(sub || detailLines.length), padY, iconRowHeight, fontSize, h });
+  let cursorY = padY + iconRowHeight + fontSize / 2;
+  if (showIcon) {
+    cursorY = labelY;
+  }
+  const subY = sub
+    ? (() => {
+        const y = cursorY + fontSize / 2 + lineGap + subFontSize / 2;
+        return y;
+      })()
+    : undefined;
+  if (sub) {
+    cursorY = (subY ?? cursorY) + subFontSize / 2;
+  }
+  const detailLineYs = detailLines.map((_, index) => {
+    const y = cursorY + lineGap + detailFontSize / 2 + index * (detailFontSize + lineGap);
+    return y;
+  });
 
-  return { w, h, label, sub, labelFontSize: fontSize, subFontSize, labelY, subY, iconCenterY };
+  return {
+    w,
+    h,
+    label,
+    sub,
+    detailLines: detailLines.length ? detailLines : undefined,
+    labelFontSize: fontSize,
+    subFontSize,
+    detailLineYs: detailLineYs.length ? detailLineYs : undefined,
+    labelY,
+    subY,
+    iconCenterY,
+  };
 }
 
 export function computeNodeLayout(

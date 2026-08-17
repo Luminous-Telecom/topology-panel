@@ -1,9 +1,19 @@
 import React from 'react';
-import { TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { useTheme2 } from '@grafana/ui';
+import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { formatLinkBandwidth, linkStrokeWidth } from '../../utils/linkBandwidth';
 import { LINK_FLOW_DASH } from '../../utils/linkFlow';
+import {
+  computeFlowSpeed,
+  isLinkCongested,
+  resolveFlowLaneSpeed,
+} from '../../utils/linkFlowSpeed';
+import { utilizationThresholdsFromOptions } from '../../utils/linkMetricsRuntime';
+import { linkKey } from '../../utils/mapLinkEdits';
+import { resolvePanelColor } from '../../utils/panelColors';
 import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from '../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../utils/linkMedium';
+import { formatBitsPerSecond } from '../../utils/zabbixAdapter/formatTraffic';
 import { NodeLayout } from '../../utils/nodeLayout';
 
 interface LinkLineProps {
@@ -15,6 +25,7 @@ interface LinkLineProps {
   panTool: boolean;
   selected: boolean;
   hovered: boolean;
+  runtimeMetrics?: LinkRuntimeMetrics;
   onSelect: () => void;
   onHoverChange: (active: boolean) => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -31,12 +42,14 @@ function LinkLineComponent({
   panTool,
   selected,
   hovered,
+  runtimeMetrics,
   onSelect,
   onHoverChange,
   onContextMenu,
   onPathPointerDown,
   onPathDoubleClick,
 }: LinkLineProps) {
+  const theme = useTheme2();
   const from = nodeLayouts.get(link.from);
   const to = nodeLayouts.get(link.to);
   if (!from || !to) {
@@ -54,9 +67,43 @@ function LinkLineComponent({
   const laneOffset = Math.max(2, strokeWidth * 0.75);
   const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
   const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
-  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps);
+  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? runtimeMetrics?.from.capacityMbps);
+  const fromName = link.fromInterface?.name;
+  const toName = link.toInterface?.name;
+  const txLabel = formatBitsPerSecond(runtimeMetrics?.from.txBps);
+  const rxLabel = formatBitsPerSecond(runtimeMetrics?.from.rxBps);
+  const trafficLines: string[] = [];
+  if (txLabel) {
+    trafficLines.push(`TX ${txLabel}`);
+  }
+  if (rxLabel) {
+    trafficLines.push(`RX ${rxLabel}`);
+  }
+  const labelLines = [
+    fromName && toName ? `${fromName} ↔ ${toName}` : undefined,
+    bandwidthLabel,
+    ...trafficLines,
+  ].filter((line): line is string => Boolean(line));
+  const labelText = labelLines[0] ?? bandwidthLabel;
+  const subLabelText = labelLines.length > 1 ? labelLines.slice(1).join(' · ') : undefined;
   const mid = linkLabelAnchor(pathPoints, from, to);
-  const bandwidthLabelWidth = bandwidthLabel ? bandwidthLabel.length * 6 : 0;
+  const labelWidth = Math.max(labelText?.length ?? 0, subLabelText?.length ?? 0) * 6;
+  const tooltipParts = [
+    from?.label || link.from,
+    to?.label || link.to,
+    fromName && toName ? `Interfaces: ${fromName} ↔ ${toName}` : undefined,
+    bandwidthLabel ? `Capacidade: ${bandwidthLabel}` : undefined,
+    txLabel ? `TX: ${txLabel}` : undefined,
+    rxLabel ? `RX: ${rxLabel}` : undefined,
+    runtimeMetrics?.from.txUtilizationPct !== undefined
+      ? `Util. TX: ${runtimeMetrics.from.txUtilizationPct}%`
+      : undefined,
+    runtimeMetrics?.from.rxUtilizationPct !== undefined
+      ? `Util. RX: ${runtimeMetrics.from.rxUtilizationPct}%`
+      : undefined,
+    runtimeMetrics?.status ? `Status: ${runtimeMetrics.status}` : undefined,
+  ].filter((p): p is string => Boolean(p));
+  const titleAttr = tooltipParts.length ? tooltipParts.join('\n') : undefined;
   const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
   const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const markerStart = selected
@@ -69,9 +116,22 @@ function LinkLineComponent({
     : hovered
       ? 'url(#link-arrow-end-hover)'
       : 'url(#link-arrow-end)';
-  const downloadColor = options.colorLinkDownload;
-  const uploadColor = options.colorLinkUpload;
+  const thresholds = utilizationThresholdsFromOptions(options);
+  const congested = isLinkCongested(runtimeMetrics, thresholds);
+  const downloadColor = resolvePanelColor(
+    theme,
+    congested ? options.colorLinkCongestion : options.colorLinkDownload
+  );
+  const uploadColor = resolvePanelColor(
+    theme,
+    congested ? options.colorLinkCongestion : options.colorLinkUpload
+  );
   const flowStroke = Math.max(1.5, strokeWidth - 1);
+  const flowActive = runtimeMetrics?.status !== 'down';
+  const downloadSpeed = resolveFlowLaneSpeed(runtimeMetrics?.from.rxBps, runtimeMetrics, thresholds);
+  const uploadSpeed = resolveFlowLaneSpeed(runtimeMetrics?.from.txBps, runtimeMetrics, thresholds);
+  const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
+  const lk = linkKey(link);
 
   return (
     <g
@@ -79,6 +139,7 @@ function LinkLineComponent({
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
     >
+      {titleAttr ? <title>{titleAttr}</title> : null}
       <path
         d={d}
         stroke="transparent"
@@ -129,6 +190,9 @@ function LinkLineComponent({
       <path
         d={downloadD}
         data-link-flow="download"
+        data-link-key={lk}
+        data-link-flow-speed={String(hasMetricBinding ? downloadSpeed : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5)}
+        data-link-flow-active={flowActive && (hasMetricBinding ? downloadSpeed > 0 : true) ? 'true' : 'false'}
         stroke={downloadColor}
         strokeWidth={flowStroke}
         strokeDasharray={LINK_FLOW_DASH}
@@ -141,6 +205,9 @@ function LinkLineComponent({
       <path
         d={uploadD}
         data-link-flow="upload"
+        data-link-key={lk}
+        data-link-flow-speed={String(hasMetricBinding ? uploadSpeed : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5)}
+        data-link-flow-active={flowActive && (hasMetricBinding ? uploadSpeed > 0 : true) ? 'true' : 'false'}
         stroke={uploadColor}
         strokeWidth={flowStroke}
         strokeDasharray={LINK_FLOW_DASH}
@@ -150,30 +217,45 @@ function LinkLineComponent({
         opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
         {...lineCap}
       />
-      {bandwidthLabel && (
+      {(labelText || subLabelText) && (
         <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
           <rect
-            x={-bandwidthLabelWidth / 2}
-            y={-7}
-            width={bandwidthLabelWidth}
-            height={14}
+            x={-labelWidth / 2}
+            y={subLabelText ? -12 : -7}
+            width={labelWidth}
+            height={subLabelText ? 26 : 14}
             rx={3}
             fill="rgba(18,18,20,0.82)"
             stroke="rgba(255,255,255,0.2)"
             strokeWidth={0.5}
           />
-          <text
-            x={0}
-            y={0}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#E3F2FD"
-            fontSize={9}
-            fontFamily="Inter, Helvetica, Arial, sans-serif"
-            fontWeight={500}
-          >
-            {bandwidthLabel}
-          </text>
+          {labelText ? (
+            <text
+              x={0}
+              y={subLabelText ? -3 : 0}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="#E3F2FD"
+              fontSize={9}
+              fontFamily="Inter, Helvetica, Arial, sans-serif"
+              fontWeight={500}
+            >
+              {labelText}
+            </text>
+          ) : null}
+          {subLabelText ? (
+            <text
+              x={0}
+              y={8}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="#B0BEC5"
+              fontSize={8}
+              fontFamily="Inter, Helvetica, Arial, sans-serif"
+            >
+              {subLabelText}
+            </text>
+          ) : null}
         </g>
       )}
     </g>
@@ -200,6 +282,15 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (prev.link.medium !== next.link.medium || prev.link.bandwidthMbps !== next.link.bandwidthMbps) {
     return false;
   }
+  if (
+    prev.link.fromInterface?.name !== next.link.fromInterface?.name ||
+    prev.link.toInterface?.name !== next.link.toInterface?.name
+  ) {
+    return false;
+  }
+  if (prev.runtimeMetrics !== next.runtimeMetrics) {
+    return false;
+  }
   if (JSON.stringify(prev.waypoints) !== JSON.stringify(next.waypoints)) {
     return false;
   }
@@ -221,6 +312,8 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     prev.options.colorLinkDownload === next.options.colorLinkDownload &&
     prev.options.colorLinkUpload === next.options.colorLinkUpload &&
     prev.options.colorLinkWidth === next.options.colorLinkWidth &&
-    prev.options.gridSize === next.options.gridSize
+    prev.options.gridSize === next.options.gridSize &&
+    prev.options.colorLinkCongestion === next.options.colorLinkCongestion &&
+    prev.options.linkUtilThresholdCritical === next.options.linkUtilThresholdCritical
   );
 });

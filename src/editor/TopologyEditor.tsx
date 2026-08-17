@@ -34,6 +34,10 @@ export function TopologyEditor({ value, onChange, context }: Props) {
 
   const hostNodes = useMemo(() => map.nodes.filter((n) => isHostNode(n)), [map.nodes]);
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
+  const childMapIds = useMemo(
+    () => Object.keys(context.options.childMaps ?? {}).sort(),
+    [context.options.childMaps]
+  );
   const dashboardPickerNodes = useMemo(
     () => map.nodes.filter((n) => n.type === 'dashboard_picker'),
     [map.nodes]
@@ -278,6 +282,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         locked={locked}
         submapNodes={submapNodes}
         queryRefInfos={queryRefInfos}
+        childMapIds={childMapIds}
         openNodes={openNodes}
         onToggleNode={toggleNodeOpen}
         onUpdate={updateSubmap}

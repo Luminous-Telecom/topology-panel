@@ -65,6 +65,7 @@ interface LinkMenuParams {
   persist: (map: TopologyMap) => void;
   closeMenu: () => void;
   openLinkEdit: (link: TopologyLink) => void;
+  openLinkDetails: (link: TopologyLink) => void;
   resetLinkRoute: (link: TopologyLink) => void;
 }
 
@@ -75,10 +76,19 @@ export function buildLinkMenuItems({
   persist,
   closeMenu,
   openLinkEdit,
+  openLinkDetails,
   resetLinkRoute,
 }: LinkMenuParams): ContextMenuItem[] {
   const medium = resolveLinkMedium(link);
   return [
+    {
+      id: 'link-details',
+      label: 'Ver detalhes',
+      onClick: () => {
+        closeMenu();
+        openLinkDetails(link);
+      },
+    },
     {
       id: 'link-edit',
       label: 'Editar link…',

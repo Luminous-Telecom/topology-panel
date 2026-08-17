@@ -2,11 +2,17 @@ import React from 'react';
 import {
   HostDisplayMap,
   HostMetadataMap,
+  LinkRuntimeMetricsMap,
   TopologyLink,
+  TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
+import { HostProblemsMap, TopologyMapFilterId } from '../../utils/noc/types';
+import { resolveHostNodeBadges } from '../../utils/noc/hostBadges';
+import { isNodeVisibleForFilters, TopologyFilterContext } from '../../utils/noc/topologyFilters';
 import { RegionHostStats } from '../../utils/networkStats';
+import { isHostNode } from '../../utils/topologyNodes';
 import { ColorResolver } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { HostNodeShape } from './HostNodeShape';
@@ -87,8 +93,14 @@ export function NetworkNodesLayer({
 }
 
 interface HostNodesLayerProps extends CommonProps {
+  map: TopologyMap;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
+  hostProblems?: HostProblemsMap;
+  linkMetricsByLink?: LinkRuntimeMetricsMap;
+  activeFilters?: ReadonlySet<TopologyMapFilterId>;
+  filterContext?: TopologyFilterContext;
+  showHostBadges?: boolean;
   selectedLink: TopologyLink | null;
   linkFromId: string | null;
   linkHoverId: string | null;
@@ -101,6 +113,7 @@ interface HostNodesLayerProps extends CommonProps {
 
 /** Camada de cima: hosts, submapas, estáticos e seletores de dashboard. */
 export function HostNodesLayer({
+  map,
   nodes,
   nodeLayouts,
   regionStats,
@@ -108,6 +121,11 @@ export function HostNodesLayer({
   queryReady,
   hostDisplay,
   hostMetadata,
+  hostProblems,
+  linkMetricsByLink,
+  activeFilters,
+  filterContext,
+  showHostBadges,
   resolveColor,
   selectedNodeIds,
   selectedLink,
@@ -135,6 +153,21 @@ export function HostNodesLayer({
         if (!layout) {
           return null;
         }
+        const dimmed =
+          activeFilters?.size && filterContext
+            ? !isNodeVisibleForFilters(node, activeFilters, filterContext)
+            : false;
+        const badges =
+          showHostBadges && isHostNode(node)
+            ? resolveHostNodeBadges({
+                node,
+                map,
+                hostDisplay,
+                hostMetadata,
+                hostProblems,
+                linkMetrics: linkMetricsByLink,
+              })
+            : [];
         return (
           <HostNodeShape
             key={node.id}
@@ -146,6 +179,8 @@ export function HostNodesLayer({
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
             resolveColor={resolveColor}
+            badges={badges}
+            dimmed={dimmed}
             isSelected={selectedNodeIds.includes(node.id)}
             isSelectedLinkEndpoint={
               selectedLink !== null && (node.id === selectedLink.from || node.id === selectedLink.to)

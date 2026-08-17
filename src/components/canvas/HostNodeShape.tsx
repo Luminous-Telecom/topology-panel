@@ -17,7 +17,9 @@ import {
 import { ColorResolver, resolveNodeFill } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { isHostNode } from '../../utils/topologyNodes';
+import { HostNodeBadge } from '../../utils/noc/types';
 import { canvasStyles } from './canvasStyles';
+import { HostNodeBadgeLayer } from './HostNodeBadgeLayer';
 
 interface HostNodeShapeProps {
   node: TopologyNode;
@@ -29,6 +31,8 @@ interface HostNodeShapeProps {
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   resolveColor: ColorResolver;
+  badges?: HostNodeBadge[];
+  dimmed?: boolean;
   isSelected: boolean;
   isSelectedLinkEndpoint: boolean;
   isLinkSource: boolean;
@@ -58,6 +62,8 @@ export function HostNodeShape({
   hostDisplay,
   hostMetadata,
   resolveColor,
+  badges,
+  dimmed = false,
   isSelected,
   isSelectedLinkEndpoint,
   isLinkSource,
@@ -75,7 +81,7 @@ export function HostNodeShape({
   onResizePointerDown,
   onResizePointerUp,
 }: HostNodeShapeProps) {
-  const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, iconCenterY, x, y } = layout;
+  const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, detailLines, detailLineYs, iconCenterY, x, y } = layout;
   const fill = resolveNodeFill(node, region, options, queryReady, hostMetadata, hostDisplay, resolveColor);
   const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
   const labelColor =
@@ -106,6 +112,7 @@ export function HostNodeShape({
     <g
       data-node-id={node.id}
       className={isOfflineBlink ? canvasStyles.offlineBlink : undefined}
+      opacity={dimmed ? 0.18 : 1}
       onPointerDown={(e) => onPointerDown(e, node)}
       onClick={(e) => onClick(e, node)}
       onDoubleClick={(e) => onDoubleClick(e, node)}
@@ -190,6 +197,27 @@ export function HostNodeShape({
           {displaySub}
         </text>
       )}
+      {detailLines?.map((line, index) => {
+        const lineY = detailLineYs?.[index];
+        if (lineY === undefined) {
+          return null;
+        }
+        return (
+          <text
+            key={`${node.id}-detail-${index}`}
+            x={textCenterX}
+            y={y + lineY}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill={labelColor}
+            fontSize={Math.max(8, subFontSize - 1)}
+            fontFamily="Inter, Helvetica, Arial, sans-serif"
+            pointerEvents="none"
+          >
+            {line}
+          </text>
+        );
+      })}
       {node.type === 'submap' && (
         <text x={x + w - 8} y={y + 12} textAnchor="end" fill={labelColor} fontSize={10} pointerEvents="none">
           ↗
@@ -200,6 +228,7 @@ export function HostNodeShape({
           ▾
         </text>
       )}
+      {badges?.length ? <HostNodeBadgeLayer badges={badges} x={x} y={y} width={w} /> : null}
     </g>
   );
 }

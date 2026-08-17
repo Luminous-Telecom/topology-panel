@@ -31,6 +31,12 @@ const LazyPingModal = lazy(() => import('./PingModal').then((m) => ({ default: m
 const LazyLinkEditModal = lazy(() =>
   import('./LinkEditModal').then((m) => ({ default: m.LinkEditModal }))
 );
+const LazyLinkInterfaceSelectModal = lazy(() =>
+  import('./LinkInterfaceSelectModal').then((m) => ({ default: m.LinkInterfaceSelectModal }))
+);
+const LazyTopologyBlueprintModal = lazy(() =>
+  import('./TopologyBlueprintModal').then((m) => ({ default: m.TopologyBlueprintModal }))
+);
 
 export function NodeEditModal(props: ComponentProps<typeof LazyNodeEditModal>): JSX.Element {
   return (
@@ -88,6 +94,26 @@ export function LinkEditModal(props: ComponentProps<typeof LazyLinkEditModal>): 
   return (
     <Suspense fallback={null}>
       <LazyLinkEditModal {...props} />
+    </Suspense>
+  );
+}
+
+export function LinkInterfaceSelectModal(
+  props: ComponentProps<typeof LazyLinkInterfaceSelectModal>
+): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyLinkInterfaceSelectModal {...props} />
+    </Suspense>
+  );
+}
+
+export function TopologyBlueprintModal(
+  props: ComponentProps<typeof LazyTopologyBlueprintModal>
+): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyTopologyBlueprintModal {...props} />
     </Suspense>
   );
 }

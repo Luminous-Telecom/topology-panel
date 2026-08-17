@@ -1,35 +1,52 @@
-/** Animação contínua das faixas RX/TX — período = soma do stroke-dasharray. */
+/** Animação contínua das faixas RX/TX — velocidade por elemento via data-link-flow-speed. */
 export const LINK_FLOW_DASH = '8 22';
 const LINK_FLOW_PERIOD = 30;
-const LINK_FLOW_SPEED = 0.55;
 
 export type LinkFlowController = {
   stop: () => void;
   setPaused: (paused: boolean) => void;
 };
 
-/** Atualiza stroke-dashoffset via rAF (não reinicia com re-render React). */
+function readFlowSpeed(el: Element): number {
+  const raw = el.getAttribute('data-link-flow-speed');
+  if (!raw) {
+    return 0;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function readFlowOffset(el: Element): number {
+  const raw = el.getAttribute('data-link-flow-offset');
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function writeFlowOffset(el: Element, offset: number): void {
+  const normalized = ((offset % LINK_FLOW_PERIOD) + LINK_FLOW_PERIOD) % LINK_FLOW_PERIOD;
+  el.setAttribute('data-link-flow-offset', String(normalized));
+  const direction = el.getAttribute('data-link-flow');
+  const signed = direction === 'upload' ? -normalized : normalized;
+  el.setAttribute('stroke-dashoffset', String(signed));
+}
+
+/** Atualiza stroke-dashoffset via rAF com velocidade individual por faixa. */
 export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
-  let offset = 0;
   let raf = 0;
   let paused = false;
 
-  const apply = () => {
-    // Path vai origem → destino: offset positivo sobe no path (→ destino / upload),
-    // negativo desce (→ origem / download).
-    const downloadOffset = String(offset);
-    const uploadOffset = String(-offset);
-    root.querySelectorAll('[data-link-flow="download"]').forEach((el) => {
-      el.setAttribute('stroke-dashoffset', downloadOffset);
-    });
-    root.querySelectorAll('[data-link-flow="upload"]').forEach((el) => {
-      el.setAttribute('stroke-dashoffset', uploadOffset);
-    });
-  };
-
   const tick = () => {
-    offset = (offset + LINK_FLOW_SPEED) % LINK_FLOW_PERIOD;
-    apply();
+    root.querySelectorAll('[data-link-flow]').forEach((el) => {
+      if (el.getAttribute('data-link-flow-active') === 'false') {
+        return;
+      }
+      const speed = readFlowSpeed(el);
+      if (speed <= 0) {
+        return;
+      }
+      const next = readFlowOffset(el) + speed;
+      writeFlowOffset(el, next);
+    });
     raf = requestAnimationFrame(tick);
   };
 

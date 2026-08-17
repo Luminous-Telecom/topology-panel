@@ -45,6 +45,7 @@ describe('buildLinkMenuItems', () => {
         persist,
         closeMenu: () => {},
         openLinkEdit: () => {},
+        openLinkDetails: () => {},
         resetLinkRoute: () => {},
       }),
     };
@@ -52,6 +53,7 @@ describe('buildLinkMenuItems', () => {
 
   it('oferece editar, endireitar, meio físico e excluir', () => {
     expect(menu(link).items.map((i) => i.id)).toEqual([
+      'link-details',
       'link-edit',
       'link-straight',
       'link-fiber',

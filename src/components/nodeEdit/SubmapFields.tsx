@@ -1,5 +1,5 @@
-import React from 'react';
-import { Field } from '@grafana/ui';
+import React, { useMemo } from 'react';
+import { Field, Select } from '@grafana/ui';
 import { NodeEditFormSetter, NodeEditFormValues } from '../../hooks/useNodeEditForm';
 import { TopologyQueryRefInfo } from '../../types';
 import { DashboardPickerSelect } from '../DashboardPickerSelect';
@@ -11,17 +11,37 @@ interface Props {
   values: NodeEditFormValues;
   set: NodeEditFormSetter;
   queryRefInfos: TopologyQueryRefInfo[];
+  childMapIds?: string[];
 }
 
-export function SubmapFields({ uid, values, set, queryRefInfos }: Props) {
+export function SubmapFields({ uid, values, set, queryRefInfos, childMapIds = [] }: Props) {
+  const childMapOptions = useMemo(
+    () => [
+      { label: '— Nenhum —', value: '' },
+      ...childMapIds.map((id) => ({ label: id, value: id })),
+    ],
+    [childMapIds]
+  );
+
   return (
     <>
       <Field
-        label="Dashboard"
+        label="Mapa interno"
+        description="Navega dentro do painel (prioridade sobre o dashboard externo)"
+      >
+        <Select
+          inputId={`${uid}-submap-child-map`}
+          value={values.submapChildMapId}
+          options={childMapOptions}
+          onChange={(opt) => set('submapChildMapId', opt?.value ?? '')}
+        />
+      </Field>
+      <Field
+        label="Dashboard externo"
         description={
           values.submapSlug
             ? `Slug: ${values.submapSlug}`
-            : 'Selecione o dashboard de destino do submapa'
+            : 'Usado quando não há mapa interno configurado'
         }
       >
         <DashboardPickerSelect

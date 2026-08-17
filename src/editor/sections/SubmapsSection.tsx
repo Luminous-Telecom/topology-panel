@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, CollapsableSection, Field, Icon, Input, Stack } from '@grafana/ui';
+import { Button, CollapsableSection, Field, Icon, Input, Select, Stack } from '@grafana/ui';
 import { TopologyNode, TopologyQueryRefInfo } from '../../types';
 import { DashboardPickerSelect } from '../../components/DashboardPickerSelect';
 import { FieldReadout } from '../../components/FieldReadout';
@@ -10,6 +10,7 @@ interface SubmapsSectionProps {
   locked: boolean;
   submapNodes: TopologyNode[];
   queryRefInfos: TopologyQueryRefInfo[];
+  childMapIds?: string[];
   openNodes: Record<string, boolean>;
   onToggleNode: (nodeId: string, open: boolean) => void;
   onUpdate: (index: number, patch: Partial<TopologyNode>) => void;
@@ -23,6 +24,7 @@ export function SubmapsSection({
   locked,
   submapNodes,
   queryRefInfos,
+  childMapIds = [],
   openNodes,
   onToggleNode,
   onUpdate,
@@ -30,7 +32,7 @@ export function SubmapsSection({
   onAdd,
 }: SubmapsSectionProps) {
   return (
-    <FieldReadout label={`Submapas (${submapNodes.length})`} description="Atalhos para outros dashboards">
+    <FieldReadout label={`Submapas (${submapNodes.length})`} description="Mapas internos ou atalhos para outros dashboards">
       <Stack direction="column" gap={1}>
         {submapNodes.map((node, idx) => (
           <CollapsableSection
@@ -61,7 +63,21 @@ export function SubmapsSection({
                   onChange={(e) => onUpdate(idx, { label: e.currentTarget.value })}
                 />
               </Field>
-              <Field label="Dashboard" description={node.submapSlug ? `Slug: ${node.submapSlug}` : undefined}>
+              <Field label="Mapa interno" description="Navega dentro do painel (prioridade sobre dashboard externo)">
+                <Select
+                  inputId={`${uid}-submap-${idx}-child-map`}
+                  value={node.submapChildMapId ?? ''}
+                  disabled={locked}
+                  options={[
+                    { label: '— Nenhum —', value: '' },
+                    ...childMapIds.map((id) => ({ label: id, value: id })),
+                  ]}
+                  onChange={(opt) =>
+                    onUpdate(idx, { submapChildMapId: opt?.value?.trim() || undefined })
+                  }
+                />
+              </Field>
+              <Field label="Dashboard externo" description={node.submapSlug ? `Slug: ${node.submapSlug}` : undefined}>
                 <DashboardPickerSelect
                   inputId={`${uid}-submap-${idx}-dashboard`}
                   value={node.submapUid ?? ''}

@@ -43,6 +43,13 @@ export function TopologyToolbar({
   searchOpen,
   onSearchOpenChange,
   onSearchFocusNode,
+  onDiscoverNeighbors,
+  discoveringNeighbors = false,
+  suggestedLinksCount = 0,
+  onReviewSuggestedLinks,
+  onInsertBlueprint,
+  onToggleNocMode,
+  nocModeActive = false,
 }: {
   tool: CanvasTool;
   onToolChange: (tool: CanvasTool) => void;
@@ -71,6 +78,13 @@ export function TopologyToolbar({
   searchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
+  onDiscoverNeighbors?: () => void;
+  discoveringNeighbors?: boolean;
+  suggestedLinksCount?: number;
+  onReviewSuggestedLinks?: () => void;
+  onInsertBlueprint?: () => void;
+  onToggleNocMode?: () => void;
+  nocModeActive?: boolean;
 }) {
   const btnStyle = (active: boolean, warn = false, disabled = false): React.CSSProperties => ({
     display: 'flex',
@@ -126,6 +140,18 @@ export function TopologyToolbar({
           </button>
         </div>
       )}
+      {onToggleNocMode ? (
+        <button
+          type="button"
+          onClick={onToggleNocMode}
+          title={nocModeActive ? 'Sair do modo NOC' : 'Modo NOC — filtros, badges e visão para telas grandes'}
+          aria-pressed={nocModeActive}
+          style={btnStyle(nocModeActive)}
+        >
+          <Icon name="monitor" size="sm" />
+          NOC
+        </button>
+      ) : null}
       {showEditControls && (
         <>
           <button
@@ -190,6 +216,39 @@ export function TopologyToolbar({
             <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
             {networksLocked ? 'Redes travadas' : 'Redes livres'}
           </button>
+          {onDiscoverNeighbors ? (
+            <button
+              type="button"
+              onClick={onDiscoverNeighbors}
+              disabled={discoveringNeighbors}
+              title="Descobrir vizinhos LLDP/CDP via itens Zabbix dos templates"
+              style={btnStyle(false, false, discoveringNeighbors)}
+            >
+              <Icon name="channel-add" size="sm" />
+              {discoveringNeighbors ? 'Descobrindo…' : 'Descobrir vizinhos'}
+            </button>
+          ) : null}
+          {suggestedLinksCount > 0 && onReviewSuggestedLinks ? (
+            <button
+              type="button"
+              onClick={onReviewSuggestedLinks}
+              title="Revisar links sugeridos"
+              style={btnStyle(true)}
+            >
+              Sugestões ({suggestedLinksCount})
+            </button>
+          ) : null}
+          {onInsertBlueprint ? (
+            <button
+              type="button"
+              onClick={onInsertBlueprint}
+              title="Inserir modelo de topologia (POP, backbone, FTTH)"
+              style={btnStyle(false)}
+            >
+              <Icon name="copy" size="sm" />
+              Modelo
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onToggleMinimap}

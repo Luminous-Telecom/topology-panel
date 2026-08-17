@@ -11,6 +11,9 @@ import React, { ComponentProps, lazy, Suspense } from 'react';
 
 const loading = <span>Carregando…</span>;
 
+const LazyChildMapsEditor = lazy(() =>
+  import('./ChildMapsEditor').then((m) => ({ default: m.ChildMapsEditor }))
+);
 const LazyTopologyEditor = lazy(() =>
   import('./TopologyEditor').then((m) => ({ default: m.TopologyEditor }))
 );
@@ -32,11 +35,24 @@ const LazyStatusValueMappingsEditor = lazy(() =>
     default: m.StatusValueMappingsEditor,
   }))
 );
+const LazyTopologyTemplatesEditor = lazy(() =>
+  import('../components/TopologyTemplatesEditor').then((m) => ({
+    default: m.TopologyTemplatesEditor,
+  }))
+);
 
 export function TopologyEditor(props: ComponentProps<typeof LazyTopologyEditor>): JSX.Element {
   return (
     <Suspense fallback={loading}>
       <LazyTopologyEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function ChildMapsEditor(props: ComponentProps<typeof LazyChildMapsEditor>): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyChildMapsEditor {...props} />
     </Suspense>
   );
 }
@@ -77,6 +93,16 @@ export function StatusValueMappingsEditor(
   return (
     <Suspense fallback={loading}>
       <LazyStatusValueMappingsEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function TopologyTemplatesEditor(
+  props: ComponentProps<typeof LazyTopologyTemplatesEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyTopologyTemplatesEditor {...props} />
     </Suspense>
   );
 }

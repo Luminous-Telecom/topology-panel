@@ -1,11 +1,13 @@
 import { PanelPlugin } from '@grafana/data';
 import { TopologyPanel } from './components/TopologyPanel';
 import {
+  ChildMapsEditor,
   DashboardNavChoicesEditor,
   HostTypeColorsEditor,
   QueryDisplayRefIdsEditor,
   StatusValueMappingsEditor,
   TopologyEditor,
+  TopologyTemplatesEditor,
 } from './editor/lazyPanelEditors';
 import {
   TopologyPanelOptions,
@@ -26,6 +28,16 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         editor: TopologyEditor,
         category: ['Topologia'],
         defaultValue: defaultOptions().map,
+      })
+      .addCustomEditor({
+        id: 'childMaps',
+        path: 'childMaps',
+        name: 'Mapas internos',
+        description:
+          'Mapas filhos navegáveis dentro do painel. Vincule pelo campo Mapa interno nos submapas.',
+        editor: ChildMapsEditor,
+        category: ['Topologia'],
+        defaultValue: undefined,
       })
       .addBooleanSwitch({
         path: 'showDashboardNav',
@@ -92,6 +104,20 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Interação'],
       })
       .addBooleanSwitch({
+        path: 'nocMode',
+        name: 'Modo NOC',
+        description: 'Visão para telas grandes: fontes maiores, filtros, badges e sem controles de edição',
+        defaultValue: false,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
+        path: 'showHostBadges',
+        name: 'Badges nos hosts',
+        description: 'Problemas Zabbix e tráfego agregado nos links (canto do nó)',
+        defaultValue: true,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
         path: 'showMinimap',
         name: 'Mini mapa de visão geral',
         description: 'Caixa no canto inferior esquerdo; arraste dentro dela para mover o mapa',
@@ -139,6 +165,16 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         editor: StatusValueMappingsEditor,
         category: ['Aparência'],
         defaultValue: defaultStatusValueMappings(),
+      })
+      .addCustomEditor({
+        id: 'templateRules',
+        path: 'templateRules',
+        name: 'Templates e regras de host',
+        description:
+          'Associação automática de template visual (ícone e campos) por grupo Zabbix, tag ou hostname',
+        editor: TopologyTemplatesEditor,
+        category: ['Topologia'],
+        defaultValue: undefined,
       })
       .addColorPicker({
         path: 'colorUnknown',
@@ -195,6 +231,33 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         name: 'Espessura dos cabos',
         defaultValue: 2,
         category: ['Aparência'],
+      })
+      .addNumberInput({
+        path: 'linkUtilThresholdAttention',
+        name: 'Utilização — atenção (%)',
+        description: 'Acima deste valor a animação do link acelera',
+        defaultValue: 50,
+        category: ['Links'],
+      })
+      .addNumberInput({
+        path: 'linkUtilThresholdHigh',
+        name: 'Utilização — alto (%)',
+        defaultValue: 75,
+        category: ['Links'],
+      })
+      .addNumberInput({
+        path: 'linkUtilThresholdCritical',
+        name: 'Utilização — crítico (%)',
+        description: 'Acima deste valor o link é marcado como congestionado',
+        defaultValue: 90,
+        category: ['Links'],
+      })
+      .addColorPicker({
+        path: 'colorLinkCongestion',
+        name: 'Cor de congestionamento',
+        description: 'Destaque visual quando a utilização ultrapassa o limiar crítico',
+        defaultValue: '#ff7300',
+        category: ['Links'],
       })
       .addBooleanSwitch({
         path: 'showLegend',

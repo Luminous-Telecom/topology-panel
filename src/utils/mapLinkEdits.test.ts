@@ -30,6 +30,13 @@ describe('addLinkToMap', () => {
   it('adiciona link novo entre dois nós existentes', () => {
     const map = emptyMap({ nodes: [hostNode(), hostNode({ id: 'b' })] });
     const next = addLinkToMap(map, 'a', 'b');
-    expect(next.links).toEqual([{ from: 'a', to: 'b', medium: expect.any(String) }]);
+    expect(next.links).toEqual([
+      {
+        from: 'a',
+        to: 'b',
+        medium: expect.any(String),
+        discovery: { source: 'manual', state: 'confirmed', confirmed: true },
+      },
+    ]);
   });
 });

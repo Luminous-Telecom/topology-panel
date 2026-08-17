@@ -203,7 +203,11 @@ export function updateStoredNode(map: TopologyMap, node: TopologyNode, patch: Pa
 }
 
 export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, y: number): TopologyMap {
-  const patch: Partial<TopologyNode> = { x: Math.round(x), y: Math.round(y) };
+  const patch: Partial<TopologyNode> = {
+    x: Math.round(x),
+    y: Math.round(y),
+    positionMode: 'manual',
+  };
   if (isHostNode(node) && node.networkId) {
     patch.networkId = undefined;
   }

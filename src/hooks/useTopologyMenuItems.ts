@@ -55,6 +55,7 @@ export interface TopologyMenuItemsParams {
   openNodeProperties: (node: TopologyNode) => void;
   openAddHost: (at: { mapX: number; mapY: number }) => void;
   openLinkEdit: (link: TopologyLink) => void;
+  openLinkDetails: (link: TopologyLink) => void;
   resetLinkRoute: (link: TopologyLink) => void;
   beginLinkFrom: (nodeId: string) => void;
   /** Entra no modo link sem origem definida — o próximo clique escolhe o nó inicial. */
@@ -94,6 +95,7 @@ export function useTopologyMenuItems({
   openNodeProperties,
   openAddHost,
   openLinkEdit,
+  openLinkDetails,
   resetLinkRoute,
   beginLinkFrom,
   beginLinkFromCanvas,
@@ -226,8 +228,8 @@ export function useTopologyMenuItems({
 
   const linkMenuItems = useCallback(
     (link: TopologyLink): ContextMenuItem[] =>
-      buildLinkMenuItems({ link, storedMap, persist, closeMenu, openLinkEdit, resetLinkRoute }),
-    [closeMenu, openLinkEdit, persist, resetLinkRoute, storedMap]
+      buildLinkMenuItems({ link, storedMap, persist, closeMenu, openLinkEdit, openLinkDetails, resetLinkRoute }),
+    [closeMenu, openLinkDetails, openLinkEdit, persist, resetLinkRoute, storedMap]
   );
 
   const nodeMenuItems = useCallback(

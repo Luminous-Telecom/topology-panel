@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
+import { isHostNode } from '../utils/topologyNodes';
+import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
 import { RegionHostStats, buildRegionStatsMap, formatRegionStats } from '../utils/networkStats';
 import {
   NodeLayout,
@@ -14,6 +16,7 @@ export interface NodeLayoutsParams {
   map: TopologyMap;
   /** Só o que altera geometria — ver comentário do memo abaixo. */
   layoutOpts: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>;
+  templateOpts?: Pick<TopologyPanelOptions, 'nodeTemplates' | 'templateRules' | 'showSubtitle'>;
   dragPreview: DragPreview;
   hostDisplay?: HostDisplayMap;
   hostDisplayByRefId?: Record<string, HostDisplayMap>;
@@ -37,6 +40,7 @@ export interface NodeLayoutsResult {
 export function useNodeLayouts({
   map,
   layoutOpts,
+  templateOpts,
   dragPreview,
   hostDisplay,
   hostDisplayByRefId,
@@ -44,6 +48,15 @@ export function useNodeLayouts({
   submapHosts,
   queryReady,
 }: NodeLayoutsParams): NodeLayoutsResult {
+  const uplinkCountByNode = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const link of map.links) {
+      counts.set(link.from, (counts.get(link.from) ?? 0) + 1);
+      counts.set(link.to, (counts.get(link.to) ?? 0) + 1);
+    }
+    return counts;
+  }, [map.links]);
+
   return useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
@@ -51,7 +64,7 @@ export function useNodeLayouts({
       const movePreview = dragPreview?.positions?.[node.id];
       const resizePreview =
         dragPreview?.nodeId === node.id && dragPreview.width !== undefined ? dragPreview : null;
-      const positioned = movePreview
+      let positioned = movePreview
         ? { ...liveNode, x: movePreview.x, y: movePreview.y }
         : resizePreview
           ? {
@@ -60,13 +73,42 @@ export function useNodeLayouts({
               height: resizePreview.height ?? liveNode.height,
             }
           : liveNode;
+
+      let layoutLabel = positioned.label;
+      let layoutSubtitle = positioned.subtitle;
+      let layoutDetailLines: string[] | undefined;
+      if (templateOpts && isHostNode(positioned)) {
+        const display = resolveNodeDisplayFromTemplates(positioned, templateOpts, {
+          hostMetadata,
+          hostDisplay,
+          uplinkCount: uplinkCountByNode.get(positioned.id),
+          showSubtitle: templateOpts.showSubtitle,
+        });
+        layoutLabel = display.label;
+        layoutSubtitle = display.subtitle;
+        layoutDetailLines = display.detailLines.length ? display.detailLines : undefined;
+      }
+
       const layout =
         node.type === 'network'
           ? computeNetworkLayout(positioned, layoutOpts)
           : node.type === 'static'
             ? computeStaticLayout(positioned, layoutOpts)
-            : computeNodeLayout(positioned, layoutOpts);
-      layouts.set(node.id, { ...positioned, ...layout });
+            : computeNodeLayout(
+                {
+                  ...positioned,
+                  label: layoutLabel,
+                  subtitle: layoutSubtitle,
+                  detailLines: layoutDetailLines,
+                },
+                layoutOpts
+              );
+      layouts.set(node.id, {
+        ...positioned,
+        ...layout,
+        label: layout.label,
+        subtitle: layout.sub,
+      });
     }
 
     const stats = buildRegionStatsMap(
@@ -98,5 +140,5 @@ export function useNodeLayouts({
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
     // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
     // de todos os nós sem necessidade.
-  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady]);
+  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady, uplinkCountByNode]);
 }

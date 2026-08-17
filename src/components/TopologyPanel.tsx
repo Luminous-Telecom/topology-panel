@@ -6,6 +6,7 @@ import { TopologyCanvas } from './TopologyCanvas';
 import { HostDisplayMap, TopologyMap, TopologyPanelOptions, TopologyView, defaultOptions } from '../types';
 import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
 import { mergeMapWithQueryHosts, syncMapWithQueryMeta } from '../utils/mapSync';
+import { applyTemplateRulesToMap } from '../utils/topologyTemplates/resolveTemplates';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
 import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, mergeHostDisplayByRefId, mergeQueryHostsByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
@@ -21,8 +22,13 @@ import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useDashboardVariableNav } from '../hooks/useDashboardVariableNav';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
+import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
+import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
+import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
 import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
+import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
+import { ROOT_MAP_ID, resolveTopologyMapById } from '../utils/topologyMapNavigation';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -60,16 +66,59 @@ export function TopologyPanel({
     // Mapa malformado nunca é usado para renderizar — só evita que os hooks abaixo quebrem antes
     // do erro explícito (ver `mapValidationErrors`) ser mostrado.
     const useIncomingMap = Boolean(options.map) && mapValidationErrors.length === 0;
+    const rawMap = useIncomingMap ? ensureUniqueNodeIds(options.map as TopologyMap) : defaultOptions().map;
+    const migratedMap =
+      (rawMap.schemaVersion ?? 1) < CURRENT_MAP_SCHEMA_VERSION ? migrateTopologyMap(rawMap) : rawMap;
     const merged = {
       ...defaultOptions(),
       ...options,
-      map: useIncomingMap ? ensureUniqueNodeIds(options.map as TopologyMap) : defaultOptions().map,
+      map: useIncomingMap ? migratedMap : defaultOptions().map,
     };
     const colored = resolvePanelOptionsColors(merged, theme);
     return {
       ...colored,
     };
   }, [options, theme, mapValidationErrors]);
+
+  const handlePersistNavView = useCallback(
+    (mapId: string, view: TopologyView) => {
+      if (!dashboardEditing || !onOptionsChange) {
+        return;
+      }
+      if (mapId === ROOT_MAP_ID) {
+        onOptionsChange({ ...latestOptionsRef.current, view });
+        return;
+      }
+      onOptionsChange({
+        ...latestOptionsRef.current,
+        childMapViews: {
+          ...(latestOptionsRef.current.childMapViews ?? {}),
+          [mapId]: view,
+        },
+      });
+    },
+    [dashboardEditing, onOptionsChange]
+  );
+
+  const {
+    currentMapId,
+    breadcrumb,
+    canGoBack,
+    canGoForward,
+    savedViewForCurrent,
+    navigateToChild,
+    goBack,
+    goForward,
+  } = useTopologyMapNavigation({
+    rootView: resolvedOptions.view,
+    childMapViews: resolvedOptions.childMapViews,
+    onPersistView: handlePersistNavView,
+  });
+
+  const activeStoredMap = useMemo(
+    () => resolveTopologyMapById(resolvedOptions, currentMapId) ?? resolvedOptions.map,
+    [resolvedOptions, currentMapId]
+  );
 
   const statusColorOptions = useMemo(
     () => ({
@@ -101,8 +150,8 @@ export function TopologyPanel({
   );
 
   const dataMeta = useMemo(
-    () => enrichHostMetadataFromMap({ ...queryMeta, ...apiHostMetadata }, resolvedOptions.map),
-    [queryMeta, apiHostMetadata, resolvedOptions.map]
+    () => enrichHostMetadataFromMap({ ...queryMeta, ...apiHostMetadata }, activeStoredMap),
+    [queryMeta, apiHostMetadata, activeStoredMap]
   );
 
   /**
@@ -112,14 +161,21 @@ export function TopologyPanel({
    */
   const queryError = data.state === LoadingState.Error;
 
+  const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
+    zabbixDatasourceUid,
+    activeStoredMap,
+    resolvedOptions,
+    !queryError
+  );
+
   const liveHostDisplayByRefId = useMemo(() => {
     const byRef = hostDisplayByRefIdFromIndex(queryIndex, statusColorOptions);
     const enriched: Record<string, HostDisplayMap> = {};
     for (const [refId, bucket] of Object.entries(byRef)) {
-      enriched[refId] = enrichHostDisplayFromMap(bucket, resolvedOptions.map, dataMeta);
+      enriched[refId] = enrichHostDisplayFromMap(bucket, activeStoredMap, dataMeta);
     }
     return enriched;
-  }, [queryIndex, statusColorOptions, resolvedOptions.map, dataMeta]);
+  }, [queryIndex, statusColorOptions, activeStoredMap, dataMeta]);
 
   const hostDisplayByRefId = useMemo(
     () =>
@@ -141,10 +197,10 @@ export function TopologyPanel({
     () =>
       enrichHostDisplayFromMap(
         flattenHostDisplayByRefId(hostDisplayByRefId),
-        resolvedOptions.map,
+        activeStoredMap,
         dataMeta
       ),
-    [hostDisplayByRefId, resolvedOptions.map, dataMeta]
+    [hostDisplayByRefId, activeStoredMap, dataMeta]
   );
 
   const queryRefIdsAvailable = queryIndex.refIds;
@@ -170,8 +226,8 @@ export function TopologyPanel({
   }, [onOptionsChange, queryRefIdsAvailable, queryRefInfosAvailable]);
 
   const submapQueryRefIds = useMemo(
-    () => collectSubmapQueryRefIds(resolvedOptions.map),
-    [resolvedOptions.map]
+    () => collectSubmapQueryRefIds(activeStoredMap),
+    [activeStoredMap]
   );
 
   const displayQueryRefIds = useMemo(
@@ -192,23 +248,25 @@ export function TopologyPanel({
     (data.state === LoadingState.Loading && Object.keys(hostDisplay).length > 0);
 
   const displayMap = useMemo(
-    () => mergeMapWithQueryHosts(resolvedOptions.map, displayQueryHosts, hostMetadata),
-    [resolvedOptions.map, displayQueryHosts, hostMetadata]
+    () => mergeMapWithQueryHosts(activeStoredMap, displayQueryHosts, hostMetadata),
+    [activeStoredMap, displayQueryHosts, hostMetadata]
   );
 
   const queryHostOptions = useMemo(() => {
     const enriched = enrichQueryHostOptionsFromMap(
       extractQueryHostOptions(data, hostMetadata),
-      resolvedOptions.map
+      activeStoredMap
     );
     return filterQueryHostOptionsByDisplayHosts(enriched, displayQueryHosts, hostMetadata);
-  }, [data, displayQueryHosts, hostMetadata, resolvedOptions.map]);
+  }, [data, displayQueryHosts, hostMetadata, activeStoredMap]);
 
   const submapNodes = useMemo(() => {
-    return resolvedOptions.map.nodes.filter(
-      (n) => n.type === 'submap' && (n.submapUid?.trim() || n.queryRefId?.trim())
+    return activeStoredMap.nodes.filter(
+      (n) =>
+        n.type === 'submap' &&
+        (n.submapUid?.trim() || n.queryRefId?.trim() || n.submapChildMapId?.trim())
     );
-  }, [resolvedOptions.map.nodes]);
+  }, [activeStoredMap.nodes]);
 
   const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
@@ -279,11 +337,22 @@ export function TopologyPanel({
     if (!currentMap || !Array.isArray(currentMap.nodes)) {
       return;
     }
+    if ((currentMap.schemaVersion ?? 1) < CURRENT_MAP_SCHEMA_VERSION) {
+      onOptionsChange({
+        ...latestOptionsRef.current,
+        map: migrateTopologyMap(currentMap),
+      });
+      return;
+    }
     const unique = ensureUniqueNodeIds(currentMap);
     const synced = Object.keys(dataMeta).length ? syncMapWithQueryMeta(unique, dataMeta) : null;
-    const next = synced ?? (unique !== currentMap ? unique : null);
-    if (next) {
-      onOptionsChange({ ...latestOptionsRef.current, map: next });
+    let candidate = synced ?? (unique !== currentMap ? unique : null);
+    if (candidate) {
+      const templated = applyTemplateRulesToMap(candidate, latestOptionsRef.current, dataMeta);
+      if (templated !== candidate) {
+        candidate = templated;
+      }
+      onOptionsChange({ ...latestOptionsRef.current, map: candidate });
     }
   }, [dataMeta, mapValidationErrors, onOptionsChange]);
 
@@ -296,11 +365,36 @@ export function TopologyPanel({
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(resolvedOptions.map, applyMap);
 
-  const handleViewChange = useCallback(
-    (view: TopologyView) => {
-      onOptionsChange({ ...latestOptionsRef.current, view });
+  const { problems: hostProblems, loading: hostProblemsLoading } = useZabbixHostProblems(
+    zabbixDatasourceUid,
+    hostMetadata
+  );
+
+  const handleNocModeChange = useCallback(
+    (enabled: boolean) => {
+      onOptionsChange?.({ ...latestOptionsRef.current, nocMode: enabled });
     },
     [onOptionsChange]
+  );
+
+  const handleActiveViewChange = useCallback(
+    (view: TopologyView) => {
+      if (!onOptionsChange) {
+        return;
+      }
+      if (currentMapId === ROOT_MAP_ID) {
+        onOptionsChange({ ...latestOptionsRef.current, view });
+        return;
+      }
+      onOptionsChange({
+        ...latestOptionsRef.current,
+        childMapViews: {
+          ...(latestOptionsRef.current.childMapViews ?? {}),
+          [currentMapId]: view,
+        },
+      });
+    },
+    [currentMapId, onOptionsChange]
   );
 
   const handleShowMinimapChange = useCallback(
@@ -358,8 +452,16 @@ export function TopologyPanel({
     >
       <TopologyCanvas
         map={displayMap}
-        storedMap={resolvedOptions.map}
+        storedMap={currentMapId === ROOT_MAP_ID ? resolvedOptions.map : activeStoredMap}
         options={resolvedOptions}
+        savedView={savedViewForCurrent}
+        mapNavigationKey={currentMapId}
+        mapNavigationBreadcrumb={breadcrumb}
+        canMapNavigateBack={canGoBack}
+        canMapNavigateForward={canGoForward}
+        onMapNavigateBack={(view) => goBack(view)}
+        onMapNavigateForward={(view) => goForward(view)}
+        onNavigateToChildMap={navigateToChild}
         queryHostOptions={queryHostOptions}
         hostDisplay={hostDisplay}
         hostDisplayByRefId={hostDisplayByRefId}
@@ -371,14 +473,18 @@ export function TopologyPanel({
         queryData={data}
         zabbixDatasourceUid={zabbixDatasourceUid}
         zabbixMetadataLoading={zabbixMetadataLoading}
-        onMapChange={dashboardEditing ? commitChange : undefined}
-        onViewChange={dashboardEditing ? handleViewChange : undefined}
+        linkMetricsByLink={linkMetricsByLink}
+        hostProblems={hostProblems}
+        hostProblemsLoading={hostProblemsLoading}
+        onNocModeChange={handleNocModeChange}
+        onMapChange={dashboardEditing && currentMapId === ROOT_MAP_ID ? commitChange : undefined}
+        onViewChange={dashboardEditing ? handleActiveViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}
         onShowLegendChange={handleShowLegendChange}
-        onUndo={dashboardEditing ? undo : undefined}
-        onRedo={dashboardEditing ? redo : undefined}
-        canUndo={dashboardEditing && canUndo}
-        canRedo={dashboardEditing && canRedo}
+        onUndo={dashboardEditing && currentMapId === ROOT_MAP_ID ? undo : undefined}
+        onRedo={dashboardEditing && currentMapId === ROOT_MAP_ID ? redo : undefined}
+        canUndo={dashboardEditing && currentMapId === ROOT_MAP_ID && canUndo}
+        canRedo={dashboardEditing && currentMapId === ROOT_MAP_ID && canRedo}
         hideOverlayControls={playlistPlayback}
       />
     </div>

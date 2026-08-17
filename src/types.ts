@@ -1,4 +1,20 @@
 /** Node types: host = Zabbix; submap = dashboard; static = label; network = retângulo; dashboard_picker = seletor de dashboards */
+import type {
+  TopologyBlueprint,
+  TopologyNodeTemplate,
+  TopologyTemplateRule,
+} from './utils/topologyTemplates/types';
+
+export type {
+  NodeTemplateFieldKind,
+  TopologyBlueprint,
+  TopologyBlueprintLink,
+  TopologyBlueprintRole,
+  TopologyNodeTemplate,
+  TemplateRuleCondition,
+  TopologyTemplateRule,
+} from './utils/topologyTemplates/types';
+
 export type TopologyNodeType = 'host' | 'submap' | 'static' | 'network' | 'dashboard_picker';
 
 /** Entrada configurável no seletor de dashboards (type=dashboard_picker) */
@@ -65,6 +81,11 @@ export interface TopologyNode {
   /** Optional dashboard slug override */
   submapSlug?: string;
   /**
+   * Id do mapa interno (chave em `TopologyPanelOptions.childMaps`).
+   * Quando definido, o clique navega dentro do painel em vez de abrir outro dashboard.
+   */
+  submapChildMapId?: string;
+  /**
    * RefId da query Zabbix (aba Query) cujo host group alimenta o status deste submapa.
    * Ex.: query B com group PLW → queryRefId: "B". Hosts dessa query não aparecem no mapa pai.
    */
@@ -76,6 +97,8 @@ export interface TopologyNode {
   dashboardChoices?: TopologyDashboardChoice[];
   x: number;
   y: number;
+  /** `manual` (padrão) preserva posição no auto-layout; `auto` segue reorganização. */
+  positionMode?: 'manual' | 'auto';
   width?: number;
   height?: number;
   /** Cor de preenchimento (type=network | static) */
@@ -92,30 +115,149 @@ export interface TopologyNode {
   toolUsername?: string;
   /** Senha para Tools — sobrescreve o padrão do painel (fica no JSON do mapa) */
   toolPassword?: string;
+  /** Template visual aplicado (manual ou por regra). */
+  nodeTemplateId?: string;
+  /** Quando true, regras automáticas não alteram template/ícone. */
+  templateLocked?: boolean;
 }
 
 export type TopologyLinkMedium = 'fiber' | 'radio';
+
+/** Confiança do auto-binding de item Zabbix → interface. */
+export type MetricBindingConfidence = 'high' | 'medium' | 'low' | 'ambiguous';
+
+/** Referência persistida a um item Zabbix. */
+export interface TopologyMetricReference {
+  itemId: string;
+  key?: string;
+  confidence?: MetricBindingConfidence;
+}
+
+/** Itens Zabbix vinculados a uma interface de rede. */
+export interface TopologyInterfaceMetrics {
+  rx?: TopologyMetricReference;
+  tx?: TopologyMetricReference;
+  operStatus?: TopologyMetricReference;
+  adminStatus?: TopologyMetricReference;
+  speed?: TopologyMetricReference;
+  errors?: TopologyMetricReference;
+  drops?: TopologyMetricReference;
+}
+
+/** Interface persistida em um endpoint de link. */
+export interface TopologyInterfaceReference {
+  /** Nome da interface (ifName / macro LLD) */
+  name: string;
+  snmpIndex?: string;
+  alias?: string;
+  metrics?: TopologyInterfaceMetrics;
+}
+
+export type TopologyLinkWidthMode = 'fixed' | 'capacity' | 'traffic' | 'utilization';
+export type TopologyLinkFlowMode = 'none' | 'rx' | 'tx' | 'bidirectional';
+export type TopologyLinkDiscoverySource = 'manual' | 'lldp' | 'cdp' | 'zabbix';
+export type TopologyLinkDiscoveryState = 'suggested' | 'confirmed' | 'ignored';
+
+export interface TopologyLinkStyle {
+  widthMode?: TopologyLinkWidthMode;
+  flowMode?: TopologyLinkFlowMode;
+}
+
+export interface TopologyLinkDiscovery {
+  source?: TopologyLinkDiscoverySource;
+  state?: TopologyLinkDiscoveryState;
+  confirmed?: boolean;
+}
 
 export interface TopologyLink {
   /** Source node id */
   from: string;
   /** Target node id */
   to: string;
+  /** Interface no host de origem */
+  fromInterface?: TopologyInterfaceReference;
+  /** Interface no host de destino */
+  toInterface?: TopologyInterfaceReference;
   /** fiber = linha contínua; radio = linha tracejada */
   medium?: TopologyLinkMedium;
   /** Capacidade em Mbps (ex.: 100, 1000, 10000) — define rótulo e espessura */
   bandwidthMbps?: number;
   /** Pontos intermediários para desviar a linha (origem → … → destino) */
   waypoints?: Array<{ x: number; y: number }>;
+  style?: TopologyLinkStyle;
+  discovery?: TopologyLinkDiscovery;
+}
+
+/** Interface de rede descoberta via Zabbix (runtime — não persistida no mapa). */
+export interface TopologyNetworkInterface {
+  hostKey: string;
+  hostid?: string;
+  name: string;
+  alias?: string;
+  description?: string;
+  snmpIndex?: string;
+  mac?: string;
+  ip?: string;
+  speedMbps?: number;
+  adminStatus?: number;
+  operStatus?: number;
+  metrics: TopologyInterfaceMetrics;
+  bindingConfidence: MetricBindingConfidence;
+}
+
+/** Métricas voláteis de um endpoint de link (runtime). */
+export interface LinkEndpointRuntimeMetrics {
+  rxBps?: number;
+  txBps?: number;
+  rxUtilizationPct?: number;
+  txUtilizationPct?: number;
+  operStatus?: 'up' | 'down' | 'adminDown' | 'unknown';
+  capacityMbps?: number;
+  errors?: number;
+  drops?: number;
+  lastUpdateMs?: number;
+}
+
+export type LinkRuntimeStatus = 'up' | 'down' | 'degraded' | 'highUtilization' | 'noData';
+
+/** Métricas voláteis de um link (runtime — não persistidas). */
+export interface LinkRuntimeMetrics {
+  from: LinkEndpointRuntimeMetrics;
+  to: LinkEndpointRuntimeMetrics;
+  status: LinkRuntimeStatus;
+}
+
+export type LinkRuntimeMetricsMap = Record<string, LinkRuntimeMetrics>;
+
+/** Link sugerido por descoberta LLDP/CDP — aguarda revisão do usuário. */
+export interface TopologySuggestedLink {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  fromInterface?: TopologyInterfaceReference;
+  toInterface?: TopologyInterfaceReference;
+  source: 'lldp' | 'cdp';
+  state: 'suggested' | 'ignored';
+  confidence: MetricBindingConfidence;
+  localPort?: string;
+  remotePort?: string;
+  remoteSysName?: string;
 }
 
 export interface TopologyMap {
+  /**
+   * Versão do schema JSON do mapa.
+   * Ausente = v1 (links só com from/to). Ver `utils/mapMigration.ts`.
+   */
+  schemaVersion?: number;
   /** Canvas width in layout units */
   width: number;
   /** Canvas height in layout units */
   height: number;
   nodes: TopologyNode[];
   links: TopologyLink[];
+  /** Links sugeridos por LLDP/CDP — não entram no mapa até confirmação */
+  suggestedLinks?: TopologySuggestedLink[];
   /** Ícone por nome do host Zabbix (persiste mesmo sem layout salvo) */
   hostIcons?: Partial<Record<string, TopologyHostIcon>>;
   /** Hosts from Zabbix query hidden from the map */
@@ -131,6 +273,10 @@ export interface HostMetadata {
   name: string;
   ip?: string;
   hostid?: string;
+  /** Grupos do host no Zabbix (para regras de template). */
+  hostGroups?: string[];
+  /** Tags do host no Zabbix. */
+  tags?: Array<{ tag: string; value: string }>;
 }
 
 export type HostMetadataMap = Record<string, HostMetadata>;
@@ -170,6 +316,12 @@ export interface TopologyPanelOptions {
   map: TopologyMap;
   /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
   view?: TopologyView;
+  /** Mapas filhos indexados por id estável (ex.: "map-fortaleza") */
+  childMaps?: Record<string, TopologyMap>;
+  /** Posição e zoom por mapa filho (persiste ao salvar o dashboard) */
+  childMapViews?: Record<string, TopologyView>;
+  /** Id do mapa raiz; implícito = "root" usando `map` */
+  rootMapId?: string;
   /** Colors */
   /** Host online (mapeamento de valor) */
   colorOnline: string;
@@ -197,6 +349,14 @@ export interface TopologyPanelOptions {
   /** Animação upload (sentido destino / seta) */
   colorLinkUpload: string;
   colorLinkWidth: number;
+  /** Limiar de utilização (%) — atenção */
+  linkUtilThresholdAttention: number;
+  /** Limiar de utilização (%) — alto */
+  linkUtilThresholdHigh: number;
+  /** Limiar de utilização (%) — crítico / congestionamento */
+  linkUtilThresholdCritical: number;
+  /** Cor da animação em congestionamento */
+  colorLinkCongestion: string;
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
   colorNetworkBorder: string;
@@ -255,6 +415,16 @@ export interface TopologyPanelOptions {
   dashboardNavLabel?: string;
   /** Dashboards do botão no mapa (só se showDashboardNav) */
   dashboardNavChoices?: TopologyDashboardChoice[];
+  /** Templates visuais de host (sobrescrevem os padrão por id). */
+  nodeTemplates?: TopologyNodeTemplate[];
+  /** Regras automáticas host → template. */
+  templateRules?: TopologyTemplateRule[];
+  /** Modelos de topologia (POP, backbone, etc.). */
+  topologyTemplates?: TopologyBlueprint[];
+  /** Modo NOC — fontes maiores, filtros e badges; oculta edição. */
+  nocMode?: boolean;
+  /** Badges de problemas/tráfego nos hosts. */
+  showHostBadges?: boolean;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -314,6 +484,10 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorLinkDownload: '#C0D8FF',
   colorLinkUpload: '#FADE2A',
   colorLinkWidth: 2,
+  linkUtilThresholdAttention: 50,
+  linkUtilThresholdHigh: 75,
+  linkUtilThresholdCritical: 90,
+  colorLinkCongestion: '#ff7300',
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
   nodeFontSize: 11,
@@ -341,6 +515,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   showDashboardNav: false,
   dashboardNavLabel: 'Dashboards',
   dashboardNavChoices: [],
+  nocMode: false,
+  showHostBadges: true,
 });
 
 /** Cor/texto do status mapeado por host (valor da Query + mapeamento do painel). */
@@ -364,11 +540,13 @@ export function parseTopologyJson(raw: string): TopologyMap | null {
     return {
       width: Number(parsed.width) || 1200,
       height: Number(parsed.height) || 800,
+      schemaVersion: typeof parsed.schemaVersion === 'number' ? parsed.schemaVersion : undefined,
       nodes,
       links,
       locked: Boolean(parsed.locked),
       networksLocked: parsed.networksLocked !== false,
       hiddenHosts: Array.isArray(parsed.hiddenHosts) ? parsed.hiddenHosts : undefined,
+      suggestedLinks: Array.isArray(parsed.suggestedLinks) ? parsed.suggestedLinks : undefined,
       hostIcons:
         parsed.hostIcons && typeof parsed.hostIcons === 'object' && !Array.isArray(parsed.hostIcons)
           ? (parsed.hostIcons as TopologyMap['hostIcons'])

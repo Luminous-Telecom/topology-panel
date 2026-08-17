@@ -17,6 +17,8 @@ interface UseTopologyViewportParams {
   savedView: TopologyView | undefined;
   onViewChange?: (view: TopologyView) => void;
   enableZoom: boolean;
+  /** Troca de mapa na navegação hierárquica — reinicia pan/zoom salvo ou fit. */
+  viewResetKey?: string;
   /** Só para paridade com o efeito original (reatacha os listeners de wheel/touch quando a
    * Query adiciona/remove hosts) — ver achado de performance documentado no relatório da
    * auditoria; não corrigido aqui para não mudar comportamento fora do escopo pedido. */
@@ -58,6 +60,7 @@ export function useTopologyViewport({
   onPinchStart,
   onFullscreenChange,
   showToast,
+  viewResetKey = 'default',
 }: UseTopologyViewportParams): UseTopologyViewportResult {
   const sizeElementRef = useRef<HTMLElement | null>(sizeElement);
   sizeElementRef.current = sizeElement;
@@ -95,8 +98,14 @@ export function useTopologyViewport({
   }, [commitView, mapWidth, mapHeight, resolveSizeEl]);
 
   const didInitialFitRef = useRef(false);
+  const prevViewResetKeyRef = useRef(viewResetKey);
+
   useEffect(() => {
-    if (didInitialFitRef.current || !mapWidth || !mapHeight) {
+    if (prevViewResetKeyRef.current === viewResetKey && didInitialFitRef.current) {
+      return;
+    }
+    prevViewResetKeyRef.current = viewResetKey;
+    if (!mapWidth || !mapHeight) {
       return;
     }
     if (savedView && typeof savedView.scale === 'number') {
@@ -105,7 +114,7 @@ export function useTopologyViewport({
       fitToView();
     }
     didInitialFitRef.current = true;
-  }, [commitView, fitToView, mapWidth, mapHeight, savedView]);
+  }, [commitView, fitToView, mapWidth, mapHeight, savedView, viewResetKey]);
 
   // Grava a view no mapa só depois que o usuário para de mexer, para não persistir cada frame.
   useEffect(() => {

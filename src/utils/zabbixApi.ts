@@ -1,5 +1,6 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { HostMetadata, HostMetadataMap } from '../types';
+import { HostProblemsMap } from './noc/types';
 import { isIpv4 } from './ipv4';
 
 interface ZabbixApiResponse<T> {
@@ -12,6 +13,8 @@ interface ZabbixHost {
   host: string;
   name: string;
   interfaces?: Array<{ ip: string; main?: string; type?: string }>;
+  groups?: Array<{ name?: string }>;
+  tags?: Array<{ tag?: string; value?: string }>;
 }
 
 const BATCH_SIZE = 50;
@@ -142,6 +145,8 @@ function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): voi
     name: visibleName || technicalName || '',
     ip,
     hostid,
+    hostGroups: host.groups?.map((g) => g.name?.trim()).filter((n): n is string => Boolean(n)),
+    tags: host.tags?.map((t) => ({ tag: t.tag?.trim() ?? '', value: t.value?.trim() ?? '' })),
   };
   const keys = [visibleName, technicalName, hostid, ip];
   for (const key of keys) {
@@ -155,6 +160,8 @@ function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): voi
           name: entry.name || prev.name,
           ip: prev.ip && isIpv4(prev.ip) ? prev.ip : entry.ip,
           hostid: prev.hostid || entry.hostid,
+          hostGroups: entry.hostGroups?.length ? entry.hostGroups : prev.hostGroups,
+          tags: entry.tags?.length ? entry.tags : prev.tags,
         }
       : entry;
   }
@@ -186,11 +193,15 @@ export async function fetchZabbixHostMetadata(
           filter: { name: batch },
           output: ['hostid', 'host', 'name'],
           selectInterfaces: ['ip', 'main', 'type'],
+          selectHostGroups: ['name'],
+          selectTags: ['tag', 'value'],
         }),
         zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
           filter: { host: batch },
           output: ['hostid', 'host', 'name'],
           selectInterfaces: ['ip', 'main', 'type'],
+          selectHostGroups: ['name'],
+          selectTags: ['tag', 'value'],
         }),
       ]);
       for (const host of [...(byName ?? []), ...(byHost ?? [])]) {
@@ -369,4 +380,288 @@ export async function fetchHostIcmpStatus(
   }
 
   return { reachable, lossPct, rttMs, lastClock };
+}
+
+export interface ZabbixInterfaceItem {
+  itemid: string;
+  key_: string;
+  name?: string;
+  lastvalue?: string;
+  lastclock?: string;
+  hostid?: string;
+  tags?: Array<{ tag: string; value: string }>;
+}
+
+export interface ZabbixHostInterfaceItems {
+  hostKey: string;
+  hostid: string;
+  items: ZabbixInterfaceItem[];
+}
+
+export interface ZabbixItemLastValue {
+  itemid: string;
+  lastvalue?: string;
+  lastclock?: string;
+}
+
+const INTERFACE_ITEM_SEARCH_KEYS = ['net.if', 'vfs.net.if', 'ifHC', 'ifIn', 'ifOut', 'ifOper', 'ifAdmin', 'ifSpeed'];
+
+async function fetchItemsForHostIds(
+  datasourceUid: string,
+  hostIds: string[]
+): Promise<ZabbixInterfaceItem[]> {
+  if (!hostIds.length) {
+    return [];
+  }
+  const items: ZabbixInterfaceItem[] = [];
+  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+    try {
+      const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
+        hostids: batch,
+        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+        selectTags: ['tag', 'value'],
+        search: { key_: INTERFACE_ITEM_SEARCH_KEYS },
+        searchByAny: true,
+      });
+      for (const item of batchItems ?? []) {
+        items.push(item);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+  return items;
+}
+
+/**
+ * Descobre itens de interface monitorados no Zabbix (LLD/SNMP).
+ * Usado pelo seletor de interfaces e binding de métricas de link.
+ */
+export async function fetchZabbixHostInterfaceItems(
+  datasourceUid: string,
+  hostKeys: string[]
+): Promise<ZabbixHostInterfaceItems[]> {
+  const keys = [...new Set(hostKeys.map((k) => k.trim()).filter(Boolean))];
+  if (!datasourceUid || !keys.length) {
+    return [];
+  }
+
+  const hostIdByKey = new Map<string, string>();
+  for (const key of keys) {
+    const hostId = await resolveZabbixHostId(datasourceUid, key);
+    if (hostId) {
+      hostIdByKey.set(key, hostId);
+    }
+  }
+
+  const hostIds = [...new Set(hostIdByKey.values())];
+  const items = await fetchItemsForHostIds(datasourceUid, hostIds);
+
+  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
+  for (const item of items) {
+    const hostid = asZabbixId(item.hostid);
+    if (!hostid) {
+      continue;
+    }
+    const list = itemsByHostId.get(hostid) ?? [];
+    list.push(item);
+    itemsByHostId.set(hostid, list);
+  }
+
+  const result: ZabbixHostInterfaceItems[] = [];
+  for (const [hostKey, hostid] of hostIdByKey) {
+    result.push({
+      hostKey,
+      hostid,
+      items: itemsByHostId.get(hostid) ?? [],
+    });
+  }
+  return result;
+}
+
+/** Últimos valores de itens em lote — usado para métricas de link em runtime. */
+export async function fetchZabbixItemLastValues(
+  datasourceUid: string,
+  itemIds: string[]
+): Promise<Record<string, ZabbixItemLastValue>> {
+  const ids = [...new Set(itemIds.map((id) => id.trim()).filter(Boolean))];
+  if (!datasourceUid || !ids.length) {
+    return {};
+  }
+
+  const result: Record<string, ZabbixItemLastValue> = {};
+  for (const batch of chunk(ids, BATCH_SIZE)) {
+    try {
+      const items = await zabbixCall<ZabbixItemLastValue[]>(datasourceUid, 'item.get', {
+        itemids: batch,
+        output: ['itemid', 'lastvalue', 'lastclock'],
+      });
+      for (const item of items ?? []) {
+        const itemid = asZabbixId(item.itemid);
+        if (itemid) {
+          result[itemid] = item;
+        }
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+  return result;
+}
+
+const NEIGHBOR_ITEM_SEARCH_KEYS = ['lldp', 'cdp', 'cdpCache', 'LLDP', 'CDP', 'lldpRem', 'cdpRem'];
+
+async function fetchNeighborItemsForHostIds(
+  datasourceUid: string,
+  hostIds: string[]
+): Promise<ZabbixInterfaceItem[]> {
+  if (!hostIds.length) {
+    return [];
+  }
+  const items: ZabbixInterfaceItem[] = [];
+  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+    try {
+      const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
+        hostids: batch,
+        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+        selectTags: ['tag', 'value'],
+        search: { key_: NEIGHBOR_ITEM_SEARCH_KEYS },
+        searchByAny: true,
+      });
+      for (const item of batchItems ?? []) {
+        items.push(item);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+  return items;
+}
+
+/**
+ * Itens LLDP/CDP monitorados no Zabbix — dependem do template/LLD configurado no host.
+ * Sem itens lldp/cdp no host, retorna lista vazia (não é erro).
+ */
+export async function fetchZabbixNeighborItems(
+  datasourceUid: string,
+  hostKeys: string[]
+): Promise<ZabbixHostInterfaceItems[]> {
+  const keys = [...new Set(hostKeys.map((k) => k.trim()).filter(Boolean))];
+  if (!datasourceUid || !keys.length) {
+    return [];
+  }
+
+  const hostIdByKey = new Map<string, string>();
+  for (const key of keys) {
+    const hostId = await resolveZabbixHostId(datasourceUid, key);
+    if (hostId) {
+      hostIdByKey.set(key, hostId);
+    }
+  }
+
+  const hostIds = [...new Set(hostIdByKey.values())];
+  const items = await fetchNeighborItemsForHostIds(datasourceUid, hostIds);
+
+  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
+  for (const item of items) {
+    const hostid = asZabbixId(item.hostid);
+    if (!hostid) {
+      continue;
+    }
+    const list = itemsByHostId.get(hostid) ?? [];
+    list.push(item);
+    itemsByHostId.set(hostid, list);
+  }
+
+  const result: ZabbixHostInterfaceItems[] = [];
+  for (const [hostKey, hostid] of hostIdByKey) {
+    result.push({
+      hostKey,
+      hostid,
+      items: itemsByHostId.get(hostid) ?? [],
+    });
+  }
+  return result;
+}
+
+interface ZabbixProblemRow {
+  eventid?: string;
+  severity?: string;
+}
+
+interface ZabbixProblemEventRow {
+  eventid?: string;
+  hosts?: Array<{ hostid?: string }>;
+}
+
+/**
+ * Problemas ativos no Zabbix por host — só para badges NOC (não altera cor/status do mapa).
+ */
+export async function fetchZabbixHostProblems(
+  datasourceUid: string,
+  hostIds: string[]
+): Promise<HostProblemsMap> {
+  const ids = [...new Set(hostIds.map((id) => asZabbixId(id)).filter(Boolean))];
+  if (!datasourceUid || !ids.length) {
+    return {};
+  }
+
+  const summary: HostProblemsMap = {};
+
+  for (const batch of chunk(ids, BATCH_SIZE)) {
+    try {
+      const problems = await zabbixCall<ZabbixProblemRow[]>(datasourceUid, 'problem.get', {
+        hostids: batch,
+        output: ['eventid', 'severity'],
+        recent: true,
+        suppressed: false,
+      });
+
+      const eventIds = [
+        ...new Set((problems ?? []).map((problem) => asZabbixId(problem.eventid)).filter(Boolean)),
+      ];
+      if (!eventIds.length) {
+        continue;
+      }
+
+      const severityByEvent = new Map<string, number>();
+      for (const problem of problems ?? []) {
+        const eventid = asZabbixId(problem.eventid);
+        if (!eventid) {
+          continue;
+        }
+        const severity = Number(problem.severity);
+        severityByEvent.set(eventid, Number.isFinite(severity) ? severity : 0);
+      }
+
+      const events = await zabbixCall<ZabbixProblemEventRow[]>(datasourceUid, 'event.get', {
+        eventids: eventIds,
+        output: ['eventid'],
+        selectHosts: ['hostid'],
+      });
+
+      for (const event of events ?? []) {
+        const eventid = asZabbixId(event.eventid);
+        if (!eventid) {
+          continue;
+        }
+        const sev = severityByEvent.get(eventid) ?? 0;
+        for (const host of event.hosts ?? []) {
+          const hostid = asZabbixId(host.hostid);
+          if (!hostid) {
+            continue;
+          }
+          const prev = summary[hostid];
+          summary[hostid] = {
+            count: (prev?.count ?? 0) + 1,
+            maxSeverity: Math.max(prev?.maxSeverity ?? 0, sev),
+          };
+        }
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+
+  return summary;
 }

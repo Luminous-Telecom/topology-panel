@@ -1,5 +1,5 @@
 import React from 'react';
-import { TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { NodeLayout } from '../../utils/nodeLayout';
@@ -15,6 +15,7 @@ interface Props {
   hoveredLinkKey: string | null;
   setHoveredLinkKey: (key: string | null) => void;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
+  linkMetricsByLink: Record<string, LinkRuntimeMetrics>;
   onLinkSelect: (link: TopologyLink) => void;
   onLinkContextMenu: (e: React.MouseEvent, link: TopologyLink) => void;
   beginPan: (e: React.PointerEvent, node?: TopologyNode, link?: TopologyLink) => void;
@@ -33,6 +34,7 @@ export function LinksLayer({
   hoveredLinkKey,
   setHoveredLinkKey,
   resolveLinkWaypoints,
+  linkMetricsByLink,
   onLinkSelect,
   onLinkContextMenu,
   beginPan,
@@ -52,6 +54,7 @@ export function LinksLayer({
           panTool={panTool}
           selected={Boolean(selectedLink && linkKey(selectedLink) === linkKey(link))}
           hovered={hoveredLinkKey === linkKey(link)}
+          runtimeMetrics={linkMetricsByLink[linkKey(link)]}
           onSelect={() => onLinkSelect(link)}
           onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
           onContextMenu={(e) => onLinkContextMenu(e, link)}

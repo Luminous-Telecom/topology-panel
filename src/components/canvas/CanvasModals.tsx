@@ -7,6 +7,7 @@ import {
   HostDisplayMap,
   HostMetadataMap,
   NodeEditSavePayload,
+  TopologyInterfaceReference,
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
@@ -16,8 +17,15 @@ import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
 import { HostHoverPopover } from '../HostHoverPopover';
-import { LinkEditModal, NodeEditModal, PingModal, ZabbixHostPickerModal } from '../lazyModals';
+import {
+  LinkEditModal,
+  LinkInterfaceSelectModal,
+  NodeEditModal,
+  PingModal,
+  ZabbixHostPickerModal,
+} from '../lazyModals';
 import { BulkEditModals } from './BulkEditModals';
+import { PendingLinkEndpoints } from '../LinkInterfaceSelectModal';
 
 export interface PingTarget {
   label: string;
@@ -43,6 +51,13 @@ interface CanvasModalsProps {
   setPingTarget: (target: PingTarget | null) => void;
   hostHover: HostHoverTarget | null;
   searchOpen: boolean;
+  pendingLink: PendingLinkEndpoints | null;
+  onPendingLinkClose: () => void;
+  onPendingLinkSave: (
+    fromInterface: TopologyInterfaceReference | undefined,
+    toInterface: TopologyInterfaceReference | undefined,
+    bandwidthMbps?: number
+  ) => void;
 }
 
 /**
@@ -68,6 +83,9 @@ export function CanvasModals({
   setPingTarget,
   hostHover,
   searchOpen,
+  pendingLink,
+  onPendingLinkClose,
+  onPendingLinkSave,
 }: CanvasModalsProps) {
   const { editNode, setEditNode, pickerNode, setPickerNode, editLink, setEditLink, addHostAt, setAddHostAt } =
     modals;
@@ -80,6 +98,7 @@ export function CanvasModals({
           queryRefInfos={options.queryRefInfosAvailable ?? []}
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
+          childMapIds={Object.keys(options.childMaps ?? {}).sort()}
           onClose={() => setEditNode(null)}
           onSave={(payload: NodeEditSavePayload) =>
             persist(applyNodeEditSave(storedMap, editNode, payload))
@@ -139,8 +158,21 @@ export function CanvasModals({
       {editLink && (
         <LinkEditModal
           link={editLink}
+          storedMap={storedMap}
+          datasourceUid={zabbixDatasourceUid}
+          hostMetadata={hostMetadata}
           onClose={() => setEditLink(null)}
           onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
+        />
+      )}
+
+      {pendingLink && (
+        <LinkInterfaceSelectModal
+          pending={pendingLink}
+          hostMetadata={hostMetadata}
+          datasourceUid={zabbixDatasourceUid}
+          onClose={onPendingLinkClose}
+          onSave={onPendingLinkSave}
         />
       )}
     </>

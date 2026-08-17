@@ -34,7 +34,11 @@ Status, cores, latência, perda e gráfico de hover vêm **só** da aba Query
 | Consumidor autorizado | Uso permitido |
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
-| `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote), só para resolver IP/metadata de host |
+| `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote com grupos/tags), IP e regras de template |
+| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` em lote), badges NOC — não altera cor/status do mapa |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` de interfaces), inventário para seletor de link |
+| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get` em lote), métricas voláteis de links (RX/TX/status) |
+| `utils/topologyDiscovery/discoverTopologyNeighbors.ts` | `fetchZabbixNeighborItems` + `fetchZabbixHostInterfaceItems` — vizinhança LLDP/CDP dos templates |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto testes desses dois fluxos.
 - Proibido usar essas funções para status do mapa, cor, histórico, problemas ou polling.

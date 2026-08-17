@@ -1,5 +1,5 @@
 /** Criação, edição e remoção de cabos do mapa salvo. */
-import { TopologyLink, TopologyMap } from '../types';
+import { TopologyInterfaceReference, TopologyLink, TopologyMap } from '../types';
 import { inferLinkMedium } from './linkMedium';
 import { findNodeById } from './topologyNodes';
 
@@ -17,6 +17,22 @@ export function linkKey(link: { from: string; to: string }): string {
 }
 
 export function addLinkToMap(map: TopologyMap, from: string, to: string): TopologyMap {
+  return addLinkWithInterfaces(map, from, to);
+}
+
+export interface AddLinkWithInterfacesOptions {
+  fromInterface?: TopologyInterfaceReference;
+  toInterface?: TopologyInterfaceReference;
+  bandwidthMbps?: number;
+  discovery?: TopologyLink['discovery'];
+}
+
+export function addLinkWithInterfaces(
+  map: TopologyMap,
+  from: string,
+  to: string,
+  options: AddLinkWithInterfacesOptions = {}
+): TopologyMap {
   if (from === to) {
     return map;
   }
@@ -26,9 +42,24 @@ export function addLinkToMap(map: TopologyMap, from: string, to: string): Topolo
   }
   const fromNode = findNodeById(map.nodes, from);
   const toNode = findNodeById(map.nodes, to);
+  const link: TopologyLink = {
+    from,
+    to,
+    medium: inferLinkMedium(fromNode, toNode),
+    discovery: options.discovery ?? { source: 'manual', state: 'confirmed', confirmed: true },
+  };
+  if (options.fromInterface) {
+    link.fromInterface = options.fromInterface;
+  }
+  if (options.toInterface) {
+    link.toInterface = options.toInterface;
+  }
+  if (options.bandwidthMbps && options.bandwidthMbps > 0) {
+    link.bandwidthMbps = options.bandwidthMbps;
+  }
   return {
     ...map,
-    links: [...map.links, { from, to, medium: inferLinkMedium(fromNode, toNode) }],
+    links: [...map.links, link],
   };
 }
 
@@ -36,7 +67,12 @@ export function updateLinkProps(
   map: TopologyMap,
   from: string,
   to: string,
-  patch: Partial<Pick<TopologyLink, 'medium' | 'bandwidthMbps' | 'waypoints'>>
+  patch: Partial<
+    Pick<
+      TopologyLink,
+      'medium' | 'bandwidthMbps' | 'waypoints' | 'fromInterface' | 'toInterface' | 'style' | 'discovery'
+    >
+  >
 ): TopologyMap {
   return {
     ...map,

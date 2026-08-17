@@ -21,6 +21,7 @@ interface Props {
   queryRefInfos?: TopologyQueryRefInfo[];
   queryHostOptions?: QueryHostOption[];
   storedMap?: TopologyMap;
+  childMapIds?: string[];
   onSave: (payload: NodeEditSavePayload) => void;
   onClose: () => void;
 }
@@ -46,6 +47,7 @@ export function NodeEditModal({
   queryRefInfos = [],
   queryHostOptions = [],
   storedMap,
+  childMapIds = [],
   onSave,
   onClose,
 }: Props) {
@@ -142,7 +144,13 @@ export function NodeEditModal({
       )}
       {isHost && <HostToolsFields uid={uid} values={values} set={set} />}
       {type === 'submap' && (
-        <SubmapFields uid={uid} values={values} set={set} queryRefInfos={queryRefInfos} />
+        <SubmapFields
+          uid={uid}
+          values={values}
+          set={set}
+          queryRefInfos={queryRefInfos}
+          childMapIds={childMapIds}
+        />
       )}
       {type === 'dashboard_picker' && <DashboardPickerFields uid={uid} values={values} set={set} />}
       {type === 'static' && <StaticFields uid={uid} values={values} set={set} />}
