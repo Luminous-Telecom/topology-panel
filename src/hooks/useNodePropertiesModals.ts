@@ -22,8 +22,7 @@ interface UseNodePropertiesModalsParams {
   linkFromId: string | null;
 }
 
-/** Estado dos modais de propriedades de nó/link (editNode, pickerNode, editLink, addHostAt) e abertura via clique/duplo-tap. */
-export function useNodePropertiesModals({ storedMap, editable, linkFromId }: UseNodePropertiesModalsParams): {
+export interface NodePropertiesModalsState {
   editNode: TopologyNode | null;
   setEditNode: Dispatch<SetStateAction<TopologyNode | null>>;
   pickerNode: TopologyNode | null;
@@ -36,7 +35,14 @@ export function useNodePropertiesModals({ storedMap, editable, linkFromId }: Use
   openDashboardPicker: (node: TopologyNode) => void;
   tryDoubleTapOpenProperties: (tapNode: TopologyNode) => boolean;
   resetDoubleTapState: () => void;
-} {
+}
+
+/** Estado dos modais de propriedades de nó/link (editNode, pickerNode, editLink, addHostAt) e abertura via clique/duplo-tap. */
+export function useNodePropertiesModals({
+  storedMap,
+  editable,
+  linkFromId,
+}: UseNodePropertiesModalsParams): NodePropertiesModalsState {
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
   const [pickerNode, setPickerNode] = useState<TopologyNode | null>(null);
   const [editLink, setEditLink] = useState<TopologyLink | null>(null);

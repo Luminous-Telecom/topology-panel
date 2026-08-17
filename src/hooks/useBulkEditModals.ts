@@ -8,13 +8,7 @@ interface UseBulkEditModalsParams {
   closeContextMenu: () => void;
 }
 
-/** Estado e abertura dos 3 modais de edição em lote (ícone, credenciais Tools, submapas) do menu de contexto. */
-export function useBulkEditModals({
-  selectedHostNodes,
-  selectedSubmapNodes,
-  showToast,
-  closeContextMenu,
-}: UseBulkEditModalsParams): {
+export interface BulkEditModalsState {
   bulkIconEditOpen: boolean;
   setBulkIconEditOpen: (open: boolean) => void;
   bulkIconTargets: TopologyNode[];
@@ -30,7 +24,15 @@ export function useBulkEditModals({
   openBulkIconEdit: () => void;
   openBulkCredsEdit: () => void;
   openBulkSubmapEdit: () => void;
-} {
+}
+
+/** Estado e abertura dos 3 modais de edição em lote (ícone, credenciais Tools, submapas) do menu de contexto. */
+export function useBulkEditModals({
+  selectedHostNodes,
+  selectedSubmapNodes,
+  showToast,
+  closeContextMenu,
+}: UseBulkEditModalsParams): BulkEditModalsState {
   const [bulkIconEditOpen, setBulkIconEditOpen] = useState(false);
   const [bulkIconTargets, setBulkIconTargets] = useState<TopologyNode[]>([]);
   const [bulkCredsEditOpen, setBulkCredsEditOpen] = useState(false);

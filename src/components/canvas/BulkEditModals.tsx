@@ -1,5 +1,6 @@
 import React from 'react';
-import { TopologyHostIcon, TopologyMap, TopologyNode } from '../../types';
+import { BulkEditModalsState } from '../../hooks/useBulkEditModals';
+import { TopologyHostIcon, TopologyMap } from '../../types';
 import {
   updateHostsCredentialsBulk,
   updateHostsIconBulk,
@@ -12,40 +13,28 @@ type HostCredentials = Parameters<typeof updateHostsCredentialsBulk>[2];
 
 interface BulkEditModalsProps {
   storedMap: TopologyMap;
-  iconOpen: boolean;
-  iconTargets: TopologyNode[];
-  setIconOpen: (open: boolean) => void;
-  setIconTargets: (targets: TopologyNode[]) => void;
-  credsOpen: boolean;
-  credsTargets: TopologyNode[];
-  setCredsOpen: (open: boolean) => void;
-  setCredsTargets: (targets: TopologyNode[]) => void;
-  submapOpen: boolean;
-  submapTargets: TopologyNode[];
-  setSubmapOpen: (open: boolean) => void;
-  setSubmapTargets: (targets: TopologyNode[]) => void;
+  state: BulkEditModalsState;
   persist: (map: TopologyMap) => void;
   showToast: (message: string) => void;
 }
 
 /** Os três modais de edição em massa (ícone, credenciais e submapa), que compartilham o mesmo fluxo. */
-export function BulkEditModals({
-  storedMap,
-  iconOpen,
-  iconTargets,
-  setIconOpen,
-  setIconTargets,
-  credsOpen,
-  credsTargets,
-  setCredsOpen,
-  setCredsTargets,
-  submapOpen,
-  submapTargets,
-  setSubmapOpen,
-  setSubmapTargets,
-  persist,
-  showToast,
-}: BulkEditModalsProps) {
+export function BulkEditModals({ storedMap, state, persist, showToast }: BulkEditModalsProps) {
+  const {
+    bulkIconEditOpen: iconOpen,
+    bulkIconTargets: iconTargets,
+    setBulkIconEditOpen: setIconOpen,
+    setBulkIconTargets: setIconTargets,
+    bulkCredsEditOpen: credsOpen,
+    bulkCredsTargets: credsTargets,
+    setBulkCredsEditOpen: setCredsOpen,
+    setBulkCredsTargets: setCredsTargets,
+    bulkSubmapEditOpen: submapOpen,
+    bulkSubmapTargets: submapTargets,
+    setBulkSubmapEditOpen: setSubmapOpen,
+    setBulkSubmapTargets: setSubmapTargets,
+  } = state;
+
   return (
     <>
       {iconOpen && iconTargets.length >= 1 && (

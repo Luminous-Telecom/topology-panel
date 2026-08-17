@@ -1,24 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
-import { CanvasTool, HostDisplayMap, NodeEditSavePayload, HostMetadataMap, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
-import { addLinkToMap, addZabbixHostAt, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps } from '../utils/mapEdits';
+import { CanvasTool, HostDisplayMap, HostMetadataMap, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { addLinkToMap, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
 import { resolveHostIp } from '../utils/hostLookup';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
-import { applyNodeEditSave } from '../utils/nodeEditSave';
 import { AlignGuideLine } from '../utils/alignGuides';
 import { computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { TopologyContextMenu } from './TopologyContextMenu';
-import { BulkEditModals } from './canvas/BulkEditModals';
 import { canvasStyles } from './canvas/canvasStyles';
 import { HostNodeShape } from './canvas/HostNodeShape';
 import { LinkLine } from './canvas/LinkLine';
+import { CanvasModals } from './canvas/CanvasModals';
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { NetworkNodeShape } from './canvas/NetworkNodeShape';
 import { TopologyColorLegend } from './canvas/TopologyColorLegend';
@@ -26,9 +25,7 @@ import { TopologyQueryErrorBadge } from './canvas/TopologyQueryErrorBadge';
 import { TopologyToast } from './canvas/TopologyToast';
 import { TopologyToolbar } from './canvas/TopologyToolbar';
 import { DashboardNavButton } from './DashboardNavButton';
-import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
-import { HostHoverPopover } from './HostHoverPopover';
-import { LinkEditModal, NodeEditModal, PingModal, ZabbixHostPickerModal } from './lazyModals';
+import { openDashboardUrl } from './DashboardPickerModal';
 import { TopologyMinimap } from './TopologyMinimap';
 import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
@@ -241,20 +238,16 @@ export function TopologyCanvas({
   } = useTopologySelection(map.nodes);
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
+  const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const {
     editNode,
-    setEditNode,
-    pickerNode,
-    setPickerNode,
-    editLink,
-    setEditLink,
-    addHostAt,
-    setAddHostAt,
     openNodeProperties,
     openDashboardPicker,
     tryDoubleTapOpenProperties,
     resetDoubleTapState,
-  } = useNodePropertiesModals({ storedMap, editable, linkFromId });
+    setAddHostAt,
+    setEditLink,
+  } = modals;
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
   const { hostHover, beginHostHover, moveHostHover, endHostHover, clearHostHover } = useHostHoverTarget();
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
@@ -691,23 +684,8 @@ export function TopologyCanvas({
     cancelInteractions,
   });
 
-  const {
-    bulkIconEditOpen,
-    setBulkIconEditOpen,
-    bulkIconTargets,
-    setBulkIconTargets,
-    bulkCredsEditOpen,
-    setBulkCredsEditOpen,
-    bulkCredsTargets,
-    setBulkCredsTargets,
-    bulkSubmapEditOpen,
-    setBulkSubmapEditOpen,
-    bulkSubmapTargets,
-    setBulkSubmapTargets,
-    openBulkIconEdit,
-    openBulkCredsEdit,
-    openBulkSubmapEdit,
-  } = useBulkEditModals({ selectedHostNodes, selectedSubmapNodes, showToast, closeContextMenu });
+  const bulk = useBulkEditModals({ selectedHostNodes, selectedSubmapNodes, showToast, closeContextMenu });
+  const { openBulkIconEdit, openBulkCredsEdit, openBulkSubmapEdit } = bulk;
 
   const { canvasMenuItems, nodeMenuItems, linkMenuItems } = useTopologyMenuItems({
     storedMap,
@@ -1091,91 +1069,25 @@ export function TopologyCanvas({
         />
       )}
 
-      {editNode && (
-        <NodeEditModal
-          node={editNode}
-          queryRefInfos={options.queryRefInfosAvailable ?? []}
-          queryHostOptions={queryHostOptions}
-          storedMap={storedMap}
-          onClose={() => setEditNode(null)}
-          onSave={(payload: NodeEditSavePayload) =>
-            persist(applyNodeEditSave(storedMap, editNode, payload))
-          }
-        />
-      )}
-
-      {pickerNode && (
-        <DashboardPickerModal
-          node={pickerNode}
-          onClose={() => setPickerNode(null)}
-          onSelect={(choice) => {
-            setPickerNode(null);
-            openDashboardUrl(choice.uid, choice.slug);
-          }}
-        />
-      )}
-
-      {addHostAt && (
-        <ZabbixHostPickerModal
-          mode="add"
-          queryHostOptions={queryHostOptions}
-          storedMap={storedMap}
-          zabbixMetadataLoading={zabbixMetadataLoading}
-          onClose={() => setAddHostAt(null)}
-          onConfirm={(visibleName, ip, icon) =>
-            persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon))
-          }
-        />
-      )}
-
-      <BulkEditModals
+      <CanvasModals
         storedMap={storedMap}
-        iconOpen={bulkIconEditOpen}
-        iconTargets={bulkIconTargets}
-        setIconOpen={setBulkIconEditOpen}
-        setIconTargets={setBulkIconTargets}
-        credsOpen={bulkCredsEditOpen}
-        credsTargets={bulkCredsTargets}
-        setCredsOpen={setBulkCredsEditOpen}
-        setCredsTargets={setBulkCredsTargets}
-        submapOpen={bulkSubmapEditOpen}
-        submapTargets={bulkSubmapTargets}
-        setSubmapOpen={setBulkSubmapEditOpen}
-        setSubmapTargets={setBulkSubmapTargets}
+        options={options}
         persist={persist}
         showToast={showToast}
+        modals={modals}
+        bulk={bulk}
+        queryHostOptions={queryHostOptions}
+        zabbixMetadataLoading={zabbixMetadataLoading}
+        zabbixDatasourceUid={zabbixDatasourceUid}
+        queryData={queryData}
+        hostMetadata={hostMetadata}
+        hostDisplay={hostDisplay}
+        queryReady={queryReady}
+        pingTarget={pingTarget}
+        setPingTarget={setPingTarget}
+        hostHover={hostHover}
+        searchOpen={searchOpen}
       />
-
-      {pingTarget && (
-        <PingModal
-          label={pingTarget.label}
-          ip={pingTarget.ip}
-          zabbixHost={pingTarget.zabbixHost}
-          datasourceUid={zabbixDatasourceUid}
-          onClose={() => setPingTarget(null)}
-        />
-      )}
-
-      {hostHover && !editNode && !searchOpen ? (
-        <HostHoverPopover
-          node={hostHover.node}
-          screenX={hostHover.screenX}
-          screenY={hostHover.screenY}
-          queryData={queryData}
-          hostMetadata={hostMetadata}
-          hostDisplay={hostDisplay}
-          options={options}
-          queryReady={queryReady}
-        />
-      ) : null}
-
-      {editLink && (
-        <LinkEditModal
-          link={editLink}
-          onClose={() => setEditLink(null)}
-          onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
-        />
-      )}
 
       <TopologyToast message={toast} />
     </div>
