@@ -1,18 +1,6 @@
 import React, { useCallback, useId, useMemo, useState } from 'react';
 import { StandardEditorProps } from '@grafana/data';
-import {
-  Alert,
-  Button,
-  CollapsableSection,
-  Field,
-  Icon,
-  IconButton,
-  Input,
-  Select,
-  Stack,
-  TextArea,
-  useTheme2,
-} from '@grafana/ui';
+import { Alert, Button, Field, Input, Stack } from '@grafana/ui';
 import {
   TopologyLink,
   TopologyMap,
@@ -24,51 +12,18 @@ import {
 } from '../types';
 import { inferLinkMedium } from '../utils/linkMedium';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
-import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
-import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
-import { QueryRefSelect } from '../components/QueryRefSelect';
-import { FieldReadout } from '../components/FieldReadout';
-import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
+import { parseBandwidthInput, LinkBandwidthUnit } from '../utils/linkBandwidth';
+import { DashboardPickersSection } from './sections/DashboardPickersSection';
+import { EditorLockBar } from './sections/EditorLockBar';
+import { HostNodesSection } from './sections/HostNodesSection';
+import { LinkEditField, LinksSection } from './sections/LinksSection';
+import { SubmapsSection } from './sections/SubmapsSection';
+import { TopologyJsonEditor } from './sections/TopologyJsonEditor';
 
 type Props = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
 
-function nodeTitle(node: TopologyNode): string {
-  return node.label?.trim() ?? '';
-}
-
-function LockBar({ locked, onToggle }: { locked: boolean; onToggle: () => void }) {
-  const theme = useTheme2();
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 8,
-        padding: '8px 10px',
-        borderRadius: 4,
-        border: `1px solid ${locked ? theme.colors.warning.border : theme.colors.border.weak}`,
-        background: locked ? theme.colors.warning.transparent : theme.colors.background.secondary,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-        <Icon name={locked ? 'lock' : 'unlock'} size="lg" />
-        <span>{locked ? 'Topologia travada' : 'Topologia editável'}</span>
-      </div>
-      <IconButton
-        name={locked ? 'lock' : 'unlock'}
-        tooltip={locked ? 'Destravar mapa, hosts e submapas' : 'Travar mapa, hosts e submapas'}
-        aria-label={locked ? 'Destravar topologia' : 'Travar topologia'}
-        onClick={onToggle}
-        variant={locked ? 'primary' : 'secondary'}
-      />
-    </div>
-  );
-}
-
 export function TopologyEditor({ value, onChange, context }: Props) {
   const uid = useId();
-  const theme = useTheme2();
   const map = value ?? defaultTopologyMap();
   const queryRefInfos = context.options.queryRefInfosAvailable ?? [];
   const locked = Boolean(map.locked);
@@ -98,6 +53,39 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     onChange({ ...map, locked: !locked });
   }, [locked, map, onChange]);
 
+  const toggleNodeOpen = useCallback((nodeId: string, open: boolean) => {
+    setOpenNodes((prev) => ({ ...prev, [nodeId]: open }));
+  }, []);
+
+  /** Patch por índice dentro de uma sublista (submapas, seletores), aplicado no mapa inteiro. */
+  const updateNodeInSection = useCallback(
+    (section: TopologyNode[], index: number, patch: Partial<TopologyNode>) => {
+      const target = section[index];
+      if (!target) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.map((n) => (n.id === target.id ? { ...n, ...patch } : n)),
+      });
+    },
+    [map.nodes, updateMap]
+  );
+
+  /** Remover nó também remove os links presos nele — senão sobrariam cabos soltos no mapa. */
+  const removeNodeInSection = useCallback(
+    (section: TopologyNode[], index: number) => {
+      const node = section[index];
+      if (!node) {
+        return;
+      }
+      updateMap({
+        nodes: map.nodes.filter((n) => n.id !== node.id),
+        links: map.links.filter((l) => l.from !== node.id && l.to !== node.id),
+      });
+    },
+    [map.links, map.nodes, updateMap]
+  );
+
   const addSubmap = useCallback(() => {
     const id = `submap-${submapNodes.length + 1}`;
     const node: TopologyNode = {
@@ -126,67 +114,24 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   }, [dashboardPickerNodes.length, map.nodes, updateMap]);
 
   const updateSubmap = useCallback(
-    (index: number, patch: Partial<TopologyNode>) => {
-      const target = submapNodes[index];
-      if (!target) {
-        return;
-      }
-      updateMap({
-        nodes: map.nodes.map((n) => {
-          if (n.id !== target.id) {
-            return n;
-          }
-          return { ...n, ...patch };
-        }),
-      });
-    },
-    [map.nodes, submapNodes, updateMap]
-  );
-
-  const updateDashboardPicker = useCallback(
-    (index: number, patch: Partial<TopologyNode>) => {
-      const target = dashboardPickerNodes[index];
-      if (!target) {
-        return;
-      }
-      updateMap({
-        nodes: map.nodes.map((n) => {
-          if (n.id !== target.id) {
-            return n;
-          }
-          return { ...n, ...patch };
-        }),
-      });
-    },
-    [dashboardPickerNodes, map.nodes, updateMap]
+    (index: number, patch: Partial<TopologyNode>) => updateNodeInSection(submapNodes, index, patch),
+    [submapNodes, updateNodeInSection]
   );
 
   const removeSubmap = useCallback(
-    (index: number) => {
-      const node = submapNodes[index];
-      if (!node) {
-        return;
-      }
-      updateMap({
-        nodes: map.nodes.filter((n) => n.id !== node.id),
-        links: map.links.filter((l) => l.from !== node.id && l.to !== node.id),
-      });
-    },
-    [map.links, map.nodes, submapNodes, updateMap]
+    (index: number) => removeNodeInSection(submapNodes, index),
+    [removeNodeInSection, submapNodes]
+  );
+
+  const updateDashboardPicker = useCallback(
+    (index: number, patch: Partial<TopologyNode>) =>
+      updateNodeInSection(dashboardPickerNodes, index, patch),
+    [dashboardPickerNodes, updateNodeInSection]
   );
 
   const removeDashboardPicker = useCallback(
-    (index: number) => {
-      const node = dashboardPickerNodes[index];
-      if (!node) {
-        return;
-      }
-      updateMap({
-        nodes: map.nodes.filter((n) => n.id !== node.id),
-        links: map.links.filter((l) => l.from !== node.id && l.to !== node.id),
-      });
-    },
-    [dashboardPickerNodes, map.links, map.nodes, updateMap]
+    (index: number) => removeNodeInSection(dashboardPickerNodes, index),
+    [dashboardPickerNodes, removeNodeInSection]
   );
 
   const addLink = useCallback(() => {
@@ -201,7 +146,7 @@ export function TopologyEditor({ value, onChange, context }: Props) {
   }, [map.nodes, map.links, updateMap]);
 
   const updateLink = useCallback(
-    (index: number, field: 'from' | 'to' | 'medium' | 'bandwidthMbps', value: string) => {
+    (index: number, field: LinkEditField, value: string) => {
       const links = map.links.map((l, i) => {
         if (i !== index) {
           return l;
@@ -262,41 +207,27 @@ export function TopologyEditor({ value, onChange, context }: Props) {
     label: n.label?.trim() ? `${n.label.trim()} (${n.id})` : n.id,
     value: n.id,
   }));
-  const mediumOptions = [
-    { label: 'Fibra (linha contínua)', value: 'fiber' },
-    { label: 'Rádio (linha tracejada)', value: 'radio' },
-  ];
 
   if (jsonMode) {
     return (
       <Stack direction="column" gap={2}>
-        <LockBar locked={locked} onToggle={toggleLock} />
-        <Alert title="Importar / exportar topologia" severity="info">
-          Cole o JSON completo do mapa (width, height, nodes, links) e clique em Aplicar.
-        </Alert>
-        <Field label="Topologia (JSON)">
-          <TextArea
-            id={`${uid}-json`}
-            rows={16}
-            value={jsonText}
-            disabled={locked}
-            onChange={(e) => setJsonText(e.currentTarget.value)}
-          />
-        </Field>
-        {jsonError && <div style={{ color: theme.colors.error.text }}>{jsonError}</div>}
-        <Button onClick={applyJson} disabled={locked}>
-          Aplicar JSON
-        </Button>
-        <Button variant="secondary" onClick={() => setJsonMode(false)}>
-          Voltar ao editor
-        </Button>
+        <EditorLockBar locked={locked} onToggle={toggleLock} />
+        <TopologyJsonEditor
+          uid={uid}
+          locked={locked}
+          text={jsonText}
+          error={jsonError}
+          onTextChange={setJsonText}
+          onApply={applyJson}
+          onBack={() => setJsonMode(false)}
+        />
       </Stack>
     );
   }
 
   return (
     <Stack direction="column" gap={2}>
-      <LockBar locked={locked} onToggle={toggleLock} />
+      <EditorLockBar locked={locked} onToggle={toggleLock} />
 
       {locked && (
         <Alert title="Edição bloqueada" severity="warning">
@@ -340,265 +271,41 @@ export function TopologyEditor({ value, onChange, context }: Props) {
         />
       </Field>
 
-      <FieldReadout
-        label={`Hosts Zabbix (${hostNodes.length})`}
-        description="Nome e IP vêm do Zabbix. Posição: arraste no mapa (botão direito para links)."
-      >
-        <Stack direction="column" gap={1}>
-          {hostNodes.length === 0 && (
-            <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-              Configure a aba <strong>Query</strong> do painel e o <strong>mapeamento de status</strong> nas opções do painel (Aparência) para cores dos hosts.
-            </div>
-          )}
-          {hostNodes.map((node) => {
-            return (
-              <div
-                key={node.id}
-                style={{
-                  fontSize: 13,
-                  padding: '6px 8px',
-                  borderRadius: 4,
-                  background: theme.colors.background.secondary,
-                  border: `1px solid ${theme.colors.border.weak}`,
-                }}
-              >
-                <div>{node.label?.trim()}</div>
-                {node.zabbixHost?.trim() ? (
-                  <div style={{ color: theme.colors.text.secondary, fontSize: 12 }}>{node.zabbixHost.trim()}</div>
-                ) : null}
-                {node.subtitle ? (
-                  <div style={{ color: theme.colors.text.secondary, fontSize: 12 }}>{node.subtitle}</div>
-                ) : null}
-              </div>
-            );
-          })}
-        </Stack>
-      </FieldReadout>
+      <HostNodesSection hostNodes={hostNodes} />
 
-      <FieldReadout label={`Submapas (${submapNodes.length})`} description="Atalhos para outros dashboards">
-        <Stack direction="column" gap={1}>
-          {submapNodes.map((node, idx) => {
-            const isOpen = openNodes[node.id] ?? false;
-            return (
-              <CollapsableSection
-                key={node.id}
-                label={
-                  <span>
-                    <Icon name="external-link-alt" style={{ marginRight: 6 }} />
-                    {nodeTitle(node)}
-                  </span>
-                }
-                isOpen={isOpen}
-                onToggle={(open) => setOpenNodes((prev) => ({ ...prev, [node.id]: open }))}
-              >
-                <Stack direction="column" gap={1}>
-                  <Field label="ID interno">
-                    <Input
-                      id={`${uid}-submap-${idx}-id`}
-                      value={node.id}
-                      disabled={locked}
-                      onChange={(e) => updateSubmap(idx, { id: e.currentTarget.value })}
-                    />
-                  </Field>
-                  <Field label="Nome exibido">
-                    <Input
-                      id={`${uid}-submap-${idx}-label`}
-                      value={node.label ?? ''}
-                      disabled={locked}
-                      onChange={(e) => updateSubmap(idx, { label: e.currentTarget.value })}
-                    />
-                  </Field>
-                  <Field
-                    label="Dashboard"
-                    description={node.submapSlug ? `Slug: ${node.submapSlug}` : undefined}
-                  >
-                    <DashboardPickerSelect
-                      inputId={`${uid}-submap-${idx}-dashboard`}
-                      value={node.submapUid ?? ''}
-                      disabled={locked}
-                      onChange={(nextUid, slug) =>
-                        updateSubmap(idx, {
-                          submapUid: nextUid || undefined,
-                          submapSlug: slug || nextUid || undefined,
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field
-                    label="Consulta Zabbix"
-                    description="Host group desta consulta alimenta a contagem de hosts do submapa"
-                  >
-                    <QueryRefSelect
-                      inputId={`${uid}-submap-${idx}-query`}
-                      value={node.queryRefId ?? ''}
-                      queryRefs={queryRefInfos}
-                      disabled={locked}
-                      onChange={(refId) =>
-                        updateSubmap(idx, { queryRefId: refId.trim().toUpperCase() || undefined })
-                      }
-                    />
-                  </Field>
-                  <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeSubmap(idx)}>
-                    Remover submapa
-                  </Button>
-                </Stack>
-              </CollapsableSection>
-            );
-          })}
-          <Button onClick={addSubmap} disabled={locked}>
-            + Adicionar submapa
-          </Button>
-        </Stack>
-      </FieldReadout>
+      <SubmapsSection
+        uid={uid}
+        locked={locked}
+        submapNodes={submapNodes}
+        queryRefInfos={queryRefInfos}
+        openNodes={openNodes}
+        onToggleNode={toggleNodeOpen}
+        onUpdate={updateSubmap}
+        onRemove={removeSubmap}
+        onAdd={addSubmap}
+      />
 
-      <FieldReadout
-        label={`Seletores de dashboards (${dashboardPickerNodes.length})`}
-        description="Botão no mapa com lista configurável de dashboards para abrir"
-      >
-        <Stack direction="column" gap={1}>
-          {dashboardPickerNodes.map((node, idx) => {
-            const isOpen = openNodes[node.id] ?? false;
-            const count = node.dashboardChoices?.length ?? 0;
-            return (
-              <CollapsableSection
-                key={node.id}
-                label={
-                  <span>
-                    <Icon name="apps" style={{ marginRight: 6 }} />
-                    {nodeTitle(node)}
-                    {count > 0 ? ` (${count})` : ''}
-                  </span>
-                }
-                isOpen={isOpen}
-                onToggle={(open) => setOpenNodes((prev) => ({ ...prev, [node.id]: open }))}
-              >
-                <Stack direction="column" gap={1}>
-                  <Field label="Nome exibido">
-                    <Input
-                      id={`${uid}-picker-${idx}-label`}
-                      value={node.label ?? ''}
-                      disabled={locked}
-                      onChange={(e) => updateDashboardPicker(idx, { label: e.currentTarget.value })}
-                    />
-                  </Field>
-                  <Field
-                    label="Dashboards disponíveis"
-                    description="Aparecem ao clicar no botão no mapa"
-                  >
-                    <DashboardMultiSelect
-                      inputId={`${uid}-picker-${idx}-dashboards`}
-                      value={node.dashboardChoices ?? []}
-                      disabled={locked}
-                      onChange={(choices) => updateDashboardPicker(idx, { dashboardChoices: choices })}
-                    />
-                  </Field>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={locked}
-                    onClick={() => removeDashboardPicker(idx)}
-                  >
-                    Remover seletor
-                  </Button>
-                </Stack>
-              </CollapsableSection>
-            );
-          })}
-          <Button onClick={addDashboardPicker} disabled={locked}>
-            + Adicionar seletor de dashboards
-          </Button>
-        </Stack>
-      </FieldReadout>
+      <DashboardPickersSection
+        uid={uid}
+        locked={locked}
+        pickerNodes={dashboardPickerNodes}
+        openNodes={openNodes}
+        onToggleNode={toggleNodeOpen}
+        onUpdate={updateDashboardPicker}
+        onRemove={removeDashboardPicker}
+        onAdd={addDashboardPicker}
+      />
 
-      <FieldReadout label={`Links (${map.links.length})`} description="Fibra = linha contínua · Rádio = tracejado · Capacidade define espessura e rótulo (Mb/Gb)">
-        <Stack direction="column" gap={1}>
-          {map.links.map((link, idx) => {
-            const bw = bandwidthToInput(link.bandwidthMbps);
-            return (
-            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <Field label="De">
-                <Select
-                  inputId={`${uid}-link-${idx}-from`}
-                  width={20}
-                  options={nodeOptions}
-                  value={link.from}
-                  disabled={locked}
-                  onChange={(v) => {
-                    if (v.value != null) {
-                      updateLink(idx, 'from', v.value);
-                    }
-                  }}
-                />
-              </Field>
-              <Field label="Para">
-                <Select
-                  inputId={`${uid}-link-${idx}-to`}
-                  width={20}
-                  options={nodeOptions}
-                  value={link.to}
-                  disabled={locked}
-                  onChange={(v) => {
-                    if (v.value != null) {
-                      updateLink(idx, 'to', v.value);
-                    }
-                  }}
-                />
-              </Field>
-              <Field label="Meio">
-                <Select
-                  inputId={`${uid}-link-${idx}-medium`}
-                  width={18}
-                  options={mediumOptions}
-                  value={link.medium ?? 'fiber'}
-                  disabled={locked}
-                  onChange={(v) => {
-                    if (v.value != null) {
-                      updateLink(idx, 'medium', v.value);
-                    }
-                  }}
-                />
-              </Field>
-              <FieldReadout label="Capacidade">
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <Input
-                    aria-label={`Capacidade do link ${idx + 1} — valor`}
-                    type="number"
-                    min={0}
-                    step="any"
-                    width={10}
-                    disabled={locked}
-                    value={bw.value}
-                    placeholder="1"
-                    onChange={(e) =>
-                      updateLink(idx, 'bandwidthMbps', `${e.currentTarget.value}:${bw.unit}`)
-                    }
-                  />
-                  <Select
-                    aria-label={`Capacidade do link ${idx + 1} — unidade`}
-                    width={10}
-                    options={[
-                      { label: 'Mb', value: 'mbps' },
-                      { label: 'Gb', value: 'gbps' },
-                    ]}
-                    value={bw.unit}
-                    disabled={locked}
-                    onChange={(v) =>
-                      updateLink(idx, 'bandwidthMbps', `${bw.value}:${v.value ?? 'gbps'}`)
-                    }
-                  />
-                </div>
-              </FieldReadout>
-              <Button variant="destructive" size="sm" disabled={locked} onClick={() => removeLink(idx)}>
-                Remover
-              </Button>
-            </div>
-            );
-          })}
-          <Button onClick={addLink} disabled={locked || map.nodes.length < 2}>
-            + Adicionar link
-          </Button>
-        </Stack>
-      </FieldReadout>
+      <LinksSection
+        uid={uid}
+        locked={locked}
+        links={map.links}
+        nodeCount={map.nodes.length}
+        nodeOptions={nodeOptions}
+        onUpdate={updateLink}
+        onRemove={removeLink}
+        onAdd={addLink}
+      />
 
       <Button
         variant="secondary"
