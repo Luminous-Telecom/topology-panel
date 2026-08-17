@@ -1,7 +1,12 @@
 import React, { Dispatch, MutableRefObject, RefObject, SetStateAction, useCallback } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { DragPreview, DragState } from '../utils/dragState';
-import { closestPointOnPolyline, computeLinkGeometry, LinkPoint } from '../utils/linkGeometry';
+import {
+  closestPointOnPolyline,
+  computeLinkGeometry,
+  LinkPoint,
+  nearestWaypointIndex,
+} from '../utils/linkGeometry';
 import { linkKey, linksMatchEndpoints, updateLinkProps } from '../utils/mapEdits';
 import { NodeLayout } from '../utils/nodeLayout';
 
@@ -31,6 +36,8 @@ export interface LinkWaypointGesturesApi {
     mapY: number,
     waypointIndex?: number
   ) => void;
+  beginWaypointDragFromPath: (e: React.PointerEvent, link: TopologyLink) => void;
+  removeWaypointNearPointer: (e: React.MouseEvent, link: TopologyLink) => void;
   /** Passo de `pointermove` quando o gesto atual é de waypoint. */
   moveLinkWaypoint: (e: React.PointerEvent, drag: Extract<DragState, { kind: 'link-waypoint' }>) => void;
   /** Passo de `pointerup`: grava a rota nova, se houve movimento de fato. */
@@ -172,6 +179,18 @@ export function useLinkWaypointGestures({
     [clientToMap, setDragPreview, snapCoord]
   );
 
+  /** Arraste começando em cima do cabo (não num waypoint existente): converte o ponto e delega. */
+  const beginWaypointDragFromPath = useCallback(
+    (e: React.PointerEvent, link: TopologyLink) => {
+      const point = clientToMap(e.clientX, e.clientY);
+      if (!point) {
+        return;
+      }
+      beginLinkWaypointDrag(e, link, point.x, point.y);
+    },
+    [beginLinkWaypointDrag, clientToMap]
+  );
+
   const commitLinkWaypoint = useCallback(
     (d: Extract<DragState, { kind: 'link-waypoint' }>) => {
       if (d.moved && d.waypointIndex >= 0) {
@@ -195,6 +214,21 @@ export function useLinkWaypointGestures({
     [persist, resolveLinkWaypoints, setDragPreview, storedMap]
   );
 
+  /** Duplo clique no cabo remove o desvio mais próximo, se houver algum ao alcance. */
+  const removeWaypointNearPointer = useCallback(
+    (e: React.MouseEvent, link: TopologyLink) => {
+      const point = clientToMap(e.clientX, e.clientY);
+      if (!point) {
+        return;
+      }
+      const index = nearestWaypointIndex(resolveLinkWaypoints(link), point, Math.max(12, 16 / view.scale));
+      if (index >= 0) {
+        removeLinkWaypoint(link, index);
+      }
+    },
+    [clientToMap, removeLinkWaypoint, resolveLinkWaypoints, view.scale]
+  );
+
   const resetLinkRoute = useCallback(
     (link: TopologyLink) => {
       persist(updateLinkProps(storedMap, link.from, link.to, { waypoints: [] }));
@@ -206,6 +240,8 @@ export function useLinkWaypointGestures({
   return {
     resolveLinkWaypoints,
     beginLinkWaypointDrag,
+    beginWaypointDragFromPath,
+    removeWaypointNearPointer,
     moveLinkWaypoint,
     commitLinkWaypoint,
     removeLinkWaypoint,

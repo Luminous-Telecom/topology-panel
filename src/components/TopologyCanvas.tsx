@@ -16,8 +16,6 @@ import {
 import { addLinkToMap, addZabbixHostAt, areNetworksLocked, clientToMapCoords, linkKey, removeLinkByEndpoints, removeNodesFromMap, toggleMapLock, toggleNetworksLock, updateLinkProps } from '../utils/mapEdits';
 import { resolveHostIp } from '../utils/hostLookup';
 import { clamp, snapToGrid } from '../utils/mapCoords';
-import { withLiveZabbixMeta } from '../utils/mapSync';
-import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, NodeLayout } from '../utils/nodeLayout';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode } from '../utils/topologyNodes';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
@@ -25,7 +23,7 @@ import { resolvePanelColor } from '../utils/panelColors';
 import { applyNodeEditSave } from '../utils/nodeEditSave';
 import { resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
 import { AlignGuideLine } from '../utils/alignGuides';
-import { buildRegionStatsMap, formatRegionStats, regionStrokeColor } from '../utils/networkStats';
+import { regionStrokeColor } from '../utils/networkStats';
 import { isNetworkNode, computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
@@ -45,7 +43,7 @@ import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
 import { HostHoverPopover } from './HostHoverPopover';
 import { LinkEditModal, NodeEditModal, PingModal, ZabbixHostPickerModal } from './lazyModals';
 import { TopologyMinimap } from './TopologyMinimap';
-import { LinkPoint, nearestWaypointIndex } from '../utils/linkGeometry';
+import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useTopologySelection } from '../hooks/useTopologySelection';
@@ -56,6 +54,8 @@ import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
+import { useNodeLayouts } from '../hooks/useNodeLayouts';
+import { useRenderLinks } from '../hooks/useRenderLinks';
 import { useTopologyMenuItems } from '../hooks/useTopologyMenuItems';
 
 interface Props {
@@ -295,61 +295,16 @@ export function TopologyCanvas({
     [gridStep, options.snapToGrid]
   );
 
-  const { nodeLayouts, regionStats } = useMemo(() => {
-    const layouts = new Map<string, NodeLayout & TopologyNode>();
-    for (const node of map.nodes) {
-      const liveNode = withLiveZabbixMeta(node, hostMetadata);
-      const movePreview = dragPreview?.positions?.[node.id];
-      const resizePreview =
-        dragPreview?.nodeId === node.id && dragPreview.width !== undefined ? dragPreview : null;
-      const positioned = movePreview
-        ? { ...liveNode, x: movePreview.x, y: movePreview.y }
-        : resizePreview
-          ? {
-              ...liveNode,
-              width: resizePreview.width ?? liveNode.width,
-              height: resizePreview.height ?? liveNode.height,
-            }
-          : liveNode;
-      const layout =
-        node.type === 'network'
-          ? computeNetworkLayout(positioned, layoutOpts)
-          : node.type === 'static'
-            ? computeStaticLayout(positioned, layoutOpts)
-            : computeNodeLayout(positioned, layoutOpts);
-      layouts.set(node.id, { ...positioned, ...layout });
-    }
-
-    const stats = buildRegionStatsMap(
-      map.nodes,
-      layouts,
-      hostDisplay ?? {},
-      submapHosts,
-      hostMetadata,
-      hostDisplayByRefId
-    );
-    for (const node of map.nodes) {
-      if (node.type !== 'submap') {
-        continue;
-      }
-      const region = stats.get(node.id);
-      if (!region) {
-        continue;
-      }
-      const positioned = layouts.get(node.id);
-      if (!positioned) {
-        continue;
-      }
-      const withStats = { ...positioned, subtitle: formatRegionStats(region, queryReady, 'submap') };
-      const layout = computeNodeLayout(withStats, layoutOpts);
-      layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
-    }
-
-    return { nodeLayouts: layouts, regionStats: stats };
-    // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
-    // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
-    // de todos os nós sem necessidade.
-  }, [map.nodes, layoutOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady]);
+  const { nodeLayouts, regionStats } = useNodeLayouts({
+    map,
+    layoutOpts,
+    dragPreview,
+    hostDisplay,
+    hostDisplayByRefId,
+    hostMetadata,
+    submapHosts,
+    queryReady,
+  });
 
   const contentBounds = useMemo(
     () => computeTopologyContentBounds(map, nodeLayouts),
@@ -367,34 +322,7 @@ export function TopologyCanvas({
     suspendSyncRef: suspendScrollSyncRef,
   });
 
-  const validLinks = useMemo(() => {
-    return map.links.filter((l) => {
-      const from = nodeLayouts.get(l.from);
-      const to = nodeLayouts.get(l.to);
-      return from && to && from.type !== 'network' && to.type !== 'network';
-    });
-  }, [map.links, nodeLayouts]);
-
-  /**
-   * Links na ordem de desenho (selecionado por último, para ficar por cima), com uma chave estável
-   * por link. A chave não pode ser o índice do array ordenado: selecionar um cabo reordena a lista
-   * e faria o React remontar todos os `LinkLine` em vez de atualizar o que mudou.
-   */
-  const renderLinks = useMemo(() => {
-    const occurrences = new Map<string, number>();
-    const keyed = validLinks.map((link) => {
-      const base = linkKey(link);
-      const seen = occurrences.get(base) ?? 0;
-      occurrences.set(base, seen + 1);
-      return { link, key: seen === 0 ? base : `${base}#${seen}` };
-    });
-    const selectedKey = selectedLink ? linkKey(selectedLink) : null;
-    return keyed.sort((a, b) => {
-      const aActive = selectedKey === linkKey(a.link) ? 1 : 0;
-      const bActive = selectedKey === linkKey(b.link) ? 1 : 0;
-      return aActive - bActive;
-    });
-  }, [validLinks, selectedLink]);
+  const { validLinks, renderLinks } = useRenderLinks(map.links, nodeLayouts, selectedLink);
 
   const persist = useCallback(
     (next: TopologyMap) => {
@@ -504,9 +432,9 @@ export function TopologyCanvas({
     onNetworkPointerDown,
     onResizePointerDown,
     beginPan,
-    beginLinkWaypointDrag,
+    beginWaypointDragFromPath,
+    removeWaypointNearPointer,
     resolveLinkWaypoints,
-    removeLinkWaypoint,
     resetLinkRoute,
     clearNodeDragUi,
     cancelActiveDrag,
@@ -1139,27 +1067,14 @@ export function TopologyCanvas({
                   }
                   return;
                 }
-                const el = wrapRef.current;
-                if (!el) {
-                  return;
-                }
-                const rect = el.getBoundingClientRect();
-                const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-                beginLinkWaypointDrag(e, link, x, y);
+                beginWaypointDragFromPath(e, link);
               }}
               onPathDoubleClick={(e) => {
-                const el = wrapRef.current;
-                if (!el || !editable) {
+                if (!editable) {
                   return;
                 }
                 e.stopPropagation();
-                const rect = el.getBoundingClientRect();
-                const { x, y } = clientToMapCoords(e.clientX, e.clientY, rect, view);
-                const wps = resolveLinkWaypoints(link);
-                const idx = nearestWaypointIndex(wps, { x, y }, Math.max(12, 16 / view.scale));
-                if (idx >= 0) {
-                  removeLinkWaypoint(link, idx);
-                }
+                removeWaypointNearPointer(e, link);
               }}
             />
           ))}

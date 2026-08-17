@@ -86,6 +86,8 @@ interface UseTopologyDragControllerResult {
     mapY: number,
     waypointIndex?: number
   ) => void;
+  beginWaypointDragFromPath: (e: React.PointerEvent, link: TopologyLink) => void;
+  removeWaypointNearPointer: (e: React.MouseEvent, link: TopologyLink) => void;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
   removeLinkWaypoint: (link: TopologyLink, waypointIndex: number) => void;
   resetLinkRoute: (link: TopologyLink) => void;
@@ -222,6 +224,8 @@ export function useTopologyDragController({
   const {
     resolveLinkWaypoints,
     beginLinkWaypointDrag,
+    beginWaypointDragFromPath,
+    removeWaypointNearPointer,
     moveLinkWaypoint,
     commitLinkWaypoint,
     removeLinkWaypoint,
@@ -829,6 +833,8 @@ export function useTopologyDragController({
     onResizePointerDown,
     beginPan,
     beginLinkWaypointDrag,
+    beginWaypointDragFromPath,
+    removeWaypointNearPointer,
     resolveLinkWaypoints,
     removeLinkWaypoint,
     resetLinkRoute,
