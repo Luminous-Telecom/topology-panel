@@ -27,4 +27,4 @@ Equipamentos clássicos (`switch.svg`, `ap.svg`, …) mantêm 3D cinza no picker
 
 ## Deploy
 
-Após mudar ícones: bump versão → `bash scripts/deploy.sh`
+Após mudar ícones: bump versão → `npm run build` → deploy manual no Grafana

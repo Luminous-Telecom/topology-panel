@@ -9,4 +9,4 @@ alwaysApply: true
 2. Sem `any`, `@ts-ignore`, `console.log` introduzidos (ver `typescript-quality.mdc`).
 3. Sem duplicação nova — checou a tabela de `anti-duplication.mdc`?
 4. Mudou algo em `src/**`, `package.json`, `.config/webpack/**` ou `tsconfig.json`? Rode
-   `bash scripts/deploy.sh` antes de encerrar (ver `auto-deploy.mdc`).
+   `npm run build` para validar o build. Deploy no Grafana é manual.

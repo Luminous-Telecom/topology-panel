@@ -1,6 +1,6 @@
 ---
 description: Mapas JSON, dashboards e layout (dados internos — local only)
-globs: "{examples,dashboards,scripts}/**/*"
+globs: "{examples,dashboards}/**/*"
 alwaysApply: false
 ---
 
@@ -10,7 +10,6 @@ alwaysApply: false
 
 - Mapas: `examples/map-{cidade}.json` (ex.: `map-dc.json`)
 - Dashboards: `dashboards/topo-{cidade}.json`
-- Regenerar dashboard: `python3 scripts/build_dashboard.py dc`
 
 ## JSON do mapa
 
@@ -36,5 +35,5 @@ Heurística (nome do host): `LITEAP`, `WI2BE`, `PTP`, `PTMP`, `AIRFIBER`, `RADIO
 
 ## Deploy interno
 
-- Plugin: `scripts/deploy.sh` ou tar para `45.5.147.7:22`
-- Upload dashboard: `http://45.5.147.7:3000` (credenciais via env vars)
+- Plugin: copiar `dist/` manualmente para `45.5.147.7:/var/lib/grafana/plugins/luminous-topology-panel/`
+- Upload dashboard: `http://45.5.147.7:3000`

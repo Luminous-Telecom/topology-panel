@@ -15,11 +15,9 @@ coverage/
 *.pem
 credentials.json
 
-# Dados internos (mapas, dashboards, deploy)
+# Dados internos (mapas, dashboards)
 examples/
 dashboards/
-scripts/
-install-on-grafana-host.sh
 
 # SO / IDE
 .DS_Store

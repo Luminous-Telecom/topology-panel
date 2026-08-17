@@ -184,8 +184,6 @@ export function useTopologyViewport({
     }
 
     const scrollParents = findScrollParents(el);
-    const hoveringRef = { current: false };
-    const prevOverflow = new Map<HTMLElement, string>();
 
     type PinchState = {
       dist0: number;
@@ -303,28 +301,6 @@ export function useTopologyViewport({
       }
     };
 
-    const lockScroll = () => {
-      if (hoveringRef.current) {
-        return;
-      }
-      for (const sp of scrollParents) {
-        prevOverflow.set(sp, sp.style.overflow);
-        sp.style.overflow = 'hidden';
-      }
-      hoveringRef.current = true;
-    };
-
-    const unlockScroll = () => {
-      if (!hoveringRef.current) {
-        return;
-      }
-      for (const sp of scrollParents) {
-        sp.style.overflow = prevOverflow.get(sp) ?? '';
-      }
-      prevOverflow.clear();
-      hoveringRef.current = false;
-    };
-
     const freezeScrollPosition = () => {
       const tops = scrollParents.map((sp) => ({ sp, top: sp.scrollTop }));
       return () => {
@@ -359,38 +335,23 @@ export function useTopologyViewport({
     const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
     const wheelTargets = [document, el, ...scrollParents];
 
-    const onHoverCheck = (e: PointerEvent) => {
-      if (isOverPanel(e)) {
-        lockScroll();
-      } else {
-        unlockScroll();
-      }
-    };
-
-    const onPointerLeavePanel = () => unlockScroll();
-
-    document.addEventListener('pointermove', onHoverCheck, { passive: true });
     for (const target of wheelTargets) {
       target.addEventListener('wheel', onWheel, wheelOpts);
     }
-    el.addEventListener('pointerleave', onPointerLeavePanel);
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd);
     el.addEventListener('touchcancel', onTouchEnd);
 
     return () => {
-      document.removeEventListener('pointermove', onHoverCheck);
       for (const target of wheelTargets) {
         target.removeEventListener('wheel', onWheel, wheelOpts);
       }
-      el.removeEventListener('pointerleave', onPointerLeavePanel);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
       endPinch();
-      unlockScroll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commitView, enableZoom, mapNodesLength, onPinchStart]);

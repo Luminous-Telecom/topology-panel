@@ -83,7 +83,7 @@ field id").
 
 ## Cores do painel
 
-- **Defaults e dashboards** (`types.ts`, `scripts/build_dashboard.py`): sempre **hex** (`#2E7D32`, `#C62828`, …)
+- **Defaults e dashboards** (`types.ts`): sempre **hex** (`#2E7D32`, `#C62828`, …)
 - **Color picker Grafana** pode salvar nome de paleta (`light-green`, `semi-dark-red`) — OK
 - **Render SVG**: toda cor passa por `resolvePanelColor()` em `utils/panelColors.ts`
   - Hex/rgb → direto
@@ -91,10 +91,6 @@ field id").
   - **Proibido** passar nome de tema ao `fill=` do SVG (fica preto)
   - **Proibido** fallback para o nome cru ou mapa estático hardcoded
 - Aplicar `resolveColor()` em todo `fill`/`stroke` de hosts, redes e links no `TopologyCanvas`
-
-## Deploy (obrigatório)
-
-Após qualquer mudança em `src/`: bump versão se necessário → `bash scripts/deploy.sh` → confirmar no dashboard DC.
 
 ## Ícones
 
