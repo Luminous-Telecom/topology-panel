@@ -12,7 +12,6 @@ import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
 import { computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
-import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
 import { canvasStyles } from './canvas/canvasStyles';
 import { CanvasControlsOverlay } from './canvas/CanvasControlsOverlay';
 import { CanvasGridLayer } from './canvas/CanvasGridLayer';
@@ -35,6 +34,8 @@ import { useTopologyViewport } from '../hooks/useTopologyViewport';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
+import { useCanvasToast } from '../hooks/useCanvasToast';
+import { useFrozenCanvasData } from '../hooks/useFrozenCanvasData';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
 import { useMinimapColors } from '../hooks/useMinimapColors';
 import { useNodeLayouts } from '../hooks/useNodeLayouts';
@@ -111,8 +112,8 @@ export function TopologyCanvas({
   /** True do pointerdown ao pointerup/cancel (pan, nó, resize, marquee, scrollbar) — usado só
    * para congelar `liveDataSnapshot` abaixo; não é a máquina de estado do drag em si. */
   const isGestureActiveRef = useRef(false);
-  const liveDataSnapshot = useMemo(
-    () => ({
+  const [frozenData, flushFrozenData] = useFrozenCanvasData(
+    {
       map: liveMap,
       hostDisplay: liveHostDisplay,
       hostDisplayByRefId: liveHostDisplayByRefId,
@@ -121,19 +122,9 @@ export function TopologyCanvas({
       hostMetadata: liveHostMetadata,
       submapHosts: liveSubmapHosts,
       queryData: liveQueryData,
-    }),
-    [
-      liveMap,
-      liveHostDisplay,
-      liveHostDisplayByRefId,
-      liveQueryReady,
-      liveQueryError,
-      liveHostMetadata,
-      liveSubmapHosts,
-      liveQueryData,
-    ]
+    },
+    isGestureActiveRef
   );
-  const [frozenData, flushFrozenData] = useDeferredDuringGesture(liveDataSnapshot, isGestureActiveRef);
   const {
     map,
     hostDisplay,
@@ -170,14 +161,7 @@ export function TopologyCanvas({
     setTool(canEditCanvas ? 'select' : 'pan');
   }, [canEditCanvas]);
 
-  const [toast, setToast] = useState<string | null>(null);
-  const showToast = useCallback((message: string | undefined) => {
-    if (!message) {
-      return;
-    }
-    setToast(message);
-    window.setTimeout(() => setToast(null), 3500);
-  }, []);
+  const { toast, showToast } = useCanvasToast();
 
   /** Encaminha o cancelamento de drag para o pinch de 2 dedos — `useTopologyDragController` só
    * fica disponível depois de `nodeLayouts`, então o pinch (que precisa existir antes) chama
@@ -681,7 +665,7 @@ export function TopologyCanvas({
       className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}`}
       onPointerDownCapture={(e) => {
         // Fase de captura — dispara mesmo quando um filho (nó, link, scrollbar) chama
-        // stopPropagation() no pointerdown. Congela `liveDataSnapshot` (useDeferredDuringGesture)
+        // stopPropagation() no pointerdown. Congela os dados do painel (useFrozenCanvasData)
         // até o pointerup/cancel, para um auto-refresh do dashboard não trocar cores/hosts/
         // posições no meio do arraste.
         isGestureActiveRef.current = true;
