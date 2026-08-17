@@ -9,12 +9,8 @@ import React, {
   useRef,
 } from 'react';
 import { CanvasTool, TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
-import {
-  areNetworksLocked,
-  clientToMapCoords,
-  moveStoredNodesBulk,
-  updateStoredNode,
-} from '../utils/mapEdits';
+import { areNetworksLocked, moveStoredNodesBulk, updateStoredNode } from '../utils/mapEdits';
+import { clientToMapCoords } from '../utils/mapCoords';
 import { snapNodeCenterToGrid } from '../utils/mapCoords';
 import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, NodeLayout } from '../utils/nodeLayout';
 import { findNodeById } from '../utils/topologyNodes';

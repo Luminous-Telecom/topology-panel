@@ -7,7 +7,8 @@ import {
   TopologyView,
 } from '../types';
 import { resolveHostIp } from '../utils/hostLookup';
-import { areNetworksLocked, clientToMapCoords } from '../utils/mapEdits';
+import { areNetworksLocked } from '../utils/mapEdits';
+import { clientToMapCoords } from '../utils/mapCoords';
 import { isHostNode } from '../utils/topologyNodes';
 
 /** Onde o menu abriu: posição na tela, ponto correspondente no mapa e o alvo clicado. */

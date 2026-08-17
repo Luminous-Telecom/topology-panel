@@ -1,11 +1,7 @@
 import React from 'react';
 import { BulkEditModalsState } from '../../hooks/useBulkEditModals';
 import { TopologyHostIcon, TopologyMap } from '../../types';
-import {
-  updateHostsCredentialsBulk,
-  updateHostsIconBulk,
-  updateSubmapsBulk,
-} from '../../utils/mapEdits';
+import { updateHostsCredentialsBulk, updateHostsIconBulk, updateSubmapsBulk } from '../../utils/mapBulkEdits';
 import { BulkHostCredentialsModal, BulkHostIconModal, BulkSubmapEditModal } from '../lazyModals';
 
 type SubmapPatch = Parameters<typeof updateSubmapsBulk>[2];

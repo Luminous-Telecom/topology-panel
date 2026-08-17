@@ -1,7 +1,7 @@
 import React from 'react';
 import { TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { LinkPoint } from '../../utils/linkGeometry';
-import { linkKey } from '../../utils/mapEdits';
+import { linkKey } from '../../utils/mapLinkEdits';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { LinkLine } from './LinkLine';
 

@@ -2,7 +2,7 @@ import { TopologyHostIcon, TopologyLink, TopologyMap, TopologyNode } from '../ty
 import { hostToNodeId } from './hostLookup';
 import { upsertHostLayout } from './mapSync';
 import { findNodeById, isHostNode } from './topologyNodes';
-import { addLinkToMap, updateLinkProps } from './mapEdits';
+import { addLinkToMap, updateLinkProps } from './mapLinkEdits';
 
 const CLIPBOARD_VERSION = 1 as const;
 const STORAGE_KEY = 'luminous-topology-panel-clipboard';

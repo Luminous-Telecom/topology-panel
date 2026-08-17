@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyMap, TopologyNode } from '../types';
-import {
-  addLinkToMap,
-  linksMatchEndpoints,
-  ensureUniqueNodeIds,
-  moveStoredNode,
-  moveStoredNodesBulk,
-  rebindZabbixHost,
-  removeNodeFromMap,
-  removeNodesFromMap,
-  updateHostsIconBulk,
-} from './mapEdits';
+import { ensureUniqueNodeIds, moveStoredNode, moveStoredNodesBulk, rebindZabbixHost, removeNodeFromMap, removeNodesFromMap } from './mapEdits';
+import { addLinkToMap, linksMatchEndpoints } from './mapLinkEdits';
+import { updateHostsIconBulk } from './mapBulkEdits';
 
 function emptyMap(overrides?: Partial<TopologyMap>): TopologyMap {
   return { width: 800, height: 600, nodes: [], links: [], ...overrides };

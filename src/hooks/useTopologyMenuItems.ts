@@ -18,13 +18,7 @@ import {
   deleteSelectionItem,
   pasteItem,
 } from '../utils/contextMenuItems';
-import {
-  addDashboardPickerAt,
-  addManualDeviceAt,
-  addNetworkAt,
-  addStaticAt,
-  addSubmapAt,
-} from '../utils/mapEdits';
+import { addDashboardPickerAt, addManualDeviceAt, addNetworkAt, addStaticAt, addSubmapAt } from '../utils/mapEdits';
 import { hasTopologyClipboard } from '../utils/topologyClipboard';
 import { isHostNode, isSubmapNode } from '../utils/topologyNodes';
 

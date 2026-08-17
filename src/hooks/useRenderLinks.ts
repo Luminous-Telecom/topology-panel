@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { TopologyLink, TopologyNode } from '../types';
-import { linkKey } from '../utils/mapEdits';
+import { linkKey } from '../utils/mapLinkEdits';
 import { NodeLayout } from '../utils/nodeLayout';
 
 export interface RenderLink {

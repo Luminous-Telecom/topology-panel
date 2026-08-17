@@ -10,7 +10,8 @@ import {
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
-import { addZabbixHostAt, updateLinkProps } from '../../utils/mapEdits';
+import { addZabbixHostAt } from '../../utils/mapEdits';
+import { updateLinkProps } from '../../utils/mapLinkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';

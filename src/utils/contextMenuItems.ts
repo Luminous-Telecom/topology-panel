@@ -1,7 +1,7 @@
 import { ContextMenuItem } from '../components/TopologyContextMenu';
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
 import { resolveLinkMedium } from './linkMedium';
-import { removeLinkByEndpoints, updateLinkProps } from './mapEdits';
+import { removeLinkByEndpoints, updateLinkProps } from './mapLinkEdits';
 
 export function deleteNodesMenuLabel(count: number): string {
   return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';

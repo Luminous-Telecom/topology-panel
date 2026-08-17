@@ -7,7 +7,7 @@ import {
   LinkPoint,
   nearestWaypointIndex,
 } from '../utils/linkGeometry';
-import { linkKey, linksMatchEndpoints, updateLinkProps } from '../utils/mapEdits';
+import { linkKey, linksMatchEndpoints, updateLinkProps } from '../utils/mapLinkEdits';
 import { NodeLayout } from '../utils/nodeLayout';
 
 export interface LinkWaypointGesturesParams {
