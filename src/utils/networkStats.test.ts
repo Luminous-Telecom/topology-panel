@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRegionStatsMap, formatRegionStats } from './networkStats';
-import { computeNodeLayout } from '../utils';
+import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
 
 describe('formatRegionStats — submapa', () => {

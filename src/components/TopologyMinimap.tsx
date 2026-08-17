@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { css } from '@emotion/css';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
-import { NodeLayout } from '../utils';
+import { NodeLayout } from '../utils/nodeLayout';
 import { computeTopologyContentBounds, isNetworkNode } from '../utils/mapBounds';
 
 const MINI_WIDTH = 196;

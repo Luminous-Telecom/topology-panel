@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useCallback, useRef, useState } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
-import { findNodeById, isHostNode } from '../utils';
+import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { openDashboardUrl } from '../components/DashboardPickerModal';
 
 /** Intervalo máximo entre dois cliques para abrir propriedades (pointer capture bloqueia dblclick nativo). */

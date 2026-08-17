@@ -9,7 +9,8 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../types';
-import { HostLookupRef, lookupHostDisplay, resolveDisplayQueryRefIds, resolveHostIp } from '../utils';
+import { HostLookupRef, resolveHostIp } from '../utils/hostLookup';
+import { lookupHostDisplay, resolveDisplayQueryRefIds } from '../utils/queryHosts';
 import {
   extractHostHoverSeries,
   formatHoverFieldValue,

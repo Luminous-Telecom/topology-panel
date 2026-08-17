@@ -1,5 +1,6 @@
 import { TopologyMap } from '../types';
-import { isHostNode, isIpv4 } from '../utils';
+import { isIpv4 } from './ipv4';
+import { isHostNode } from './topologyNodes';
 
 /** Nós type=host visíveis do mapa (fora da lista hiddenHosts), com nome/IP já trim(). */
 function visibleHostRefs(map: TopologyMap): Array<{ name?: string; ip?: string }> {

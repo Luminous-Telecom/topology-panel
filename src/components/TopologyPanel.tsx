@@ -13,28 +13,12 @@ import {
   TopologyView,
   defaultOptions,
 } from '../types';
-import {
-  collectSubmapQueryRefIds,
-  canonicalizeHostKeys,
-  enrichHostDisplayFromMap,
-  enrichHostMetadataFromMap,
-  extractDisplayQueryHosts,
-  extractQueryHostOptions,
-  enrichQueryHostOptionsFromMap,
-  filterQueryHostOptionsByDisplayHosts,
-  findHostDisplayBucket,
-  flattenHostDisplayByRefId,
-  isHostNode,
-  isIpv4,
-  mergeHostDisplayByRefId,
-  mergeMapWithQueryHosts,
-  mergeQueryHostsByRefId,
-  resolveDisplayQueryRefIds,
-  resolveHostIp,
-  resolveHostLookupKey,
-  sameQueryRefInfos,
-  sameStringList,
-} from '../utils';
+import { canonicalizeHostKeys, enrichHostDisplayFromMap, enrichHostMetadataFromMap, resolveHostIp, resolveHostLookupKey } from '../utils/hostLookup';
+import { isIpv4 } from '../utils/ipv4';
+import { mergeMapWithQueryHosts } from '../utils/mapSync';
+import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
+import { collectSubmapQueryRefIds, extractDisplayQueryHosts, findHostDisplayBucket, flattenHostDisplayByRefId, mergeHostDisplayByRefId, mergeQueryHostsByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
+import { isHostNode } from '../utils/topologyNodes';
 import {
   buildQueryIndex,
   hostDisplayByRefIdFromIndex,

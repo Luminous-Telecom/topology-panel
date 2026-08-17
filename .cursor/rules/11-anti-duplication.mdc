@@ -32,7 +32,12 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
 | Série temporal do gráfico de hover | `extractHostHoverSeries` em `utils/hostTimeSeries.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
-| Casar hosts do mapa com hosts da Query | `mergeMapWithQueryHosts` em `utils.ts` |
+| Casar hosts do mapa com hosts da Query | `mergeMapWithQueryHosts` em `utils/mapSync.ts` |
+| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` |
+| Hosts e refIds vindos da aba Query | `utils/queryHosts.ts` |
+| Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
+| Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
+| Medida de texto e caixa do nó | `utils/nodeLayout.ts` |
 | Metadata/IP de host via Zabbix (uso restrito) | `hooks/useZabbixHostMetadata.ts` |
 
 ## Mapa, geometria e interação

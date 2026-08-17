@@ -1,5 +1,5 @@
 import { TopologyMap, TopologyNode, TopologyView } from '../types';
-import { clamp } from '../utils';
+import { clamp } from './mapCoords';
 
 export interface MapContentBounds {
   x0: number;

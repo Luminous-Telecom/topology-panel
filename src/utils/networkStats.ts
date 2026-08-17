@@ -1,12 +1,8 @@
 import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyNode, TopologyPanelOptions } from '../types';
-import {
-  findHostDisplayBucket,
-  HostLookupRef,
-  isHostNode,
-  lookupHostDisplay,
-  NodeLayout,
-  resolveHostLookupKey,
-} from '../utils';
+import { HostLookupRef, resolveHostLookupKey } from './hostLookup';
+import { NodeLayout } from './nodeLayout';
+import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
+import { isHostNode } from './topologyNodes';
 import { panelColorWithAlpha } from './panelColors';
 
 export interface RegionHostStats {

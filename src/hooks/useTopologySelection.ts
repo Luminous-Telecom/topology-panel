@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useMemo, useState } from 'react';
 import { TopologyLink, TopologyNode } from '../types';
-import { findNodeById, isHostNode, isSubmapNode } from '../utils';
+import { findNodeById, isHostNode, isSubmapNode } from '../utils/topologyNodes';
 
 /** Estado de seleção do canvas (nós e link) + listas derivadas por tipo, usadas por menu de contexto e ações em lote. */
 export function useTopologySelection(nodes: TopologyNode[]): {

@@ -18,15 +18,9 @@ import {
   updateLinkProps,
   updateStoredNode,
 } from '../utils/mapEdits';
-import {
-  DEFAULT_NETWORK_HEIGHT,
-  DEFAULT_NETWORK_WIDTH,
-  DEFAULT_STATIC_HEIGHT,
-  DEFAULT_STATIC_WIDTH,
-  findNodeById,
-  NodeLayout,
-  snapNodeCenterToGrid,
-} from '../utils';
+import { snapNodeCenterToGrid } from '../utils/mapCoords';
+import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, DEFAULT_STATIC_HEIGHT, DEFAULT_STATIC_WIDTH, NodeLayout } from '../utils/nodeLayout';
+import { findNodeById } from '../utils/topologyNodes';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import {
   closestPointOnPolyline,

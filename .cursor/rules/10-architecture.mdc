@@ -24,7 +24,7 @@ Qualquer arquivo em `src/`.
 | Editor de JSON, nós e links | `editor/TopologyEditor.tsx` |
 | Leitura única da aba Query | `services/queryIndex.ts` |
 | Mutações do `TopologyMap` | `utils/mapEdits.ts` |
-| Lógica pura, sem estado | `utils.ts`, `utils/*` |
+| Lógica pura, sem estado | `utils/*` (um módulo por tema) |
 | Lógica com estado ou efeito | `hooks/*` |
 | Tipos compartilhados e `defaultOptions()` | `types.ts` |
 
@@ -55,5 +55,5 @@ onChange(addSubmapAt(map, x, y));
 
 ## Exceções
 
-Arquivos grandes já existentes (`TopologyCanvas.tsx`, `utils.ts`) não precisam ser quebrados numa
-tarefa não relacionada — mas código **novo** entra no lugar certo desde o começo.
+Arquivos grandes já existentes (`TopologyCanvas.tsx`, `useTopologyDragController.ts`) não precisam
+ser quebrados numa tarefa não relacionada — mas código **novo** entra no lugar certo desde o começo.

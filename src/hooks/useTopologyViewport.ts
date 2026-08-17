@@ -1,6 +1,7 @@
 import { MutableRefObject, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyView } from '../types';
-import { clamp, eventTargetsElement, findScrollParents } from '../utils';
+import { eventTargetsElement, findScrollParents } from '../utils/domScroll';
+import { clamp } from '../utils/mapCoords';
 import { computeFitToViewTransform } from '../utils/mapBounds';
 
 interface UseTopologyViewportParams {

@@ -3,7 +3,7 @@ import { StandardEditorProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
-import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils';
+import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils/queryHosts';
 
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 

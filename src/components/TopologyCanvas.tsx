@@ -34,7 +34,14 @@ import {
   updateHostsCredentialsBulk,
   updateSubmapsBulk,
 } from '../utils/mapEdits';
-import { clamp, computeNetworkLayout, computeNodeLayout, computeStaticLayout, findNodeById, isHostNode, isSubmapNode, lookupHostDisplay, measureTextWidth, NodeLayout, QueryHostOption, resolveHostIp, resolveHostLayoutKey, resolveLinkMedium, snapToGrid, upsertHostLayout, withLiveZabbixMeta } from '../utils';
+import { resolveHostIp, resolveHostLayoutKey } from '../utils/hostLookup';
+import { resolveLinkMedium } from '../utils/linkMedium';
+import { clamp, snapToGrid } from '../utils/mapCoords';
+import { upsertHostLayout, withLiveZabbixMeta } from '../utils/mapSync';
+import { computeNetworkLayout, computeNodeLayout, computeStaticLayout, measureTextWidth, NodeLayout } from '../utils/nodeLayout';
+import { QueryHostOption } from '../utils/queryHostPicker';
+import { lookupHostDisplay } from '../utils/queryHosts';
+import { findNodeById, isHostNode, isSubmapNode } from '../utils/topologyNodes';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import { HOST_ICON_LABELS, HostIconGlyph, hostIconRenderSize } from '../utils/hostIcons';
 import { textOnBackground } from '../utils/colorContrast';

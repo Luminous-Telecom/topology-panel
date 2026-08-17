@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HostMetadataMap, TopologyMap } from '../types';
-import { mergeMapWithQueryHosts } from '../utils';
+import { mergeMapWithQueryHosts } from './mapSync';
 
 function emptyMap(overrides?: Partial<TopologyMap>): TopologyMap {
   return { width: 800, height: 600, nodes: [], links: [], ...overrides };

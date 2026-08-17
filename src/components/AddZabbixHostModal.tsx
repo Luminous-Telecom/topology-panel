@@ -3,7 +3,8 @@ import { Button, Field, Input, Modal, Select, useTheme2 } from '@grafana/ui';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
 import { FieldReadout } from './FieldReadout';
-import { hostsAlreadyOnMap, isIpv4, QueryHostOption, queryHostPickerOptions } from '../utils';
+import { isIpv4 } from '../utils/ipv4';
+import { hostsAlreadyOnMap, QueryHostOption, queryHostPickerOptions } from '../utils/queryHostPicker';
 
 const ipReadoutStyle: React.CSSProperties = {
   fontFamily: 'monospace',

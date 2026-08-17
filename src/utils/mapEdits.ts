@@ -1,14 +1,9 @@
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
-import {
-  collectHostHiddenKeys,
-  findNodeById,
-  inferLinkMedium,
-  isHostNode,
-  isIpv4,
-  isSubmapNode,
-  resolveHostLayoutKey,
-  upsertHostLayout,
-} from '../utils';
+import { collectHostHiddenKeys, resolveHostLayoutKey } from './hostLookup';
+import { isIpv4 } from './ipv4';
+import { inferLinkMedium } from './linkMedium';
+import { upsertHostLayout } from './mapSync';
+import { findNodeById, isHostNode, isSubmapNode } from './topologyNodes';
 
 /** Compara endpoints de link sem considerar direção (a→b é o mesmo link que b→a). */
 export function linksMatchEndpoints(

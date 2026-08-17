@@ -13,14 +13,9 @@ import { QueryRefSelect } from './QueryRefSelect';
 import { HostIconPicker } from './HostIconPicker';
 import { FieldReadout } from './FieldReadout';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
-import {
-  hostsAlreadyOnMap,
-  isIpv4,
-  queryHostPickerOptions,
-  QueryHostOption,
-  resolveHostIp,
-  resolveQueryHostOptionForNode,
-} from '../utils';
+import { resolveHostIp } from '../utils/hostLookup';
+import { isIpv4 } from '../utils/ipv4';
+import { hostsAlreadyOnMap, QueryHostOption, queryHostPickerOptions, resolveQueryHostOptionForNode } from '../utils/queryHostPicker';
 
 const ipReadoutStyle: React.CSSProperties = {
   fontFamily: 'monospace',

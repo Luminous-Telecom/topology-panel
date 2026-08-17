@@ -22,7 +22,8 @@ import {
   parseTopologyJson,
   topologyToJson,
 } from '../types';
-import { findNodeById, inferLinkMedium, isHostNode } from '../utils';
+import { inferLinkMedium } from '../utils/linkMedium';
+import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { DashboardMultiSelect } from '../components/DashboardMultiSelect';
 import { DashboardPickerSelect } from '../components/DashboardPickerSelect';
 import { QueryRefSelect } from '../components/QueryRefSelect';
