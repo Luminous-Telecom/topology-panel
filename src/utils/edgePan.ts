@@ -1,13 +1,11 @@
+import { clamp } from './mapCoords';
+
 interface EdgePanVelocity {
   vx: number;
   vy: number;
 }
 
 type EdgePanRect = Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom' | 'width' | 'height'>;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function edgeAxisVelocity(
   pointer: number,

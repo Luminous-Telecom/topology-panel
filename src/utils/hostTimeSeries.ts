@@ -1,6 +1,7 @@
 import { DataFrame, Field, FieldType, PanelData, TimeRange } from '@grafana/data';
 import { HostMetadataMap, TopologyHostStatus } from '../types';
-import { collectHostLookupCandidates, HostLookupRef } from '../utils';
+import { collectHostLookupCandidates, HostLookupRef } from './hostLookup';
+import { hostLabelFromField } from '../services/queryIndex';
 import { resolveHostStatusFromValue, StatusColorOptions } from './statusMapping';
 
 export type TopologyHoverMetric = 'icmp_rtt' | 'packet_loss';
@@ -18,12 +19,6 @@ export interface HostHoverSeries {
   fieldLabel: string;
   failureCount: number;
   lastFailureAt?: number;
-}
-
-function hostLabelFromField(field: Field): string | undefined {
-  const labels = field.labels ?? {};
-  const host = labels.host?.trim() || labels.__zbx_host_name?.trim() || labels.hostName?.trim();
-  return host || undefined;
 }
 
 function fieldItemKey(field: Field): string {
@@ -131,10 +126,12 @@ function readPoints(
   statusOptions: StatusColorOptions
 ): HostTimeSeriesPoint[] {
   const points: HostTimeSeriesPoint[] = [];
-  const len = valueField.values.length;
+  const times: ArrayLike<unknown> = timeField.values;
+  const values: ArrayLike<unknown> = valueField.values;
+  const len = values.length;
   for (let i = 0; i < len; i++) {
-    const t = timestampMs(timeField.values.get(i));
-    const rawV = valueField.values.get(i);
+    const t = timestampMs(times[i]);
+    const rawV = values[i];
     if (t === undefined || rawV == null) {
       continue;
     }
