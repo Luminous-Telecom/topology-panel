@@ -13,21 +13,17 @@ import { AlignGuideLine } from '../utils/alignGuides';
 import { computeTopologyContentBounds } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { useDeferredDuringGesture } from '../hooks/useDeferredDuringGesture';
-import { TopologyContextMenu } from './TopologyContextMenu';
 import { canvasStyles } from './canvas/canvasStyles';
+import { CanvasControlsOverlay } from './canvas/CanvasControlsOverlay';
 import { CanvasGridLayer } from './canvas/CanvasGridLayer';
+import { CanvasHudOverlay } from './canvas/CanvasHudOverlay';
 import { CanvasModals } from './canvas/CanvasModals';
 import { CanvasSelectionShapes } from './canvas/CanvasSelectionShapes';
 import { LinksLayer } from './canvas/LinksLayer';
 import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
-import { TopologyColorLegend } from './canvas/TopologyColorLegend';
-import { TopologyQueryErrorBadge } from './canvas/TopologyQueryErrorBadge';
 import { TopologyToast } from './canvas/TopologyToast';
-import { TopologyToolbar } from './canvas/TopologyToolbar';
-import { DashboardNavButton } from './DashboardNavButton';
 import { openDashboardUrl } from './DashboardPickerModal';
-import { TopologyMinimap } from './TopologyMinimap';
 import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
@@ -777,53 +773,38 @@ export function TopologyCanvas({
       }}
       onContextMenu={(e) => handleContextMenu(e)}
     >
-      {!hideOverlayControls && (
-        <TopologyToolbar
-          tool={tool}
-          onToolChange={setTool}
-          locked={Boolean(map.locked)}
-          networksLocked={networksLocked}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
-          canPaste={canEditCanvas && clipboardReady}
-          onUndo={onUndo}
-          onRedo={onRedo}
-          onCopy={copySelection}
-          onPaste={pasteAtViewCenter}
-          onToggleLock={() => persist(toggleMapLock(storedMap))}
-          onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
-          flowPaused={flowPaused}
-          onToggleFlow={() => setFlowPaused((p) => !p)}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={() => void toggleFullscreen()}
-          showMinimap={showMinimap}
-          onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
-          showLegend={showLegend}
-          onToggleLegend={() => onShowLegendChange?.(!showLegend)}
-          showEditControls={canPersist}
-          searchNodes={map.nodes}
-          searchOpen={searchOpen}
-          onSearchOpenChange={setSearchOpen}
-          onSearchFocusNode={focusNodeOnMap}
-        />
-      )}
-
-      {!hideOverlayControls && options.showDashboardNav !== false && (
-        <DashboardNavButton
-          label={options.dashboardNavLabel?.trim() || 'Dashboards'}
-          choices={options.dashboardNavChoices ?? []}
-        />
-      )}
-
-      <TopologyQueryErrorBadge visible={queryError} />
-
-      {editable && showEmptyHint && (
-        <div className={canvasStyles.empty} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
-          Clique com o <strong>botão direito</strong> para adicionar dispositivos, redes, submapas, seletores e links. Hosts
-          Zabbix vêm da aba <strong>Query</strong>.
-        </div>
-      )}
+      <CanvasControlsOverlay
+        hidden={Boolean(hideOverlayControls)}
+        map={map}
+        options={options}
+        tool={tool}
+        setTool={setTool}
+        networksLocked={networksLocked}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        canCopy={canEditCanvas && (selectedNodeIds.length > 0 || selectedLink !== null)}
+        canPaste={canEditCanvas && clipboardReady}
+        canPersist={canPersist}
+        editable={editable}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onCopy={copySelection}
+        onPaste={pasteAtViewCenter}
+        onToggleLock={() => persist(toggleMapLock(storedMap))}
+        onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
+        flowPaused={flowPaused}
+        onToggleFlow={() => setFlowPaused((p) => !p)}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={() => void toggleFullscreen()}
+        showMinimap={showMinimap}
+        onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
+        showLegend={showLegend}
+        onToggleLegend={() => onShowLegendChange?.(!showLegend)}
+        searchOpen={searchOpen}
+        setSearchOpen={setSearchOpen}
+        onSearchFocusNode={focusNodeOnMap}
+        queryError={Boolean(queryError)}
+      />
 
       <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
         <div
@@ -921,43 +902,27 @@ export function TopologyCanvas({
         </g>
       </svg>
 
-      {canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0 && (
-        <TopologyMinimap
-          map={map}
-          nodes={map.nodes}
-          links={validLinks}
-          nodeLayouts={nodeLayouts}
-          view={view}
-          viewport={viewport}
-          onViewChange={commitView}
-          resolveNodeFill={resolveMiniNodeFill}
-          resolveNetworkStroke={resolveMiniNetworkStroke}
-          linkColor={miniLinkColor}
-        />
-      )}
-
-      {showLegend && (
-        <TopologyColorLegend
-          items={legendItems}
-          refreshIntervalSec={refreshIntervalSec}
-          refreshResetKey={queryData}
-        />
-      )}
-
-      {contextMenu && (
-        <TopologyContextMenu
-          x={contextMenu.screenX}
-          y={contextMenu.screenY}
-          items={
-            contextMenu.link
-              ? linkMenuItems(contextMenu.link)
-              : contextMenu.node
-                ? nodeMenuItems(contextMenu.node)
-                : canvasMenuItems()
-          }
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      <CanvasHudOverlay
+        showMinimap={canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0}
+        map={map}
+        links={validLinks}
+        nodeLayouts={nodeLayouts}
+        view={view}
+        viewport={viewport}
+        onViewChange={commitView}
+        resolveNodeFill={resolveMiniNodeFill}
+        resolveNetworkStroke={resolveMiniNetworkStroke}
+        linkColor={miniLinkColor}
+        showLegend={showLegend}
+        legendItems={legendItems}
+        refreshIntervalSec={refreshIntervalSec}
+        refreshResetKey={queryData}
+        contextMenu={contextMenu}
+        onCloseContextMenu={closeContextMenu}
+        canvasMenuItems={canvasMenuItems}
+        nodeMenuItems={nodeMenuItems}
+        linkMenuItems={linkMenuItems}
+      />
 
       <CanvasModals
         storedMap={storedMap}
