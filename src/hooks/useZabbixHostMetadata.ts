@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HostMetadataMap } from '../types';
 import { fetchZabbixHostMetadata } from '../utils/zabbixApi';
+import { createAsyncCache } from '../services/asyncCache';
+
+/**
+ * IP e nome de interface mudam raramente no Zabbix, mas o conjunto de hosts da Query oscila entre
+ * refreshes e cada painel de topologia do dashboard pede a mesma lista. O cache evita repetir a
+ * chamada a cada oscilação e o dedupe faz N painéis compartilharem uma requisição só.
+ */
+const METADATA_TTL_MS = 60_000;
+
+const metadataCache = createAsyncCache<HostMetadataMap>({
+  ttlMs: METADATA_TTL_MS,
+  isCacheable: (map) => Object.keys(map).length > 0,
+});
 
 /** Busca IP/nome da interface principal no Zabbix quando a Query não traz esses dados. */
 export function useZabbixHostMetadata(
@@ -25,7 +38,8 @@ export function useZabbixHostMetadata(
     let cancelled = false;
     setLoading(true);
 
-    void fetchZabbixHostMetadata(datasourceUid, names)
+    void metadataCache
+      .get(`${datasourceUid}\u0000${hostKey}`, () => fetchZabbixHostMetadata(datasourceUid, names))
       .then((next) => {
         if (!cancelled) {
           setMetadata(next);
