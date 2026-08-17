@@ -1,6 +1,8 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
+const PLUGIN_ID = require('../../src/plugin.json').id;
+
 module.exports = (env) => {
   const isProd = env?.production ?? env?.production === true;
 
@@ -13,6 +15,15 @@ module.exports = (env) => {
     output: {
       path: path.resolve(__dirname, '../../dist'),
       filename: '[name].js',
+      // Chunk assíncrono (modais via React.lazy) é buscado em runtime pelo browser: sem
+      // `publicPath` o webpack pede `/<chunk>.js` na raiz do Grafana e toma 404.
+      // Hash na query (convenção do create-plugin do Grafana) em vez de no nome do arquivo:
+      // o cache do browser continua invalidando a cada build, mas o deploy sobrescreve sempre
+      // os mesmos arquivos, sem acumular chunks órfãos no servidor.
+      chunkFilename: isProd ? '[name].js?_cache=[contenthash]' : '[name].js',
+      publicPath: `public/plugins/${PLUGIN_ID}/`,
+      // Evita colisão do runtime de chunk com outros plugins carregados no mesmo dashboard.
+      uniqueName: PLUGIN_ID,
       library: {
         type: 'amd',
       },

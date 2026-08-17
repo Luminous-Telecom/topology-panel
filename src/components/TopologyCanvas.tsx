@@ -55,14 +55,17 @@ import {
 } from './TopologyContextMenu';
 import { DashboardNavButton } from './DashboardNavButton';
 import { DashboardPickerModal, openDashboardUrl } from './DashboardPickerModal';
-import { NodeEditModal, NodeEditSavePayload } from './NodeEditModal';
-import { BulkHostIconModal } from './BulkHostIconModal';
-import { BulkHostCredentialsModal } from './BulkHostCredentialsModal';
-import { BulkSubmapEditModal } from './BulkSubmapEditModal';
-import { ZabbixHostPickerModal } from './AddZabbixHostModal';
-import { PingModal } from './PingModal';
+import type { NodeEditSavePayload } from './NodeEditModal';
 import { HostHoverPopover } from './HostHoverPopover';
-import { LinkEditModal } from './LinkEditModal';
+import {
+  BulkHostCredentialsModal,
+  BulkHostIconModal,
+  BulkSubmapEditModal,
+  LinkEditModal,
+  NodeEditModal,
+  PingModal,
+  ZabbixHostPickerModal,
+} from './lazyModals';
 import { TopologyMinimap } from './TopologyMinimap';
 import { formatLinkBandwidth, linkStrokeWidth } from '../utils/linkBandwidth';
 import {
