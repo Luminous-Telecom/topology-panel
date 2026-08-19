@@ -1,4 +1,5 @@
 import React, { useId, useMemo, useState } from 'react';
+import { PanelData } from '@grafana/data';
 import { Button, Field, Input, Modal, Spinner, Stack } from '@grafana/ui';
 import {
   TopologyInterfaceReference,
@@ -6,7 +7,7 @@ import {
   TopologyNode,
 } from '../types';
 import { useZabbixHostInterfaces } from '../hooks/useZabbixHostInterfaces';
-import { interfaceToReference, resolveInterfaceCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
+import { interfaceToReference, resolveLinkCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import { resolveHostLookupKey } from '../utils/hostLookup';
 import { HostMetadataMap } from '../types';
@@ -22,7 +23,7 @@ export interface PendingLinkEndpoints {
 interface Props {
   pending: PendingLinkEndpoints;
   hostMetadata?: HostMetadataMap;
-  datasourceUid?: string;
+  queryData?: PanelData;
   onSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
@@ -146,7 +147,7 @@ function InterfaceList({
 export function LinkInterfaceSelectModal({
   pending,
   hostMetadata,
-  datasourceUid,
+  queryData,
   onSave,
   onClose,
 }: Props) {
@@ -162,12 +163,16 @@ export function LinkInterfaceSelectModal({
     [fromHostKey, toHostKey]
   );
 
-  const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(datasourceUid, hostKeys);
+  const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(
+    hostKeys,
+    queryData,
+    hostMetadata
+  );
 
   const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
   const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];
 
-  const previewCapacity = resolveInterfaceCapacityMbps(fromIface) ?? resolveInterfaceCapacityMbps(toIface);
+  const previewCapacity = resolveLinkCapacityMbps(fromIface, toIface);
   const canSave = Boolean(fromIface && toIface);
 
   return (

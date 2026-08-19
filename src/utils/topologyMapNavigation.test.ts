@@ -125,9 +125,9 @@ describe('applyTopologyMapToPanelOptions', () => {
   it('grava em childMaps quando mapId é de mapa interno', () => {
     const options = defaultOptions();
     const child = emptyMap();
-    child.nodes.push({ id: 'swv-1', x: 30, y: 40, type: 'host', label: 'SWV01' });
-    const updated = applyTopologyMapToPanelOptions(options, 'swv', child);
+    child.nodes.push({ id: 'host-1', x: 30, y: 40, type: 'host', label: 'Host filho' });
+    const updated = applyTopologyMapToPanelOptions(options, 'child-a', child);
     expect(updated.map).toBe(options.map);
-    expect(updated.childMaps?.swv).toBe(child);
+    expect(updated.childMaps?.['child-a']).toBe(child);
   });
 });

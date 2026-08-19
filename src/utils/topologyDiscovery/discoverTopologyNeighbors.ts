@@ -1,8 +1,9 @@
+import { PanelData } from '@grafana/data';
 import { HostMetadataMap, TopologyMap, TopologySuggestedLink } from '../../types';
+import { buildQueryIndex, interfacesByHostKeysFromIndex } from '../../services/queryIndex';
 import { resolveHostLookupKey } from '../hostLookup';
 import { isHostNode } from '../topologyNodes';
-import { fetchZabbixHostInterfaceItems, fetchZabbixNeighborItems } from '../zabbixApi';
-import { groupInterfacesByHost } from '../zabbixAdapter/parseInterfaceItems';
+import { fetchZabbixNeighborItems } from '../zabbixApi';
 import { groupNeighborsByHost } from '../zabbixAdapter/parseNeighborItems';
 import { correlateNeighborsToSuggestions } from './correlateNeighbors';
 
@@ -30,12 +31,13 @@ function hostKeysFromMap(map: TopologyMap, hostMetadata?: HostMetadataMap): stri
 
 /**
  * Descobre vizinhos LLDP/CDP via itens Zabbix dos templates dos hosts.
- * Não altera o mapa — retorna sugestões para revisão.
+ * Interfaces locais vêm da Query; vizinhança continua via API Zabbix.
  */
 export async function discoverTopologyNeighbors(
   datasourceUid: string,
   map: TopologyMap,
-  hostMetadata?: HostMetadataMap
+  hostMetadata?: HostMetadataMap,
+  queryData?: PanelData
 ): Promise<NeighborDiscoveryResult> {
   const hostKeys = hostKeysFromMap(map, hostMetadata);
   if (!datasourceUid || !hostKeys.length) {
@@ -48,14 +50,9 @@ export async function discoverTopologyNeighbors(
     };
   }
 
-  const [ifaceEntries, neighborEntries] = await Promise.all([
-    fetchZabbixHostInterfaceItems(datasourceUid, hostKeys),
-    fetchZabbixNeighborItems(datasourceUid, hostKeys),
-  ]);
-
-  const interfacesByHost = groupInterfacesByHost(
-    ifaceEntries.map((e) => ({ hostKey: e.hostKey, hostid: e.hostid, items: e.items }))
-  );
+  const neighborEntries = await fetchZabbixNeighborItems(datasourceUid, hostKeys);
+  const queryIndex = buildQueryIndex(queryData);
+  const interfacesByHost = interfacesByHostKeysFromIndex(queryIndex, hostKeys, hostMetadata);
   const neighbors = groupNeighborsByHost(
     neighborEntries.map((e) => ({ hostKey: e.hostKey, hostid: e.hostid, items: e.items }))
   );

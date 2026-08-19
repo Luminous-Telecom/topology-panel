@@ -5,10 +5,16 @@ import {
   HostDisplayMap,
   HostMetadata,
   HostMetadataMap,
+  TopologyNetworkInterface,
   TopologyQueryRefInfo,
 } from '../types';
 import { isIpv4 } from '../utils/ipv4';
 import { resolveHostStatusDisplay, StatusColorOptions } from '../utils/statusMapping';
+import { parseInterfaceItemKey } from '../utils/zabbixAdapter/interfaceItemKeys';
+import {
+  groupInterfacesByHost,
+  RawZabbixInterfaceItem,
+} from '../utils/zabbixAdapter/parseInterfaceItems';
 
 /**
  * Leitura única da aba Query do painel.
@@ -38,6 +44,8 @@ export interface QueryIndex {
   refIds: string[];
   refInfos: TopologyQueryRefInfo[];
   byRefId: Map<string, QueryRefBucket>;
+  /** Itens de interface por rótulo de host da Query (IP, nome visível, hostid…). */
+  interfaceItemsByHost: Map<string, Map<string, RawZabbixInterfaceItem>>;
   datasourceUid?: string;
 }
 
@@ -47,6 +55,7 @@ const EMPTY_INDEX: QueryIndex = {
   refIds: [],
   refInfos: [],
   byRefId: new Map(),
+  interfaceItemsByHost: new Map(),
   datasourceUid: undefined,
 };
 
@@ -82,6 +91,41 @@ export function hostLabelFromField(field: Pick<Field, 'labels'>): string | undef
  * `Field.values` é array puro desde o Grafana 10; `.get(i)` só sobrevive por um shim de
  * `Array.prototype` marcado como deprecated no `@grafana/data`. Indexar direto evita depender dele.
  */
+function fieldItemKey(field: Field): string {
+  return String(field.labels?.item_key ?? field.labels?.key_ ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function fieldItemName(field: Field): string | undefined {
+  return field.labels?.item_name?.trim() || field.labels?.item?.trim() || undefined;
+}
+
+function fieldItemId(field: Field): string | undefined {
+  return (
+    field.labels?.itemid?.trim() ||
+    field.labels?.__zbx_itemid?.trim() ||
+    field.labels?.__zbx_item_id?.trim() ||
+    undefined
+  );
+}
+
+function fieldLastValueString(field: Field): string | undefined {
+  if (field.type === FieldType.number || field.type === FieldType.time) {
+    const last = lastNumericValue(field.values);
+    return last !== undefined ? String(last) : undefined;
+  }
+  if (!field.values?.length) {
+    return undefined;
+  }
+  const last = field.values[field.values.length - 1];
+  if (last == null) {
+    return undefined;
+  }
+  const text = String(last).trim();
+  return text || undefined;
+}
+
 function lastNumericValue(values: ArrayLike<unknown>): number | undefined {
   for (let i = values.length - 1; i >= 0; i--) {
     const v = values[i];
@@ -214,6 +258,61 @@ function indexHostMetadata(result: HostMetadataMap, field: Field, host: string):
   }
 }
 
+function hostAliasKeys(metadata: HostMetadataMap, host: string): string[] {
+  const keys = new Set<string>([host]);
+  const entry = metadata[host];
+  if (entry?.name) {
+    keys.add(entry.name);
+  }
+  if (entry?.ip) {
+    keys.add(entry.ip);
+  }
+  if (entry?.hostid) {
+    keys.add(entry.hostid);
+  }
+  return [...keys];
+}
+
+function registerInterfaceItem(
+  interfaceItemsByHost: Map<string, Map<string, RawZabbixInterfaceItem>>,
+  metadata: HostMetadataMap,
+  host: string,
+  item: RawZabbixInterfaceItem
+): void {
+  const itemKey = item.key_.trim().toLowerCase();
+  if (!itemKey) {
+    return;
+  }
+  for (const alias of hostAliasKeys(metadata, host)) {
+    let bucket = interfaceItemsByHost.get(alias);
+    if (!bucket) {
+      bucket = new Map();
+      interfaceItemsByHost.set(alias, bucket);
+    }
+    bucket.set(itemKey, item);
+  }
+}
+
+function indexInterfaceField(
+  interfaceItemsByHost: Map<string, Map<string, RawZabbixInterfaceItem>>,
+  metadata: HostMetadataMap,
+  field: Field,
+  host: string
+): void {
+  const key = fieldItemKey(field);
+  if (!key || !parseInterfaceItemKey(key)) {
+    return;
+  }
+  const hostid = metadata[host]?.hostid;
+  registerInterfaceItem(interfaceItemsByHost, metadata, host, {
+    itemid: fieldItemId(field) || '',
+    key_: key,
+    name: fieldItemName(field),
+    lastvalue: fieldLastValueString(field),
+    hostid,
+  });
+}
+
 function ensureBucket(byRefId: Map<string, QueryRefBucket>, refId: string): QueryRefBucket {
   const existing = byRefId.get(refId);
   if (existing) {
@@ -231,6 +330,7 @@ function computeQueryIndex(data: PanelData | DataFrame[]): QueryIndex {
   const metadata: HostMetadataMap = {};
   const allHosts = new Set<string>();
   const byRefId = new Map<string, QueryRefBucket>();
+  const interfaceItemsByHost = new Map<string, Map<string, RawZabbixInterfaceItem>>();
   const refInfoByRef = new Map<string, TopologyQueryRefInfo>();
 
   for (const target of targets) {
@@ -257,6 +357,7 @@ function computeQueryIndex(data: PanelData | DataFrame[]): QueryIndex {
       }
       allHosts.add(host);
       indexHostMetadata(metadata, field, host);
+      indexInterfaceField(interfaceItemsByHost, metadata, field, host);
 
       if (!bucket) {
         continue;
@@ -280,8 +381,85 @@ function computeQueryIndex(data: PanelData | DataFrame[]): QueryIndex {
     refIds: refInfos.map((info) => info.refId),
     refInfos,
     byRefId,
+    interfaceItemsByHost,
     datasourceUid: resolveDatasourceUid(data),
   };
+}
+
+function collectQueryHostAliases(hostKey: string, metadata?: HostMetadataMap): string[] {
+  const aliases = new Set<string>([hostKey]);
+  const direct = metadata?.[hostKey];
+  if (direct?.name) {
+    aliases.add(direct.name);
+  }
+  if (direct?.ip) {
+    aliases.add(direct.ip);
+  }
+  if (direct?.hostid) {
+    aliases.add(direct.hostid);
+  }
+  for (const [key, entry] of Object.entries(metadata ?? {})) {
+    if (
+      key === hostKey ||
+      entry.ip === hostKey ||
+      entry.name === hostKey ||
+      entry.hostid === hostKey
+    ) {
+      aliases.add(key);
+      if (entry.name) {
+        aliases.add(entry.name);
+      }
+      if (entry.ip) {
+        aliases.add(entry.ip);
+      }
+      if (entry.hostid) {
+        aliases.add(entry.hostid);
+      }
+    }
+  }
+  return [...aliases];
+}
+
+function rawInterfaceItemsForHostKey(
+  index: QueryIndex,
+  hostKey: string,
+  metadata?: HostMetadataMap
+): RawZabbixInterfaceItem[] {
+  const merged = new Map<string, RawZabbixInterfaceItem>();
+  for (const alias of collectQueryHostAliases(hostKey, metadata)) {
+    const bucket = index.interfaceItemsByHost.get(alias);
+    if (!bucket) {
+      continue;
+    }
+    for (const [key, item] of bucket) {
+      merged.set(key, item);
+    }
+  }
+  return [...merged.values()];
+}
+
+/** Indica se a Query trouxe ao menos um item de interface (tráfego, status, velocidade…). */
+export function queryIndexHasInterfaceItems(index: QueryIndex): boolean {
+  return index.interfaceItemsByHost.size > 0;
+}
+
+/** Interfaces descobertas na Query para as chaves pedidas (IP/nome/hostid do mapa). */
+export function interfacesByHostKeysFromIndex(
+  index: QueryIndex,
+  hostKeys: string[],
+  metadata?: HostMetadataMap
+): Record<string, TopologyNetworkInterface[]> {
+  const entries = hostKeys
+    .map((hostKey) => hostKey.trim())
+    .filter(Boolean)
+    .map((hostKey) => {
+      const items = rawInterfaceItemsForHostKey(index, hostKey, metadata);
+      const hostid = metadata?.[hostKey]?.hostid ?? items.find((item) => item.hostid)?.hostid;
+      return { hostKey, hostid, items };
+    })
+    .filter((entry) => entry.items.length > 0);
+
+  return groupInterfacesByHost(entries);
 }
 
 /**

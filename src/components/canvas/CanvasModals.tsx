@@ -160,7 +160,7 @@ export function CanvasModals({
         <LinkEditModal
           link={editLink}
           storedMap={storedMap}
-          datasourceUid={zabbixDatasourceUid}
+          queryData={queryData}
           hostMetadata={hostMetadata}
           onClose={() => setEditLink(null)}
           onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
@@ -171,7 +171,7 @@ export function CanvasModals({
         <LinkInterfaceSelectModal
           pending={pendingLink}
           hostMetadata={hostMetadata}
-          datasourceUid={zabbixDatasourceUid}
+          queryData={queryData}
           onClose={onPendingLinkClose}
           onSave={onPendingLinkSave}
         />

@@ -611,7 +611,7 @@ export function TopologyCanvas({
     setNeighborError(undefined);
     setSuggestedReviewOpen(true);
     try {
-      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata);
+      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata, queryData);
       const merged = mergeSuggestedLinks(storedMap, result.suggestions);
       if (merged !== storedMap) {
         persist(merged);
@@ -628,7 +628,7 @@ export function TopologyCanvas({
     } finally {
       setDiscoveringNeighbors(false);
     }
-  }, [hostMetadata, persist, storedMap, zabbixDatasourceUid]);
+  }, [hostMetadata, persist, queryData, storedMap, zabbixDatasourceUid]);
 
   const {
     dragRef,

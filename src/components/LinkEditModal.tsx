@@ -1,5 +1,6 @@
-import React, { useId, useMemo, useState } from 'react';
-import { Button, Field, Input, Modal, Select, Spinner } from '@grafana/ui';
+import React, { useEffect, useId, useMemo, useState } from 'react';
+import { PanelData } from '@grafana/data';
+import { Button, Field, Modal, Select, Spinner } from '@grafana/ui';
 import {
   HostMetadataMap,
   TopologyInterfaceReference,
@@ -9,8 +10,12 @@ import {
   TopologyNode,
 } from '../types';
 import { useZabbixHostInterfaces } from '../hooks/useZabbixHostInterfaces';
-import { bandwidthToInput, parseBandwidthInput, LinkBandwidthUnit, formatLinkBandwidth } from '../utils/linkBandwidth';
-import { interfaceToReference, resolveInterfaceCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
+import { formatLinkBandwidth } from '../utils/linkBandwidth';
+import {
+  interfaceToReference,
+  matchDiscoveredInterface,
+  resolveLinkCapacityMbps,
+} from '../utils/zabbixAdapter/bindInterfaceMetrics';
 import { resolveHostLookupKey } from '../utils/hostLookup';
 import { findNodeById } from '../utils/topologyNodes';
 import { FieldReadout } from './FieldReadout';
@@ -18,7 +23,7 @@ import { FieldReadout } from './FieldReadout';
 interface Props {
   link: TopologyLink;
   storedMap: { nodes: TopologyNode[] };
-  datasourceUid?: string;
+  queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
   onSave: (patch: {
     medium?: TopologyLinkMedium;
@@ -32,11 +37,6 @@ interface Props {
 const mediumOptions = [
   { label: 'Fibra (linha contínua)', value: 'fiber' },
   { label: 'Rádio (linha tracejada)', value: 'radio' },
-];
-
-const unitOptions = [
-  { label: 'Mb', value: 'mbps' },
-  { label: 'Gb', value: 'gbps' },
 ];
 
 function InterfaceSelectField({
@@ -89,12 +89,16 @@ function InterfaceSelectField({
   );
 }
 
-export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, onSave, onClose }: Props) {
+export function LinkEditModal({
+  link,
+  storedMap,
+  queryData,
+  hostMetadata,
+  onSave,
+  onClose,
+}: Props) {
   const uid = useId();
-  const initial = useMemo(() => bandwidthToInput(link.bandwidthMbps), [link.bandwidthMbps]);
   const [medium, setMedium] = useState<TopologyLinkMedium>(link.medium === 'radio' ? 'radio' : 'fiber');
-  const [bandwidthValue, setBandwidthValue] = useState(initial.value);
-  const [bandwidthUnit, setBandwidthUnit] = useState<LinkBandwidthUnit>(initial.unit);
   const [fromIface, setFromIface] = useState<TopologyNetworkInterface | undefined>();
   const [toIface, setToIface] = useState<TopologyNetworkInterface | undefined>();
 
@@ -107,9 +111,35 @@ export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, on
     [fromHostKey, toHostKey]
   );
 
-  const { interfacesByHost, loading: ifacesLoading } = useZabbixHostInterfaces(datasourceUid, hostKeys);
+  const { interfacesByHost, loading: ifacesLoading, loadError } = useZabbixHostInterfaces(
+    hostKeys,
+    queryData,
+    hostMetadata
+  );
   const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
   const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];
+
+  useEffect(() => {
+    if (!link.fromInterface || !fromInterfaces.length) {
+      return;
+    }
+    setFromIface((prev) => prev ?? matchDiscoveredInterface(link.fromInterface, fromInterfaces));
+  }, [fromInterfaces, link.fromInterface]);
+
+  useEffect(() => {
+    if (!link.toInterface || !toInterfaces.length) {
+      return;
+    }
+    setToIface((prev) => prev ?? matchDiscoveredInterface(link.toInterface, toInterfaces));
+  }, [toInterfaces, link.toInterface]);
+
+  const autoCapacityMbps = useMemo(
+    () => resolveLinkCapacityMbps(fromIface, toIface),
+    [fromIface, toIface]
+  );
+  const capacityLabel = ifacesLoading
+    ? 'Carregando interfaces…'
+    : formatLinkBandwidth(autoCapacityMbps) ?? 'Selecione as interfaces monitoradas';
 
   const fromSelectValue = fromIface
     ? `${fromIface.name}\u0000${fromIface.snmpIndex ?? ''}`
@@ -124,7 +154,10 @@ export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, on
 
   return (
     <Modal title="Editar link" isOpen onDismiss={onClose}>
-      {datasourceUid && fromNode && toNode ? (
+      {loadError && (
+        <div style={{ color: 'var(--error-text)', marginBottom: 8, fontSize: 12 }}>{loadError}</div>
+      )}
+      {fromNode && toNode ? (
         <>
           <InterfaceSelectField
             uid={`${uid}-from-iface`}
@@ -147,9 +180,7 @@ export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, on
         </>
       ) : (
         <FieldReadout label="Interfaces">
-          <span style={{ fontSize: 12, opacity: 0.75 }}>
-            Configure o datasource Zabbix na aba Query para associar interfaces.
-          </span>
+          <span style={{ fontSize: 12, opacity: 0.75 }}>Nós de origem e destino não encontrados.</span>
         </FieldReadout>
       )}
       <Field label="Tipo">
@@ -162,27 +193,9 @@ export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, on
       </Field>
       <FieldReadout
         label="Capacidade"
-        description="Largura da linha aumenta conforme Gb. Deixe vazio para usar espessura padrão."
+        description="Definida automaticamente pelos itens de velocidade das interfaces no Zabbix (ex.: ifSpeed, modulação)."
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <Input
-            aria-label="Capacidade — valor"
-            type="number"
-            min={0}
-            step="any"
-            value={bandwidthValue}
-            onChange={(e) => setBandwidthValue(e.currentTarget.value)}
-            placeholder="Ex.: 1 ou 100"
-            width={16}
-          />
-          <Select
-            aria-label="Capacidade — unidade"
-            options={unitOptions}
-            value={bandwidthUnit}
-            onChange={(v) => setBandwidthUnit((v.value ?? 'gbps') as LinkBandwidthUnit)}
-            width={12}
-          />
-        </div>
+        <div style={{ fontFamily: 'monospace', fontSize: 14 }}>{capacityLabel}</div>
       </FieldReadout>
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
@@ -190,16 +203,13 @@ export function LinkEditModal({ link, storedMap, datasourceUid, hostMetadata, on
         </Button>
         <Button
           onClick={() => {
-            const mbps =
-              parseBandwidthInput(bandwidthValue, bandwidthUnit) ??
-              resolveInterfaceCapacityMbps(fromIface) ??
-              resolveInterfaceCapacityMbps(toIface);
             const patch: {
               medium: TopologyLinkMedium;
               bandwidthMbps?: number;
               fromInterface?: TopologyInterfaceReference;
               toInterface?: TopologyInterfaceReference;
             } = { medium };
+            const mbps = resolveLinkCapacityMbps(fromIface, toIface);
             if (mbps && mbps > 0) {
               patch.bandwidthMbps = mbps;
             }

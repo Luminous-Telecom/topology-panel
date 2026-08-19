@@ -79,6 +79,100 @@ function classifyByPatterns(key: string): InterfaceMetricKind | undefined {
   return undefined;
 }
 
+function isDiscoveryPrototype(token: string): boolean {
+  return /\{#/.test(token);
+}
+
+function baseKeyFromItemKey(key: string): string | undefined {
+  const bracket = key.indexOf('[');
+  const base = (bracket > 0 ? key.slice(0, bracket) : key).trim();
+  return base || undefined;
+}
+
+/** Heurística genérica sobre a parte da key antes de `[`. */
+function classifyGenericBaseKey(baseKey: string): InterfaceMetricKind | undefined {
+  const k = baseKey.toLowerCase();
+
+  if (
+    k.includes('percentile') ||
+    k.includes('percentil') ||
+    k.includes('optical') ||
+    k.includes('rxpower') ||
+    k.includes('txpower') ||
+    k.includes('temperature') ||
+    k.includes('bgp') ||
+    k.includes('icmpping')
+  ) {
+    return undefined;
+  }
+
+  if (k.includes('inoctets') || k.includes('ifhcinoctets')) {
+    return 'rx';
+  }
+  if (k.includes('outoctets') || k.includes('ifhcoutoctets')) {
+    return 'tx';
+  }
+  if (k.includes('ifoperstatus')) {
+    return 'operStatus';
+  }
+  if (k.includes('ifadminstatus')) {
+    return 'adminStatus';
+  }
+  if (k.includes('ifspeed')) {
+    return 'speed';
+  }
+  if (k.includes('inerrors') || k.includes('ifinerrors')) {
+    return 'errors';
+  }
+  if (k.includes('outerrors') || k.includes('ifouterrors')) {
+    return 'errors';
+  }
+  if (k.includes('indiscards') || k.includes('ifindiscards')) {
+    return 'drops';
+  }
+  if (k.includes('outdiscards') || k.includes('ifoutdiscards')) {
+    return 'drops';
+  }
+
+  if (/\.(?:errors?|err)\.(?:in|out)$|(?:in|out)\.(?:errors?|err)$/i.test(k)) {
+    return 'errors';
+  }
+  if (/operstatus($|\.)/.test(k) || /(?:^|\.)oper[\W_]?status($|\.)/.test(k)) {
+    return 'operStatus';
+  }
+  if (/adminstatus($|\.)/.test(k) || /(?:^|\.)admin[\W_]?status($|\.)/.test(k)) {
+    return 'adminStatus';
+  }
+
+  if (/^modul(?:ation|acao)?$/i.test(k) || /(?:^|\.)bandwidth$/i.test(k)) {
+    return 'speed';
+  }
+
+  if (/\.rx(?:\.|$)/.test(k)) {
+    return 'rx';
+  }
+  if (/\.tx(?:\.|$)/.test(k)) {
+    return 'tx';
+  }
+  if (/\.in$/.test(k) || /\.input$/.test(k)) {
+    return 'rx';
+  }
+  if (/\.out$/.test(k) || /\.output$/.test(k)) {
+    return 'tx';
+  }
+  if (/\.speed$/.test(k)) {
+    return 'speed';
+  }
+  if (/\.errors$/.test(k) || /\.erros$/.test(k)) {
+    return 'errors';
+  }
+  if (/\.drops$/.test(k) || /\.discards$/.test(k)) {
+    return 'drops';
+  }
+
+  return undefined;
+}
+
 /** SNMP index numérico quando o token da key é só dígitos. */
 export function snmpIndexFromToken(token: string): string | undefined {
   const t = token.trim();
@@ -94,11 +188,19 @@ export function snmpIndexFromToken(token: string): string | undefined {
 
 /** Classifica uma key Zabbix e extrai identificador da interface. */
 export function parseInterfaceItemKey(key: string): ParsedInterfaceKey | undefined {
-  const kind = classifyByPatterns(key);
-  const interfaceToken = extractInterfaceTokenFromKey(key);
-  if (!kind || !interfaceToken) {
+  const trimmed = key.trim();
+  const interfaceToken = extractInterfaceTokenFromKey(trimmed);
+  if (!interfaceToken || isDiscoveryPrototype(interfaceToken)) {
     return undefined;
   }
+
+  const baseKey = baseKeyFromItemKey(trimmed);
+  const kind =
+    classifyByPatterns(trimmed) ?? (baseKey ? classifyGenericBaseKey(baseKey) : undefined);
+  if (!kind) {
+    return undefined;
+  }
+
   return {
     kind,
     interfaceToken,

@@ -56,10 +56,44 @@ export function matchDiscoveredInterface(
   return discovered.find((i) => i.name.trim().toLowerCase() === nameLower);
 }
 
-/** Capacidade em Mbps a partir da interface ou referência. */
-export function resolveInterfaceCapacityMbps(iface?: TopologyNetworkInterface): number | undefined {
-  if (!iface?.speedMbps || iface.speedMbps <= 0) {
-    return undefined;
+/** Infere Mbps a partir de rótulos com padrão NxGE (ex.: 100GE, 10 GE). */
+function inferCapacityMbpsFromLabel(...labels: (string | undefined)[]): number | undefined {
+  for (const raw of labels) {
+    const text = raw?.trim();
+    if (!text) {
+      continue;
+    }
+    const match =
+      text.match(/(?:^|[^0-9])(\d+(?:\.\d+)?)\s*GE(?:[^A-Za-z0-9]|$)/i) ||
+      text.match(/(?:^|[^0-9])(\d+(?:\.\d+)?)GE(?=[0-9/._:-]|$)/i);
+    if (!match) {
+      continue;
+    }
+    const gbps = Number(match[1]);
+    if (Number.isFinite(gbps) && gbps > 0) {
+      return Math.round(gbps * 1000);
+    }
   }
-  return iface.speedMbps;
+  return undefined;
+}
+
+/** Capacidade em Mbps a partir da interface descoberta (item speed ou rótulo). */
+export function resolveInterfaceCapacityMbps(iface?: TopologyNetworkInterface): number | undefined {
+  if (iface?.speedMbps && iface.speedMbps > 0) {
+    return iface.speedMbps;
+  }
+  return inferCapacityMbpsFromLabel(iface?.name, iface?.alias, iface?.description);
+}
+
+/** Capacidade do link — menor das duas pontas quando ambas têm valor. */
+export function resolveLinkCapacityMbps(
+  from?: TopologyNetworkInterface,
+  to?: TopologyNetworkInterface
+): number | undefined {
+  const fromMbps = resolveInterfaceCapacityMbps(from);
+  const toMbps = resolveInterfaceCapacityMbps(to);
+  if (fromMbps && toMbps) {
+    return Math.min(fromMbps, toMbps);
+  }
+  return fromMbps ?? toMbps;
 }

@@ -3,8 +3,10 @@ import { DataFrame, Field, FieldType, LoadingState, PanelData, getDefaultTimeRan
 import {
   buildQueryIndex,
   hostDisplayByRefIdFromIndex,
+  interfacesByHostKeysFromIndex,
   numericHostsForRefIds,
   queryHostsByRefIdFromIndex,
+  queryIndexHasInterfaceItems,
 } from './queryIndex';
 import { StatusColorOptions } from '../utils/statusMapping';
 
@@ -95,21 +97,21 @@ describe('buildQueryIndex', () => {
     const index = buildQueryIndex(
       panelData([
         frame('A', [
-          numberField('10.0.0.7', [1], {
-            __zbx_host_visible_name: 'Switch Core',
-            hostid: '10500',
+          numberField('192.0.2.10', [1], {
+            __zbx_host_visible_name: 'host-visible-a',
+            hostid: '10001',
           }),
         ]),
       ])
     );
 
-    expect(index.metadata['10.0.0.7']).toMatchObject({
-      name: 'Switch Core',
-      ip: '10.0.0.7',
-      hostid: '10500',
+    expect(index.metadata['192.0.2.10']).toMatchObject({
+      name: 'host-visible-a',
+      ip: '192.0.2.10',
+      hostid: '10001',
     });
-    expect(index.metadata['Switch Core']).toBe(index.metadata['10.0.0.7']);
-    expect(index.metadata['10500']).toBe(index.metadata['10.0.0.7']);
+    expect(index.metadata['host-visible-a']).toBe(index.metadata['192.0.2.10']);
+    expect(index.metadata['10001']).toBe(index.metadata['192.0.2.10']);
   });
 
   it('resolve o uid do datasource pelo target da Query', () => {
@@ -131,6 +133,64 @@ describe('buildQueryIndex', () => {
     expect(index.hosts).toEqual([]);
     expect(index.refIds).toEqual([]);
     expect(index.datasourceUid).toBeUndefined();
+    expect(queryIndexHasInterfaceItems(index)).toBe(false);
+  });
+
+  it('indexa itens de interface a partir dos labels da Query', () => {
+    const index = buildQueryIndex(
+      panelData([
+        frame('A', [
+          numberField('host-a', [500000000], {
+            item_key: 'vendor.metric.rx[10]',
+            item_name: 'RX / GigabitEthernet0/0/1 / peer-z',
+            itemid: '90001',
+            hostid: '10001',
+          }),
+          numberField('host-a', [500000000], {
+            item_key: 'vendor.metric.tx[10]',
+            item_name: 'TX / GigabitEthernet0/0/1 / peer-z',
+            itemid: '90002',
+            hostid: '10001',
+          }),
+          numberField('host-a', [1], {
+            item_key: 'operstatus[10]',
+            itemid: '90003',
+            hostid: '10001',
+          }),
+        ]),
+      ])
+    );
+
+    expect(queryIndexHasInterfaceItems(index)).toBe(true);
+    const byHost = interfacesByHostKeysFromIndex(index, ['host-a'], index.metadata);
+    expect(byHost['host-a']).toHaveLength(1);
+    expect(byHost['host-a'][0].name).toContain('GigabitEthernet0/0/1');
+    expect(byHost['host-a'][0].metrics.rx?.itemId).toBe('90001');
+    expect(byHost['host-a'][0].metrics.tx?.itemId).toBe('90002');
+  });
+
+  it('resolve interfaces da Query por alias de metadata (IP ↔ nome visível)', () => {
+    const index = buildQueryIndex(
+      panelData([
+        frame('A', [
+          numberField('192.0.2.10', [1000], {
+            item_key: 'net.if.in[ether1]',
+            itemid: '1',
+            __zbx_host_visible_name: 'host-visible-a',
+            hostid: '10001',
+          }),
+          numberField('192.0.2.10', [1000], {
+            item_key: 'net.if.out[ether1]',
+            itemid: '2',
+            hostid: '10001',
+          }),
+        ]),
+      ])
+    );
+
+    const byName = interfacesByHostKeysFromIndex(index, ['host-visible-a'], index.metadata);
+    expect(byName['host-visible-a']).toHaveLength(1);
+    expect(byName['host-visible-a'][0].name).toBe('ether1');
   });
 });
 

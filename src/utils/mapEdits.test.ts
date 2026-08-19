@@ -66,23 +66,23 @@ describe('moveStoredNode / moveStoredNodesBulk', () => {
 
   it('move o host arrastado quando outro nó compartilha o mesmo IP', () => {
     const first = hostNode({
-      id: 'ltbac-a',
-      zabbixHost: '10.58.206.2',
-      subtitle: '10.58.206.2',
+      id: 'host-a',
+      zabbixHost: '10.0.0.10',
+      subtitle: '10.0.0.10',
       x: -1089,
       y: -387,
     });
     const second = hostNode({
-      id: 'ltbac-b',
-      zabbixHost: '10.58.206.2',
-      subtitle: '10.58.206.2',
+      id: 'host-b',
+      zabbixHost: '10.0.0.10',
+      subtitle: '10.0.0.10',
       x: -1009,
       y: -157,
     });
     const map = emptyMap({ nodes: [first, second] });
     const next = moveStoredNode(map, second, 400, 500);
-    expect(next.nodes.find((n) => n.id === 'ltbac-a')).toMatchObject({ x: -1089, y: -387 });
-    expect(next.nodes.find((n) => n.id === 'ltbac-b')).toMatchObject({ x: 400, y: 500 });
+    expect(next.nodes.find((n) => n.id === 'host-a')).toMatchObject({ x: -1089, y: -387 });
+    expect(next.nodes.find((n) => n.id === 'host-b')).toMatchObject({ x: 400, y: 500 });
   });
 });
 

@@ -1,15 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { TopologyNetworkInterface } from '../types';
-import { createAsyncCache } from '../services/asyncCache';
-import { fetchZabbixHostInterfaceItems } from '../utils/zabbixApi';
-import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
-
-const INTERFACE_INVENTORY_TTL_MS = 60_000;
-
-const interfaceCache = createAsyncCache<Record<string, TopologyNetworkInterface[]>>({
-  ttlMs: INTERFACE_INVENTORY_TTL_MS,
-  isCacheable: (map) => Object.keys(map).length > 0,
-});
+import { PanelData } from '@grafana/data';
+import { useMemo } from 'react';
+import { HostMetadataMap, TopologyNetworkInterface } from '../types';
+import {
+  buildQueryIndex,
+  interfacesByHostKeysFromIndex,
+  queryIndexHasInterfaceItems,
+} from '../services/queryIndex';
 
 export interface UseZabbixHostInterfacesResult {
   interfacesByHost: Record<string, TopologyNetworkInterface[]>;
@@ -17,60 +13,28 @@ export interface UseZabbixHostInterfacesResult {
   loadError?: string;
 }
 
-/**
- * Descobre interfaces monitoradas no Zabbix para um ou mais hosts.
- * Cache de inventário: 60s (interfaces mudam raramente).
- */
+/** Inventário de interfaces monitoradas — exclusivamente da aba Query do painel. */
 export function useZabbixHostInterfaces(
-  datasourceUid: string | undefined,
-  hostKeys: string[]
+  hostKeys: string[],
+  queryData?: PanelData,
+  hostMetadata?: HostMetadataMap
 ): UseZabbixHostInterfacesResult {
-  const hostKey = useMemo(
-    () => [...new Set(hostKeys.map((name) => name.trim()).filter(Boolean))].sort().join('\0'),
+  const keys = useMemo(
+    () => [...new Set(hostKeys.map((name) => name.trim()).filter(Boolean))],
     [hostKeys]
   );
-  const [interfacesByHost, setInterfacesByHost] = useState<Record<string, TopologyNetworkInterface[]>>({});
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (!datasourceUid || !hostKey) {
-      setInterfacesByHost({});
-      setLoading(false);
-      setLoadError(undefined);
-      return;
+  const hostKey = useMemo(() => keys.sort().join('\0'), [keys]);
+  const queryIndex = useMemo(() => buildQueryIndex(queryData), [queryData]);
+  const interfacesByHost = useMemo(
+    () => interfacesByHostKeysFromIndex(queryIndex, keys, hostMetadata),
+    [queryIndex, hostKey, hostMetadata]
+  );
+  const loadError = useMemo(() => {
+    if (!hostKey || queryIndexHasInterfaceItems(queryIndex)) {
+      return undefined;
     }
+    return 'Inclua métricas de interface na aba Query (RX/TX, operstatus ou equivalente).';
+  }, [hostKey, queryIndex]);
 
-    const keys = hostKey.split('\0');
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(undefined);
-
-    void interfaceCache
-      .get(`${datasourceUid}\u0000ifaces\u0000${hostKey}`, async () => {
-        const entries = await fetchZabbixHostInterfaceItems(datasourceUid, keys);
-        return groupInterfacesByHost(
-          entries.map((e) => ({ hostKey: e.hostKey, hostid: e.hostid, items: e.items }))
-        );
-      })
-      .then((next) => {
-        if (!cancelled) {
-          setInterfacesByHost(next);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setInterfacesByHost({});
-          setLoading(false);
-          setLoadError('Não foi possível carregar interfaces do Zabbix');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [datasourceUid, hostKey]);
-
-  return { interfacesByHost, loading, loadError };
+  return { interfacesByHost, loading: false, loadError };
 }

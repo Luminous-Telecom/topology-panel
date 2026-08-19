@@ -12,7 +12,6 @@ import {
 import { activeChildMaps } from '../utils/childMapEdits';
 import { inferLinkMedium } from '../utils/linkMedium';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
-import { LinkBandwidthUnit, parseBandwidthInput } from '../utils/linkBandwidth';
 import { LinkEditField } from '../editor/sections/LinksSection';
 
 type EditorProps = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
@@ -152,23 +151,6 @@ export function useTopologyMapEditor({ value, onChange, context }: EditorProps) 
         if (field === 'medium') {
           const next: TopologyLink = { ...l, medium: value === 'radio' ? 'radio' : 'fiber' };
           return next;
-        }
-        if (field === 'bandwidthMbps') {
-          const trimmed = value.trim();
-          if (!trimmed) {
-            const next = { ...l };
-            delete next.bandwidthMbps;
-            return next;
-          }
-          const [amount, unit] = trimmed.split(':');
-          const bandwidthUnit: LinkBandwidthUnit = unit === 'mbps' ? 'mbps' : 'gbps';
-          const mbps = parseBandwidthInput(amount, bandwidthUnit);
-          if (!mbps) {
-            const next = { ...l };
-            delete next.bandwidthMbps;
-            return next;
-          }
-          return { ...l, bandwidthMbps: mbps };
         }
         const next: TopologyLink = { ...l, [field]: value };
         const fromNode = findNodeById(map.nodes, field === 'from' ? value : l.from);
