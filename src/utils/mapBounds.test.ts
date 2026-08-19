@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeFitToViewTransform,
+  computeFitToContentBoundsTransform,
   computeMapScrollMetrics,
   computeTopologyContentBounds,
+  computeTopologyFitBounds,
   viewPanDeltaFromScroll,
   viewPanFromScroll,
 } from './mapBounds';
@@ -37,6 +39,42 @@ describe('computeFitToViewTransform', () => {
   });
 });
 
+describe('computeTopologyFitBounds', () => {
+  it('ignora canvas vazio do JSON e usa só os nós posicionados', () => {
+    const layouts = new Map([
+      ['a', { x: 100, y: 200, w: 48, h: 28 }],
+      ['b', { x: 300, y: 250, w: 48, h: 28 }],
+    ]);
+    const bounds = computeTopologyFitBounds({ width: 4000, height: 3000, nodes: [], links: [] }, layouts);
+    expect(bounds.x0).toBe(100 - 48);
+    expect(bounds.y0).toBe(200 - 48);
+    expect(bounds.x1).toBe(300 + 48 + 48);
+    expect(bounds.y1).toBe(250 + 28 + 48);
+    expect(bounds.width).toBeLessThan(500);
+    expect(bounds.height).toBeLessThan(200);
+  });
+
+  it('mapa sem nós cai nas dimensões do JSON', () => {
+    const bounds = computeTopologyFitBounds({ width: 800, height: 600, nodes: [], links: [] }, new Map());
+    expect(bounds).toEqual({ x0: -48, y0: -48, x1: 848, y1: 648, width: 896, height: 696 });
+  });
+
+  it('inclui waypoints de links no retângulo de fit', () => {
+    const layouts = new Map([['a', { x: 0, y: 0, w: 48, h: 28 }]]);
+    const bounds = computeTopologyFitBounds(
+      {
+        width: 800,
+        height: 600,
+        nodes: [],
+        links: [{ from: 'a', to: 'b', waypoints: [{ x: 500, y: 400 }] }],
+      },
+      layouts
+    );
+    expect(bounds.x1).toBeGreaterThanOrEqual(500 + 48);
+    expect(bounds.y1).toBeGreaterThanOrEqual(400 + 48);
+  });
+});
+
 describe('computeTopologyContentBounds', () => {
   it('mapa sem nós usa só as dimensões do JSON (width/height) com a margem padrão', () => {
     const bounds = computeTopologyContentBounds({ width: 800, height: 600, nodes: [], links: [] }, new Map());
@@ -48,6 +86,38 @@ describe('computeTopologyContentBounds', () => {
     const bounds = computeTopologyContentBounds({ width: 800, height: 600, nodes: [], links: [] }, layouts);
     expect(bounds.x0).toBe(-548);
     expect(bounds.y0).toBe(-548);
+  });
+});
+
+describe('computeFitToContentBoundsTransform', () => {
+  it('centraliza bounds x0/y0=0 quando cabe proporcionalmente no viewport', () => {
+    const bounds = { x0: 0, y0: 0, x1: 400, y1: 400, width: 400, height: 400 };
+    const transform = computeFitToContentBoundsTransform(bounds, 800, 600, 0);
+    expect(transform).not.toBeNull();
+    // sx = 800/400 = 2, sy = 600/400 = 1.5 → usa o menor (sy) para não cortar o conteúdo.
+    expect(transform?.scale).toBeCloseTo(1.5, 5);
+    expect(transform?.x).toBeCloseTo(100, 5);
+    expect(transform?.y).toBeCloseTo(0, 5);
+  });
+
+  it('leva em conta offsets x0/y0 do conteúdo', () => {
+    const bounds = { x0: -48, y0: -48, x1: 848, y1: 648, width: 896, height: 696 };
+    const transform = computeFitToContentBoundsTransform(bounds, 800, 600, 0);
+    expect(transform).not.toBeNull();
+
+    const scale = Math.min(800 / 896, 600 / 696);
+    const expectedX = (800 - 896 * scale) / 2 - bounds.x0 * scale;
+    const expectedY = (600 - 696 * scale) / 2 - bounds.y0 * scale;
+
+    expect(transform?.scale).toBeCloseTo(scale, 10);
+    expect(transform?.x).toBeCloseTo(expectedX, 10);
+    expect(transform?.y).toBeCloseTo(expectedY, 10);
+  });
+
+  it('viewport ainda não montado retorna null', () => {
+    const bounds = { x0: 0, y0: 0, x1: 100, y1: 100, width: 100, height: 100 };
+    expect(computeFitToContentBoundsTransform(bounds, 0, 600)).toBeNull();
+    expect(computeFitToContentBoundsTransform(bounds, 800, 0)).toBeNull();
   });
 });
 

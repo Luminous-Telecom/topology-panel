@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
@@ -15,7 +15,11 @@ import { TopologyBreadcrumbItem } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
-import { computeTopologyContentBounds } from '../utils/mapBounds';
+import {
+  computeFitToContentBoundsTransform,
+  computeTopologyContentBounds,
+  computeTopologyFitBounds,
+} from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { canvasStyles } from './canvas/canvasStyles';
 import { CanvasControlsOverlay } from './canvas/CanvasControlsOverlay';
@@ -242,7 +246,6 @@ export function TopologyCanvas({
     onPinchStart,
     onFullscreenChange,
     showToast,
-    viewResetKey: mapNavigationKey,
   });
   const {
     selectedNodeIds,
@@ -380,6 +383,11 @@ export function TopologyCanvas({
     [map, nodeLayouts]
   );
 
+  const fitBounds = useMemo(
+    () => computeTopologyFitBounds(map, nodeLayouts),
+    [map, nodeLayouts]
+  );
+
   const suspendScrollSyncRef = useRef(false);
   const { contentWidth, contentHeight, onScroll, syncScrollFromView } = useMapContentScroll({
     scrollRef,
@@ -391,9 +399,38 @@ export function TopologyCanvas({
     suspendSyncRef: suspendScrollSyncRef,
   });
 
-  useEffect(() => {
-    requestAnimationFrame(() => syncScrollFromView());
-  }, [isFullscreen, syncScrollFromView, viewport.w, viewport.h]);
+  // Encaixa a topologia ao abrir/trocar mapa (antes do paint).
+  useLayoutEffect(() => {
+    const el = scrollRef.current ?? wrapRef.current;
+    if (!el) {
+      return;
+    }
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w <= 0 || h <= 0) {
+      return;
+    }
+    if (map.nodes.length > 0 && nodeLayouts.size === 0) {
+      return;
+    }
+
+    const transform = computeFitToContentBoundsTransform(fitBounds, w, h);
+    if (!transform) {
+      return;
+    }
+
+    commitView(transform);
+    syncScrollFromView();
+  }, [
+    commitView,
+    fitBounds,
+    isFullscreen,
+    map.nodes.length,
+    mapNavigationKey,
+    nodeLayouts.size,
+    scrollElement,
+    syncScrollFromView,
+  ]);
 
   const { validLinks, renderLinks } = useRenderLinks(map.links, nodeLayouts, selectedLink);
   const filteredRenderLinks = useMemo(() => {
