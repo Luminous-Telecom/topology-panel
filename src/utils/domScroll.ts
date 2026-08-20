@@ -51,13 +51,22 @@ function canScrollInDirection(el: HTMLElement, deltaX: number, deltaY: number): 
   return false;
 }
 
+/** Wheel sobre overlay do mapa (lista de alertas, painel NOC): nunca dar zoom. */
+const MAP_WHEEL_OVERLAY_ATTR = 'data-map-wheel-overlay';
+
 /** Wheel sobre lista ou outro overlay rolável: deixa o navegador rolar em vez de dar zoom no mapa. */
 export function wheelTargetsScrollableDescendant(e: WheelEvent, boundary: HTMLElement): boolean {
   for (const node of e.composedPath()) {
     if (node === boundary) {
       break;
     }
-    if (node instanceof HTMLElement && canScrollInDirection(node, e.deltaX, e.deltaY)) {
+    if (!(node instanceof HTMLElement)) {
+      continue;
+    }
+    if (node.hasAttribute(MAP_WHEEL_OVERLAY_ATTR)) {
+      return true;
+    }
+    if (canScrollInDirection(node, e.deltaX, e.deltaY)) {
       return true;
     }
   }

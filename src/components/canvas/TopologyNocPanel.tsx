@@ -140,6 +140,7 @@ function TopologyNocPanelComponent({
   return (
     <div
       className={panelStyle(bottomOffset)}
+      data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
