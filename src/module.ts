@@ -141,6 +141,13 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         category: ['Interação'],
       })
       .addBooleanSwitch({
+        path: 'showHostAlertList',
+        name: 'Lista de hosts com alerta',
+        description: 'Hosts offline ou em alerta no canto inferior esquerdo do mapa',
+        defaultValue: true,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
         path: 'showMinimap',
         name: 'Mini mapa de visão geral',
         description: 'Caixa no canto inferior esquerdo; arraste dentro dela para mover o mapa',

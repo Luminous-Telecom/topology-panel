@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { css } from '@emotion/css';
 import { HostAlertListEntry } from '../../utils/noc/topologyFilters';
-import { CANVAS_EDGE_GAP, minimapBottomOffset } from '../../utils/canvasOverlayLayout';
+import { CANVAS_EDGE_GAP, minimapBottomOffset, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
 import {
-  overlayListItemButtonStyle,
   overlayPanelCompactMaxHeight,
   overlayPanelCompactWidth,
 } from './canvasOverlayStyles';
@@ -35,7 +34,7 @@ const headerStyle = css`
 
 const listStyle = css`
   margin: 0;
-  padding: 4px 0;
+  padding: 2px 0;
   list-style: none;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -44,19 +43,24 @@ const listStyle = css`
 const itemButtonStyle = css`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 5px 10px;
+  padding: 2px 8px;
   border: none;
   background: transparent;
   color: #fff;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.15;
   text-align: left;
   cursor: pointer;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  ${MEDIA_COMPACT} {
+    padding: 4px 8px;
+    min-height: 28px;
   }
 `;
 
@@ -149,7 +153,7 @@ function TopologyHostAlertListComponent({
               <li key={entryKey}>
                 <button
                   type="button"
-                  className={`${itemButtonStyle} ${overlayListItemButtonStyle}`}
+                  className={itemButtonStyle}
                   title={`Ir para ${entry.label}`}
                   aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel} — ${reasonLabel(entry)}`}
                   onClick={(e) => {

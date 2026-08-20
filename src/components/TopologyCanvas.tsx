@@ -111,6 +111,7 @@ interface Props {
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
   onShowLegendChange?: (show: boolean) => void;
+  onShowHostAlertListChange?: (show: boolean) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -153,6 +154,7 @@ export function TopologyCanvas({
   onViewChange,
   onShowMinimapChange,
   onShowLegendChange,
+  onShowHostAlertListChange,
   onUndo,
   onRedo,
   canUndo = false,
@@ -225,6 +227,20 @@ export function TopologyCanvas({
     setShowLegendLocalOverride(next);
     onShowLegendChange?.(next);
   }, [onShowLegendChange, options.showLegend, showLegendLocalOverride]);
+  /** Sobrescreve `options.showHostAlertList` na sessão quando o dashboard não está em modo edição. */
+  const [showHostAlertListLocalOverride, setShowHostAlertListLocalOverride] = useState<boolean | undefined>(
+    undefined
+  );
+  useEffect(() => {
+    setShowHostAlertListLocalOverride(undefined);
+  }, [options.showHostAlertList]);
+  const showHostAlertList = showHostAlertListLocalOverride ?? options.showHostAlertList !== false;
+  const handleToggleShowHostAlertList = useCallback(() => {
+    const current = showHostAlertListLocalOverride ?? options.showHostAlertList !== false;
+    const next = !current;
+    setShowHostAlertListLocalOverride(next);
+    onShowHostAlertListChange?.(next);
+  }, [onShowHostAlertListChange, options.showHostAlertList, showHostAlertListLocalOverride]);
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
   const toolRef = useRef(tool);
@@ -1177,6 +1193,8 @@ export function TopologyCanvas({
         onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
         showLegend={showLegend}
         onToggleLegend={handleToggleShowLegend}
+        showHostAlertList={showHostAlertList}
+        onToggleHostAlertList={!effectiveNocMode ? handleToggleShowHostAlertList : undefined}
         searchOpen={searchOpen}
         setSearchOpen={setSearchOpen}
         onSearchFocusNode={focusNodeOnMap}
@@ -1190,7 +1208,7 @@ export function TopologyCanvas({
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 
-      {!hideOverlayControls && !effectiveNocMode ? (
+      {!hideOverlayControls && !effectiveNocMode && showHostAlertList ? (
         <TopologyHostAlertList
           entries={alertHostEntries}
           colorOffline={resolveColor(options.colorOffline)}

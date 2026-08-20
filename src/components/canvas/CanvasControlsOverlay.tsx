@@ -32,6 +32,8 @@ interface Props {
   onToggleMinimap: () => void;
   showLegend: boolean;
   onToggleLegend: () => void;
+  showHostAlertList?: boolean;
+  onToggleHostAlertList?: () => void;
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
@@ -79,6 +81,8 @@ export function CanvasControlsOverlay({
   onToggleMinimap,
   showLegend,
   onToggleLegend,
+  showHostAlertList = true,
+  onToggleHostAlertList,
   searchOpen,
   setSearchOpen,
   onSearchFocusNode,
@@ -134,6 +138,8 @@ export function CanvasControlsOverlay({
           onToggleMinimap={onToggleMinimap}
           showLegend={showLegend}
           onToggleLegend={onToggleLegend}
+          showHostAlertList={showHostAlertList}
+          onToggleHostAlertList={onToggleHostAlertList}
           showEditControls={canPersist && !nocModeActive}
           searchNodes={map.nodes}
           searchOpen={searchOpen}

@@ -429,6 +429,16 @@ export function TopologyPanel({
     [canPersistOptions, onOptionsChange]
   );
 
+  const handleShowHostAlertListChange = useCallback(
+    (show: boolean) => {
+      if (!canPersistOptions) {
+        return;
+      }
+      onOptionsChange({ ...latestOptionsRef.current, showHostAlertList: show });
+    },
+    [canPersistOptions, onOptionsChange]
+  );
+
   if (width < 1 || height < 1) {
     return null;
   }
@@ -500,6 +510,7 @@ export function TopologyPanel({
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}
         onShowLegendChange={handleShowLegendChange}
+        onShowHostAlertListChange={handleShowHostAlertListChange}
         onUndo={canPersistOptions ? undo : undefined}
         onRedo={canPersistOptions ? redo : undefined}
         canUndo={canPersistOptions && canUndo}

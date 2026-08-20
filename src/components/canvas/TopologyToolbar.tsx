@@ -1,7 +1,7 @@
 import React from 'react';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
-import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste } from 'react-icons/fa6';
+import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
 import { CanvasTool, TopologyNode } from '../../types';
 import { CANVAS_EDGE_GAP, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle } from './canvasOverlayStyles';
@@ -53,6 +53,8 @@ export function TopologyToolbar({
   onToggleMinimap,
   showLegend = true,
   onToggleLegend,
+  showHostAlertList = true,
+  onToggleHostAlertList,
   showEditControls = true,
   searchNodes,
   searchOpen,
@@ -88,6 +90,8 @@ export function TopologyToolbar({
   onToggleMinimap?: () => void;
   showLegend?: boolean;
   onToggleLegend?: () => void;
+  showHostAlertList?: boolean;
+  onToggleHostAlertList?: () => void;
   showEditControls?: boolean;
   searchNodes: TopologyNode[];
   searchOpen: boolean;
@@ -337,6 +341,27 @@ export function TopologyToolbar({
       >
         <FaListUl size={13} />
       </button>
+      {onToggleHostAlertList ? (
+        <button
+          type="button"
+          className={toolbarOverlayButtonStyle}
+          onClick={onToggleHostAlertList}
+          title={
+            showHostAlertList
+              ? 'Ocultar lista de hosts com alerta'
+              : 'Mostrar lista de hosts com alerta'
+          }
+          aria-label={
+            showHostAlertList
+              ? 'Ocultar lista de hosts com alerta'
+              : 'Mostrar lista de hosts com alerta'
+          }
+          aria-pressed={showHostAlertList}
+          style={toolBtnStyle(showHostAlertList)}
+        >
+          <FaTriangleExclamation size={13} />
+        </button>
+      ) : null}
       <button
         type="button"
         className={toolbarOverlayButtonStyle}

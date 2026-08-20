@@ -388,6 +388,8 @@ export interface TopologyPanelOptions {
   toolPassword?: string;
   /** Exibir legenda de cores no mapa */
   showLegend?: boolean;
+  /** Lista de hosts offline ou em alerta no canto inferior esquerdo */
+  showHostAlertList?: boolean;
   /** Mini mapa de visão geral (arrastar para navegar) */
   showMinimap?: boolean;
   /** Itens da legenda (quais cores mostrar) */
@@ -487,6 +489,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   toolUsername: '',
   toolPassword: '',
   showLegend: true,
+  showHostAlertList: true,
   showMinimap: true,
   legendUnknown: true,
   legendOnline: true,
