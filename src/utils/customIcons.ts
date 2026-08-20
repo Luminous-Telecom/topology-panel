@@ -36,12 +36,6 @@ export function isCustomAssetIcon(icon: TopologyHostIcon): boolean {
   return icon in CUSTOM_ICON_SVGS;
 }
 
-/** Silhueta branca no mapa — equipamentos passivos / links externos. */
-export const PASSIVE_CUSTOM_ICONS: TopologyHostIcon[] = ['switch_unmanaged', 'network'];
-
-/** Silhueta branca sobre o fundo colorido do nó. */
-export const PASSIVE_ICON_FILTER = 'brightness(0) invert(1)';
-
 /** Ajusta SVG importado para render inline com tamanho fixo. */
 export function inlineSvgMarkup(svg: string, size: number, widthScale = 1): string {
   const width = Math.round(size * widthScale);

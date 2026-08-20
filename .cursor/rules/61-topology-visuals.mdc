@@ -47,8 +47,8 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 
 - Arquivos em `src/img/topology/{nome}.svg`; registro em `utils/customIcons.ts`
   (`CUSTOM_ICON_SVGS`); render por `HostIconImage` / `HostIconGlyph` (`utils/hostIcons.tsx`).
-- No mapa (`onMap={true}`): silhueta **branca** (`brightness(0) invert(1)`) sobre o card colorido.
-- No picker/modal (`onMap={false}`): SVG com as **cores originais** do arquivo.
+- SVGs custom no mapa e no picker usam as **cores originais** do arquivo (sem filtro de silhueta).
+- Ícones monocromáticos (`networkIcons`, react-icons legados) usam cor de tema ou marca.
 - Mudou ícone? Bump de versão, `npm run build` e deploy manual — o SVG é embutido em build-time.
 
 ## Faça / Não faça

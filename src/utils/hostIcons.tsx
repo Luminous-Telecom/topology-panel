@@ -6,11 +6,8 @@ import { TopologyHostIcon } from '../types';
 import {
   CUSTOM_ICON_SVGS,
   inlineSvgMarkup,
-  isCustomAssetIcon,
-  PASSIVE_CUSTOM_ICONS,
-  PASSIVE_ICON_FILTER,
 } from './customIcons';
-import { isNetworkHostIcon, NETWORK_ICON_COMPONENTS } from './networkIcons';
+import { NETWORK_ICON_COMPONENTS } from './networkIcons';
 
 export const HOST_ICON_SIZE = 28;
 export const HOST_ICON_GAP = 6;
@@ -116,52 +113,15 @@ const BRAND_ICON_COLORS: Partial<Record<TopologyHostIcon, string>> = {
   windows: '#00A4EF',
 };
 
-/** Equipamentos gerenciáveis — mesma cor padrão no mapa. */
-const MANAGED_HOST_ICONS: TopologyHostIcon[] = [
-  'router',
-  'bras',
-  'switch_managed',
-  'firewall',
-  'vpn',
-  'vpn_server',
-  'olt',
-  'server',
-  'access_point',
-  'dvr',
-];
-
-/** Cor padrão dos ícones gerenciáveis no mapa. */
-const MANAGED_ICON_COLOR = '#4FC3F7';
-
-/** Switch não gerenciável e demais ícones passivos — branco. */
-const PASSIVE_ICON_COLOR = 'rgba(255,255,255,0.92)';
-
-function isManagedHostIcon(icon: TopologyHostIcon): boolean {
-  return MANAGED_HOST_ICONS.includes(icon);
-}
-
-function isPassiveCustomIcon(icon: TopologyHostIcon): boolean {
-  return PASSIVE_CUSTOM_ICONS.includes(icon);
-}
+/** Cor dos ícones monocromáticos (react-icons / networkIcons) no mapa. */
+const MONO_ICON_COLOR = '#4FC3F7';
 
 function hostIconColor(icon: TopologyHostIcon): string {
-  if (isCustomAssetIcon(icon)) {
-    return isPassiveCustomIcon(icon) ? PASSIVE_ICON_COLOR : MANAGED_ICON_COLOR;
-  }
-  if (isManagedHostIcon(icon)) {
-    return MANAGED_ICON_COLOR;
-  }
-  if (isNetworkHostIcon(icon) || icon === 'switch_unmanaged') {
-    return PASSIVE_ICON_COLOR;
-  }
   const brand = BRAND_ICON_COLORS[icon];
   if (brand) {
     return brand;
   }
-  if (LEGACY_ICON_COMPONENTS[icon]) {
-    return PASSIVE_ICON_COLOR;
-  }
-  throw new Error(`Cor de ícone não definida: ${icon}`);
+  return MONO_ICON_COLOR;
 }
 
 interface IconImageProps {
@@ -169,20 +129,10 @@ interface IconImageProps {
   size?: number;
   color?: string;
   className?: string;
-  /** true = mapa; false = picker/modal */
-  onMap?: boolean;
-}
-
-/** Só ícones passivos (ex.: switch não gerenciável) viram silhueta branca no mapa. */
-function mapIconFilter(icon: TopologyHostIcon, onMap: boolean): string | undefined {
-  if (onMap && isPassiveCustomIcon(icon)) {
-    return PASSIVE_ICON_FILTER;
-  }
-  return undefined;
 }
 
 /** Ícone de topologia (SVG inline), desenhado ou legado (react-icons). */
-export function HostIconImage({ icon, size = 20, color, className, onMap = false }: IconImageProps) {
+export function HostIconImage({ icon, size = 20, color, className }: IconImageProps) {
   const customSvg = CUSTOM_ICON_SVGS[icon];
   if (customSvg) {
     const widthScale = HOST_ICON_WIDTH_SCALE[icon] ?? 1;
@@ -194,10 +144,6 @@ export function HostIconImage({ icon, size = 20, color, className, onMap = false
       lineHeight: 0,
       overflow: 'hidden',
     };
-    const filter = mapIconFilter(icon, onMap);
-    if (filter) {
-      style.filter = filter;
-    }
     return (
       <span
         className={className}
@@ -263,7 +209,7 @@ export function HostIconGlyph({ icon, x, y, size = HOST_ICON_SIZE, color }: Glyp
           background: 'transparent',
         }}
       >
-        <HostIconImage icon={icon} size={h} color={iconColor} onMap />
+        <HostIconImage icon={icon} size={h} color={iconColor} />
       </div>
     </foreignObject>
   );
