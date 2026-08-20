@@ -3,11 +3,14 @@ import { css } from '@emotion/css';
 import { NocHostListEntry } from '../../utils/noc/topologyFilters';
 import { TopologyMapFilterId, TOPOLOGY_FILTER_LABELS } from '../../utils/noc/types';
 
-const panelStyle = css`
+const MINIMAP_HEIGHT = 148;
+const EDGE_GAP = 8;
+
+const panelStyle = (bottomOffset: number) => css`
   position: absolute;
   top: 44px;
-  right: 8px;
-  bottom: 8px;
+  left: 8px;
+  bottom: ${bottomOffset}px;
   z-index: 5;
   width: min(300px, calc(100% - 16px));
   display: flex;
@@ -116,6 +119,7 @@ interface Props {
   entries: NocHostListEntry[];
   activeFilters: ReadonlySet<TopologyMapFilterId>;
   queryReady?: boolean;
+  showMinimap?: boolean;
   onToggleFilter: (filter: TopologyMapFilterId) => void;
   onSelectHost: (entry: NocHostListEntry) => void;
 }
@@ -126,14 +130,16 @@ function TopologyNocPanelComponent({
   entries,
   activeFilters,
   queryReady = false,
+  showMinimap = false,
   onToggleFilter,
   onSelectHost,
 }: Props) {
   const filters = FILTER_IDS;
+  const bottomOffset = showMinimap ? EDGE_GAP + MINIMAP_HEIGHT + EDGE_GAP : EDGE_GAP;
 
   return (
     <div
-      className={panelStyle}
+      className={panelStyle(bottomOffset)}
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}

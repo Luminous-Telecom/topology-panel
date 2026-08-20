@@ -1172,6 +1172,7 @@ export function TopologyCanvas({
           entries={nocHostEntries}
           activeFilters={activeFilters}
           queryReady={queryReady}
+          showMinimap={minimapVisible}
           onToggleFilter={toggleFilter}
           onSelectHost={handleNocSelectHost}
         />
