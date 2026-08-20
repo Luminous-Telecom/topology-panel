@@ -45,8 +45,6 @@ export function TopologyToolbar({
   onPaste,
   onToggleLock,
   onToggleNetworksLock,
-  flowPaused,
-  onToggleFlow,
   isFullscreen,
   onToggleFullscreen,
   showMinimap = true,
@@ -82,8 +80,6 @@ export function TopologyToolbar({
   onPaste?: () => void;
   onToggleLock?: () => void;
   onToggleNetworksLock?: () => void;
-  flowPaused: boolean;
-  onToggleFlow: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   showMinimap?: boolean;
@@ -297,20 +293,6 @@ export function TopologyToolbar({
           </button>
         </>
       )}
-      <button
-        type="button"
-        className={toolbarOverlayButtonStyle}
-        onClick={onToggleFlow}
-        title={
-          flowPaused
-            ? 'Retomar animação de tráfego nas linhas'
-            : 'Pausar animação de tráfego nas linhas'
-        }
-        aria-label={flowPaused ? 'Retomar tráfego' : 'Pausar tráfego'}
-        style={toolBtnStyle(!flowPaused)}
-      >
-        <Icon name={flowPaused ? 'play' : 'pause'} size="sm" />
-      </button>
       <div className={searchWrapStyle}>
         <button
           type="button"

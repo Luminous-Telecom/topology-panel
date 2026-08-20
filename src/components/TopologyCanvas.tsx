@@ -208,7 +208,7 @@ export function TopologyCanvas({
     setScrollElement(node);
   }, []);
   const svgRef = useRef<SVGSVGElement>(null);
-  const { flowPaused, setFlowPaused } = useLinkFlowAnimation(wrapRef);
+  useLinkFlowAnimation(wrapRef);
   const savedView = savedViewProp ?? options.view;
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !map.locked;
@@ -1185,8 +1185,6 @@ export function TopologyCanvas({
         onPaste={pasteAtViewCenter}
         onToggleLock={() => persist(toggleMapLock(storedMap))}
         onToggleNetworksLock={() => persist(toggleNetworksLock(storedMap))}
-        flowPaused={flowPaused}
-        onToggleFlow={() => setFlowPaused((p) => !p)}
         isFullscreen={isFullscreen}
         onToggleFullscreen={() => void toggleFullscreen()}
         showMinimap={showMinimap}

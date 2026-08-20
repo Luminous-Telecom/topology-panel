@@ -24,8 +24,6 @@ interface Props {
   onPaste: () => void;
   onToggleLock: () => void;
   onToggleNetworksLock: () => void;
-  flowPaused: boolean;
-  onToggleFlow: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   showMinimap: boolean;
@@ -73,8 +71,6 @@ export function CanvasControlsOverlay({
   onPaste,
   onToggleLock,
   onToggleNetworksLock,
-  flowPaused,
-  onToggleFlow,
   isFullscreen,
   onToggleFullscreen,
   showMinimap,
@@ -130,8 +126,6 @@ export function CanvasControlsOverlay({
           onPaste={onPaste}
           onToggleLock={onToggleLock}
           onToggleNetworksLock={onToggleNetworksLock}
-          flowPaused={flowPaused}
-          onToggleFlow={onToggleFlow}
           isFullscreen={isFullscreen}
           onToggleFullscreen={onToggleFullscreen}
           showMinimap={showMinimap}
