@@ -1,6 +1,6 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { HostMetadata, HostMetadataMap } from '../types';
-import { HostProblemsMap } from './noc/types';
+import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 import { isIpv4 } from './ipv4';
 
 interface ZabbixApiResponse<T> {
@@ -520,7 +520,7 @@ interface ZabbixProblemEventRow {
 }
 
 /**
- * Problemas ativos no Zabbix por host — só para badges NOC (não altera cor/status do mapa).
+ * Problemas ativos no Zabbix por host — badges e filtro NOC (não altera lista ALERTA nem cor do mapa).
  */
 export async function fetchZabbixHostProblems(
   datasourceUid: string,
@@ -538,7 +538,6 @@ export async function fetchZabbixHostProblems(
       const problems = await zabbixCall<ZabbixProblemRow[]>(datasourceUid, 'problem.get', {
         hostids: batch,
         output: ['eventid', 'severity'],
-        recent: true,
         suppressed: false,
       });
 
@@ -571,6 +570,9 @@ export async function fetchZabbixHostProblems(
           continue;
         }
         const sev = severityByEvent.get(eventid) ?? 0;
+        if (sev < ZABBIX_PROBLEM_MIN_SEVERITY) {
+          continue;
+        }
         for (const host of event.hosts ?? []) {
           const hostid = asZabbixId(host.hostid);
           if (!hostid) {

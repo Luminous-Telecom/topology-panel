@@ -38,15 +38,14 @@ describe('hostNodeFill', () => {
     ).toBe(options.colorOffline);
   });
 
-  it('usa colorAlert quando o host tem problemas Zabbix e está online na Query', () => {
+  it('problemas Zabbix não pintam host online com colorAlert', () => {
     const display: HostDisplayMap = {
       'rb-01': { status: 'online', color: options.colorOnline, value: 1 },
     };
     const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
-    const problems = { hid1: { count: 2, maxSeverity: 4 } };
-    expect(
-      hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
-    ).toBe(options.colorAlert);
+    expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity)).toBe(
+      options.colorOnline
+    );
   });
 
   it('prefere a cor manual do nó estático', () => {

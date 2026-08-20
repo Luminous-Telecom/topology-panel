@@ -477,7 +477,6 @@ export function TopologyCanvas({
     hostDisplayByRefId,
     hostMetadata,
     submapHosts,
-    hostProblems,
     childMaps: activeChildMaps(options.childMaps),
     queryReady,
   });
@@ -1115,7 +1114,6 @@ export function TopologyCanvas({
     queryReady,
     hostMetadata,
     hostDisplay,
-    hostProblems,
     resolveColor,
   });
 
@@ -1319,7 +1317,6 @@ export function TopologyCanvas({
             queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
-            hostProblems={hostProblems}
             badgesByNode={hostBadgesByNode}
             activeFilters={activeFilters}
             filterContext={filterContext}

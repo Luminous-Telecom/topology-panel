@@ -6,24 +6,20 @@ import {
   TopologyHostStatus,
 } from '../types';
 import { RegionHostStats, regionFillColor } from './networkStats';
-import { resolveHostProblemSummary } from './noc/topologyFilters';
 import { hostTypeFillColor } from './panelColors';
 import { lookupHostDisplay } from './queryHosts';
-import { HostProblemsMap } from './noc/types';
 
 /** Converte cor de opção do painel (hex, rgb ou nome de tema) em cor final. */
 export type ColorResolver = (color?: unknown) => string;
 
 function resolveEffectiveHostStatus(
   node: TopologyNode,
-  mappedStatus: TopologyHostStatus | undefined,
-  hostMetadata?: HostMetadataMap,
-  hostProblems?: HostProblemsMap
+  mappedStatus: TopologyHostStatus | undefined
 ): TopologyHostStatus | undefined {
   if (mappedStatus === 'offline') {
     return 'offline';
   }
-  if (mappedStatus === 'alert' || resolveHostProblemSummary(node, hostMetadata, hostProblems)) {
+  if (mappedStatus === 'alert') {
     return 'alert';
   }
   return mappedStatus;
@@ -32,16 +28,14 @@ function resolveEffectiveHostStatus(
 /**
  * Cor de preenchimento de um host a partir do status vindo da Query.
  *
- * Problemas ativos no Zabbix pintam com `colorAlert`. Offline no mapa usa `colorOffline`.
- * No hover ICMP, a linha fica verde e o vermelho marca só os pontos de falha.
+ * Problemas Zabbix ficam em badges/NOC. Offline usa `colorOffline`; alerta só via Query.
  */
 export function hostNodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
   hostMetadata?: HostMetadataMap,
   hostDisplay?: HostDisplayMap,
-  resolveMappedColor?: (color?: unknown) => string | undefined,
-  hostProblems?: HostProblemsMap
+  resolveMappedColor?: (color?: unknown) => string | undefined
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -64,7 +58,7 @@ export function hostNodeFill(
   if (!mapped?.color) {
     return options.colorUnknown;
   }
-  const status = resolveEffectiveHostStatus(node, mapped.status, hostMetadata, hostProblems);
+  const status = resolveEffectiveHostStatus(node, mapped.status);
   const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
   if (status === 'online' && typeFill) {
     return typeFill;
@@ -112,14 +106,13 @@ export function resolveNodeFill(
   queryReady: boolean | undefined,
   hostMetadata: HostMetadataMap | undefined,
   hostDisplay: HostDisplayMap | undefined,
-  resolveColor: ColorResolver,
-  hostProblems?: HostProblemsMap
+  resolveColor: ColorResolver
 ): string {
   const fillOverride =
     node.type === 'submap' ? regionFillColor(region, options, 'submap', queryReady) : undefined;
   const fillRaw =
     fillOverride ??
     (node.fillColor ? node.fillColor : undefined) ??
-    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor, hostProblems);
+    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
   return resolveColor(fillRaw);
 }

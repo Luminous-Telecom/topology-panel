@@ -49,7 +49,7 @@ describe('regionFillColor — submapa', () => {
 });
 
 describe('buildRegionStatsMap — submapa com mapa interno', () => {
-  it('agrega status dos hosts do childMaps e conta problemas Zabbix como alerta', () => {
+  it('agrega status dos hosts do childMaps (alerta só via Query)', () => {
     const nodes: TopologyNode[] = [
       {
         id: 'sm1',
@@ -79,7 +79,6 @@ describe('buildRegionStatsMap — submapa com mapa interno', () => {
       '10.0.0.1': { name: 'h1', hostid: 'hid1' },
       '10.0.0.2': { name: 'h2', hostid: 'hid2' },
     };
-    const hostProblems = { hid2: { count: 1, maxSeverity: 4 } };
     const stats = buildRegionStatsMap(
       nodes,
       new Map(),
@@ -87,14 +86,13 @@ describe('buildRegionStatsMap — submapa com mapa interno', () => {
       {},
       hostMetadata,
       {},
-      hostProblems,
       childMaps
     );
     expect(stats.get('sm1')).toEqual({
       total: 2,
       offline: 0,
-      alert: 1,
-      online: 1,
+      alert: 0,
+      online: 2,
       unknown: 0,
     });
   });

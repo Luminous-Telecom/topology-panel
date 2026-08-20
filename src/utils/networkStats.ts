@@ -3,7 +3,6 @@ import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from '.
 import { NodeLayout } from './nodeLayout';
 import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
 import { isHostNode } from './topologyNodes';
-import { HostProblemsMap } from './noc/types';
 import { panelColorWithAlpha } from './panelColors';
 
 export interface RegionHostStats {
@@ -76,27 +75,10 @@ function resolveRegionHostStatus(
   return display.status;
 }
 
-function hostHasActiveProblems(
-  hostKey: string,
-  hostMetadata?: HostMetadataMap,
-  hostProblems?: HostProblemsMap
-): boolean {
-  if (!hostProblems) {
-    return false;
-  }
-  const meta = hostMetadata?.[hostKey.trim()];
-  const hostid = meta?.hostid?.trim();
-  if (hostid && (hostProblems[hostid]?.count ?? 0) > 0) {
-    return true;
-  }
-  return (hostProblems[hostKey.trim()]?.count ?? 0) > 0;
-}
-
 function countRegionStats(
   hostNames: string[],
   hostDisplay: HostDisplayMap,
-  hostMetadata?: HostMetadataMap,
-  hostProblems?: HostProblemsMap
+  hostMetadata?: HostMetadataMap
 ): RegionHostStats {
   let offline = 0;
   let alert = 0;
@@ -114,7 +96,7 @@ function countRegionStats(
     const st = resolveRegionHostStatus(key, hostDisplay, hostMetadata);
     if (st === 'offline') {
       offline++;
-    } else if (st === 'alert' || hostHasActiveProblems(key, hostMetadata, hostProblems)) {
+    } else if (st === 'alert') {
       alert++;
     } else if (st === 'online') {
       online++;
@@ -164,7 +146,6 @@ export function buildRegionStatsMap(
   hostMetadata: HostMetadataMap = {},
   /** Status por refId — submapa com queryRefId só olha a própria consulta (não o mapa pai). */
   hostDisplayByRefId: Record<string, HostDisplayMap> = {},
-  hostProblems?: HostProblemsMap,
   childMaps?: Record<string, TopologyMap | undefined>
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
@@ -179,7 +160,7 @@ export function buildRegionStatsMap(
         const enriched = enrichHostDisplayFromMap(hostDisplay, childMap, hostMetadata);
         result.set(
           node.id,
-          countRegionStats(keys, enriched, hostMetadata, hostProblems)
+          countRegionStats(keys, enriched, hostMetadata)
         );
         continue;
       }
@@ -204,7 +185,7 @@ export function buildRegionStatsMap(
       const statusMap = refId
         ? findHostDisplayBucket(hostDisplayByRefId, refId) ?? {}
         : hostDisplay;
-      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata, hostProblems));
+      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata));
       continue;
     }
 
@@ -219,7 +200,7 @@ export function buildRegionStatsMap(
 
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
     const names = inside.map((h) => hostStatusKey(h, hostMetadata)).filter(Boolean) as string[];
-    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata, hostProblems));
+    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata));
   }
 
   return result;

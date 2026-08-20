@@ -69,7 +69,7 @@ describe('topologyFilters', () => {
     expect(summary.problemCount).toBe(2);
   });
 
-  it('lista hosts offline, em alerta (Query) ou com problemas Zabbix', () => {
+  it('lista hosts offline ou em alerta (status da Query)', () => {
     const extendedMap: TopologyMap = {
       ...map,
       nodes: [
@@ -95,13 +95,12 @@ describe('topologyFilters', () => {
       options: { linkUtilThresholdHigh: 75 },
     };
     const entries = collectAlertHostEntries(ctx);
-    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'core', 'sw']);
+    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'core']);
     expect(entries[0]?.reason).toBe('offline');
     expect(entries[1]?.reason).toBe('alert');
-    expect(entries[2]?.reason).toBe('alert');
   });
 
-  it('lista host online com problemas Zabbix como alerta', () => {
+  it('não lista host online só por problemas Zabbix na lista de alertas', () => {
     const ctx = {
       map,
       hostDisplay: {
@@ -111,10 +110,7 @@ describe('topologyFilters', () => {
       hostMetadata: { '10.0.0.2': { name: 'Core', hostid: 'hostid2' } },
       options: { linkUtilThresholdHigh: 75 },
     };
-    const entries = collectAlertHostEntries(ctx);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.nodeId).toBe('core');
-    expect(entries[0]?.reason).toBe('alert');
+    expect(collectAlertHostEntries(ctx)).toEqual([]);
   });
 
   it('lista de alertas agrega hosts offline de mapa filho fora do mapa aberto', () => {

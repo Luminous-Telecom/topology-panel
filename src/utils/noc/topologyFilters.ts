@@ -11,7 +11,7 @@ import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
-import { HostProblemsMap, TopologyMapFilterId } from './types';
+import { HostProblemsMap, TopologyMapFilterId, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
 
 export interface TopologyFilterContext {
   map: TopologyMap;
@@ -29,6 +29,9 @@ function hostProblemKey(node: TopologyNode, hostMetadata?: HostMetadataMap): str
   return meta?.hostid ?? node.zabbixHost?.trim() ?? resolveHostIp(node, hostMetadata);
 }
 
+/** Severidade mínima (Warning+) para contar problema na UI. */
+export { ZABBIX_PROBLEM_MIN_SEVERITY };
+
 export function resolveHostProblemSummary(
   node: TopologyNode,
   hostMetadata?: HostMetadataMap,
@@ -42,7 +45,11 @@ export function resolveHostProblemSummary(
     return undefined;
   }
   const summary = hostProblems[key] ?? hostProblems[node.zabbixHost?.trim() ?? ''];
-  if (summary && summary.count > 0) {
+  if (
+    summary &&
+    summary.count > 0 &&
+    summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY
+  ) {
     return summary;
   }
   return undefined;
@@ -233,7 +240,7 @@ function hostDisplayLabel(node: TopologyNode): string {
   return node.id;
 }
 
-/** Hosts offline, em alerta (Query) ou com problemas ativos no Zabbix — lista do canto inferior. */
+/** Hosts offline ou em alerta (status da Query) — lista do canto inferior. */
 function collectAlertHostEntriesForMap(
   mapId: string,
   mapLabel: string,
@@ -251,7 +258,7 @@ function collectAlertHostEntriesForMap(
     let reason: HostAlertListReason | null = null;
     if (status === 'offline') {
       reason = 'offline';
-    } else if (status === 'alert' || resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems)) {
+    } else if (status === 'alert') {
       reason = 'alert';
     }
 
@@ -283,8 +290,7 @@ export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertLi
 }
 
 /**
- * Hosts offline ou em alerta em todos os mapas do painel (raiz + filhos) — lista sem modo NOC.
- * Alerta inclui status da Query e problemas ativos Zabbix; o status da Query é resolvido por mapa.
+ * Hosts offline ou em alerta em todos os mapas do painel (raiz + filhos) — só status da Query.
  */
 export function collectAlertHostEntriesFromMaps(
   maps: readonly NocTopologyMapScope[],

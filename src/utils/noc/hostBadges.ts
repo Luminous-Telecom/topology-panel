@@ -4,7 +4,7 @@ import { resolveHostIp } from '../hostLookup';
 import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
-import { HostNodeBadge, HostProblemsMap } from './types';
+import { HostNodeBadge, HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
 
 const SEVERITY_COLORS: Record<number, string> = {
   5: '#e53935',
@@ -72,7 +72,7 @@ export function resolveHostNodeBadges(params: {
   if (showProblems !== false && hostProblems) {
     const key = problemKeyForNode(node, hostMetadata);
     const summary = key ? hostProblems[key] : undefined;
-    if (summary && summary.count > 0) {
+    if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
       badges.push({
         kind: 'problems',
         label: String(summary.count),

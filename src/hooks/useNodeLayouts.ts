@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
-import { HostProblemsMap } from '../utils/noc/types';
 import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
@@ -23,7 +22,6 @@ export interface NodeLayoutsParams {
   hostDisplayByRefId?: Record<string, HostDisplayMap>;
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
-  hostProblems?: HostProblemsMap;
   childMaps?: Record<string, TopologyMap | undefined>;
   queryReady?: boolean;
 }
@@ -49,7 +47,6 @@ export function useNodeLayouts({
   hostDisplayByRefId,
   hostMetadata,
   submapHosts,
-  hostProblems,
   childMaps,
   queryReady,
 }: NodeLayoutsParams): NodeLayoutsResult {
@@ -123,7 +120,6 @@ export function useNodeLayouts({
       submapHosts,
       hostMetadata,
       hostDisplayByRefId,
-      hostProblems,
       childMaps
     );
     for (const node of map.nodes) {
@@ -147,5 +143,5 @@ export function useNodeLayouts({
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
     // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
     // de todos os nós sem necessidade.
-  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, hostProblems, childMaps, queryReady, uplinkCountByNode]);
+  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, childMaps, queryReady, uplinkCountByNode]);
 }

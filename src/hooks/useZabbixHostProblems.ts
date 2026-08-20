@@ -22,7 +22,7 @@ function collectHostIds(metadata: HostMetadataMap): string[] {
   return [...ids];
 }
 
-/** Problemas ativos Zabbix para badges NOC — não usado para cor/status do mapa. */
+/** Problemas Zabbix (Warning+) para badges e filtro NOC — não altera lista ALERTA nem cor do mapa. */
 export function useZabbixHostProblems(
   datasourceUid: string | undefined,
   hostMetadata: HostMetadataMap,

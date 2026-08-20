@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { HostDisplayMap, HostMetadataMap, TopologyNode, TopologyPanelOptions } from '../types';
-import { HostProblemsMap } from '../utils/noc/types';
 import { isNetworkNode } from '../utils/mapBounds';
 import { RegionHostStats, regionStrokeColor } from '../utils/networkStats';
 import { ColorResolver, resolveNetworkFill, resolveNodeFill } from '../utils/nodeFillColors';
@@ -11,7 +10,6 @@ export interface MinimapColorsParams {
   queryReady?: boolean;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
-  hostProblems?: HostProblemsMap;
   resolveColor: ColorResolver;
 }
 
@@ -25,7 +23,6 @@ export function useMinimapColors({
   queryReady,
   hostMetadata,
   hostDisplay,
-  hostProblems,
   resolveColor,
 }: MinimapColorsParams) {
   const resolveMiniNodeFill = useCallback(
@@ -41,11 +38,10 @@ export function useMinimapColors({
         queryReady,
         hostMetadata,
         hostDisplay,
-        resolveColor,
-        hostProblems
+        resolveColor
       );
     },
-    [regionStats, options, queryReady, hostMetadata, hostDisplay, hostProblems, resolveColor]
+    [regionStats, options, queryReady, hostMetadata, hostDisplay, resolveColor]
   );
 
   const resolveMiniNetworkStroke = useCallback(

@@ -24,6 +24,9 @@ export interface HostProblemSummary {
 
 export type HostProblemsMap = Record<string, HostProblemSummary>;
 
+/** Severidade Zabbix mínima (Warning = 2) para badges e filtro NOC — abaixo disso não conta na UI. */
+export const ZABBIX_PROBLEM_MIN_SEVERITY = 2;
+
 /** Badge opcional no canto do nó. */
 export interface HostNodeBadge {
   kind: 'problems' | 'traffic' | 'alert';
