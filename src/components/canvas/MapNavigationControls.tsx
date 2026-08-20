@@ -3,6 +3,12 @@ import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { TopologyBreadcrumbItem } from '../../utils/topologyMapNavigation';
+import {
+  CANVAS_EDGE_GAP,
+  COMPACT_TOUCH_MIN,
+  MEDIA_COMPACT,
+  MEDIA_MEDIUM,
+} from '../../utils/canvasOverlayLayout';
 
 interface Props {
   breadcrumb: TopologyBreadcrumbItem[];
@@ -15,36 +21,50 @@ interface Props {
 
 const barStyle = css`
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: ${CANVAS_EDGE_GAP}px;
+  left: ${CANVAS_EDGE_GAP}px;
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 4px;
   max-width: min(60vw, 520px);
   pointer-events: auto;
+
+  ${MEDIA_MEDIUM} {
+    max-width: min(50vw, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+  }
+
+  ${MEDIA_COMPACT} {
+    top: 48px;
+    max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+  }
 `;
 
-const btnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 28,
-  height: 28,
-  padding: 0,
-  borderRadius: 4,
-  border: '1px solid rgba(255,255,255,0.25)',
-  background: 'rgba(0,0,0,0.45)',
-  color: '#fff',
-  fontSize: 11,
-  cursor: 'pointer',
-};
+const navBtnStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
 
-const btnDisabled: React.CSSProperties = {
-  ...btnStyle,
-  opacity: 0.35,
-  cursor: 'default',
-};
+  ${MEDIA_COMPACT} {
+    width: ${COMPACT_TOUCH_MIN}px;
+    height: ${COMPACT_TOUCH_MIN}px;
+  }
+`;
+
+const navBtnDisabledStyle = css`
+  ${navBtnStyle}
+  opacity: 0.35;
+  cursor: default;
+`;
 
 const crumbBarStyle = css`
   display: flex;
@@ -126,7 +146,7 @@ export function MapNavigationControls({
     >
       <button
         type="button"
-        style={canGoBack ? btnStyle : btnDisabled}
+        className={canGoBack ? navBtnStyle : navBtnDisabledStyle}
         title="Voltar (Esc)"
         aria-label="Voltar"
         disabled={!canGoBack}
@@ -141,7 +161,7 @@ export function MapNavigationControls({
       </button>
       <button
         type="button"
-        style={canGoForward ? btnStyle : btnDisabled}
+        className={canGoForward ? navBtnStyle : navBtnDisabledStyle}
         title="Avançar"
         aria-label="Avançar"
         disabled={!canGoForward}

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { TopologyNode, TopologyNodeType } from '../../types';
+import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
 
 function nodeTypeLabel(type?: TopologyNodeType): string {
   switch (type) {
@@ -42,6 +43,11 @@ const searchPanelStyle = css`
   border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+
+  ${MEDIA_COMPACT} {
+    width: min(280px, calc(100vw - ${CANVAS_EDGE_GAP * 2}px));
+    max-width: calc(100vw - ${CANVAS_EDGE_GAP * 2}px);
+  }
 `;
 
 const searchInputStyle = css`
@@ -62,6 +68,11 @@ const searchResultsStyle = css`
   max-height: 220px;
   overflow-y: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
+  -webkit-overflow-scrolling: touch;
+
+  ${MEDIA_COMPACT} {
+    max-height: min(220px, 40vh);
+  }
 `;
 
 const searchResultBtnStyle = css`

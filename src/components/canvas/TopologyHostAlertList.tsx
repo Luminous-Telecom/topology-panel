@@ -1,16 +1,18 @@
 import React, { useMemo } from 'react';
 import { css } from '@emotion/css';
 import { HostAlertListEntry } from '../../utils/noc/topologyFilters';
-
-const MINIMAP_HEIGHT = 148;
-const EDGE_GAP = 8;
+import { CANVAS_EDGE_GAP, minimapBottomOffset } from '../../utils/canvasOverlayLayout';
+import {
+  overlayListItemButtonStyle,
+  overlayPanelCompactMaxHeight,
+  overlayPanelCompactWidth,
+} from './canvasOverlayStyles';
 
 const panelStyle = (bottomOffset: number) => css`
   position: absolute;
   bottom: ${bottomOffset}px;
-  left: 8px;
+  left: ${CANVAS_EDGE_GAP}px;
   z-index: 4;
-  width: min(240px, calc(100vw - 16px));
   max-height: 200px;
   display: flex;
   flex-direction: column;
@@ -36,6 +38,7 @@ const listStyle = css`
   padding: 4px 0;
   list-style: none;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 `;
 
 const itemButtonStyle = css`
@@ -115,7 +118,7 @@ function TopologyHostAlertListComponent({
   showMinimap = false,
   onFocusHost,
 }: Props) {
-  const bottomOffset = showMinimap ? EDGE_GAP + MINIMAP_HEIGHT + EDGE_GAP : EDGE_GAP;
+  const bottomOffset = minimapBottomOffset(showMinimap);
 
   const statusColorByEntry = useMemo(() => {
     const colors = new Map<string, string>();
@@ -131,7 +134,7 @@ function TopologyHostAlertListComponent({
 
   return (
     <div
-      className={panelStyle(bottomOffset)}
+      className={`${panelStyle(bottomOffset)} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
       data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
@@ -146,7 +149,7 @@ function TopologyHostAlertListComponent({
               <li key={entryKey}>
                 <button
                   type="button"
-                  className={itemButtonStyle}
+                  className={`${itemButtonStyle} ${overlayListItemButtonStyle}`}
                   title={`Ir para ${entry.label}`}
                   aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel} — ${reasonLabel(entry)}`}
                   onClick={(e) => {

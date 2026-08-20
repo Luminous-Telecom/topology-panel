@@ -1,0 +1,73 @@
+import { css } from '@emotion/css';
+import {
+  CANVAS_EDGE_GAP,
+  COMPACT_TOUCH_MIN,
+  MEDIA_COMPACT,
+  MEDIA_MEDIUM,
+} from '../../utils/canvasOverlayLayout';
+
+/** Oculta rótulos longos dos botões da toolbar em telas compactas (mantém ícones). */
+export const toolbarLabelStyle = css`
+  ${MEDIA_COMPACT} {
+    display: none;
+  }
+`;
+
+export const toolbarOverlayButtonStyle = css`
+  ${MEDIA_COMPACT} {
+    min-height: ${COMPACT_TOUCH_MIN}px;
+    min-width: ${COMPACT_TOUCH_MIN}px;
+    padding: 6px 8px;
+  }
+`;
+
+export const overlayListItemButtonStyle = css`
+  ${MEDIA_COMPACT} {
+    min-height: ${COMPACT_TOUCH_MIN}px;
+    padding: 8px 10px;
+  }
+`;
+
+export const overlayFilterChipStyle = css`
+  ${MEDIA_COMPACT} {
+    min-height: ${COMPACT_TOUCH_MIN}px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+`;
+
+export const overlayPanelCompactWidth = css`
+  width: min(240px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+
+  ${MEDIA_COMPACT} {
+    width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+    max-width: none;
+  }
+`;
+
+export const overlayPanelNocCompactWidth = css`
+  width: min(300px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+
+  ${MEDIA_COMPACT} {
+    width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+    max-width: none;
+  }
+`;
+
+export const overlayPanelCompactMaxHeight = css`
+  ${MEDIA_COMPACT} {
+    max-height: min(200px, 38vh);
+  }
+`;
+
+export const overlayNocTopClearance = css`
+  top: 44px;
+
+  ${MEDIA_MEDIUM} {
+    top: 52px;
+  }
+
+  ${MEDIA_COMPACT} {
+    top: 96px;
+  }
+`;

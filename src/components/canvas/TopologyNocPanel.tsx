@@ -2,17 +2,19 @@ import React from 'react';
 import { css } from '@emotion/css';
 import { NocHostListEntry } from '../../utils/noc/topologyFilters';
 import { TopologyMapFilterId, TOPOLOGY_FILTER_LABELS } from '../../utils/noc/types';
-
-const MINIMAP_HEIGHT = 148;
-const EDGE_GAP = 8;
+import { CANVAS_EDGE_GAP, minimapBottomOffset } from '../../utils/canvasOverlayLayout';
+import {
+  overlayFilterChipStyle,
+  overlayListItemButtonStyle,
+  overlayNocTopClearance,
+  overlayPanelNocCompactWidth,
+} from './canvasOverlayStyles';
 
 const panelStyle = (bottomOffset: number) => css`
   position: absolute;
-  top: 44px;
-  left: 8px;
+  left: ${CANVAS_EDGE_GAP}px;
   bottom: ${bottomOffset}px;
   z-index: 5;
-  width: min(300px, calc(100% - 16px));
   display: flex;
   flex-direction: column;
   border-radius: 6px;
@@ -47,6 +49,7 @@ const listStyle = css`
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
 `;
 
 const itemButtonStyle = css`
@@ -115,6 +118,14 @@ const emptyStyle = css`
   line-height: 1.4;
 `;
 
+const filterChipBaseStyle = css`
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+`;
+
 interface Props {
   entries: NocHostListEntry[];
   activeFilters: ReadonlySet<TopologyMapFilterId>;
@@ -135,11 +146,11 @@ function TopologyNocPanelComponent({
   onSelectHost,
 }: Props) {
   const filters = FILTER_IDS;
-  const bottomOffset = showMinimap ? EDGE_GAP + MINIMAP_HEIGHT + EDGE_GAP : EDGE_GAP;
+  const bottomOffset = minimapBottomOffset(showMinimap);
 
   return (
     <div
-      className={panelStyle(bottomOffset)}
+      className={`${panelStyle(bottomOffset)} ${overlayPanelNocCompactWidth} ${overlayNocTopClearance}`}
       data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
@@ -153,16 +164,12 @@ function TopologyNocPanelComponent({
             <button
               key={id}
               type="button"
+              className={`${filterChipBaseStyle} ${overlayFilterChipStyle}`}
               onClick={() => onToggleFilter(id)}
               aria-pressed={active}
               style={{
                 padding: '4px 8px',
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.3)',
                 background: active ? 'rgba(229,57,53,0.85)' : 'rgba(0,0,0,0.45)',
-                color: '#fff',
-                fontSize: 10,
-                cursor: 'pointer',
               }}
             >
               {TOPOLOGY_FILTER_LABELS[id]}
@@ -184,7 +191,7 @@ function TopologyNocPanelComponent({
             <li key={`${entry.mapId}:${entry.nodeId}`}>
               <button
                 type="button"
-                className={itemButtonStyle}
+                className={`${itemButtonStyle} ${overlayListItemButtonStyle}`}
                 title={`Ir para ${entry.label}`}
                 aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel}`}
                 onClick={(e) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
+import { CANVAS_EDGE_GAP, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
 import { resolvePanelColor } from '../../utils/panelColors';
 
 const legendStyle = css`
@@ -19,6 +20,25 @@ const legendStyle = css`
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   min-width: 132px;
+  max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+
+  ${MEDIA_MEDIUM} {
+    top: auto;
+    bottom: ${CANVAS_EDGE_GAP}px;
+    right: ${CANVAS_EDGE_GAP}px;
+    transform: none;
+    min-width: 0;
+    max-width: min(220px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+  }
+
+  ${MEDIA_COMPACT} {
+    top: 96px;
+    bottom: auto;
+    right: ${CANVAS_EDGE_GAP}px;
+    padding: 8px 10px;
+    gap: 5px;
+    max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+  }
 `;
 
 const legendTitleStyle = css`
@@ -38,6 +58,12 @@ const legendItemStyle = css`
   color: #fff;
   line-height: 1.2;
   white-space: nowrap;
+
+  ${MEDIA_COMPACT} {
+    font-size: 11px;
+    gap: 8px;
+    white-space: normal;
+  }
 `;
 
 const legendSwatchStyle = css`
@@ -59,6 +85,11 @@ const legendCountdownStyle = css`
   color: rgba(255, 255, 255, 0.7);
   line-height: 1.3;
   white-space: nowrap;
+
+  ${MEDIA_COMPACT} {
+    white-space: normal;
+    font-size: 10px;
+  }
 `;
 
 export function TopologyColorLegend({

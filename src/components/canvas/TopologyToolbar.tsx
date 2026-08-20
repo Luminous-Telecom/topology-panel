@@ -3,16 +3,31 @@ import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste } from 'react-icons/fa6';
 import { CanvasTool, TopologyNode } from '../../types';
+import { CANVAS_EDGE_GAP, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
+import { toolbarLabelStyle, toolbarOverlayButtonStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
 
 const toolbarStyle = css`
   position: absolute;
-  top: 8px;
+  top: ${CANVAS_EDGE_GAP}px;
   right: 36px;
   z-index: 4;
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+  pointer-events: auto;
+
+  ${MEDIA_MEDIUM} {
+    right: ${CANVAS_EDGE_GAP}px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  ${MEDIA_COMPACT} {
+    gap: 4px;
+  }
 `;
 
 export function TopologyToolbar({
@@ -119,6 +134,7 @@ export function TopologyToolbar({
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button
           type="button"
+          className={toolbarOverlayButtonStyle}
           onClick={() => onToolChange('select')}
           title="Selecionar (seta)"
           aria-label="Selecionar"
@@ -129,6 +145,7 @@ export function TopologyToolbar({
         </button>
         <button
           type="button"
+          className={toolbarOverlayButtonStyle}
           onClick={() => onToolChange('pan')}
           title="Arrastar mapa (mão)"
           aria-label="Arrastar mapa"
@@ -141,19 +158,21 @@ export function TopologyToolbar({
       {onToggleNocMode ? (
         <button
           type="button"
+          className={toolbarOverlayButtonStyle}
           onClick={onToggleNocMode}
           title={nocModeActive ? 'Sair do modo NOC' : 'Modo NOC — filtros e lista de equipamentos'}
           aria-pressed={nocModeActive}
           style={btnStyle(nocModeActive)}
         >
           <Icon name="monitor" size="sm" />
-          NOC
+          <span className={toolbarLabelStyle}>NOC</span>
         </button>
       ) : null}
       {showEditControls && (
         <>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             disabled={!canUndo}
             onClick={onUndo}
             title="Desfazer (Ctrl+Z)"
@@ -164,6 +183,7 @@ export function TopologyToolbar({
           </button>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             disabled={!canRedo}
             onClick={onRedo}
             title="Refazer (Ctrl+Shift+Z)"
@@ -174,6 +194,7 @@ export function TopologyToolbar({
           </button>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             disabled={!canCopy}
             onClick={onCopy}
             title="Copiar seleção (Ctrl+C)"
@@ -184,6 +205,7 @@ export function TopologyToolbar({
           </button>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             disabled={!canPaste}
             onClick={onPaste}
             title="Colar (Ctrl+V)"
@@ -194,15 +216,17 @@ export function TopologyToolbar({
           </button>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             onClick={onToggleLock}
             title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
             style={btnStyle(!locked, Boolean(locked))}
           >
             <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
-            {locked ? 'Mapa travado' : 'Mapa editável'}
+            <span className={toolbarLabelStyle}>{locked ? 'Mapa travado' : 'Mapa editável'}</span>
           </button>
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             onClick={onToggleNetworksLock}
             title={
               networksLocked
@@ -212,43 +236,53 @@ export function TopologyToolbar({
             style={btnStyle(!networksLocked, Boolean(networksLocked))}
           >
             <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
-            {networksLocked ? 'Redes travadas' : 'Redes livres'}
+            <span className={toolbarLabelStyle}>
+              {networksLocked ? 'Redes travadas' : 'Redes livres'}
+            </span>
           </button>
           {onDiscoverNeighbors ? (
             <button
               type="button"
+              className={toolbarOverlayButtonStyle}
               onClick={onDiscoverNeighbors}
               disabled={discoveringNeighbors}
               title="Descobrir vizinhos LLDP/CDP via itens Zabbix dos templates"
               style={btnStyle(false, false, discoveringNeighbors)}
             >
               <Icon name="channel-add" size="sm" />
-              {discoveringNeighbors ? 'Descobrindo…' : 'Descobrir vizinhos'}
+              <span className={toolbarLabelStyle}>
+                {discoveringNeighbors ? 'Descobrindo…' : 'Descobrir vizinhos'}
+              </span>
             </button>
           ) : null}
           {suggestedLinksCount > 0 && onReviewSuggestedLinks ? (
             <button
               type="button"
+              className={toolbarOverlayButtonStyle}
               onClick={onReviewSuggestedLinks}
-              title="Revisar links sugeridos"
+              title={`Revisar links sugeridos (${suggestedLinksCount})`}
+              aria-label={`Revisar ${suggestedLinksCount} links sugeridos`}
               style={btnStyle(true)}
             >
-              Sugestões ({suggestedLinksCount})
+              <span className={toolbarLabelStyle}>Sugestões</span>
+              ({suggestedLinksCount})
             </button>
           ) : null}
           {onInsertBlueprint ? (
             <button
               type="button"
+              className={toolbarOverlayButtonStyle}
               onClick={onInsertBlueprint}
               title="Inserir modelo de topologia (POP, backbone, FTTH)"
               style={btnStyle(false)}
             >
               <Icon name="copy" size="sm" />
-              Modelo
+              <span className={toolbarLabelStyle}>Modelo</span>
             </button>
           ) : null}
           <button
             type="button"
+            className={toolbarOverlayButtonStyle}
             onClick={onToggleMinimap}
             title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
             aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
@@ -261,6 +295,7 @@ export function TopologyToolbar({
       )}
       <button
         type="button"
+        className={toolbarOverlayButtonStyle}
         onClick={onToggleFlow}
         title={
           flowPaused
@@ -275,6 +310,7 @@ export function TopologyToolbar({
       <div className={searchWrapStyle}>
         <button
           type="button"
+          className={toolbarOverlayButtonStyle}
           onClick={() => onSearchOpenChange(!searchOpen)}
           title="Pesquisar no mapa (Ctrl+F)"
           aria-label="Pesquisar no mapa"
@@ -292,6 +328,7 @@ export function TopologyToolbar({
       </div>
       <button
         type="button"
+        className={toolbarOverlayButtonStyle}
         onClick={onToggleLegend}
         title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
         aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
@@ -302,6 +339,7 @@ export function TopologyToolbar({
       </button>
       <button
         type="button"
+        className={toolbarOverlayButtonStyle}
         onClick={onToggleFullscreen}
         title={isFullscreen ? 'Sair da tela cheia' : 'Abrir mapa em tela cheia'}
         aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
