@@ -212,7 +212,18 @@ export function TopologyCanvas({
   const editable = canEditCanvas;
   const networksLocked = areNetworksLocked(storedMap);
   const showMinimap = options.showMinimap !== false;
-  const showLegend = options.showLegend !== false;
+  /** Sobrescreve `options.showLegend` na sessão quando o dashboard não está em modo edição. */
+  const [showLegendLocalOverride, setShowLegendLocalOverride] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    setShowLegendLocalOverride(undefined);
+  }, [options.showLegend]);
+  const showLegend = showLegendLocalOverride ?? options.showLegend !== false;
+  const handleToggleShowLegend = useCallback(() => {
+    const current = showLegendLocalOverride ?? options.showLegend !== false;
+    const next = !current;
+    setShowLegendLocalOverride(next);
+    onShowLegendChange?.(next);
+  }, [onShowLegendChange, options.showLegend, showLegendLocalOverride]);
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
   const panTool = tool === 'pan';
   const toolRef = useRef(tool);
@@ -1142,7 +1153,7 @@ export function TopologyCanvas({
         showMinimap={showMinimap}
         onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
         showLegend={showLegend}
-        onToggleLegend={() => onShowLegendChange?.(!showLegend)}
+        onToggleLegend={handleToggleShowLegend}
         searchOpen={searchOpen}
         setSearchOpen={setSearchOpen}
         onSearchFocusNode={focusNodeOnMap}

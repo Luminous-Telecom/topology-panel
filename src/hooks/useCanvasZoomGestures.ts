@@ -1,6 +1,6 @@
 import { MutableRefObject, RefObject, useEffect } from 'react';
 import { TopologyView } from '../types';
-import { eventTargetsElement, findScrollParents } from '../utils/domScroll';
+import { eventTargetsElement, findScrollParents, wheelTargetsScrollableDescendant } from '../utils/domScroll';
 import { pinchZoom, PinchStart, wheelZoom } from '../utils/zoomMath';
 
 interface UseCanvasZoomGesturesParams {
@@ -144,6 +144,9 @@ export function useCanvasZoomGestures({
       const e = evt;
       // Mesmo evento chega por mais de um alvo (document, painel, ancestrais roláveis).
       if (e.timeStamp === lastWheelTs || !eventTargetsElement(e, el)) {
+        return;
+      }
+      if (wheelTargetsScrollableDescendant(e, el)) {
         return;
       }
       lastWheelTs = e.timeStamp;
