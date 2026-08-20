@@ -14,11 +14,21 @@ export const toolbarLabelStyle = css`
 `;
 
 export const toolbarOverlayButtonStyle = css`
+  pointer-events: auto;
+
   ${MEDIA_COMPACT} {
     min-height: ${COMPACT_TOUCH_MIN}px;
     min-width: ${COMPACT_TOUCH_MIN}px;
     padding: 6px 8px;
   }
+`;
+
+/** Grupo de ferramentas (selecionar / pan) — recebe cliques; o restante da faixa da toolbar é transparente. */
+export const toolbarToolGroupStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
 `;
 
 export const overlayListItemButtonStyle = css`

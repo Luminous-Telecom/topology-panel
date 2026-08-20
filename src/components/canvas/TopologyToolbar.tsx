@@ -4,7 +4,7 @@ import { Icon } from '@grafana/ui';
 import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
 import { CanvasTool, TopologyNode } from '../../types';
 import { CANVAS_EDGE_GAP, GRAFANA_PANEL_MENU_RESERVE, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
-import { toolbarLabelStyle, toolbarOverlayButtonStyle } from './canvasOverlayStyles';
+import { toolbarLabelStyle, toolbarOverlayButtonStyle, toolbarToolGroupStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
 
 const toolbarStyle = css`
@@ -18,7 +18,7 @@ const toolbarStyle = css`
   justify-content: center;
   flex-wrap: wrap;
   gap: 6px;
-  pointer-events: auto;
+  pointer-events: none;
 
   ${MEDIA_MEDIUM} {
     gap: 4px;
@@ -131,7 +131,7 @@ export function TopologyToolbar({
 
   return (
     <div className={toolbarStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div className={toolbarToolGroupStyle}>
         <button
           type="button"
           className={toolbarOverlayButtonStyle}

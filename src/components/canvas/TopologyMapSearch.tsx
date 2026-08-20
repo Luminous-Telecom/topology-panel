@@ -27,6 +27,7 @@ export const searchWrapStyle = css`
   position: relative;
   display: flex;
   align-items: center;
+  pointer-events: auto;
 `;
 
 const searchPanelStyle = css`

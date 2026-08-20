@@ -23,7 +23,7 @@ const barStyle = css`
   position: absolute;
   top: ${CANVAS_EDGE_GAP}px;
   left: ${CANVAS_EDGE_GAP}px;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 4px;
