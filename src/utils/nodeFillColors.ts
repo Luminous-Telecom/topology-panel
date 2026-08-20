@@ -32,8 +32,8 @@ function resolveEffectiveHostStatus(
 /**
  * Cor de preenchimento de um host a partir do status vindo da Query.
  *
- * Problemas ativos no Zabbix pintam com `colorAlert`. Offline total no mapa mantém cor de online;
- * vermelho aparece só nos pontos de falha ICMP no hover.
+ * Problemas ativos no Zabbix pintam com `colorAlert`. Offline no mapa usa `colorOffline`.
+ * No hover ICMP, a linha fica verde e o vermelho marca só os pontos de falha.
  */
 export function hostNodeFill(
   node: TopologyNode,
@@ -74,12 +74,8 @@ export function hostNodeFill(
     return alertColor ?? options.colorAlert;
   }
   if (status === 'offline') {
-    // Offline total: mantém aparência de online no mapa; vermelho só no sparkline (pontos de falha).
-    if (typeFill) {
-      return typeFill;
-    }
-    const onlineColor = resolveMappedColor?.(options.colorOnline);
-    return onlineColor ?? options.colorOnline;
+    const offlineColor = resolveMappedColor?.(options.colorOffline);
+    return offlineColor ?? options.colorOffline;
   }
   const color = resolveMappedColor?.(mapped.color);
   if (!color) {

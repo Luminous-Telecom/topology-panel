@@ -24,11 +24,18 @@ describe('hostNodeFill', () => {
     expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, {})).toBe(options.colorUnknown);
   });
 
-  it('offline total no mapa mantém cor de online (vermelho só no sparkline de falhas)', () => {
+  it('offline no mapa usa colorOffline configurado no painel', () => {
     const display: HostDisplayMap = { 'rb-01': { status: 'offline', color: '#ff0000', value: 0 } };
     expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, display, identity)).toBe(
-      options.colorOnline
+      options.colorOffline
     );
+  });
+
+  it('câmera offline não usa cor de tipo — prioriza colorOffline', () => {
+    const display: HostDisplayMap = { 'cam-01': { status: 'offline', color: '#ff0000', value: 0 } };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'cam-01', icon: 'camera' }), options, {}, display, identity)
+    ).toBe(options.colorOffline);
   });
 
   it('usa colorAlert quando o host tem problemas Zabbix e está online na Query', () => {
