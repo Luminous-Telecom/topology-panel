@@ -26,6 +26,8 @@ import {
   computeFitToContentBoundsTransform,
   computeTopologyContentBounds,
   computeTopologyFitBounds,
+  shouldApplyNavigationFit,
+  TopologyFitViewportRecord,
 } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
 import { canvasStyles } from './canvas/canvasStyles';
@@ -195,6 +197,7 @@ export function TopologyCanvas({
   } = frozenData;
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const lastFitViewportRef = useRef<TopologyFitViewportRecord | null>(null);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const bindScrollRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
@@ -246,8 +249,6 @@ export function TopologyCanvas({
   } = useTopologyViewport({
     wrapRef,
     sizeElement: scrollElement,
-    mapWidth: map.width,
-    mapHeight: map.height,
     savedView,
     onViewChange,
     enableZoom: Boolean(options.enableZoom),
@@ -437,7 +438,9 @@ export function TopologyCanvas({
     suspendSyncRef: suspendScrollSyncRef,
   });
 
-  // Encaixa a topologia ao abrir/trocar mapa (antes do paint).
+  // Encaixa ao abrir/trocar mapa (e se o card crescer). Não reencaixa em refresh de status,
+  // para o zoom da roda não voltar atrás. Se o viewport ainda for 0, tenta de novo quando
+  // `viewport` tiver medida — não marca o mapa como “já encaixado” nesse caso.
   useLayoutEffect(() => {
     const el = scrollRef.current ?? wrapRef.current;
     if (!el) {
@@ -451,6 +454,18 @@ export function TopologyCanvas({
     if (map.nodes.length > 0 && nodeLayouts.size === 0) {
       return;
     }
+    // `map` é o snapshot de `useFrozenCanvasData`, que só alcança a prop no render seguinte. Ao
+    // trocar de mapa, `mapNavigationKey` já é o do destino enquanto o desenho ainda é do mapa
+    // anterior: encaixar aqui usaria o bounding box errado e, pior, marcaria o destino como já
+    // encaixado — o fit correto no render seguinte seria recusado.
+    if (map !== liveMap) {
+      return;
+    }
+
+    const navKey = `${mapNavigationKey}:${isFullscreen ? 'fs' : 'win'}`;
+    if (!shouldApplyNavigationFit(lastFitViewportRef.current, navKey, w, h)) {
+      return;
+    }
 
     const transform = computeFitToContentBoundsTransform(fitBounds, w, h);
     if (!transform) {
@@ -459,15 +474,19 @@ export function TopologyCanvas({
 
     commitView(transform);
     syncScrollFromView();
+    lastFitViewportRef.current = { navKey, w, h };
   }, [
     commitView,
     fitBounds,
     isFullscreen,
-    map.nodes.length,
+    liveMap,
+    map,
     mapNavigationKey,
     nodeLayouts.size,
     scrollElement,
     syncScrollFromView,
+    viewport.h,
+    viewport.w,
   ]);
 
   const { validLinks, renderLinks } = useRenderLinks(map.links, nodeLayouts, selectedLink);

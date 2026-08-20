@@ -1,6 +1,5 @@
 import { MutableRefObject, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyView } from '../types';
-import { computeFitToViewTransform } from '../utils/mapBounds';
 import { useCanvasZoomGestures } from './useCanvasZoomGestures';
 import { useFullscreen } from './useFullscreen';
 import { useViewportSize } from './useViewportSize';
@@ -12,8 +11,6 @@ interface UseTopologyViewportParams {
    * sem a largura das barras). Enquanto `null`, usa `wrapRef`.
    */
   sizeElement?: HTMLElement | null;
-  mapWidth: number;
-  mapHeight: number;
   savedView: TopologyView | undefined;
   onViewChange?: (view: TopologyView) => void;
   enableZoom: boolean;
@@ -35,22 +32,20 @@ interface UseTopologyViewportResult {
   viewportRef: MutableRefObject<{ w: number; h: number }>;
   isFullscreen: boolean;
   toggleFullscreen: () => Promise<void>;
-  fitToView: () => void;
   /** True enquanto um pinch de 2 dedos está ativo — bloqueia pan de 1 dedo. */
   pinchActiveRef: MutableRefObject<boolean>;
 }
 
 /**
- * View do canvas (x/y/scale) e o fitToView inicial, compondo `useViewportSize` (medida do painel),
- * `useFullscreen` e `useCanvasZoomGestures` (roda e pinch). Não inclui o pan de 1 dedo nem a
+ * View do canvas (x/y/scale), compondo `useViewportSize` (medida do painel), `useFullscreen` e
+ * `useCanvasZoomGestures` (roda e pinch). Não inclui o fit de entrada no mapa (fica em
+ * `TopologyCanvas.tsx`, pelo bounding box da topologia desenhada), nem o pan de 1 dedo, nem a
  * máquina de estado de arraste de nó/rede/marquee, que ficam em `useTopologyDragController`
  * (acionado a partir de `onPointerMove`/`onPointerDown` do React).
  */
 export function useTopologyViewport({
   wrapRef,
   sizeElement = null,
-  mapWidth,
-  mapHeight,
   savedView,
   onViewChange,
   enableZoom,
@@ -81,18 +76,6 @@ export function useTopologyViewport({
   const { viewport, viewportRef } = useViewportSize({ wrapRef, sizeElement, sizeElementRef });
   const { isFullscreen, toggleFullscreen } = useFullscreen({ wrapRef, onFullscreenChange, showToast });
   const pinchActiveRef = useRef(false);
-
-  const fitToView = useCallback(() => {
-    const el = resolveSizeEl();
-    if (!el) {
-      return;
-    }
-    const transform = computeFitToViewTransform(mapWidth, mapHeight, el.clientWidth, el.clientHeight);
-    if (!transform) {
-      return;
-    }
-    commitView(transform);
-  }, [commitView, mapWidth, mapHeight, resolveSizeEl]);
 
   // Grava a view no mapa só depois que o usuário para de mexer, para não persistir cada frame.
   useEffect(() => {
@@ -125,7 +108,6 @@ export function useTopologyViewport({
     viewportRef,
     isFullscreen,
     toggleFullscreen,
-    fitToView,
     pinchActiveRef,
   };
 }

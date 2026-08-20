@@ -37,7 +37,7 @@ export function useViewportSize({ wrapRef, sizeElement, sizeElementRef }: UseVie
       const w = target.clientWidth;
       const h = target.clientHeight;
       // Zero significa painel escondido (aba inativa, colapso do grid) — manter a última medida
-      // boa evita um fitToView contra um viewport inexistente.
+      // boa evita um fit contra um viewport inexistente.
       if (w > 0 && h > 0) {
         setViewport({ w, h });
       }

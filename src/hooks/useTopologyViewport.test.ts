@@ -12,8 +12,6 @@ function makeWrapRef() {
 
 function renderViewport(overrides?: {
   savedView?: TopologyView;
-  mapWidth?: number;
-  mapHeight?: number;
   onViewChange?: (view: TopologyView) => void;
   enableZoom?: boolean;
   mapNodesLength?: number;
@@ -26,8 +24,6 @@ function renderViewport(overrides?: {
   const utils = renderHook(() =>
     useTopologyViewport({
       wrapRef,
-      mapWidth: overrides?.mapWidth ?? 800,
-      mapHeight: overrides?.mapHeight ?? 600,
       savedView: overrides?.savedView,
       onViewChange: overrides?.onViewChange,
       enableZoom: overrides?.enableZoom ?? true,
@@ -141,14 +137,5 @@ describe('useTopologyViewport', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('fitToView sem dimensão de layout (jsdom sem clientWidth) não altera a view', () => {
-    const { result } = renderViewport({ savedView: undefined });
-    const before = result.current.view;
-    act(() => {
-      result.current.fitToView();
-    });
-    expect(result.current.view).toEqual(before);
   });
 });

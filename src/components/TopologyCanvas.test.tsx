@@ -1,0 +1,176 @@
+import React from 'react';
+import { fireEvent, render } from '@testing-library/react';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TopologyCanvas } from './TopologyCanvas';
+import { defaultOptions, HostDisplayMap, TopologyMap, TopologyView } from '../types';
+import { emptyMap, hostNode } from '../utils/testMapFixtures';
+
+const VIEWPORT_W = 800;
+const VIEWPORT_H = 600;
+
+/** jsdom não faz layout: o fit lê `clientWidth`/`clientHeight` do painel de scroll. */
+let restoreClientSize: () => void;
+
+beforeAll(() => {
+  const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+  const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => VIEWPORT_W });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT_H });
+  restoreClientSize = () => {
+    if (width) {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', width);
+    }
+    if (height) {
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', height);
+    }
+  };
+});
+
+afterAll(() => restoreClientSize());
+
+interface CanvasTransform {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+function readTransform(container: HTMLElement): CanvasTransform {
+  const raw = container.querySelector('svg > g')?.getAttribute('transform');
+  const parsed = raw?.match(/^translate\((-?[\d.]+),(-?[\d.]+)\) scale\((-?[\d.]+)\)$/);
+  if (!parsed) {
+    throw new Error(`transform do canvas não reconhecido: ${raw}`);
+  }
+  return { x: Number(parsed[1]), y: Number(parsed[2]), scale: Number(parsed[3]) };
+}
+
+/** Canto superior esquerdo de cada nó projetado em coordenadas de tela. */
+function projectNodes(map: TopologyMap, t: CanvasTransform): Array<{ x: number; y: number }> {
+  return map.nodes.map((node) => ({ x: node.x * t.scale + t.x, y: node.y * t.scale + t.y }));
+}
+
+/** Mapa cuja topologia ocupa um canto distante do canvas declarado no JSON. */
+function distantMap(): TopologyMap {
+  return emptyMap({
+    width: 6000,
+    height: 4000,
+    nodes: [
+      hostNode({ id: 'h1', x: 3000, y: 2000, label: 'Host 1' }),
+      hostNode({ id: 'h2', x: 3400, y: 2000, label: 'Host 2' }),
+      hostNode({ id: 'h3', x: 3200, y: 2400, label: 'Host 3' }),
+    ],
+    links: [{ from: 'h1', to: 'h2' }],
+  });
+}
+
+function childMap(): TopologyMap {
+  return emptyMap({
+    width: 6000,
+    height: 4000,
+    nodes: [
+      hostNode({ id: 'c1', x: 120, y: 140, label: 'Filho 1' }),
+      hostNode({ id: 'c2', x: 520, y: 140, label: 'Filho 2' }),
+      hostNode({ id: 'c3', x: 320, y: 520, label: 'Filho 3' }),
+    ],
+    links: [{ from: 'c1', to: 'c2' }],
+  });
+}
+
+/**
+ * Props de identidade estável: `hostDisplayByRefId` e `submapHosts` entram no snapshot de
+ * `useFrozenCanvasData`, então um objeto novo a cada render dispararia re-render em loop.
+ */
+const STABLE_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
+const STABLE_SUBMAP_HOSTS: Record<string, string[] | undefined> = {};
+
+function canvasElement(map: TopologyMap, mapNavigationKey: string, savedView?: TopologyView) {
+  return (
+    <TopologyCanvas
+      map={map}
+      storedMap={map}
+      options={defaultOptions()}
+      hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+      submapHosts={STABLE_SUBMAP_HOSTS}
+      savedView={savedView}
+      mapNavigationKey={mapNavigationKey}
+    />
+  );
+}
+
+function renderCanvas(map: TopologyMap, mapNavigationKey: string) {
+  return render(canvasElement(map, mapNavigationKey));
+}
+
+function expectNodesVisibleAndCentered(map: TopologyMap, t: CanvasTransform): void {
+  const points = projectNodes(map, t);
+  for (const point of points) {
+    expect(point.x).toBeGreaterThanOrEqual(0);
+    expect(point.x).toBeLessThanOrEqual(VIEWPORT_W);
+    expect(point.y).toBeGreaterThanOrEqual(0);
+    expect(point.y).toBeLessThanOrEqual(VIEWPORT_H);
+  }
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+  // Tolerância: a projeção usa o canto do nó, e a caixa medida ainda cresce para a direita/baixo.
+  expect(Math.abs(centerX - VIEWPORT_W / 2)).toBeLessThan(120);
+  expect(Math.abs(centerY - VIEWPORT_H / 2)).toBeLessThan(120);
+}
+
+describe('TopologyCanvas — fit de entrada no mapa', () => {
+  it('ao abrir o mapa raiz, encaixa a topologia desenhada e não o canvas do JSON', () => {
+    const map = distantMap();
+    const { container } = renderCanvas(map, 'root');
+    expectNodesVisibleAndCentered(map, readTransform(container));
+  });
+
+  it('ao entrar no submapa, encaixa a topologia do mapa filho', () => {
+    const root = distantMap();
+    const { container, rerender } = renderCanvas(root, 'root');
+    const rootTransform = readTransform(container);
+
+    const child = childMap();
+    rerender(canvasElement(child, 'filial'));
+
+    const childTransform = readTransform(container);
+    expect(childTransform).not.toEqual(rootTransform);
+    expectNodesVisibleAndCentered(child, childTransform);
+  });
+
+  it('ao voltar para o mapa pai, encaixa de novo a topologia do pai', () => {
+    const root = distantMap();
+    const { container, rerender } = renderCanvas(root, 'root');
+    const rootTransform = readTransform(container);
+
+    const child = childMap();
+    rerender(canvasElement(child, 'filial'));
+    const back = distantMap();
+    rerender(canvasElement(back, 'root'));
+
+    expect(readTransform(container)).toEqual(rootTransform);
+  });
+
+  it('view salva de outro enquadramento não vence o fit de entrada', () => {
+    const map = distantMap();
+    const { container } = render(canvasElement(map, 'root', { x: -20, y: -10, scale: 3.5 }));
+    expectNodesVisibleAndCentered(map, readTransform(container));
+  });
+
+  it('refresh da Query no mesmo mapa não reencaixa nem desfaz o zoom do usuário', () => {
+    const map = distantMap();
+    const { container, rerender } = renderCanvas(map, 'root');
+    const fitted = readTransform(container);
+
+    const wrap = container.firstElementChild as HTMLElement;
+    fireEvent.wheel(wrap, { deltaY: -120 });
+    const zoomed = readTransform(container);
+    expect(zoomed.scale).toBeGreaterThan(fitted.scale);
+
+    // Refresh: mesmo mapa e mesmo id de navegação, objeto novo e status/rótulos atualizados.
+    const refreshed = distantMap();
+    refreshed.nodes = refreshed.nodes.map((node) => ({ ...node, subtitle: '10 ms' }));
+    rerender(canvasElement(refreshed, 'root'));
+
+    expect(readTransform(container)).toEqual(zoomed);
+  });
+});

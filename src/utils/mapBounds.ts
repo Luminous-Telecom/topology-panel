@@ -141,27 +141,11 @@ export function computeMapScrollMetrics(
   };
 }
 
-/** Pan (view.x/y) correspondente a uma posição de scroll nativo.
- * Só é o inverso de `computeMapScrollMetrics` quando o pan cabe no intervalo
- * `[0, maxScroll]` — mapa centralizado (pan além da origem do conteúdo) satura
- * em `scrollLeft = 0` e esta função devolve o pan encostado à esquerda. */
-export function viewPanFromScroll(
-  scrollLeft: number,
-  scrollTop: number,
-  scale: number,
-  bounds: MapContentBounds
-): Pick<TopologyView, 'x' | 'y'> {
-  return {
-    x: -bounds.x0 * scale - scrollLeft,
-    y: -bounds.y0 * scale - scrollTop,
-  };
-}
-
 /**
  * Delta de pan correspondente a uma mudança de `scrollLeft`/`scrollTop` nativo.
- * Usar o delta — e não `viewPanFromScroll` absoluto — ao arrastar a scrollbar:
- * o inset de um mapa centralizado não cabe em `scrollLeft` (clamped a 0), e a
- * conversão absoluta puxaria o mapa para a esquerda no primeiro evento.
+ * Delta, e não pan absoluto reconstruído a partir do scroll: o inset de um mapa centralizado não
+ * cabe em `scrollLeft` (clamped a 0), e a conversão absoluta puxaria o mapa para a esquerda no
+ * primeiro evento da barra.
  */
 export function viewPanDeltaFromScroll(
   prevScrollLeft: number,
@@ -172,31 +156,6 @@ export function viewPanDeltaFromScroll(
   return {
     dx: prevScrollLeft - nextScrollLeft,
     dy: prevScrollTop - nextScrollTop,
-  };
-}
-
-/**
- * Escala/posição para o fit inicial do mapa (`fitToView` em `useTopologyViewport.ts`), usado
- * quando o painel não tem uma view salva ainda.
- * `null` quando o mapa ou o viewport ainda não têm dimensão válida (ex.: canvas ainda não montado).
- */
-export function computeFitToViewTransform(
-  mapWidth: number,
-  mapHeight: number,
-  clientWidth: number,
-  clientHeight: number,
-  pad = 24
-): TopologyView | null {
-  if (!mapWidth || !mapHeight || clientWidth <= 0 || clientHeight <= 0) {
-    return null;
-  }
-  const sx = (clientWidth - pad * 2) / mapWidth;
-  const sy = (clientHeight - pad * 2) / mapHeight;
-  const scale = clamp(Math.min(sx, sy), 0.15, 2);
-  return {
-    scale,
-    x: (clientWidth - mapWidth * scale) / 2,
-    y: (clientHeight - mapHeight * scale) / 2,
   };
 }
 
@@ -229,4 +188,30 @@ export function computeFitToContentBoundsTransform(
     x: (clientWidth - bounds.width * scale) / 2 - bounds.x0 * scale,
     y: (clientHeight - bounds.height * scale) / 2 - bounds.y0 * scale,
   };
+}
+
+export interface TopologyFitViewportRecord {
+  navKey: string;
+  w: number;
+  h: number;
+}
+
+/** Crescimento mínimo do painel (px) para reencaixar — maximizar o card, não barra de rolagem. */
+export const TOPOLOGY_FIT_VIEWPORT_GROW_PX = 40;
+
+/**
+ * Reaplica o fit ao trocar de mapa/tela cheia, ou quando o viewport cresce de fato
+ * (card maximizado). Refresh de status não muda o tamanho — não reencaixa, preserva o zoom.
+ */
+export function shouldApplyNavigationFit(
+  prev: TopologyFitViewportRecord | null,
+  navKey: string,
+  w: number,
+  h: number,
+  growPx = TOPOLOGY_FIT_VIEWPORT_GROW_PX
+): boolean {
+  if (!prev || prev.navKey !== navKey) {
+    return true;
+  }
+  return w > prev.w + growPx || h > prev.h + growPx;
 }
