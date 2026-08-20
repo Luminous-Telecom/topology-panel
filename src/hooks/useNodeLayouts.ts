@@ -15,7 +15,7 @@ import {
 export interface NodeLayoutsParams {
   map: TopologyMap;
   /** Só o que altera geometria — ver comentário do memo abaixo. */
-  layoutOpts: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>;
+  layoutOpts: Pick<TopologyPanelOptions, 'nodeFontSize' | 'networkFontSize' | 'showSubtitle'>;
   templateOpts?: Pick<TopologyPanelOptions, 'nodeTemplates' | 'templateRules' | 'showSubtitle'>;
   dragPreview: DragPreview;
   hostDisplay?: HostDisplayMap;

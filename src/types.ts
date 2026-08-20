@@ -362,6 +362,8 @@ export interface TopologyPanelOptions {
   colorNetworkBorder: string;
   /** Node appearance */
   nodeFontSize: number;
+  /** Tamanho da fonte dos títulos e contagem nas caixas de rede */
+  networkFontSize?: number;
   showSubtitle: boolean;
   /**
    * RefIds das queries que importam hosts ao mapa (opt-in).
@@ -480,6 +482,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
   nodeFontSize: 11,
+  networkFontSize: 11,
   showSubtitle: true,
   enablePan: true,
   enableZoom: true,

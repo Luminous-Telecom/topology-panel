@@ -368,9 +368,10 @@ export function TopologyCanvas({
   const layoutOpts = useMemo(
     () => ({
       nodeFontSize: options.nodeFontSize,
+      networkFontSize: options.networkFontSize,
       showSubtitle: options.showSubtitle,
     }),
-    [options.nodeFontSize, options.showSubtitle]
+    [options.nodeFontSize, options.networkFontSize, options.showSubtitle]
   );
 
   /** Só o que os filtros leem das opções — o objeto inteiro invalidaria o contexto sem motivo. */

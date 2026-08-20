@@ -8,6 +8,7 @@ import {
   regionStrokeColor,
 } from '../../utils/networkStats';
 import { ColorResolver, resolveNetworkFill } from '../../utils/nodeFillColors';
+import { resolveNetworkFontSize } from '../../utils/networkFontSize';
 import { NodeLayout, measureTextWidth } from '../../utils/nodeLayout';
 import { canvasStyles } from './canvasStyles';
 
@@ -53,10 +54,11 @@ function NetworkNodeShapeComponent({
   const stroke = resolveColor(regionStrokeColor(stats, options, queryReady, node.borderColor));
   const statsLabel = stats ? formatRegionStats(stats, queryReady) : undefined;
   const statsPad = 8;
-  const statsFontSize = Math.max(9, options.nodeFontSize - 1);
+  const networkFontSize = resolveNetworkFontSize(options);
+  const statsFontSize = Math.max(9, networkFontSize - 1);
   const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : undefined;
 
-  const titleFs = options.nodeFontSize;
+  const titleFs = networkFontSize;
   const titlePadX = 8;
   const titlePadY = 4;
   const titleMargin = 8;

@@ -162,7 +162,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addNumberInput({
         path: 'nodeFontSize',
-        name: 'Tamanho da fonte',
+        name: 'Tamanho da fonte (hosts)',
+        defaultValue: 11,
+        category: ['Aparência'],
+      })
+      .addNumberInput({
+        path: 'networkFontSize',
+        name: 'Tamanho da fonte (redes)',
+        description: 'Título da caixa de rede e texto de contagem de hosts',
         defaultValue: 11,
         category: ['Aparência'],
       })

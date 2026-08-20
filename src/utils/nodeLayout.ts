@@ -1,5 +1,6 @@
 import { TopologyHostIcon, TopologyPanelOptions } from '../types';
 import { HOST_ICON_GAP, HOST_ICON_SIZE, hostIconRenderDimensions } from './hostIcons';
+import { resolveNetworkFontSize } from './networkFontSize';
 
 /** Medição de texto e caixa de cada tipo de nó (host, submapa, estático, rede). */
 
@@ -257,9 +258,9 @@ export const DEFAULT_NETWORK_HEIGHT = 140;
 
 export function computeNetworkLayout(
   node: { id: string; label?: string; width?: number; height?: number },
-  options: Pick<TopologyPanelOptions, 'nodeFontSize'>
+  options: Pick<TopologyPanelOptions, 'networkFontSize' | 'nodeFontSize'>
 ): NodeLayout {
-  const fontSize = options.nodeFontSize;
+  const fontSize = resolveNetworkFontSize(options);
   const pad = 8;
   const w = node.width ?? DEFAULT_NETWORK_WIDTH;
   const h = node.height ?? DEFAULT_NETWORK_HEIGHT;
