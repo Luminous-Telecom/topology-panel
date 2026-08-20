@@ -63,7 +63,7 @@ function NetworkNodeShapeComponent({
   const titlePadY = 4;
   const titleMargin = 8;
   const titleH = Math.ceil(titleFs + titlePadY * 2);
-  const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs) + titlePadX * 2));
+  const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs, true) + titlePadX * 2));
   const titleX = x + (w - titleW) / 2;
   const titleY = y + titleMargin;
   const titleFill = resolveColor(options.colorStatic);
@@ -118,6 +118,7 @@ function NetworkNodeShapeComponent({
         dominantBaseline="middle"
         fill={titleText}
         fontSize={titleFs}
+        fontWeight={700}
         fontFamily="Inter, Helvetica, Arial, sans-serif"
         pointerEvents="none"
       >

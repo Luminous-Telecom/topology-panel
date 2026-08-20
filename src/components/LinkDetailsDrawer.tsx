@@ -128,36 +128,38 @@ export function LinkDetailsDrawer({
       <div
         style={{
           padding: '12px 14px',
+          paddingRight: 76,
           borderBottom: `1px solid ${theme.colors.border.weak}`,
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 8,
+          position: 'relative',
         }}
       >
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{fromLabel}</div>
-          <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>↕</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{toLabel}</div>
-          <div style={{ fontSize: 11, marginTop: 6, color: statusColor }}>
-            {linkStatusLabel(runtimeMetrics?.status)}
-          </div>
-        </div>
         <button
           type="button"
           aria-label="Fechar detalhes do link"
           onClick={onClose}
           style={{
+            position: 'absolute',
+            top: 4,
+            right: 48,
             border: 'none',
             background: 'transparent',
             color: theme.colors.text.secondary,
             cursor: 'pointer',
             fontSize: 18,
             lineHeight: 1,
+            padding: '4px 6px',
+            borderRadius: 4,
+            zIndex: 1,
           }}
         >
           ×
         </button>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{fromLabel}</div>
+        <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>↕</div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{toLabel}</div>
+        <div style={{ fontSize: 11, marginTop: 6, color: statusColor }}>
+          {linkStatusLabel(runtimeMetrics?.status)}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 4, padding: '8px 10px', borderBottom: `1px solid ${theme.colors.border.weak}` }}>

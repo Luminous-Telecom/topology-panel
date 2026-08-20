@@ -934,6 +934,8 @@ export function TopologyCanvas({
    * PanelChrome) que abre o painel lateral de opções ao detectar clique no painel. `pointerdown`,
    * `mousedown` e `click` são eventos nativos independentes (parar um não para os outros), então
    * paramos os três explicitamente — só quando o alvo é o `scrollPane` em si (nunca um nó/link).
+   * Só na fase de bolha: na captura, `stopPropagation` impede o evento de chegar ao `scrollPane` e
+   * a barra nativa deixa de receber o arraste.
    */
   const stopScrollbarBubble = useCallback(
     (e: React.SyntheticEvent) => {
@@ -942,6 +944,14 @@ export function TopologyCanvas({
       }
     },
     [scrollRef]
+  );
+
+  const handleWrapPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      stopScrollbarBubble(e);
+      onWrapPointerDown(e);
+    },
+    [onWrapPointerDown, stopScrollbarBubble]
   );
 
   /** Limpeza comum de fim de gesto (pointerup normal ou cancelamento por pinch): libera o sync
@@ -1165,11 +1175,10 @@ export function TopologyCanvas({
         if (e.target === scrollRef.current) {
           suspendScrollSyncRef.current = true;
         }
-        stopScrollbarBubble(e);
       }}
-      onMouseDownCapture={stopScrollbarBubble}
-      onClickCapture={stopScrollbarBubble}
-      onPointerDown={onWrapPointerDown}
+      onMouseDown={stopScrollbarBubble}
+      onClick={stopScrollbarBubble}
+      onPointerDown={handleWrapPointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerGesture}
       onPointerCancel={endPointerGesture}
@@ -1273,8 +1282,8 @@ export function TopologyCanvas({
       <svg
         ref={svgRef}
         className={canvasStyles.svg}
-        width="100%"
-        height="100%"
+        width={viewport.w > 0 ? viewport.w : '100%'}
+        height={viewport.h > 0 ? viewport.h : '100%'}
         onContextMenu={(e) => handleContextMenu(e)}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
@@ -1394,6 +1403,7 @@ export function TopologyCanvas({
 
       <CanvasModals
         storedMap={storedMap}
+        nodeLayouts={nodeLayouts}
         options={options}
         persist={persist}
         showToast={showToast}

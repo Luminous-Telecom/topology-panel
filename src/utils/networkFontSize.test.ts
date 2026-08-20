@@ -8,6 +8,6 @@ describe('resolveNetworkFontSize', () => {
   });
 
   it('cai em nodeFontSize quando networkFontSize não está definido', () => {
-    expect(resolveNetworkFontSize({ ...defaultOptions(), nodeFontSize: 14 })).toBe(14);
+    expect(resolveNetworkFontSize({ nodeFontSize: 14 })).toBe(14);
   });
 });

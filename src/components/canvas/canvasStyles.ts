@@ -27,10 +27,9 @@ export const canvasStyles = {
     overflow: auto;
     z-index: 0;
     overscroll-behavior: contain;
-    /* O SVG (z-index 1) recebe cliques no mapa; sem isso a área não coberta pelo SVG
-     * em tela cheia fica “morta” quando o viewport atrasa o resize do painel. */
-    pointer-events: none;
-    /* Deixa a faixa das barras clicável; o SVG cobre só a client area. */
+    /* O SVG (z-index 1) recebe os gestos do mapa; este container precisa aceitar eventos
+     * para que o navegador permita arrastar as barras nativas. */
+    pointer-events: auto;
     &::-webkit-scrollbar {
       width: 22px;
       height: 22px;

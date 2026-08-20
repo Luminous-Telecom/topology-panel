@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PanelData } from '@grafana/data';
 import { HostMetadataMap } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
 import { fetchZabbixHostProblems } from '../utils/zabbixApi';
@@ -25,9 +24,7 @@ function collectHostIds(metadata: HostMetadataMap): string[] {
 /** Problemas Zabbix (Warning+) para badges e filtro NOC — não altera lista ALERTA nem cor do mapa. */
 export function useZabbixHostProblems(
   datasourceUid: string | undefined,
-  hostMetadata: HostMetadataMap,
-  /** Novo objeto a cada refresh da Query — invalida o TTL e busca problemas atuais. */
-  queryData?: PanelData
+  hostMetadata: HostMetadataMap
 ): { problems: HostProblemsMap; loading: boolean } {
   const hostIds = useMemo(() => collectHostIds(hostMetadata), [hostMetadata]);
   const hostKey = useMemo(() => hostIds.sort().join('\0'), [hostIds]);
@@ -47,7 +44,6 @@ export function useZabbixHostProblems(
 
     let cancelled = false;
     setLoading(true);
-    problemsCache.invalidate(cacheKey);
 
     void problemsCache
       .get(cacheKey, () => fetchZabbixHostProblems(datasourceUid, hostKey.split('\0')))
@@ -67,7 +63,7 @@ export function useZabbixHostProblems(
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, hostKey, cacheKey, queryData]);
+  }, [datasourceUid, hostKey, cacheKey]);
 
   return { problems, loading };
 }

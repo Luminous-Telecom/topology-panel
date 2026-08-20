@@ -16,16 +16,16 @@ let measureCtx: CanvasRenderingContext2D | null = null;
 const MEASURE_TEXT_CACHE_MAX = 4000;
 const measureTextCache = new Map<string, number>();
 
-export function measureTextWidth(text: string, fontSize: number): number {
+export function measureTextWidth(text: string, fontSize: number, bold = false): number {
   if (!text) {
     return 0;
   }
-  const cacheKey = `${fontSize}\u0000${text}`;
+  const cacheKey = `${fontSize}\u0000${bold ? 'b' : 'n'}\u0000${text}`;
   const cached = measureTextCache.get(cacheKey);
   if (cached !== undefined) {
     return cached;
   }
-  const width = measureTextWidthUncached(text, fontSize);
+  const width = measureTextWidthUncached(text, fontSize, bold);
   if (measureTextCache.size >= MEASURE_TEXT_CACHE_MAX) {
     const oldestKey = measureTextCache.keys().next().value;
     if (oldestKey !== undefined) {
@@ -36,18 +36,18 @@ export function measureTextWidth(text: string, fontSize: number): number {
   return width;
 }
 
-function measureTextWidthUncached(text: string, fontSize: number): number {
+function measureTextWidthUncached(text: string, fontSize: number, bold: boolean): number {
   if (typeof document === 'undefined') {
-    return text.length * fontSize * 0.55;
+    return text.length * fontSize * (bold ? 0.6 : 0.55);
   }
   if (!measureCtx) {
     const canvas = document.createElement('canvas');
     measureCtx = canvas.getContext('2d');
   }
   if (!measureCtx) {
-    return text.length * fontSize * 0.55;
+    return text.length * fontSize * (bold ? 0.6 : 0.55);
   }
-  measureCtx.font = `${fontSize}px Inter, Helvetica, Arial, sans-serif`;
+  measureCtx.font = `${bold ? 'bold ' : ''}${fontSize}px Inter, Helvetica, Arial, sans-serif`;
   return measureCtx.measureText(text).width;
 }
 
@@ -73,31 +73,57 @@ interface LayoutNodeRef {
   detailLines?: string[];
   width?: number;
   height?: number;
+  fontSize?: number;
   type?: string;
   icon?: TopologyHostIcon;
 }
 
 /** Largura do maior texto do nó (rótulo ou subtítulo). */
 function widestText(label: string, sub: string | undefined, fontSize: number, subFontSize: number): number {
-  return Math.max(measureTextWidth(label, fontSize), sub ? measureTextWidth(sub, subFontSize) : 0);
+  return Math.max(measureTextWidth(label, fontSize, true), sub ? measureTextWidth(sub, subFontSize) : 0);
+}
+
+const MIN_BOXED_FONT = 8;
+
+interface BoxedMetrics {
+  pad: number;
+  lineGap: number;
+  hasTwoLines: boolean;
+  w: number;
+  h: number;
+}
+
+/** Tamanho de referência da caixa no tamanho base da fonte — usado para escalar rótulo e contagem. */
+function boxedMetricsAtFont(
+  label: string,
+  sub: string | undefined,
+  fontSize: number,
+  subFontSize: number
+): BoxedMetrics {
+  const pad = 8;
+  const lineGap = 4;
+  const hasTwoLines = Boolean(sub);
+  const autoMinW = Math.max(Math.ceil(widestText(label, sub, fontSize, subFontSize) + pad * 2), 80);
+  const autoMinH = hasTwoLines ? pad * 2 + fontSize + lineGap + subFontSize : pad * 2 + fontSize;
+  const floorH = Math.max(autoMinH, hasTwoLines ? 44 : 28);
+  return { pad, lineGap, hasTwoLines, w: autoMinW, h: floorH };
 }
 
 /** Caixa de submapa / seletor de dashboard — rótulo no topo e subtítulo colado na base. */
 function computeBoxedLayout(
   node: LayoutNodeRef,
-  fontSize: number,
-  subFontSize: number
+  baseFontSize: number,
+  baseSubFontSize: number
 ): NodeLayout {
-  const pad = 8;
-  const lineGap = 4;
   const label = (node.label ?? '').trim();
   const sub = node.subtitle?.trim();
-  const hasTwoLines = Boolean(sub);
-  const autoMinW = Math.max(Math.ceil(widestText(label, sub, fontSize, subFontSize) + pad * 2), 80);
-  const w = node.width != null ? Math.max(node.width, autoMinW) : autoMinW;
-  const autoMinH = hasTwoLines ? pad * 2 + fontSize + lineGap + subFontSize : pad * 2 + fontSize;
-  const floorH = Math.max(autoMinH, hasTwoLines ? 44 : 28);
-  const h = node.height != null ? Math.max(node.height, floorH) : floorH;
+  const ref = boxedMetricsAtFont(label, sub, baseFontSize, baseSubFontSize);
+  const w = node.width != null ? Math.max(node.width, ref.w) : ref.w;
+  const h = node.height != null ? Math.max(node.height, ref.h) : ref.h;
+  const scale = Math.min(w / ref.w, h / ref.h);
+  const fontSize = Math.max(MIN_BOXED_FONT, Math.round(baseFontSize * scale));
+  const subFontSize = Math.max(MIN_BOXED_FONT, Math.round(baseSubFontSize * scale));
+  const { pad, hasTwoLines } = ref;
 
   if (!hasTwoLines) {
     return { w, h, label, labelFontSize: fontSize, subFontSize, labelY: h / 2 };
@@ -158,7 +184,7 @@ function computeHostLayout(
   const iconRowHeight = showIcon ? iconSize + HOST_ICON_GAP : 0;
 
   const contentW = Math.max(
-    measureTextWidth(label, fontSize),
+    measureTextWidth(label, fontSize, true),
     sub ? measureTextWidth(sub, subFontSize) : 0,
     ...detailLines.map((line) => measureTextWidth(line, detailFontSize))
   );
@@ -208,8 +234,8 @@ export function computeNodeLayout(
   node: LayoutNodeRef,
   options: Pick<TopologyPanelOptions, 'nodeFontSize' | 'showSubtitle'>
 ): NodeLayout {
-  const fontSize = options.nodeFontSize;
-  const subFontSize = Math.max(9, fontSize - 2);
+  const fontSize = node.fontSize ?? options.nodeFontSize;
+  const subFontSize = Math.max(MIN_BOXED_FONT, fontSize - 2);
 
   if (node.type === 'submap' || node.type === 'dashboard_picker') {
     return computeBoxedLayout(node, fontSize, subFontSize);

@@ -375,8 +375,7 @@ export function TopologyPanel({
 
   const { problems: hostProblems } = useZabbixHostProblems(
     zabbixDatasourceUid,
-    hostMetadata,
-    data
+    hostMetadata
   );
 
   const handleNocModeChange = useCallback(

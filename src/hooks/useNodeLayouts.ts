@@ -205,18 +205,24 @@ export function useNodeLayouts({
       if (node && prev) {
         const next = new Map(layouts);
         const positioned = { ...prev, width: resizeW, height: resizeH };
-        next.set(
-          resizeId,
-          measureNodeLayout(
-            node,
-            positioned,
-            layoutOpts,
-            templateOpts,
-            hostMetadata,
-            hostDisplay,
-            uplinkCountByNode
-          )
+        let layoutEntry = measureNodeLayout(
+          node,
+          positioned,
+          layoutOpts,
+          templateOpts,
+          hostMetadata,
+          hostDisplay,
+          uplinkCountByNode
         );
+        if (node.type === 'submap') {
+          const region = baseResult.regionStats.get(resizeId);
+          if (region) {
+            const withStats = { ...layoutEntry, subtitle: formatRegionStats(region, queryReady, 'submap') };
+            const layout = computeNodeLayout(withStats, layoutOpts);
+            layoutEntry = { ...layoutEntry, ...layout, subtitle: withStats.subtitle };
+          }
+        }
+        next.set(resizeId, layoutEntry);
         layouts = next;
       }
     }
@@ -231,5 +237,6 @@ export function useNodeLayouts({
     hostMetadata,
     hostDisplay,
     uplinkCountByNode,
+    queryReady,
   ]);
 }

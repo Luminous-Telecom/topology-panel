@@ -115,6 +115,8 @@ function HostNodeShapeComponent({
   const textCenterX = x + w / 2;
   const iconX = x + w / 2;
   const iconY = iconCenterY !== undefined ? y + iconCenterY : y + h / 2;
+  const cornerIconSize = Math.max(8, Math.round(labelFontSize * 0.85));
+  const cornerIconY = y + Math.max(8, Math.round(labelFontSize * 0.55));
 
   return (
     <g
@@ -186,6 +188,7 @@ function HostNodeShapeComponent({
         dominantBaseline="middle"
         fill={labelColor}
         fontSize={labelFontSize}
+        fontWeight={700}
         fontFamily="Inter, Helvetica, Arial, sans-serif"
         pointerEvents="none"
       >
@@ -227,12 +230,26 @@ function HostNodeShapeComponent({
         );
       })}
       {node.type === 'submap' && (
-        <text x={x + w - 8} y={y + 12} textAnchor="end" fill={labelColor} fontSize={10} pointerEvents="none">
+        <text
+          x={x + w - 8}
+          y={cornerIconY}
+          textAnchor="end"
+          fill={labelColor}
+          fontSize={cornerIconSize}
+          pointerEvents="none"
+        >
           ↗
         </text>
       )}
       {node.type === 'dashboard_picker' && (
-        <text x={x + w - 8} y={y + 12} textAnchor="end" fill={labelColor} fontSize={10} pointerEvents="none">
+        <text
+          x={x + w - 8}
+          y={cornerIconY}
+          textAnchor="end"
+          fill={labelColor}
+          fontSize={cornerIconSize}
+          pointerEvents="none"
+        >
           ▾
         </text>
       )}

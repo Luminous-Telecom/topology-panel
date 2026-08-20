@@ -140,6 +140,8 @@ export function useTopologyDragController({
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
   /** Posições do arraste — ref evita perder o último move no pointerup (state ainda não commitou). */
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  /** Tamanho do resize — mesma razão que `dragPositionsRef` (state de preview pode atrasar no pointerup). */
+  const resizePreviewRef = useRef<{ width: number; height: number } | null>(null);
   const applyNodeDragMoveRef = useRef<(clientX: number, clientY: number) => void>(() => {});
 
   const edgePan = useEdgePanLoop({
@@ -406,6 +408,25 @@ export function useTopologyDragController({
     []
   );
 
+  const applyResizeMove = useCallback(
+    (clientX: number, clientY: number) => {
+      const d = dragRef.current;
+      if (!d || d.kind !== 'resize') {
+        return;
+      }
+      const dw = (clientX - d.ox) / viewRef.current.scale;
+      const dh = (clientY - d.oy) / viewRef.current.scale;
+      if (Math.abs(dw) > 2 || Math.abs(dh) > 2) {
+        d.moved = true;
+      }
+      const width = Math.max(gridStep * 2, snapCoord(d.startW + dw));
+      const height = Math.max(gridStep * 2, snapCoord(d.startH + dh));
+      resizePreviewRef.current = { width, height };
+      setDragPreview({ nodeId: d.node.id, width, height });
+    },
+    [gridStep, setDragPreview, snapCoord, viewRef]
+  );
+
   const onResizePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
       if (
@@ -417,6 +438,7 @@ export function useTopologyDragController({
       e.stopPropagation();
       const layout = nodeLayouts.get(node.id);
       const fallback = defaultResizeSize(node);
+      resizePreviewRef.current = null;
       dragRef.current = {
         kind: 'resize',
         node,
@@ -561,16 +583,7 @@ export function useTopologyDragController({
         return;
       }
       if (d.kind === 'resize') {
-        const dw = (e.clientX - d.ox) / view.scale;
-        const dh = (e.clientY - d.oy) / view.scale;
-        if (Math.abs(dw) > 2 || Math.abs(dh) > 2) {
-          d.moved = true;
-        }
-        setDragPreview({
-          nodeId: d.node.id,
-          width: Math.max(gridStep * 2, snapCoord(d.startW + dw)),
-          height: Math.max(gridStep * 2, snapCoord(d.startH + dh)),
-        });
+        applyResizeMove(e.clientX, e.clientY);
         return;
       }
       if (d.kind === 'link-waypoint') {
@@ -587,16 +600,13 @@ export function useTopologyDragController({
     },
     [
       applyNodeDragMove,
+      applyResizeMove,
       clientToMap,
       commitView,
       edgePan,
-      gridStep,
       moveLinkWaypoint,
       pinchActiveRef,
-      setDragPreview,
       setMarqueeRect,
-      snapCoord,
-      view.scale,
     ]
   );
 
@@ -606,6 +616,7 @@ export function useTopologyDragController({
 
   const clearNodeDragUi = useCallback(() => {
     dragPositionsRef.current = null;
+    resizePreviewRef.current = null;
     setDragPreview(null);
     clearDragUi();
   }, [clearDragUi, setDragPreview]);
@@ -736,6 +747,9 @@ export function useTopologyDragController({
       if (d.kind === 'node') {
         applyNodeDragMove(e.clientX, e.clientY, e);
       }
+      if (d.kind === 'resize') {
+        applyResizeMove(e.clientX, e.clientY);
+      }
       endGestureBookkeeping(d, e);
 
       if (handlePanTap(d, node)) {
@@ -756,10 +770,12 @@ export function useTopologyDragController({
         commitNodeDrag(d.moved);
       }
 
-      if (d.kind === 'resize' && dragPreview && d.moved) {
-        persist(
-          updateStoredNode(storedMap, d.node, { width: dragPreview.width, height: dragPreview.height })
-        );
+      if (d.kind === 'resize' && d.moved) {
+        const preview = resizePreviewRef.current;
+        if (preview) {
+          persist(updateStoredNode(storedMap, d.node, { width: preview.width, height: preview.height }));
+        }
+        resizePreviewRef.current = null;
         setDragPreview(null);
       }
 
@@ -770,10 +786,10 @@ export function useTopologyDragController({
     },
     [
       applyNodeDragMove,
+      applyResizeMove,
       commitLinkWaypoint,
       commitMarquee,
       commitNodeDrag,
-      dragPreview,
       endGestureBookkeeping,
       handleNodeTap,
       handlePanTap,

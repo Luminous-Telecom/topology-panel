@@ -124,4 +124,29 @@ describe('computeNodeLayout — submapa com stats', () => {
     expect(layout.h).toBeGreaterThanOrEqual(44);
     expect(layout.subY).toBeDefined();
   });
+
+  it('escala fontes do título e da contagem quando o submapa é redimensionado', () => {
+    const base = computeNodeLayout(
+      {
+        id: 'sm1',
+        type: 'submap',
+        label: 'Filial',
+        subtitle: '2 / 0 / 5',
+      },
+      { nodeFontSize: 12, showSubtitle: true }
+    );
+    const large = computeNodeLayout(
+      {
+        id: 'sm1',
+        type: 'submap',
+        label: 'Filial',
+        subtitle: '2 / 0 / 5',
+        width: base.w * 2,
+        height: base.h * 2,
+      },
+      { nodeFontSize: 12, showSubtitle: true }
+    );
+    expect(large.labelFontSize).toBe(24);
+    expect(large.subFontSize).toBe(20);
+  });
 });

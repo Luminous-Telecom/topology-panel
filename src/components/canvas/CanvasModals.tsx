@@ -14,6 +14,7 @@ import {
 import { addZabbixHostAt } from '../../utils/mapEdits';
 import { activeChildMaps } from '../../utils/childMapEdits';
 import { updateLinkProps } from '../../utils/mapLinkEdits';
+import { BulkSubmapLayoutSize } from '../../utils/mapBulkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
@@ -36,6 +37,7 @@ export interface PingTarget {
 
 interface CanvasModalsProps {
   storedMap: TopologyMap;
+  nodeLayouts?: Map<string, BulkSubmapLayoutSize>;
   options: TopologyPanelOptions;
   persist: (map: TopologyMap) => void;
   showToast: (message: string) => void;
@@ -68,6 +70,7 @@ interface CanvasModalsProps {
  */
 export function CanvasModals({
   storedMap,
+  nodeLayouts,
   options,
   persist,
   showToast,
@@ -95,6 +98,7 @@ export function CanvasModals({
     <>
       {editNode && (
         <NodeEditModal
+          key={`${editNode.id}:${editNode.width ?? ''}:${editNode.height ?? ''}`}
           node={editNode}
           queryRefInfos={options.queryRefInfosAvailable ?? []}
           queryHostOptions={queryHostOptions}
@@ -131,7 +135,13 @@ export function CanvasModals({
         />
       )}
 
-      <BulkEditModals storedMap={storedMap} state={bulk} persist={persist} showToast={showToast} />
+      <BulkEditModals
+        storedMap={storedMap}
+        nodeLayouts={nodeLayouts}
+        state={bulk}
+        persist={persist}
+        showToast={showToast}
+      />
 
       {pingTarget && (
         <PingModal
