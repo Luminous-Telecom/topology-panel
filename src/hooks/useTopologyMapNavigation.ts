@@ -5,7 +5,6 @@ import {
   TopologyBreadcrumbItem,
   TopologyNavFrame,
   buildTopologyBreadcrumb,
-  computeBreadcrumbNavigation,
   resolveTopologyMapView,
 } from '../utils/topologyMapNavigation';
 
@@ -25,7 +24,8 @@ interface UseTopologyMapNavigationResult {
   navigateToChild: (childMapId: string, label: string, currentView: TopologyView) => void;
   /** Salta direto para um mapa (raiz ou filho) — usado pelo painel NOC. */
   navigateToMapId: (mapId: string, label: string, currentView: TopologyView) => void;
-  navigateToBreadcrumb: (index: number, currentView: TopologyView) => void;
+  /** Volta ao mapa raiz (clique em "Início" no breadcrumb). */
+  navigateToHome: (currentView: TopologyView) => void;
   goBack: (currentView: TopologyView) => void;
   goForward: (currentView: TopologyView) => void;
   resetNavigation: () => void;
@@ -61,8 +61,8 @@ export function useTopologyMapNavigation({
   );
 
   const breadcrumb = useMemo(
-    () => buildTopologyBreadcrumb(backStack, currentMapId, currentLabel),
-    [backStack, currentMapId, currentLabel]
+    () => buildTopologyBreadcrumb(currentMapId, currentLabel),
+    [currentMapId, currentLabel]
   );
 
   const navigateToChild = useCallback(
@@ -90,35 +90,41 @@ export function useTopologyMapNavigation({
         return;
       }
       persistView(currentMapId, currentView);
-      setBackStack([]);
+      setBackStack((prev) => {
+        if (trimmedId === ROOT_MAP_ID) {
+          return [];
+        }
+        if (currentMapId === ROOT_MAP_ID) {
+          return [{ mapId: ROOT_MAP_ID, view: currentView, label: '' }];
+        }
+        const rootFrame = prev.find((f) => f.mapId === ROOT_MAP_ID);
+        return rootFrame ? [rootFrame] : [];
+      });
       setForwardStack([]);
       setCurrentMapId(trimmedId);
       setCurrentLabel(trimmedId === ROOT_MAP_ID ? '' : label.trim() || trimmedId);
     },
-    [currentMapId, currentLabel, persistView]
+    [currentMapId, persistView]
   );
 
-  const navigateToBreadcrumb = useCallback(
-    (index: number, currentView: TopologyView) => {
-      const next = computeBreadcrumbNavigation(
-        index,
-        backStack,
-        forwardStack,
-        currentMapId,
-        currentLabel,
-        currentView
-      );
-      if (!next) {
+  const navigateToHome = useCallback(
+    (currentView: TopologyView) => {
+      if (currentMapId === ROOT_MAP_ID) {
         return;
       }
       persistView(currentMapId, currentView);
-      setBackStack(next.backStack);
-      setForwardStack(next.forwardStack);
-      setCurrentMapId(next.currentMapId);
-      setCurrentLabel(next.currentLabel);
-      sessionViewsRef.current[next.currentMapId] = next.restoredView;
+      const rootFrame = backStack.find((f) => f.mapId === ROOT_MAP_ID);
+      setBackStack([]);
+      setForwardStack([
+        { mapId: currentMapId, view: currentView, label: currentLabel || currentMapId },
+      ]);
+      setCurrentMapId(ROOT_MAP_ID);
+      setCurrentLabel('');
+      if (rootFrame?.view) {
+        sessionViewsRef.current[ROOT_MAP_ID] = rootFrame.view;
+      }
     },
-    [backStack, currentLabel, currentMapId, forwardStack, persistView]
+    [backStack, currentLabel, currentMapId, persistView]
   );
 
   const goBack = useCallback(
@@ -188,7 +194,7 @@ export function useTopologyMapNavigation({
     savedViewForCurrent,
     navigateToChild,
     navigateToMapId,
-    navigateToBreadcrumb,
+    navigateToHome,
     goBack,
     goForward,
     resetNavigation,

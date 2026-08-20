@@ -34,13 +34,6 @@ export interface TopologyBreadcrumbItem {
   label: string;
 }
 
-export interface NavigateBreadcrumbResult {
-  backStack: TopologyNavFrame[];
-  forwardStack: TopologyNavFrame[];
-  currentMapId: string;
-  currentLabel: string;
-  restoredView: TopologyView;
-}
 
 export function isValidChildMapId(id: string): boolean {
   const trimmed = id.trim();
@@ -71,53 +64,22 @@ export function resolveTopologyMapView(
   return sessionViews[mapId] ?? options.childMapViews?.[mapId];
 }
 
-/** Monta o caminho de breadcrumb a partir da pilha e do mapa atual. */
+/**
+ * Trilha do breadcrumb — plana de propósito.
+ *
+ * No mapa raiz retorna `[]` (nada a mostrar). Dentro de um submapa retorna `[Início, submapa]`,
+ * independente de quantos mapas foram visitados antes. O histórico completo fica nos botões
+ * voltar/avançar.
+ */
 export function buildTopologyBreadcrumb(
-  backStack: TopologyNavFrame[],
   currentMapId: string,
   currentLabel: string
 ): TopologyBreadcrumbItem[] {
-  const trail: TopologyBreadcrumbItem[] = backStack.map((frame) => ({
-    mapId: frame.mapId,
-    label: frame.label.trim() || 'Início',
-  }));
-  const current = currentLabel.trim();
-  if (current || trail.length > 0) {
-    trail.push({
-      mapId: currentMapId,
-      label: current || 'Início',
-    });
+  if (currentMapId === ROOT_MAP_ID) {
+    return [];
   }
-  return trail;
-}
-
-/** Salta para um segmento do breadcrumb (índice anterior ao mapa atual). */
-export function computeBreadcrumbNavigation(
-  index: number,
-  backStack: TopologyNavFrame[],
-  forwardStack: TopologyNavFrame[],
-  currentMapId: string,
-  currentLabel: string,
-  currentView: TopologyView
-): NavigateBreadcrumbResult | null {
-  const trail = buildTopologyBreadcrumb(backStack, currentMapId, currentLabel);
-  if (index < 0 || index >= trail.length - 1) {
-    return null;
-  }
-  const target = backStack[index];
-  if (!target) {
-    return null;
-  }
-  const discardedFromBack = backStack.slice(index + 1).reverse();
-  return {
-    backStack: backStack.slice(0, index),
-    forwardStack: [
-      { mapId: currentMapId, view: currentView, label: currentLabel || 'Início' },
-      ...discardedFromBack,
-      ...forwardStack,
-    ],
-    currentMapId: target.mapId,
-    currentLabel: target.label,
-    restoredView: target.view,
-  };
+  return [
+    { mapId: ROOT_MAP_ID, label: 'Início' },
+    { mapId: currentMapId, label: currentLabel.trim() || currentMapId },
+  ];
 }

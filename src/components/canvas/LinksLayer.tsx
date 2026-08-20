@@ -43,7 +43,9 @@ export function LinksLayer({
 }: Props) {
   return (
     <>
-      {renderLinks.map(({ link, key }) => (
+      {renderLinks.map(({ link, key }) => {
+        const lk = linkKey(link);
+        return (
         <LinkLine
           key={key}
           link={link}
@@ -52,11 +54,11 @@ export function LinksLayer({
           options={options}
           editable={editable}
           panTool={panTool}
-          selected={Boolean(selectedLink && linkKey(selectedLink) === linkKey(link))}
-          hovered={hoveredLinkKey === linkKey(link)}
-          runtimeMetrics={linkMetricsByLink[linkKey(link)]}
+          selected={Boolean(selectedLink && linkKey(selectedLink) === lk)}
+          hovered={hoveredLinkKey === lk}
+          runtimeMetrics={linkMetricsByLink[lk]}
           onSelect={() => onLinkSelect(link)}
-          onHoverChange={(active) => setHoveredLinkKey(active ? linkKey(link) : null)}
+          onHoverChange={(active) => setHoveredLinkKey(active ? lk : null)}
           onContextMenu={(e) => onLinkContextMenu(e, link)}
           onPathPointerDown={(e) => {
             if (panTool || !editable) {
@@ -78,7 +80,8 @@ export function LinksLayer({
             removeWaypointNearPointer(e, link);
           }}
         />
-      ))}
+        );
+      })}
     </>
   );
 }

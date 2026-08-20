@@ -1,22 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   HostDisplayMap,
   HostMetadataMap,
-  LinkRuntimeMetricsMap,
   TopologyLink,
-  TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
-import { HostProblemsMap, TopologyMapFilterId } from '../../utils/noc/types';
-import { resolveHostNodeBadges } from '../../utils/noc/hostBadges';
+import { HostNodeBadge, TopologyMapFilterId } from '../../utils/noc/types';
 import { isNodeVisibleForFilters, TopologyFilterContext } from '../../utils/noc/topologyFilters';
 import { RegionHostStats } from '../../utils/networkStats';
-import { isHostNode } from '../../utils/topologyNodes';
 import { ColorResolver } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { HostNodeShape } from './HostNodeShape';
 import { NetworkNodeShape } from './NetworkNodeShape';
+
+/** Array compartilhado: identidade estável para o `React.memo` do nó sem badge. */
+const NO_BADGES: HostNodeBadge[] = [];
 
 interface CommonProps {
   nodes: TopologyNode[];
@@ -40,7 +39,7 @@ interface NetworkNodesLayerProps extends CommonProps {
 }
 
 /** Camada de baixo: as caixas de rede, desenhadas atrás dos cabos e dos hosts. */
-export function NetworkNodesLayer({
+function NetworkNodesLayerComponent({
   nodes,
   nodeLayouts,
   regionStats,
@@ -57,6 +56,8 @@ export function NetworkNodesLayer({
   onResizePointerDown,
   onResizePointerUp,
 }: NetworkNodesLayerProps) {
+  const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+
   return (
     <>
       {nodes.map((node) => {
@@ -76,7 +77,7 @@ export function NetworkNodesLayer({
             options={options}
             queryReady={queryReady}
             resolveColor={resolveColor}
-            isSelected={selectedNodeIds.includes(node.id)}
+            isSelected={selectedIdSet.has(node.id)}
             panTool={panTool}
             editable={editable}
             networksLocked={networksLocked}
@@ -92,15 +93,16 @@ export function NetworkNodesLayer({
   );
 }
 
+/** Pan, zoom, hover e seleção de cabo não mexem nas caixas de rede — não redesenha a camada. */
+export const NetworkNodesLayer = React.memo(NetworkNodesLayerComponent);
+
 interface HostNodesLayerProps extends CommonProps {
-  map: TopologyMap;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
-  hostProblems?: HostProblemsMap;
-  linkMetricsByLink?: LinkRuntimeMetricsMap;
+  /** Badges já resolvidos por nó (`buildHostNodeBadgeMap`) — ausente quando desligados. */
+  badgesByNode?: ReadonlyMap<string, HostNodeBadge[]>;
   activeFilters?: ReadonlySet<TopologyMapFilterId>;
   filterContext?: TopologyFilterContext;
-  showHostBadges?: boolean;
   selectedLink: TopologyLink | null;
   linkFromId: string | null;
   linkHoverId: string | null;
@@ -112,8 +114,7 @@ interface HostNodesLayerProps extends CommonProps {
 }
 
 /** Camada de cima: hosts, submapas, estáticos e seletores de dashboard. */
-export function HostNodesLayer({
-  map,
+function HostNodesLayerComponent({
   nodes,
   nodeLayouts,
   regionStats,
@@ -121,11 +122,9 @@ export function HostNodesLayer({
   queryReady,
   hostDisplay,
   hostMetadata,
-  hostProblems,
-  linkMetricsByLink,
+  badgesByNode,
   activeFilters,
   filterContext,
-  showHostBadges,
   resolveColor,
   selectedNodeIds,
   selectedLink,
@@ -143,6 +142,8 @@ export function HostNodesLayer({
   onResizePointerDown,
   onResizePointerUp,
 }: HostNodesLayerProps) {
+  const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+
   return (
     <>
       {nodes.map((node) => {
@@ -157,17 +158,7 @@ export function HostNodesLayer({
           activeFilters?.size && filterContext
             ? !isNodeVisibleForFilters(node, activeFilters, filterContext)
             : false;
-        const badges =
-          showHostBadges && isHostNode(node)
-            ? resolveHostNodeBadges({
-                node,
-                map,
-                hostDisplay,
-                hostMetadata,
-                hostProblems,
-                linkMetrics: linkMetricsByLink,
-              })
-            : [];
+        const badges = badgesByNode?.get(node.id) ?? NO_BADGES;
         return (
           <HostNodeShape
             key={node.id}
@@ -181,7 +172,7 @@ export function HostNodesLayer({
             resolveColor={resolveColor}
             badges={badges}
             dimmed={dimmed}
-            isSelected={selectedNodeIds.includes(node.id)}
+            isSelected={selectedIdSet.has(node.id)}
             isSelectedLinkEndpoint={
               selectedLink !== null && (node.id === selectedLink.from || node.id === selectedLink.to)
             }
@@ -205,3 +196,6 @@ export function HostNodesLayer({
     </>
   );
 }
+
+/** Pan e zoom não mudam nenhuma prop da camada — o SVG dos nós não é remontado no gesto. */
+export const HostNodesLayer = React.memo(HostNodesLayerComponent);

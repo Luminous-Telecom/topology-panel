@@ -120,14 +120,16 @@ interface Props {
   onSelectHost: (entry: NocHostListEntry) => void;
 }
 
-export function TopologyNocPanel({
+const FILTER_IDS = Object.keys(TOPOLOGY_FILTER_LABELS) as TopologyMapFilterId[];
+
+function TopologyNocPanelComponent({
   entries,
   activeFilters,
   queryReady = false,
   onToggleFilter,
   onSelectHost,
 }: Props) {
-  const filters = Object.keys(TOPOLOGY_FILTER_LABELS) as TopologyMapFilterId[];
+  const filters = FILTER_IDS;
 
   return (
     <div
@@ -204,3 +206,6 @@ export function TopologyNocPanel({
     </div>
   );
 }
+
+/** Lista longa de equipamentos: não redesenha a cada frame de pan/zoom do mapa. */
+export const TopologyNocPanel = React.memo(TopologyNocPanelComponent);

@@ -3,6 +3,7 @@ import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
+import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
   collectAlertHostEntries,
   collectNocHostEntries,
@@ -124,7 +125,7 @@ interface Props {
   canMapNavigateForward?: boolean;
   onMapNavigateBack?: (currentView: TopologyView) => void;
   onMapNavigateForward?: (currentView: TopologyView) => void;
-  onMapNavigateBreadcrumb?: (index: number, currentView: TopologyView) => void;
+  onMapNavigateHome?: (currentView: TopologyView) => void;
   onNavigateToChildMap?: (childMapId: string, label: string, currentView: TopologyView) => void;
   onNavigateToMapId?: (mapId: string, label: string, currentView: TopologyView) => void;
 }
@@ -163,7 +164,7 @@ export function TopologyCanvas({
   canMapNavigateForward = false,
   onMapNavigateBack,
   onMapNavigateForward,
-  onMapNavigateBreadcrumb,
+  onMapNavigateHome,
   onNavigateToChildMap,
   onNavigateToMapId,
 }: Props) {
@@ -344,6 +345,12 @@ export function TopologyCanvas({
     [options.nodeFontSize, options.showSubtitle, effectiveNocMode]
   );
 
+  /** Só o que os filtros leem das opções — o objeto inteiro invalidaria o contexto sem motivo. */
+  const filterOptions = useMemo(
+    () => ({ linkUtilThresholdHigh: options.linkUtilThresholdHigh }),
+    [options.linkUtilThresholdHigh]
+  );
+
   const filterContext = useMemo<TopologyFilterContext>(
     () => ({
       map,
@@ -351,10 +358,23 @@ export function TopologyCanvas({
       hostMetadata,
       hostProblems,
       linkMetricsByLink,
-      options,
+      options: filterOptions,
     }),
-    [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options]
+    [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, filterOptions]
   );
+
+  const hostBadgesByNode = useMemo(() => {
+    if (options.showHostBadges === false) {
+      return undefined;
+    }
+    return buildHostNodeBadgeMap({
+      map,
+      hostDisplay,
+      hostMetadata,
+      hostProblems,
+      linkMetrics: linkMetricsByLink,
+    });
+  }, [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options.showHostBadges]);
 
   const alertHostEntries = useMemo(() => collectAlertHostEntries(filterContext), [filterContext]);
 
@@ -380,9 +400,9 @@ export function TopologyCanvas({
         hostMetadata,
         hostProblems,
         linkMetricsByLink,
-        options,
+        options: filterOptions,
       }),
-    [activeFilters, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, options]
+    [activeFilters, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
   );
 
   const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
@@ -416,6 +436,10 @@ export function TopologyCanvas({
     submapHosts,
     queryReady,
   });
+
+  /** Caixas medidas para callbacks que não devem trocar de identidade a cada refresh da Query. */
+  const nodeLayoutsRef = useRef(nodeLayouts);
+  nodeLayoutsRef.current = nodeLayouts;
 
   const contentBounds = useMemo(
     () => computeTopologyContentBounds(map, nodeLayouts),
@@ -541,11 +565,12 @@ export function TopologyCanvas({
     return () => el.removeEventListener('contextmenu', blockBrowserMenu, true);
   }, []);
 
+  /** Centraliza e seleciona o nó; `false` quando o nó ainda não tem caixa medida no mapa ativo. */
   const focusNodeOnMap = useCallback(
-    (nodeId: string) => {
-      const layout = nodeLayouts.get(nodeId);
+    (nodeId: string): boolean => {
+      const layout = nodeLayoutsRef.current.get(nodeId);
       if (!layout) {
-        return;
+        return false;
       }
       const cx = layout.x + layout.w / 2;
       const cy = layout.y + layout.h / 2;
@@ -553,7 +578,7 @@ export function TopologyCanvas({
       const vw = viewportRef.current.w;
       const vh = viewportRef.current.h;
       if (vw <= 0 || vh <= 0) {
-        return;
+        return false;
       }
       commitView({
         scale,
@@ -566,8 +591,9 @@ export function TopologyCanvas({
       closeContextMenu();
       setMarqueeRect(null);
       setAlignGuides([]);
+      return true;
     },
-    [commitView, nodeLayouts, viewRef, viewportRef]
+    [closeContextMenu, commitView, nodeLayoutsRef, setSelectedLink, setSelectedNodeIds, viewRef, viewportRef]
   );
 
   const handleNocSelectHost = useCallback(
@@ -582,14 +608,29 @@ export function TopologyCanvas({
     [focusNodeOnMap, mapNavigationKey, onNavigateToMapId, viewRef]
   );
 
+  /**
+   * Foco pendente do painel NOC: o host escolhido está em outro mapa, então só dá para centralizar
+   * depois que o mapa de destino já foi desenhado. `map` é o snapshot congelado, que alcança a prop
+   * um render depois da troca de mapa — enquanto isso as caixas medidas ainda são do mapa anterior e
+   * o pedido continua pendente, para não ser perdido no caminho (o fit de entrada roda antes deste
+   * efeito, então o centro no host é a última palavra).
+   */
   useLayoutEffect(() => {
     const pending = pendingNocFocusRef.current;
-    if (!pending || pending.mapId !== mapNavigationKey) {
+    if (!pending) {
       return;
     }
-    pendingNocFocusRef.current = null;
-    focusNodeOnMap(pending.nodeId);
-  }, [focusNodeOnMap, mapNavigationKey, nodeLayouts.size]);
+    if (pending.mapId !== mapNavigationKey) {
+      pendingNocFocusRef.current = null;
+      return;
+    }
+    if (map !== liveMap) {
+      return;
+    }
+    if (focusNodeOnMap(pending.nodeId)) {
+      pendingNocFocusRef.current = null;
+    }
+  }, [focusNodeOnMap, liveMap, map, mapNavigationKey, nodeLayouts]);
 
   const openSubmap = useCallback(
     (node: TopologyNode) => {
@@ -1074,10 +1115,8 @@ export function TopologyCanvas({
         onMapNavigateForward={
           onMapNavigateForward ? () => onMapNavigateForward(viewRef.current) : undefined
         }
-        onMapNavigateBreadcrumb={
-          onMapNavigateBreadcrumb
-            ? (index: number) => onMapNavigateBreadcrumb(index, viewRef.current)
-            : undefined
+        onMapNavigateHome={
+          onMapNavigateHome ? () => onMapNavigateHome(viewRef.current) : undefined
         }
         tool={tool}
         setTool={setTool}
@@ -1166,7 +1205,7 @@ export function TopologyCanvas({
             showGrid={Boolean(options.showGrid)}
             grabCursor={panTool && Boolean(options.enablePan)}
             onPointerDown={onCanvasPointerDown}
-            onContextMenu={(e) => handleContextMenu(e)}
+            onContextMenu={handleContextMenu}
           />
 
           <NetworkNodesLayer
@@ -1187,18 +1226,16 @@ export function TopologyCanvas({
             onResizePointerUp={onPointerUp}
           />
 
-          {(storedMap.suggestedLinks ?? [])
-            .filter((s) => s.state === 'suggested')
-            .map((suggestion) => (
-              <SuggestedLinkLine
-                key={suggestion.id}
-                suggestion={suggestion}
-                nodeLayouts={nodeLayouts}
-                options={options}
-                selected={false}
-                onSelect={() => setSuggestedReviewOpen(true)}
-              />
-            ))}
+          {pendingSuggestions.map((suggestion) => (
+            <SuggestedLinkLine
+              key={suggestion.id}
+              suggestion={suggestion}
+              nodeLayouts={nodeLayouts}
+              options={options}
+              selected={false}
+              onSelect={() => setSuggestedReviewOpen(true)}
+            />
+          ))}
 
           <LinksLayer
             renderLinks={filteredRenderLinks}
@@ -1221,7 +1258,6 @@ export function TopologyCanvas({
           <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
 
           <HostNodesLayer
-            map={map}
             nodes={map.nodes}
             nodeLayouts={nodeLayouts}
             regionStats={regionStats}
@@ -1229,11 +1265,9 @@ export function TopologyCanvas({
             queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
-            hostProblems={hostProblems}
-            linkMetricsByLink={linkMetricsByLink}
+            badgesByNode={hostBadgesByNode}
             activeFilters={activeFilters}
             filterContext={filterContext}
-            showHostBadges={options.showHostBadges !== false}
             resolveColor={resolveColor}
             selectedNodeIds={selectedNodeIds}
             selectedLink={selectedLink}

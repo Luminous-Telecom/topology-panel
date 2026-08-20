@@ -262,6 +262,22 @@ function LinkLineComponent({
   );
 }
 
+/** Comparação ponto a ponto — a lista é pequena e roda para cada cabo em cada frame de pan. */
+function sameWaypoints(prev: LinkPoint[], next: LinkPoint[]): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (prev.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < prev.length; i += 1) {
+    if (prev[i].x !== next[i].x || prev[i].y !== next[i].y) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Só redesenha quando algo que o link realmente usa muda: estado visual, endpoints, waypoints,
  * caixa dos dois nós e as opções de cor/espessura. Sem isso, arrastar um nó redesenha todos os
@@ -291,7 +307,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (prev.runtimeMetrics !== next.runtimeMetrics) {
     return false;
   }
-  if (JSON.stringify(prev.waypoints) !== JSON.stringify(next.waypoints)) {
+  if (!sameWaypoints(prev.waypoints, next.waypoints)) {
     return false;
   }
   const pf = prev.nodeLayouts.get(prev.link.from);

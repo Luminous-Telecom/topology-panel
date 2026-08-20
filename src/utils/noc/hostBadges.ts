@@ -25,44 +25,44 @@ function problemKeyForNode(node: TopologyNode, hostMetadata?: HostMetadataMap): 
   return meta?.hostid ?? name ?? ip;
 }
 
-function aggregateHostTrafficBps(
-  nodeId: string,
+/**
+ * Tráfego somado por nó, numa única passada pelos cabos do mapa.
+ *
+ * Resolver o badge host por host varria `map.links` de novo a cada host, o que custava
+ * O(hosts × cabos) por render do canvas.
+ */
+export function aggregateHostTrafficByNode(
   map: TopologyMap,
   linkMetrics?: LinkRuntimeMetricsMap
-): number {
+): Map<string, number> {
+  const totals = new Map<string, number>();
   if (!linkMetrics) {
-    return 0;
+    return totals;
   }
-  let total = 0;
   for (const link of map.links) {
-    if (link.from !== nodeId && link.to !== nodeId) {
-      continue;
-    }
     const metrics = linkMetrics[linkKey(link)];
     if (!metrics) {
       continue;
     }
-    if (link.from === nodeId) {
-      total += (metrics.from.rxBps ?? 0) + (metrics.from.txBps ?? 0);
-    }
-    if (link.to === nodeId) {
-      total += (metrics.to.rxBps ?? 0) + (metrics.to.txBps ?? 0);
-    }
+    const fromBps = (metrics.from.rxBps ?? 0) + (metrics.from.txBps ?? 0);
+    const toBps = (metrics.to.rxBps ?? 0) + (metrics.to.txBps ?? 0);
+    totals.set(link.from, (totals.get(link.from) ?? 0) + fromBps);
+    totals.set(link.to, (totals.get(link.to) ?? 0) + toBps);
   }
-  return total;
+  return totals;
 }
 
 export function resolveHostNodeBadges(params: {
   node: TopologyNode;
-  map: TopologyMap;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   hostProblems?: HostProblemsMap;
-  linkMetrics?: LinkRuntimeMetricsMap;
+  /** Tráfego já somado do nó — ver `aggregateHostTrafficByNode`. */
+  trafficBps?: number;
   showProblems?: boolean;
   showTraffic?: boolean;
 }): HostNodeBadge[] {
-  const { node, map, hostMetadata, hostProblems, linkMetrics, showProblems, showTraffic } = params;
+  const { node, hostMetadata, hostProblems, trafficBps, showProblems, showTraffic } = params;
   if (!isHostNode(node)) {
     return [];
   }
@@ -90,16 +90,47 @@ export function resolveHostNodeBadges(params: {
     });
   }
 
-  if (showTraffic !== false && linkMetrics) {
-    const bps = aggregateHostTrafficBps(node.id, map, linkMetrics);
-    if (bps > 0) {
-      badges.push({
-        kind: 'traffic',
-        label: formatBitsPerSecond(bps) ?? '—',
-        color: 'rgba(0,0,0,0.55)',
-      });
-    }
+  if (showTraffic !== false && trafficBps !== undefined && trafficBps > 0) {
+    badges.push({
+      kind: 'traffic',
+      label: formatBitsPerSecond(trafficBps) ?? '—',
+      color: 'rgba(0,0,0,0.55)',
+    });
   }
 
   return badges.slice(0, 2);
+}
+
+/**
+ * Badges de todos os hosts do mapa, num único cálculo por refresh.
+ *
+ * Só entra no `Map` o host que tem badge, e o array devolvido é estável entre renders — é o que
+ * permite ao `HostNodeShape` memoizado não redesenhar durante pan/zoom.
+ */
+export function buildHostNodeBadgeMap(params: {
+  map: TopologyMap;
+  hostDisplay?: HostDisplayMap;
+  hostMetadata?: HostMetadataMap;
+  hostProblems?: HostProblemsMap;
+  linkMetrics?: LinkRuntimeMetricsMap;
+}): Map<string, HostNodeBadge[]> {
+  const { map, hostDisplay, hostMetadata, hostProblems, linkMetrics } = params;
+  const trafficByNode = aggregateHostTrafficByNode(map, linkMetrics);
+  const badgesByNode = new Map<string, HostNodeBadge[]>();
+  for (const node of map.nodes) {
+    if (!isHostNode(node)) {
+      continue;
+    }
+    const badges = resolveHostNodeBadges({
+      node,
+      hostDisplay,
+      hostMetadata,
+      hostProblems,
+      trafficBps: trafficByNode.get(node.id),
+    });
+    if (badges.length) {
+      badgesByNode.set(node.id, badges);
+    }
+  }
+  return badgesByNode;
 }

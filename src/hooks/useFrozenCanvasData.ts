@@ -24,39 +24,10 @@ export function useFrozenCanvasData(
   live: CanvasData,
   isGestureActiveRef: MutableRefObject<boolean>
 ): [CanvasData, () => void] {
-  const {
-    map,
-    hostDisplay,
-    hostDisplayByRefId,
-    queryReady,
-    queryError,
-    hostMetadata,
-    submapHosts,
-    queryData,
-  } = live;
-
-  const snapshot = useMemo(
-    () => ({
-      map,
-      hostDisplay,
-      hostDisplayByRefId,
-      queryReady,
-      queryError,
-      hostMetadata,
-      submapHosts,
-      queryData,
-    }),
-    [
-      map,
-      hostDisplay,
-      hostDisplayByRefId,
-      queryReady,
-      queryError,
-      hostMetadata,
-      submapHosts,
-      queryData,
-    ]
+  const stable = useMemo(
+    () => live,
+    [live.map, live.hostDisplay, live.hostDisplayByRefId, live.queryReady,
+     live.queryError, live.hostMetadata, live.submapHosts, live.queryData]
   );
-
-  return useDeferredDuringGesture(snapshot, isGestureActiveRef);
+  return useDeferredDuringGesture(stable, isGestureActiveRef);
 }

@@ -10,7 +10,7 @@ interface Props {
   canGoForward: boolean;
   onBack: () => void;
   onForward: () => void;
-  onBreadcrumbClick?: (index: number) => void;
+  onHomeClick?: () => void;
 }
 
 const barStyle = css`
@@ -108,10 +108,9 @@ export function MapNavigationControls({
   canGoForward,
   onBack,
   onForward,
-  onBreadcrumbClick,
+  onHomeClick,
 }: Props) {
   const visible = canGoBack || canGoForward || breadcrumb.length > 0;
-  const breadcrumbTitle = breadcrumb.map((item) => item.label).join(' › ');
 
   useEscapeKey(onBack, visible && canGoBack);
 
@@ -156,13 +155,13 @@ export function MapNavigationControls({
         <Icon name="arrow-right" size="sm" />
       </button>
       {breadcrumb.length > 0 ? (
-        <div className={crumbBarStyle} title={breadcrumbTitle}>
+        <div className={crumbBarStyle} title={breadcrumb.map((item) => item.label).join(' › ')}>
           {breadcrumb.map((item, index) => {
             const isLast = index === breadcrumb.length - 1;
             return (
-              <div key={`${item.mapId}-${index}`} className={crumbSegmentStyle}>
+              <div key={item.mapId} className={crumbSegmentStyle}>
                 {index > 0 ? <span className={crumbSeparatorStyle} aria-hidden="true">›</span> : null}
-                {isLast || !onBreadcrumbClick ? (
+                {isLast || !onHomeClick ? (
                   <span className={crumbCurrentStyle}>{item.label}</span>
                 ) : (
                   <button
@@ -172,7 +171,7 @@ export function MapNavigationControls({
                     aria-label={`Ir para ${item.label}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onBreadcrumbClick(index);
+                      onHomeClick();
                     }}
                   >
                     {item.label}

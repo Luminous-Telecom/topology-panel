@@ -111,7 +111,7 @@ export function TopologyPanel({
     savedViewForCurrent,
     navigateToChild,
     navigateToMapId,
-    navigateToBreadcrumb,
+    navigateToHome,
     goBack,
     goForward,
   } = useTopologyMapNavigation({
@@ -479,7 +479,7 @@ export function TopologyPanel({
         canMapNavigateForward={canGoForward}
         onMapNavigateBack={(view) => goBack(view)}
         onMapNavigateForward={(view) => goForward(view)}
-        onMapNavigateBreadcrumb={(index, view) => navigateToBreadcrumb(index, view)}
+        onMapNavigateHome={(view) => navigateToHome(view)}
         onNavigateToChildMap={navigateToChild}
         onNavigateToMapId={navigateToMapId}
         queryHostOptions={queryHostOptions}

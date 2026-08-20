@@ -1,4 +1,4 @@
-import React, { RefObject, useCallback, useState } from 'react';
+import React, { RefObject, useCallback, useRef, useState } from 'react';
 import {
   HostMetadataMap,
   TopologyLink,
@@ -55,6 +55,13 @@ export function useCanvasContextMenu({
 }: UseCanvasContextMenuParams) {
   const [contextMenu, setContextMenu] = useState<ContextMenuAnchor | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  /**
+   * A view entra por ref porque muda a cada frame de pan/zoom. Com ela nas dependências, o
+   * `handleContextMenu` (e o `handleNodeContextMenu` derivado) ganhava identidade nova em todo
+   * frame do gesto e derrubava a memoização das camadas de nó e da grade.
+   */
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, target?: { node?: TopologyNode; link?: TopologyLink }) => {
@@ -97,7 +104,7 @@ export function useCanvasContextMenu({
         return;
       }
       const rect = el.getBoundingClientRect();
-      const { x: mapX, y: mapY } = clientToMapCoords(e.clientX, e.clientY, rect, view);
+      const { x: mapX, y: mapY } = clientToMapCoords(e.clientX, e.clientY, rect, viewRef.current);
       setContextMenu({
         screenX: e.clientX,
         screenY: e.clientY,
@@ -116,7 +123,6 @@ export function useCanvasContextMenu({
       setSelectedNodeIds,
       showToast,
       storedMap,
-      view,
       wrapRef,
     ]
   );

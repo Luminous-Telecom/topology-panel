@@ -48,13 +48,8 @@ function nodeMatchesSingleFilter(
       const summary = ctx.hostProblems[key] ?? ctx.hostProblems[node.zabbixHost?.trim() ?? ''];
       return (summary?.count ?? 0) > 0;
     }
-    case 'congestedLinks': {
-      const congested = congestedLinkKeys(ctx);
-      return ctx.map.links.some(
-        (link) =>
-          congested.has(linkKey(link)) && (link.from === node.id || link.to === node.id)
-      );
-    }
+    case 'congestedLinks':
+      return filterIndex(ctx).congestedNodeIds.has(node.id);
     case 'olt':
       return node.icon === 'olt' || node.nodeTemplateId === 'olt';
     case 'router':
@@ -76,11 +71,36 @@ function nodeMatchesSingleFilter(
   }
 }
 
-function congestedLinkKeys(ctx: TopologyFilterContext): Set<string> {
-  const keys = new Set<string>();
+interface TopologyFilterIndex {
+  /** Chave dos cabos acima do limite de utilização. */
+  congestedLinks: Set<string>;
+  /** Nós em ponta de cabo congestionado. */
+  congestedNodeIds: Set<string>;
+  nodesById: Map<string, TopologyNode>;
+}
+
+/**
+ * Índices do contexto, calculados uma única vez por objeto de contexto.
+ *
+ * Antes cada nó e cada cabo recalculava o conjunto de cabos congestionados e varria `map.nodes`
+ * para achar as pontas, o que custava O(nós × cabos) — e O(nós × cabos²) na lista do modo NOC — a
+ * cada render do canvas. O `WeakMap` segue o mesmo padrão do cache de `services/queryIndex.ts`:
+ * o contexto é memoizado por quem chama, então o cálculo acontece uma vez por refresh.
+ */
+const filterIndexCache = new WeakMap<TopologyFilterContext, TopologyFilterIndex>();
+
+function filterIndex(ctx: TopologyFilterContext): TopologyFilterIndex {
+  const cached = filterIndexCache.get(ctx);
+  if (cached) {
+    return cached;
+  }
+
+  const congestedLinks = new Set<string>();
+  const congestedNodeIds = new Set<string>();
   const threshold = ctx.options.linkUtilThresholdHigh ?? 75;
   for (const link of ctx.map.links) {
-    const metrics = ctx.linkMetricsByLink?.[linkKey(link)];
+    const key = linkKey(link);
+    const metrics = ctx.linkMetricsByLink?.[key];
     if (!metrics) {
       continue;
     }
@@ -91,10 +111,20 @@ function congestedLinkKeys(ctx: TopologyFilterContext): Set<string> {
       metrics.to.txUtilizationPct ?? 0
     );
     if (maxUtil >= threshold || metrics.status === 'highUtilization') {
-      keys.add(linkKey(link));
+      congestedLinks.add(key);
+      congestedNodeIds.add(link.from);
+      congestedNodeIds.add(link.to);
     }
   }
-  return keys;
+
+  const nodesById = new Map<string, TopologyNode>();
+  for (const node of ctx.map.nodes) {
+    nodesById.set(node.id, node);
+  }
+
+  const index: TopologyFilterIndex = { congestedLinks, congestedNodeIds, nodesById };
+  filterIndexCache.set(ctx, index);
+  return index;
 }
 
 /** Nó visível quando não há filtros ou quando casa com pelo menos um filtro ativo. */
@@ -125,16 +155,19 @@ export function isLinkVisibleForFilters(
   if (!activeFilters.size) {
     return true;
   }
+  const index = filterIndex(ctx);
   if (activeFilters.has('congestedLinks')) {
-    return congestedLinkKeys(ctx).has(linkKey(link));
+    return index.congestedLinks.has(linkKey(link));
   }
-  const fromVisible = ctx.map.nodes.some(
-    (n) => n.id === link.from && isNodeVisibleForFilters(n, activeFilters, ctx)
+  const from = index.nodesById.get(link.from);
+  const to = index.nodesById.get(link.to);
+  if (!from || !to) {
+    return false;
+  }
+  return (
+    isNodeVisibleForFilters(from, activeFilters, ctx) &&
+    isNodeVisibleForFilters(to, activeFilters, ctx)
   );
-  const toVisible = ctx.map.nodes.some(
-    (n) => n.id === link.to && isNodeVisibleForFilters(n, activeFilters, ctx)
-  );
-  return fromVisible && toVisible;
 }
 
 export interface NocMapSummary {
@@ -253,13 +286,7 @@ function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
     tags.push('Switch');
   }
 
-  if (
-    ctx.map.links.some(
-      (link) =>
-        congestedLinkKeys(ctx).has(linkKey(link)) &&
-        (link.from === node.id || link.to === node.id)
-    )
-  ) {
+  if (filterIndex(ctx).congestedNodeIds.has(node.id)) {
     tags.push('Link congestionado');
   }
 
@@ -329,6 +356,6 @@ export function computeNocMapSummary(ctx: TopologyFilterContext): NocMapSummary 
     offlineCount,
     problemHostCount,
     problemCount,
-    congestedLinkCount: congestedLinkKeys(ctx).size,
+    congestedLinkCount: filterIndex(ctx).congestedLinks.size,
   };
 }

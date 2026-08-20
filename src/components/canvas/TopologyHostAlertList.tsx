@@ -100,7 +100,7 @@ interface Props {
 }
 
 /** Lista de hosts offline ou em alerta no canto inferior esquerdo do mapa. */
-export function TopologyHostAlertList({
+function TopologyHostAlertListComponent({
   entries,
   colorOffline,
   colorAlert,
@@ -158,3 +158,6 @@ export function TopologyHostAlertList({
     </div>
   );
 }
+
+/** Não redesenha a cada frame de pan/zoom do mapa. */
+export const TopologyHostAlertList = React.memo(TopologyHostAlertListComponent);

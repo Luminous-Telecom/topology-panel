@@ -174,3 +174,55 @@ describe('TopologyCanvas — fit de entrada no mapa', () => {
     expect(readTransform(container)).toEqual(zoomed);
   });
 });
+
+/** Centro da caixa desenhada do nó, em coordenadas de tela. */
+function projectNodeCenter(container: HTMLElement, nodeId: string, t: CanvasTransform): { x: number; y: number } {
+  const rect = container.querySelector(`g[data-node-id="${nodeId}"] rect`);
+  if (!rect) {
+    throw new Error(`nó ${nodeId} não desenhado`);
+  }
+  const x = Number(rect.getAttribute('x'));
+  const y = Number(rect.getAttribute('y'));
+  const w = Number(rect.getAttribute('width'));
+  const h = Number(rect.getAttribute('height'));
+  return { x: (x + w / 2) * t.scale + t.x, y: (y + h / 2) * t.scale + t.y };
+}
+
+describe('TopologyCanvas — modo NOC', () => {
+  it('clicar em equipamento de outro mapa centraliza o host no mapa de destino', () => {
+    const root = distantMap();
+    const child = childMap();
+    const options = {
+      ...defaultOptions(),
+      nocMode: true,
+      map: root,
+      childMaps: { filial: child },
+    };
+    const jumps: string[] = [];
+    const element = (map: TopologyMap, mapNavigationKey: string) => (
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        mapNavigationKey={mapNavigationKey}
+        onNavigateToMapId={(mapId) => jumps.push(mapId)}
+      />
+    );
+
+    const { container, rerender, getByLabelText } = render(element(root, 'root'));
+    fireEvent.click(getByLabelText('Ir para Filho 3 no mapa filial'));
+    expect(jumps).toEqual(['filial']);
+
+    // A navegação real acontece no painel: o canvas recebe o mapa filho e o novo id de navegação.
+    rerender(element(child, 'filial'));
+
+    const transform = readTransform(container);
+    const center = projectNodeCenter(container, 'c3', transform);
+    expect(Math.abs(center.x - VIEWPORT_W / 2)).toBeLessThan(1);
+    expect(Math.abs(center.y - VIEWPORT_H / 2)).toBeLessThan(1);
+    expect(container.querySelector('g[data-node-id="c3"] rect')?.getAttribute('stroke')).toBe('#4FC3F7');
+  });
+});

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyMap } from '../../types';
-import { isNodeVisibleForFilters, computeNocMapSummary, collectAlertHostEntries, collectNocHostEntries } from './topologyFilters';
+import {
+  isLinkVisibleForFilters,
+  isNodeVisibleForFilters,
+  computeNocMapSummary,
+  collectAlertHostEntries,
+  collectNocHostEntries,
+} from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
 
 describe('topologyFilters', () => {
@@ -19,6 +25,33 @@ describe('topologyFilters', () => {
     const olt = map.nodes[0];
     expect(isNodeVisibleForFilters(olt, new Set(['olt']), ctx)).toBe(true);
     expect(isNodeVisibleForFilters(map.nodes[1], new Set(['olt']), ctx)).toBe(false);
+  });
+
+  it('filtra pontas de cabo congestionado e marca a tag no host', () => {
+    const ctx = {
+      map,
+      linkMetricsByLink: {
+        'core-olt': {
+          from: { txUtilizationPct: 91 },
+          to: {},
+          status: 'up' as const,
+        },
+      },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const filters = new Set<'congestedLinks'>(['congestedLinks']);
+    expect(isNodeVisibleForFilters(map.nodes[0], filters, ctx)).toBe(true);
+    expect(isLinkVisibleForFilters(map.links[0], filters, ctx)).toBe(true);
+    expect(computeNocMapSummary(ctx).congestedLinkCount).toBe(1);
+    expect(collectNocHostEntries(filters, [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map }], ctx)[0]?.tags).toContain(
+      'Link congestionado'
+    );
+  });
+
+  it('esconde cabo cuja ponta não casa com o filtro ativo', () => {
+    const ctx = { map, options: { linkUtilThresholdHigh: 75 } };
+    expect(isLinkVisibleForFilters(map.links[0], new Set(['olt']), ctx)).toBe(false);
+    expect(isLinkVisibleForFilters({ from: 'core', to: 'inexistente' }, new Set(['olt']), ctx)).toBe(false);
   });
 
   it('resume hosts offline e problemas', () => {

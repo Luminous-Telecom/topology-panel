@@ -30,7 +30,7 @@ interface NetworkNodeShapeProps {
 }
 
 /** Caixa de rede: retângulo da região, título centralizado e contagem agregada de hosts. */
-export function NetworkNodeShape({
+function NetworkNodeShapeComponent({
   node,
   layout,
   stats,
@@ -152,3 +152,6 @@ export function NetworkNodeShape({
     </g>
   );
 }
+
+/** Só redesenha quando a caixa, o status agregado ou a seleção mudam — não a cada pan/zoom. */
+export const NetworkNodeShape = React.memo(NetworkNodeShapeComponent);

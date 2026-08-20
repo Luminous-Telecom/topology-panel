@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { TopologyView } from '../types';
 
 interface UseGridLinesParams {
@@ -16,6 +16,10 @@ interface GridBounds {
   y1: number;
 }
 
+function sameGridBounds(a: GridBounds, b: GridBounds): boolean {
+  return a.x0 === b.x0 && a.y0 === b.y0 && a.x1 === b.x1 && a.y1 === b.y1;
+}
+
 /** Extensão da grade em coords do mapa — cresce com tamanho do painel, pan e zoom. */
 export function useGridLines({ gridStep, mapWidth, mapHeight, view, viewport }: UseGridLinesParams): {
   gridBounds: GridBounds;
@@ -26,7 +30,7 @@ export function useGridLines({ gridStep, mapWidth, mapHeight, view, viewport }: 
 } {
   const majorGridEvery = gridStep <= 12 ? 5 : 4;
 
-  const gridBounds = useMemo(() => {
+  const rawBounds = useMemo(() => {
     const pad = gridStep * 2;
     let x0 = 0;
     let y0 = 0;
@@ -47,6 +51,17 @@ export function useGridLines({ gridStep, mapWidth, mapHeight, view, viewport }: 
       y1: Math.ceil((y1 + pad) / gridStep) * gridStep,
     };
   }, [gridStep, mapWidth, mapHeight, view.scale, view.x, view.y, viewport.h, viewport.w]);
+
+  /**
+   * Os limites são múltiplos do passo da grade: um pan de poucos pixels dá exatamente o mesmo
+   * retângulo. Reaproveitar o objeto anterior mantém a identidade estável e deixa a camada
+   * memoizada (`CanvasGridLayer`) pular o redesenho no meio do gesto.
+   */
+  const lastBoundsRef = useRef(rawBounds);
+  const gridBounds = sameGridBounds(lastBoundsRef.current, rawBounds)
+    ? lastBoundsRef.current
+    : rawBounds;
+  lastBoundsRef.current = gridBounds;
 
   const gridVerticalLines = useMemo(() => {
     const start = Math.floor(gridBounds.x0 / gridStep);

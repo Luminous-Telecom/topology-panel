@@ -53,7 +53,7 @@ interface HostNodeShapeProps {
 }
 
 /** Nó de host, submapa, texto ou seletor de dashboard: caixa, ícone, rótulo e subtítulo. */
-export function HostNodeShape({
+function HostNodeShapeComponent({
   node,
   layout,
   region,
@@ -232,3 +232,11 @@ export function HostNodeShape({
     </g>
   );
 }
+
+/**
+ * Só redesenha quando alguma prop do próprio nó muda.
+ *
+ * Sem isso, cada frame de pan/zoom e cada hover redesenhava a caixa, o ícone e os textos de todos
+ * os nós do mapa. Depende de `badges` ter identidade estável — ver `buildHostNodeBadgeMap`.
+ */
+export const HostNodeShape = React.memo(HostNodeShapeComponent);

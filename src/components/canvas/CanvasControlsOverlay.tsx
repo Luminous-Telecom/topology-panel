@@ -48,7 +48,7 @@ interface Props {
   canMapNavigateForward?: boolean;
   onMapNavigateBack?: () => void;
   onMapNavigateForward?: () => void;
-  onMapNavigateBreadcrumb?: (index: number) => void;
+  onMapNavigateHome?: () => void;
 }
 
 /** Controles fixos sobre o mapa: barra de ferramentas, navegação hierárquica, aviso de erro da
@@ -95,7 +95,7 @@ export function CanvasControlsOverlay({
   canMapNavigateForward = false,
   onMapNavigateBack,
   onMapNavigateForward,
-  onMapNavigateBreadcrumb,
+  onMapNavigateHome,
 }: Props) {
   return (
     <>
@@ -106,7 +106,7 @@ export function CanvasControlsOverlay({
           canGoForward={canMapNavigateForward}
           onBack={onMapNavigateBack}
           onForward={onMapNavigateForward}
-          onBreadcrumbClick={onMapNavigateBreadcrumb}
+          onHomeClick={onMapNavigateHome}
         />
       ) : null}
 

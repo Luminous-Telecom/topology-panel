@@ -23,7 +23,7 @@ interface Props {
  * Fundo do mapa: o retângulo que captura cliques no vazio (pan, seleção por laço e menu de
  * contexto do canvas) e as linhas do grid.
  */
-export function CanvasGridLayer({
+function CanvasGridLayerComponent({
   bounds,
   verticalLines,
   horizontalLines,
@@ -78,3 +78,11 @@ export function CanvasGridLayer({
     </>
   );
 }
+
+/**
+ * A grade tem centenas de `<line>` e é redesenhada só quando os limites mudam.
+ *
+ * Os limites são arredondados para o passo da grade, então um pan curto não gera trabalho nenhum —
+ * antes cada frame do gesto redesenhava a grade inteira.
+ */
+export const CanvasGridLayer = React.memo(CanvasGridLayerComponent);
