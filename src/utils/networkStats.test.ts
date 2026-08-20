@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildRegionStatsMap, formatRegionStats } from './networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats, regionFillColor } from './networkStats';
+import { defaultOptions } from '../types';
 import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
 
@@ -20,6 +21,82 @@ describe('formatRegionStats — submapa', () => {
       'submap'
     );
     expect(text).toBe('Carregando…');
+  });
+});
+
+describe('regionFillColor — submapa', () => {
+  const options = defaultOptions();
+
+  it('usa colorAlert quando há hosts em alerta no submapa', () => {
+    const fill = regionFillColor(
+      { total: 5, offline: 0, alert: 2, online: 3, unknown: 0 },
+      options,
+      'submap',
+      true
+    );
+    expect(fill).toBe(options.colorAlert);
+  });
+
+  it('offline tem precedência sobre alerta', () => {
+    const fill = regionFillColor(
+      { total: 5, offline: 1, alert: 2, online: 2, unknown: 0 },
+      options,
+      'submap',
+      true
+    );
+    expect(fill).toBe(options.colorOffline);
+  });
+});
+
+describe('buildRegionStatsMap — submapa com mapa interno', () => {
+  it('agrega status dos hosts do childMaps e conta problemas Zabbix como alerta', () => {
+    const nodes: TopologyNode[] = [
+      {
+        id: 'sm1',
+        type: 'submap',
+        label: 'SEPS',
+        x: 0,
+        y: 0,
+        submapChildMapId: 'seps',
+      },
+    ];
+    const childMaps = {
+      seps: {
+        width: 800,
+        height: 600,
+        nodes: [
+          { id: 'h1', type: 'host' as const, zabbixHost: '10.0.0.1', x: 0, y: 0 },
+          { id: 'h2', type: 'host' as const, zabbixHost: '10.0.0.2', x: 0, y: 0 },
+        ],
+        links: [],
+      },
+    };
+    const hostDisplay = {
+      '10.0.0.1': { value: 1, status: 'online' as const },
+      '10.0.0.2': { value: 1, status: 'online' as const },
+    };
+    const hostMetadata = {
+      '10.0.0.1': { name: 'h1', hostid: 'hid1' },
+      '10.0.0.2': { name: 'h2', hostid: 'hid2' },
+    };
+    const hostProblems = { hid2: { count: 1, maxSeverity: 4 } };
+    const stats = buildRegionStatsMap(
+      nodes,
+      new Map(),
+      hostDisplay,
+      {},
+      hostMetadata,
+      {},
+      hostProblems,
+      childMaps
+    );
+    expect(stats.get('sm1')).toEqual({
+      total: 2,
+      offline: 0,
+      alert: 1,
+      online: 1,
+      unknown: 0,
+    });
   });
 });
 

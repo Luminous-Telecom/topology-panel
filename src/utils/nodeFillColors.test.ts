@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HostDisplayMap, TopologyNode, TopologyPanelOptions, defaultOptions } from '../types';
+import { HostDisplayMap, HostMetadataMap, TopologyNode, TopologyPanelOptions, defaultOptions } from '../types';
 import { RegionHostStats } from './networkStats';
 import { hostNodeFill, resolveNetworkFill, resolveNodeFill } from './nodeFillColors';
 
@@ -24,9 +24,22 @@ describe('hostNodeFill', () => {
     expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, {})).toBe(options.colorUnknown);
   });
 
-  it('usa a cor do status quando a Query trouxe o host', () => {
+  it('offline total no mapa mantém cor de online (vermelho só no sparkline de falhas)', () => {
     const display: HostDisplayMap = { 'rb-01': { status: 'offline', color: '#ff0000', value: 0 } };
-    expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, display, identity)).toBe('#ff0000');
+    expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, {}, display, identity)).toBe(
+      options.colorOnline
+    );
+  });
+
+  it('usa colorAlert quando o host tem problemas Zabbix e está online na Query', () => {
+    const display: HostDisplayMap = {
+      'rb-01': { status: 'online', color: options.colorOnline, value: 1 },
+    };
+    const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
+    const problems = { hid1: { count: 2, maxSeverity: 4 } };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
+    ).toBe(options.colorAlert);
   });
 
   it('prefere a cor manual do nó estático', () => {

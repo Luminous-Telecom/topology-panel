@@ -1,8 +1,9 @@
-import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyNode, TopologyPanelOptions } from '../types';
-import { HostLookupRef, resolveHostLookupKey } from './hostLookup';
+import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
+import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from './hostLookup';
 import { NodeLayout } from './nodeLayout';
 import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
 import { isHostNode } from './topologyNodes';
+import { HostProblemsMap } from './noc/types';
 import { panelColorWithAlpha } from './panelColors';
 
 export interface RegionHostStats {
@@ -75,10 +76,27 @@ function resolveRegionHostStatus(
   return display.status;
 }
 
+function hostHasActiveProblems(
+  hostKey: string,
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
+): boolean {
+  if (!hostProblems) {
+    return false;
+  }
+  const meta = hostMetadata?.[hostKey.trim()];
+  const hostid = meta?.hostid?.trim();
+  if (hostid && (hostProblems[hostid]?.count ?? 0) > 0) {
+    return true;
+  }
+  return (hostProblems[hostKey.trim()]?.count ?? 0) > 0;
+}
+
 function countRegionStats(
   hostNames: string[],
   hostDisplay: HostDisplayMap,
-  hostMetadata?: HostMetadataMap
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
 ): RegionHostStats {
   let offline = 0;
   let alert = 0;
@@ -96,7 +114,7 @@ function countRegionStats(
     const st = resolveRegionHostStatus(key, hostDisplay, hostMetadata);
     if (st === 'offline') {
       offline++;
-    } else if (st === 'alert') {
+    } else if (st === 'alert' || hostHasActiveProblems(key, hostMetadata, hostProblems)) {
       alert++;
     } else if (st === 'online') {
       online++;
@@ -145,13 +163,27 @@ export function buildRegionStatsMap(
   submapHosts: Record<string, string[] | null | undefined> = {},
   hostMetadata: HostMetadataMap = {},
   /** Status por refId — submapa com queryRefId só olha a própria consulta (não o mapa pai). */
-  hostDisplayByRefId: Record<string, HostDisplayMap> = {}
+  hostDisplayByRefId: Record<string, HostDisplayMap> = {},
+  hostProblems?: HostProblemsMap,
+  childMaps?: Record<string, TopologyMap | undefined>
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
   const hostNodes = nodes.filter((n) => isHostNode(n));
 
   for (const node of nodes) {
     if (node.type === 'submap') {
+      const childId = node.submapChildMapId?.trim();
+      const childMap = childId ? childMaps?.[childId] : undefined;
+      if (childMap) {
+        const keys = childMapHostKeys(childMap, hostMetadata);
+        const enriched = enrichHostDisplayFromMap(hostDisplay, childMap, hostMetadata);
+        result.set(
+          node.id,
+          countRegionStats(keys, enriched, hostMetadata, hostProblems)
+        );
+        continue;
+      }
+
       const fetched = submapHosts[node.id];
       if (fetched === undefined) {
         result.set(node.id, {
@@ -172,7 +204,7 @@ export function buildRegionStatsMap(
       const statusMap = refId
         ? findHostDisplayBucket(hostDisplayByRefId, refId) ?? {}
         : hostDisplay;
-      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata));
+      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata, hostProblems));
       continue;
     }
 
@@ -187,10 +219,25 @@ export function buildRegionStatsMap(
 
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
     const names = inside.map((h) => hostStatusKey(h, hostMetadata)).filter(Boolean) as string[];
-    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata));
+    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata, hostProblems));
   }
 
   return result;
+}
+
+/** Chaves de host (IP ou nome) dos nós host de um mapa interno — para agregar status do submapa. */
+export function childMapHostKeys(childMap: TopologyMap, hostMetadata?: HostMetadataMap): string[] {
+  const keys: string[] = [];
+  for (const node of childMap.nodes) {
+    if (!isHostNode(node)) {
+      continue;
+    }
+    const key = resolveHostLookupKey(node, hostMetadata);
+    if (key) {
+      keys.push(key);
+    }
+  }
+  return keys;
 }
 
 type RegionColorOptions = Pick<
@@ -205,8 +252,14 @@ export function regionFillColor(
   queryReady = true
 ): string | undefined {
   if (kind === 'submap') {
-    if (queryReady && stats && !stats.loadFailed && stats.total > 0 && stats.offline > 0) {
+    if (!queryReady || !stats || stats.loadFailed || stats.total === 0) {
+      return options.colorSubmap;
+    }
+    if (stats.offline > 0) {
       return options.colorOffline;
+    }
+    if (stats.alert > 0) {
+      return options.colorAlert;
     }
     return options.colorSubmap;
   }

@@ -6,7 +6,7 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
-import { HostNodeBadge, TopologyMapFilterId } from '../../utils/noc/types';
+import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../../utils/noc/types';
 import { isNodeVisibleForFilters, TopologyFilterContext } from '../../utils/noc/topologyFilters';
 import { RegionHostStats } from '../../utils/networkStats';
 import { ColorResolver } from '../../utils/nodeFillColors';
@@ -99,6 +99,7 @@ export const NetworkNodesLayer = React.memo(NetworkNodesLayerComponent);
 interface HostNodesLayerProps extends CommonProps {
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
+  hostProblems?: HostProblemsMap;
   /** Badges já resolvidos por nó (`buildHostNodeBadgeMap`) — ausente quando desligados. */
   badgesByNode?: ReadonlyMap<string, HostNodeBadge[]>;
   activeFilters?: ReadonlySet<TopologyMapFilterId>;
@@ -122,6 +123,7 @@ function HostNodesLayerComponent({
   queryReady,
   hostDisplay,
   hostMetadata,
+  hostProblems,
   badgesByNode,
   activeFilters,
   filterContext,
@@ -169,6 +171,7 @@ function HostNodesLayerComponent({
             queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
+            hostProblems={hostProblems}
             resolveColor={resolveColor}
             badges={badges}
             dimmed={dimmed}

@@ -3,26 +3,45 @@ import {
   HostMetadataMap,
   TopologyNode,
   TopologyPanelOptions,
+  TopologyHostStatus,
 } from '../types';
 import { RegionHostStats, regionFillColor } from './networkStats';
+import { resolveHostProblemSummary } from './noc/topologyFilters';
 import { hostTypeFillColor } from './panelColors';
 import { lookupHostDisplay } from './queryHosts';
+import { HostProblemsMap } from './noc/types';
 
 /** Converte cor de opção do painel (hex, rgb ou nome de tema) em cor final. */
 export type ColorResolver = (color?: unknown) => string;
 
+function resolveEffectiveHostStatus(
+  node: TopologyNode,
+  mappedStatus: TopologyHostStatus | undefined,
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
+): TopologyHostStatus | undefined {
+  if (mappedStatus === 'offline') {
+    return 'offline';
+  }
+  if (mappedStatus === 'alert' || resolveHostProblemSummary(node, hostMetadata, hostProblems)) {
+    return 'alert';
+  }
+  return mappedStatus;
+}
+
 /**
  * Cor de preenchimento de um host a partir do status vindo da Query.
  *
- * Nó sem host Zabbix, ou host sem status conhecido, cai em `colorUnknown` — nunca no verde de
- * online, para não fingir que está tudo bem antes de a Query responder.
+ * Problemas ativos no Zabbix pintam com `colorAlert`. Offline total no mapa mantém cor de online;
+ * vermelho aparece só nos pontos de falha ICMP no hover.
  */
 export function hostNodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
   hostMetadata?: HostMetadataMap,
   hostDisplay?: HostDisplayMap,
-  resolveMappedColor?: (color?: unknown) => string | undefined
+  resolveMappedColor?: (color?: unknown) => string | undefined,
+  hostProblems?: HostProblemsMap
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -45,9 +64,22 @@ export function hostNodeFill(
   if (!mapped?.color) {
     return options.colorUnknown;
   }
+  const status = resolveEffectiveHostStatus(node, mapped.status, hostMetadata, hostProblems);
   const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
-  if (mapped.status === 'online' && typeFill) {
+  if (status === 'online' && typeFill) {
     return typeFill;
+  }
+  if (status === 'alert') {
+    const alertColor = resolveMappedColor?.(options.colorAlert);
+    return alertColor ?? options.colorAlert;
+  }
+  if (status === 'offline') {
+    // Offline total: mantém aparência de online no mapa; vermelho só no sparkline (pontos de falha).
+    if (typeFill) {
+      return typeFill;
+    }
+    const onlineColor = resolveMappedColor?.(options.colorOnline);
+    return onlineColor ?? options.colorOnline;
   }
   const color = resolveMappedColor?.(mapped.color);
   if (!color) {
@@ -84,13 +116,14 @@ export function resolveNodeFill(
   queryReady: boolean | undefined,
   hostMetadata: HostMetadataMap | undefined,
   hostDisplay: HostDisplayMap | undefined,
-  resolveColor: ColorResolver
+  resolveColor: ColorResolver,
+  hostProblems?: HostProblemsMap
 ): string {
   const fillOverride =
     node.type === 'submap' ? regionFillColor(region, options, 'submap', queryReady) : undefined;
   const fillRaw =
     fillOverride ??
     (node.fillColor ? node.fillColor : undefined) ??
-    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
+    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor, hostProblems);
   return resolveColor(fillRaw);
 }

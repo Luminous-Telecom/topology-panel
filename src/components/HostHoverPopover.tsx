@@ -166,7 +166,7 @@ export function HostHoverPopover({
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   const ip = resolveHostIp(node, hostMetadata);
-  const lineColor = display?.color ? String(display.color) : options.colorOnline;
+  const sparklineLineColor = options.colorOnline;
   const offlineColor = options.colorOffline;
 
   const lastPoint = series?.points[series.points.length - 1];
@@ -258,7 +258,7 @@ export function HostHoverPopover({
               </span>
             ) : null}
           </div>
-          <Sparkline series={series} colorOnline={lineColor} colorOffline={offlineColor} />
+          <Sparkline series={series} colorOnline={sparklineLineColor} colorOffline={offlineColor} />
           {series.failureCount > 0 ? (
             <div className={failureStyle}>
               {series.failureCount} falha{series.failureCount === 1 ? '' : 's'} no período

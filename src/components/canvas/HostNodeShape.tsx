@@ -17,7 +17,7 @@ import {
 import { ColorResolver, resolveNodeFill } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { isHostNode } from '../../utils/topologyNodes';
-import { HostNodeBadge } from '../../utils/noc/types';
+import { HostNodeBadge, HostProblemsMap } from '../../utils/noc/types';
 import { canvasStyles } from './canvasStyles';
 import { HostNodeBadgeLayer } from './HostNodeBadgeLayer';
 
@@ -30,6 +30,7 @@ interface HostNodeShapeProps {
   queryReady?: boolean;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
+  hostProblems?: HostProblemsMap;
   resolveColor: ColorResolver;
   badges?: HostNodeBadge[];
   dimmed?: boolean;
@@ -61,6 +62,7 @@ function HostNodeShapeComponent({
   queryReady,
   hostDisplay,
   hostMetadata,
+  hostProblems,
   resolveColor,
   badges,
   dimmed = false,
@@ -82,7 +84,16 @@ function HostNodeShapeComponent({
   onResizePointerUp,
 }: HostNodeShapeProps) {
   const { w, h, label, sub, labelFontSize, subFontSize, labelY, subY, detailLines, detailLineYs, iconCenterY, x, y } = layout;
-  const fill = resolveNodeFill(node, region, options, queryReady, hostMetadata, hostDisplay, resolveColor);
+  const fill = resolveNodeFill(
+    node,
+    region,
+    options,
+    queryReady,
+    hostMetadata,
+    hostDisplay,
+    resolveColor,
+    hostProblems
+  );
   const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
   const labelColor =
     node.type === 'static' && node.labelColor

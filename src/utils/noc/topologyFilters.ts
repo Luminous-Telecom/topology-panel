@@ -29,6 +29,25 @@ function hostProblemKey(node: TopologyNode, hostMetadata?: HostMetadataMap): str
   return meta?.hostid ?? node.zabbixHost?.trim() ?? resolveHostIp(node, hostMetadata);
 }
 
+export function resolveHostProblemSummary(
+  node: TopologyNode,
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
+): { count: number; maxSeverity: number } | undefined {
+  if (!hostProblems) {
+    return undefined;
+  }
+  const key = hostProblemKey(node, hostMetadata);
+  if (!key) {
+    return undefined;
+  }
+  const summary = hostProblems[key] ?? hostProblems[node.zabbixHost?.trim() ?? ''];
+  if (summary && summary.count > 0) {
+    return summary;
+  }
+  return undefined;
+}
+
 function nodeMatchesSingleFilter(
   node: TopologyNode,
   filter: TopologyMapFilterId,
@@ -41,14 +60,8 @@ function nodeMatchesSingleFilter(
   switch (filter) {
     case 'offline':
       return resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) === 'offline';
-    case 'problems': {
-      const key = hostProblemKey(node, ctx.hostMetadata);
-      if (!key || !ctx.hostProblems) {
-        return false;
-      }
-      const summary = ctx.hostProblems[key] ?? ctx.hostProblems[node.zabbixHost?.trim() ?? ''];
-      return (summary?.count ?? 0) > 0;
-    }
+    case 'problems':
+      return resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems) !== undefined;
     case 'congestedLinks':
       return filterIndex(ctx).congestedNodeIds.has(node.id);
     case 'olt':
@@ -220,7 +233,7 @@ function hostDisplayLabel(node: TopologyNode): string {
   return node.id;
 }
 
-/** Hosts offline ou em alerta (status da Query) — para a lista do canto inferior. */
+/** Hosts offline, em alerta (Query) ou com problemas ativos no Zabbix — lista do canto inferior. */
 function collectAlertHostEntriesForMap(
   mapId: string,
   mapLabel: string,
@@ -238,7 +251,7 @@ function collectAlertHostEntriesForMap(
     let reason: HostAlertListReason | null = null;
     if (status === 'offline') {
       reason = 'offline';
-    } else if (status === 'alert') {
+    } else if (status === 'alert' || resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems)) {
       reason = 'alert';
     }
 
@@ -271,7 +284,7 @@ export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertLi
 
 /**
  * Hosts offline ou em alerta em todos os mapas do painel (raiz + filhos) — lista sem modo NOC.
- * O status da Query é resolvido por mapa, para hosts fora do mapa aberto.
+ * Alerta inclui status da Query e problemas ativos Zabbix; o status da Query é resolvido por mapa.
  */
 export function collectAlertHostEntriesFromMaps(
   maps: readonly NocTopologyMapScope[],
@@ -311,10 +324,9 @@ function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
     tags.push('ALERTA');
   }
 
-  const key = hostProblemKey(node, ctx.hostMetadata);
-  const summary = key && ctx.hostProblems ? ctx.hostProblems[key] : undefined;
-  if (summary && summary.count > 0) {
-    tags.push(`Problemas (${summary.count})`);
+  const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
+  if (problemSummary) {
+    tags.push(`Problemas (${problemSummary.count})`);
   }
 
   if (node.icon === 'olt' || node.nodeTemplateId === 'olt') {
@@ -395,11 +407,10 @@ export function computeNocMapSummary(ctx: TopologyFilterContext): NocMapSummary 
     if (resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) === 'offline') {
       offlineCount += 1;
     }
-    const key = hostProblemKey(node, ctx.hostMetadata);
-    const summary = key && ctx.hostProblems ? ctx.hostProblems[key] : undefined;
-    if (summary && summary.count > 0) {
+    const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
+    if (problemSummary) {
       problemHostCount += 1;
-      problemCount += summary.count;
+      problemCount += problemSummary.count;
     }
   }
 
