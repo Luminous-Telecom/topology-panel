@@ -13,6 +13,9 @@ export const MEDIA_MEDIUM = '@media (max-width: 900px)';
 /** Altura mínima de botão/chip em telas compactas (alvo de toque). */
 export const COMPACT_TOUCH_MIN = 36;
 
+/** Margem à direita para não cobrir o menu ⋯ do painel Grafana. */
+export const GRAFANA_PANEL_MENU_RESERVE = 44;
+
 export function minimapBottomOffset(showMinimap: boolean): number {
   return showMinimap ? CANVAS_EDGE_GAP + MINIMAP_HEIGHT + CANVAS_EDGE_GAP : CANVAS_EDGE_GAP;
 }

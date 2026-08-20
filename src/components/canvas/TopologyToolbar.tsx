@@ -3,29 +3,29 @@ import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
 import { CanvasTool, TopologyNode } from '../../types';
-import { CANVAS_EDGE_GAP, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
+import { CANVAS_EDGE_GAP, GRAFANA_PANEL_MENU_RESERVE, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
 
 const toolbarStyle = css`
   position: absolute;
   top: ${CANVAS_EDGE_GAP}px;
-  right: 36px;
+  left: ${CANVAS_EDGE_GAP}px;
+  right: ${CANVAS_EDGE_GAP + GRAFANA_PANEL_MENU_RESERVE}px;
   z-index: 4;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 6px;
-  max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
   pointer-events: auto;
 
   ${MEDIA_MEDIUM} {
-    right: ${CANVAS_EDGE_GAP}px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
     gap: 4px;
   }
 
   ${MEDIA_COMPACT} {
+    justify-content: flex-start;
     gap: 4px;
   }
 `;
