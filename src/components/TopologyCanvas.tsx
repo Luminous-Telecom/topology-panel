@@ -374,6 +374,15 @@ export function TopologyCanvas({
     [options.nodeFontSize, options.networkFontSize, options.showSubtitle]
   );
 
+  const templateOpts = useMemo(
+    () => ({
+      nodeTemplates: options.nodeTemplates,
+      templateRules: options.templateRules,
+      showSubtitle: options.showSubtitle,
+    }),
+    [options.nodeTemplates, options.templateRules, options.showSubtitle]
+  );
+
   /** Só o que os filtros leem das opções — o objeto inteiro invalidaria o contexto sem motivo. */
   const filterOptions = useMemo(
     () => ({ linkUtilThresholdHigh: options.linkUtilThresholdHigh }),
@@ -425,29 +434,49 @@ export function TopologyCanvas({
     [hostDisplayByRefId]
   );
 
-  const alertHostEntries = useMemo(
-    () =>
-      collectAlertHostEntriesFromMaps(nocMapScopes, {
-        hostDisplay: nocHostDisplayBase,
-        hostMetadata,
-        hostProblems,
-        linkMetricsByLink,
-        options: filterOptions,
-      }),
-    [nocHostDisplayBase, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
-  );
+  const alertHostEntries = useMemo(() => {
+    if (effectiveNocMode || !showHostAlertList) {
+      return [];
+    }
+    return collectAlertHostEntriesFromMaps(nocMapScopes, {
+      hostDisplay: nocHostDisplayBase,
+      hostMetadata,
+      hostProblems,
+      linkMetricsByLink,
+      options: filterOptions,
+    });
+  }, [
+    effectiveNocMode,
+    showHostAlertList,
+    nocHostDisplayBase,
+    hostMetadata,
+    hostProblems,
+    linkMetricsByLink,
+    nocMapScopes,
+    filterOptions,
+  ]);
 
-  const nocHostEntries = useMemo(
-    () =>
-      collectNocHostEntries(activeFilters, nocMapScopes, {
-        hostDisplay: nocHostDisplayBase,
-        hostMetadata,
-        hostProblems,
-        linkMetricsByLink,
-        options: filterOptions,
-      }),
-    [activeFilters, nocHostDisplayBase, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
-  );
+  const nocHostEntries = useMemo(() => {
+    if (!effectiveNocMode) {
+      return [];
+    }
+    return collectNocHostEntries(activeFilters, nocMapScopes, {
+      hostDisplay: nocHostDisplayBase,
+      hostMetadata,
+      hostProblems,
+      linkMetricsByLink,
+      options: filterOptions,
+    });
+  }, [
+    effectiveNocMode,
+    activeFilters,
+    nocHostDisplayBase,
+    hostMetadata,
+    hostProblems,
+    linkMetricsByLink,
+    nocMapScopes,
+    filterOptions,
+  ]);
 
   const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
 
@@ -472,7 +501,7 @@ export function TopologyCanvas({
   const { nodeLayouts, regionStats } = useNodeLayouts({
     map,
     layoutOpts,
-    templateOpts: options,
+    templateOpts,
     dragPreview,
     hostDisplay,
     hostDisplayByRefId,

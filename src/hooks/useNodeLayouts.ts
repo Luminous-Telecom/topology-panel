@@ -31,6 +31,55 @@ export interface NodeLayoutsResult {
   regionStats: Map<string, RegionHostStats>;
 }
 
+type LayoutOpts = Pick<TopologyPanelOptions, 'nodeFontSize' | 'networkFontSize' | 'showSubtitle'>;
+type TemplateOpts = Pick<TopologyPanelOptions, 'nodeTemplates' | 'templateRules' | 'showSubtitle'>;
+
+function measureNodeLayout(
+  node: TopologyNode,
+  positioned: TopologyNode,
+  layoutOpts: LayoutOpts,
+  templateOpts: TemplateOpts | undefined,
+  hostMetadata: HostMetadataMap | undefined,
+  hostDisplay: HostDisplayMap | undefined,
+  uplinkCountByNode: Map<string, number>
+): NodeLayout & TopologyNode {
+  let layoutLabel = positioned.label;
+  let layoutSubtitle = positioned.subtitle;
+  let layoutDetailLines: string[] | undefined;
+  if (templateOpts && isHostNode(positioned)) {
+    const display = resolveNodeDisplayFromTemplates(positioned, templateOpts, {
+      hostMetadata,
+      hostDisplay,
+      uplinkCount: uplinkCountByNode.get(positioned.id),
+      showSubtitle: templateOpts.showSubtitle,
+    });
+    layoutLabel = display.label;
+    layoutSubtitle = display.subtitle;
+    layoutDetailLines = display.detailLines.length ? display.detailLines : undefined;
+  }
+
+  const layout =
+    node.type === 'network'
+      ? computeNetworkLayout(positioned, layoutOpts)
+      : node.type === 'static'
+        ? computeStaticLayout(positioned, layoutOpts)
+        : computeNodeLayout(
+            {
+              ...positioned,
+              label: layoutLabel,
+              subtitle: layoutSubtitle,
+              detailLines: layoutDetailLines,
+            },
+            layoutOpts
+          );
+  return {
+    ...positioned,
+    ...layout,
+    label: layout.label,
+    subtitle: layout.sub,
+  };
+}
+
 /**
  * Caixa medida de cada nó (já com o preview do arraste aplicado) e as estatísticas agregadas de
  * cada rede e submapa.
@@ -59,58 +108,22 @@ export function useNodeLayouts({
     return counts;
   }, [map.links]);
 
-  return useMemo(() => {
+  const baseResult = useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
       const liveNode = withLiveZabbixMeta(node, hostMetadata);
-      const movePreview = dragPreview?.positions?.[node.id];
-      const resizePreview =
-        dragPreview?.nodeId === node.id && dragPreview.width !== undefined ? dragPreview : null;
-      let positioned = movePreview
-        ? { ...liveNode, x: movePreview.x, y: movePreview.y }
-        : resizePreview
-          ? {
-              ...liveNode,
-              width: resizePreview.width ?? liveNode.width,
-              height: resizePreview.height ?? liveNode.height,
-            }
-          : liveNode;
-
-      let layoutLabel = positioned.label;
-      let layoutSubtitle = positioned.subtitle;
-      let layoutDetailLines: string[] | undefined;
-      if (templateOpts && isHostNode(positioned)) {
-        const display = resolveNodeDisplayFromTemplates(positioned, templateOpts, {
+      layouts.set(
+        node.id,
+        measureNodeLayout(
+          node,
+          liveNode,
+          layoutOpts,
+          templateOpts,
           hostMetadata,
           hostDisplay,
-          uplinkCount: uplinkCountByNode.get(positioned.id),
-          showSubtitle: templateOpts.showSubtitle,
-        });
-        layoutLabel = display.label;
-        layoutSubtitle = display.subtitle;
-        layoutDetailLines = display.detailLines.length ? display.detailLines : undefined;
-      }
-
-      const layout =
-        node.type === 'network'
-          ? computeNetworkLayout(positioned, layoutOpts)
-          : node.type === 'static'
-            ? computeStaticLayout(positioned, layoutOpts)
-            : computeNodeLayout(
-                {
-                  ...positioned,
-                  label: layoutLabel,
-                  subtitle: layoutSubtitle,
-                  detailLines: layoutDetailLines,
-                },
-                layoutOpts
-              );
-      layouts.set(node.id, {
-        ...positioned,
-        ...layout,
-        label: layout.label,
-        subtitle: layout.sub,
-      });
+          uplinkCountByNode
+        )
+      );
     }
 
     const stats = buildRegionStatsMap(
@@ -143,5 +156,80 @@ export function useNodeLayouts({
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
     // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
     // de todos os nós sem necessidade.
-  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, childMaps, queryReady, uplinkCountByNode]);
+  }, [
+    map.nodes,
+    map.links,
+    layoutOpts,
+    templateOpts,
+    hostDisplay,
+    hostDisplayByRefId,
+    submapHosts,
+    hostMetadata,
+    childMaps,
+    queryReady,
+    uplinkCountByNode,
+  ]);
+
+  return useMemo(() => {
+    if (!dragPreview) {
+      return baseResult;
+    }
+
+    const movePositions = dragPreview.positions;
+    const resizeId = dragPreview.nodeId;
+    const resizeW = dragPreview.width;
+    const resizeH = dragPreview.height;
+    const hasMove = movePositions && Object.keys(movePositions).length > 0;
+    const hasResize = resizeId !== undefined && resizeW !== undefined && resizeH !== undefined;
+
+    if (!hasMove && !hasResize) {
+      return baseResult;
+    }
+
+    let layouts = baseResult.nodeLayouts;
+
+    if (hasMove) {
+      const next = new Map(layouts);
+      for (const [id, pos] of Object.entries(movePositions)) {
+        const layout = next.get(id);
+        if (layout) {
+          next.set(id, { ...layout, x: pos.x, y: pos.y });
+        }
+      }
+      layouts = next;
+    }
+
+    if (hasResize) {
+      const node = map.nodes.find((n) => n.id === resizeId);
+      const prev = layouts.get(resizeId);
+      if (node && prev) {
+        const next = new Map(layouts);
+        const positioned = { ...prev, width: resizeW, height: resizeH };
+        next.set(
+          resizeId,
+          measureNodeLayout(
+            node,
+            positioned,
+            layoutOpts,
+            templateOpts,
+            hostMetadata,
+            hostDisplay,
+            uplinkCountByNode
+          )
+        );
+        layouts = next;
+      }
+    }
+
+    return { nodeLayouts: layouts, regionStats: baseResult.regionStats };
+  }, [
+    baseResult,
+    dragPreview,
+    map.nodes,
+    layoutOpts,
+    templateOpts,
+    hostMetadata,
+    hostDisplay,
+    uplinkCountByNode,
+  ]);
 }
