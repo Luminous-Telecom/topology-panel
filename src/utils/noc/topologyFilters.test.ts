@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyMap } from '../../types';
-import { isNodeVisibleForFilters, computeNocMapSummary, collectAlertHostEntries } from './topologyFilters';
+import { isNodeVisibleForFilters, computeNocMapSummary, collectAlertHostEntries, collectNocHostEntries } from './topologyFilters';
+import { ROOT_MAP_ID } from '../topologyMapNavigation';
 
 describe('topologyFilters', () => {
   const map: TopologyMap = {
@@ -76,5 +77,36 @@ describe('topologyFilters', () => {
       options: { linkUtilThresholdHigh: 75 },
     };
     expect(collectAlertHostEntries(ctx)).toEqual([]);
+  });
+
+  it('modo NOC agrega hosts de mapa raiz e filhos', () => {
+    const child: TopologyMap = {
+      width: 800,
+      height: 600,
+      nodes: [{ id: 'sw1', type: 'host', icon: 'switch_managed', zabbixHost: '10.0.0.9', x: 0, y: 0 }],
+      links: [],
+    };
+    const ctx = {
+      hostDisplay: { '10.0.0.9': { value: 0, status: 'offline' as const } },
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectNocHostEntries(new Set(['offline']), [
+      { mapId: ROOT_MAP_ID, mapLabel: 'Início', map },
+      { mapId: 'apodi', mapLabel: 'Apodi', map: child },
+    ], ctx);
+    expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
+  });
+
+  it('modo NOC sem filtro lista todos os hosts', () => {
+    const ctx = {
+      hostDisplay: {},
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectNocHostEntries(new Set(), [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map }], ctx);
+    expect(entries).toHaveLength(2);
   });
 });

@@ -153,6 +153,20 @@ export interface HostAlertListEntry {
   reason: HostAlertListReason;
 }
 
+export interface NocHostListEntry {
+  nodeId: string;
+  mapId: string;
+  mapLabel: string;
+  label: string;
+  tags: string[];
+}
+
+export interface NocTopologyMapScope {
+  mapId: string;
+  mapLabel: string;
+  map: TopologyMap;
+}
+
 const ALERT_REASON_ORDER: Record<HostAlertListReason, number> = {
   offline: 0,
   alert: 1,
@@ -203,6 +217,90 @@ export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertLi
     const order = ALERT_REASON_ORDER[a.reason] - ALERT_REASON_ORDER[b.reason];
     if (order !== 0) {
       return order;
+    }
+    return a.label.localeCompare(b.label, 'pt-BR');
+  });
+}
+
+function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
+  const tags: string[] = [];
+  const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
+  if (status === 'offline') {
+    tags.push('DOWN');
+  } else if (status === 'alert') {
+    tags.push('ALERTA');
+  }
+
+  const key = hostProblemKey(node, ctx.hostMetadata);
+  const summary = key && ctx.hostProblems ? ctx.hostProblems[key] : undefined;
+  if (summary && summary.count > 0) {
+    tags.push(`Problemas (${summary.count})`);
+  }
+
+  if (node.icon === 'olt' || node.nodeTemplateId === 'olt') {
+    tags.push('OLT');
+  } else if (
+    node.icon === 'router' ||
+    node.nodeTemplateId === 'router' ||
+    node.nodeTemplateId === 'core-router'
+  ) {
+    tags.push('Roteador');
+  } else if (
+    node.icon === 'switch_managed' ||
+    node.icon === 'switch_unmanaged' ||
+    node.nodeTemplateId === 'switch'
+  ) {
+    tags.push('Switch');
+  }
+
+  if (
+    ctx.map.links.some(
+      (link) =>
+        congestedLinkKeys(ctx).has(linkKey(link)) &&
+        (link.from === node.id || link.to === node.id)
+    )
+  ) {
+    tags.push('Link congestionado');
+  }
+
+  return tags;
+}
+
+/**
+ * Hosts de todos os mapas do painel (raiz + filhos), filtrados pelos chips do modo NOC.
+ * Sem filtro ativo, lista todos os hosts com tags de status/tipo.
+ */
+export function collectNocHostEntries(
+  activeFilters: ReadonlySet<TopologyMapFilterId>,
+  maps: readonly NocTopologyMapScope[],
+  baseCtx: Omit<TopologyFilterContext, 'map'>
+): NocHostListEntry[] {
+  const entries: NocHostListEntry[] = [];
+
+  for (const { mapId, mapLabel, map } of maps) {
+    const ctx: TopologyFilterContext = { ...baseCtx, map };
+    for (const node of map.nodes) {
+      if (!isHostNode(node)) {
+        continue;
+      }
+      if (activeFilters.size > 0 && !isNodeVisibleForFilters(node, activeFilters, ctx)) {
+        continue;
+      }
+
+      entries.push({
+        nodeId: node.id,
+        mapId,
+        mapLabel,
+        label: hostDisplayLabel(node),
+        tags: nodeNocTags(node, ctx),
+      });
+    }
+  }
+
+  return entries.sort((a, b) => {
+    const mapOrder = a.mapLabel.localeCompare(b.mapLabel, 'pt-BR');
+    if (mapOrder !== 0) {
+      return mapOrder;
     }
     return a.label.localeCompare(b.label, 'pt-BR');
   });

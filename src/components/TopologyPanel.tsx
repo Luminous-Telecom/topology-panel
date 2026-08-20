@@ -110,6 +110,7 @@ export function TopologyPanel({
     canGoForward,
     savedViewForCurrent,
     navigateToChild,
+    navigateToMapId,
     navigateToBreadcrumb,
     goBack,
     goForward,
@@ -480,6 +481,7 @@ export function TopologyPanel({
         onMapNavigateForward={(view) => goForward(view)}
         onMapNavigateBreadcrumb={(index, view) => navigateToBreadcrumb(index, view)}
         onNavigateToChildMap={navigateToChild}
+        onNavigateToMapId={navigateToMapId}
         queryHostOptions={queryHostOptions}
         hostDisplay={hostDisplay}
         hostDisplayByRefId={hostDisplayByRefId}

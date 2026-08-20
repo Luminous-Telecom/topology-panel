@@ -23,6 +23,8 @@ interface UseTopologyMapNavigationResult {
   canGoForward: boolean;
   savedViewForCurrent: TopologyView | undefined;
   navigateToChild: (childMapId: string, label: string, currentView: TopologyView) => void;
+  /** Salta direto para um mapa (raiz ou filho) — usado pelo painel NOC. */
+  navigateToMapId: (mapId: string, label: string, currentView: TopologyView) => void;
   navigateToBreadcrumb: (index: number, currentView: TopologyView) => void;
   goBack: (currentView: TopologyView) => void;
   goForward: (currentView: TopologyView) => void;
@@ -79,6 +81,21 @@ export function useTopologyMapNavigation({
       setCurrentLabel(label.trim() || trimmedId);
     },
     [currentLabel, currentMapId, persistView]
+  );
+
+  const navigateToMapId = useCallback(
+    (mapId: string, label: string, currentView: TopologyView) => {
+      const trimmedId = mapId.trim() || ROOT_MAP_ID;
+      if (trimmedId === currentMapId) {
+        return;
+      }
+      persistView(currentMapId, currentView);
+      setBackStack([]);
+      setForwardStack([]);
+      setCurrentMapId(trimmedId);
+      setCurrentLabel(trimmedId === ROOT_MAP_ID ? '' : label.trim() || trimmedId);
+    },
+    [currentMapId, currentLabel, persistView]
   );
 
   const navigateToBreadcrumb = useCallback(
@@ -170,6 +187,7 @@ export function useTopologyMapNavigation({
     canGoForward: forwardStack.length > 0,
     savedViewForCurrent,
     navigateToChild,
+    navigateToMapId,
     navigateToBreadcrumb,
     goBack,
     goForward,

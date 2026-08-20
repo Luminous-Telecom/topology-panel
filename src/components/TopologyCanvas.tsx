@@ -3,15 +3,22 @@ import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
-import { collectAlertHostEntries, isLinkVisibleForFilters, TopologyFilterContext } from '../utils/noc/topologyFilters';
-import { TopologyFilterBar } from './canvas/TopologyFilterBar';
+import {
+  collectAlertHostEntries,
+  collectNocHostEntries,
+  isLinkVisibleForFilters,
+  NocHostListEntry,
+  TopologyFilterContext,
+} from '../utils/noc/topologyFilters';
 import { TopologyHostAlertList } from './canvas/TopologyHostAlertList';
+import { TopologyNocPanel } from './canvas/TopologyNocPanel';
+import { activeChildMaps } from '../utils/childMapEdits';
 import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
 import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
-import { TopologyBreadcrumbItem } from '../utils/topologyMapNavigation';
+import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
@@ -117,6 +124,7 @@ interface Props {
   onMapNavigateForward?: (currentView: TopologyView) => void;
   onMapNavigateBreadcrumb?: (index: number, currentView: TopologyView) => void;
   onNavigateToChildMap?: (childMapId: string, label: string, currentView: TopologyView) => void;
+  onNavigateToMapId?: (mapId: string, label: string, currentView: TopologyView) => void;
 }
 
 export function TopologyCanvas({
@@ -155,6 +163,7 @@ export function TopologyCanvas({
   onMapNavigateForward,
   onMapNavigateBreadcrumb,
   onNavigateToChildMap,
+  onNavigateToMapId,
 }: Props) {
   const theme = useTheme2();
   const resolveColor = useCallback((color?: unknown) => resolvePanelColor(theme, color), [theme]);
@@ -281,6 +290,7 @@ export function TopologyCanvas({
   const [suggestedReviewOpen, setSuggestedReviewOpen] = useState(false);
   const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
+  const pendingNocFocusRef = useRef<{ mapId: string; nodeId: string } | null>(null);
   /** Sobrescreve `options.nocMode` na sessão quando o dashboard não está em modo edição. */
   const [nocModeLocalOverride, setNocModeLocalOverride] = useState<boolean | undefined>(undefined);
   useEffect(() => {
@@ -346,6 +356,34 @@ export function TopologyCanvas({
   );
 
   const alertHostEntries = useMemo(() => collectAlertHostEntries(filterContext), [filterContext]);
+
+  const nocMapScopes = useMemo(() => {
+    const childLabels: Record<string, string> = {};
+    for (const node of options.map.nodes) {
+      const childId = node.submapChildMapId?.trim();
+      if (node.type === 'submap' && childId) {
+        childLabels[childId] = node.label?.trim() || childId;
+      }
+    }
+    const scopes = [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: options.map }];
+    for (const [id, childMap] of Object.entries(activeChildMaps(options.childMaps))) {
+      scopes.push({ mapId: id, mapLabel: childLabels[id] ?? id, map: childMap });
+    }
+    return scopes;
+  }, [options.map, options.childMaps]);
+
+  const nocHostEntries = useMemo(
+    () =>
+      collectNocHostEntries(activeFilters, nocMapScopes, {
+        hostDisplay,
+        hostMetadata,
+        hostProblems,
+        linkMetricsByLink,
+        options,
+      }),
+    [activeFilters, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, options]
+  );
+
   const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
 
   const toggleFilter = useCallback((filter: TopologyMapFilterId) => {
@@ -512,6 +550,27 @@ export function TopologyCanvas({
     },
     [commitView, nodeLayouts, viewRef, viewportRef]
   );
+
+  const handleNocSelectHost = useCallback(
+    (entry: NocHostListEntry) => {
+      if (entry.mapId !== mapNavigationKey) {
+        pendingNocFocusRef.current = { mapId: entry.mapId, nodeId: entry.nodeId };
+        onNavigateToMapId?.(entry.mapId, entry.mapLabel, viewRef.current);
+        return;
+      }
+      focusNodeOnMap(entry.nodeId);
+    },
+    [focusNodeOnMap, mapNavigationKey, onNavigateToMapId, viewRef]
+  );
+
+  useLayoutEffect(() => {
+    const pending = pendingNocFocusRef.current;
+    if (!pending || pending.mapId !== mapNavigationKey) {
+      return;
+    }
+    pendingNocFocusRef.current = null;
+    focusNodeOnMap(pending.nodeId);
+  }, [focusNodeOnMap, mapNavigationKey, nodeLayouts.size]);
 
   const openSubmap = useCallback(
     (node: TopologyNode) => {
@@ -1039,7 +1098,7 @@ export function TopologyCanvas({
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 
-      {!hideOverlayControls ? (
+      {!hideOverlayControls && !effectiveNocMode ? (
         <TopologyHostAlertList
           entries={alertHostEntries}
           colorOffline={resolveColor(options.colorOffline)}
@@ -1051,7 +1110,13 @@ export function TopologyCanvas({
       ) : null}
 
       {effectiveNocMode && !hideOverlayControls ? (
-        <TopologyFilterBar activeFilters={activeFilters} onToggle={toggleFilter} />
+        <TopologyNocPanel
+          entries={nocHostEntries}
+          activeFilters={activeFilters}
+          queryReady={queryReady}
+          onToggleFilter={toggleFilter}
+          onSelectHost={handleNocSelectHost}
+        />
       ) : null}
 
       <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
