@@ -350,10 +350,10 @@ export function TopologyCanvas({
 
   const layoutOpts = useMemo(
     () => ({
-      nodeFontSize: Math.round(options.nodeFontSize * (effectiveNocMode ? 1.2 : 1)),
+      nodeFontSize: options.nodeFontSize,
       showSubtitle: options.showSubtitle,
     }),
-    [options.nodeFontSize, options.showSubtitle, effectiveNocMode]
+    [options.nodeFontSize, options.showSubtitle]
   );
 
   /** Só o que os filtros leem das opções — o objeto inteiro invalidaria o contexto sem motivo. */
@@ -446,6 +446,7 @@ export function TopologyCanvas({
     hostMetadata,
     submapHosts,
     queryReady,
+    plainSubmapLabels: effectiveNocMode,
   });
 
   /** Caixas medidas para callbacks que não devem trocar de identidade a cada refresh da Query. */
@@ -1287,6 +1288,7 @@ export function TopologyCanvas({
             linkHoverId={linkHoverId}
             panTool={panTool}
             editable={viewEditable}
+            plainSubmapLabels={effectiveNocMode}
             onPointerDown={onNodePointerDown}
             onClick={onNodeClick}
             onDoubleClick={onNodeDoubleClick}

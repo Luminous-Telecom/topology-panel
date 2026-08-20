@@ -129,7 +129,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'nocMode',
         name: 'Modo NOC',
-        description: 'Visão para telas grandes: fontes maiores, filtros, badges e sem controles de edição',
+        description: 'Painel de filtros e lista de equipamentos; oculta controles de edição',
         defaultValue: false,
         category: ['Interação'],
       })

@@ -142,7 +142,7 @@ export function TopologyToolbar({
         <button
           type="button"
           onClick={onToggleNocMode}
-          title={nocModeActive ? 'Sair do modo NOC' : 'Modo NOC — filtros, badges e visão para telas grandes'}
+          title={nocModeActive ? 'Sair do modo NOC' : 'Modo NOC — filtros e lista de equipamentos'}
           aria-pressed={nocModeActive}
           style={btnStyle(nocModeActive)}
         >

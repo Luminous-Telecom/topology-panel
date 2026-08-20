@@ -408,7 +408,7 @@ export interface TopologyPanelOptions {
   templateRules?: TopologyTemplateRule[];
   /** Modelos de topologia (POP, backbone, etc.). */
   topologyTemplates?: TopologyBlueprint[];
-  /** Modo NOC — fontes maiores, filtros e badges; oculta edição. */
+  /** Modo NOC — painel de filtros e lista de equipamentos; oculta edição. */
   nocMode?: boolean;
   /** Badges de problemas/tráfego nos hosts. */
   showHostBadges?: boolean;

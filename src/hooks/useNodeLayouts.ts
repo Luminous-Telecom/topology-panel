@@ -23,6 +23,8 @@ export interface NodeLayoutsParams {
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
   queryReady?: boolean;
+  /** Modo NOC: submapas sem contagem agregada no rótulo (mantém o tamanho da caixa). */
+  plainSubmapLabels?: boolean;
 }
 
 export interface NodeLayoutsResult {
@@ -47,6 +49,7 @@ export function useNodeLayouts({
   hostMetadata,
   submapHosts,
   queryReady,
+  plainSubmapLabels = false,
 }: NodeLayoutsParams): NodeLayoutsResult {
   const uplinkCountByNode = useMemo(() => {
     const counts = new Map<string, number>();
@@ -120,7 +123,7 @@ export function useNodeLayouts({
       hostDisplayByRefId
     );
     for (const node of map.nodes) {
-      if (node.type !== 'submap') {
+      if (node.type !== 'submap' || plainSubmapLabels) {
         continue;
       }
       const region = stats.get(node.id);
@@ -140,5 +143,5 @@ export function useNodeLayouts({
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
     // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
     // de todos os nós sem necessidade.
-  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady, uplinkCountByNode]);
+  }, [map.nodes, map.links, layoutOpts, templateOpts, dragPreview, hostDisplay, hostDisplayByRefId, submapHosts, hostMetadata, queryReady, uplinkCountByNode, plainSubmapLabels]);
 }

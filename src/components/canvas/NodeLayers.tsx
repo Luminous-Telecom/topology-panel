@@ -111,6 +111,8 @@ interface HostNodesLayerProps extends CommonProps {
   onMouseEnter: (e: React.MouseEvent, node: TopologyNode) => void;
   onMouseMove: (e: React.MouseEvent, node: TopologyNode) => void;
   onMouseLeave: (e: React.MouseEvent, node: TopologyNode) => void;
+  /** Modo NOC: submapas sem estatísticas agregadas no rótulo. */
+  plainSubmapLabels?: boolean;
 }
 
 /** Camada de cima: hosts, submapas, estáticos e seletores de dashboard. */
@@ -141,6 +143,7 @@ function HostNodesLayerComponent({
   onMouseLeave,
   onResizePointerDown,
   onResizePointerUp,
+  plainSubmapLabels = false,
 }: HostNodesLayerProps) {
   const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
@@ -164,7 +167,9 @@ function HostNodesLayerComponent({
             key={node.id}
             node={node}
             layout={layout}
-            region={node.type === 'submap' ? regionStats.get(node.id) : undefined}
+            region={
+              node.type === 'submap' && !plainSubmapLabels ? regionStats.get(node.id) : undefined
+            }
             options={options}
             queryReady={queryReady}
             hostDisplay={hostDisplay}
