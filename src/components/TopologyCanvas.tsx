@@ -446,7 +446,6 @@ export function TopologyCanvas({
     hostMetadata,
     submapHosts,
     queryReady,
-    plainSubmapLabels: effectiveNocMode,
   });
 
   /** Caixas medidas para callbacks que não devem trocar de identidade a cada refresh da Query. */
@@ -1288,7 +1287,6 @@ export function TopologyCanvas({
             linkHoverId={linkHoverId}
             panTool={panTool}
             editable={viewEditable}
-            plainSubmapLabels={effectiveNocMode}
             onPointerDown={onNodePointerDown}
             onClick={onNodeClick}
             onDoubleClick={onNodeDoubleClick}
