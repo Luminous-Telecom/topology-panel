@@ -5,7 +5,7 @@ import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, Top
 import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
-  collectAlertHostEntries,
+  collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
   isLinkVisibleForFilters,
   NocHostListEntry,
@@ -18,6 +18,7 @@ import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLoc
 import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
+import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
 import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
@@ -387,8 +388,6 @@ export function TopologyCanvas({
     });
   }, [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options.showHostBadges]);
 
-  const alertHostEntries = useMemo(() => collectAlertHostEntries(filterContext), [filterContext]);
-
   const nocMapScopes = useMemo(() => {
     const childLabels: Record<string, string> = {};
     for (const node of options.map.nodes) {
@@ -404,16 +403,33 @@ export function TopologyCanvas({
     return scopes;
   }, [options.map, options.childMaps]);
 
-  const nocHostEntries = useMemo(
+  const nocHostDisplayBase = useMemo(
+    () => flattenHostDisplayByRefId(hostDisplayByRefId),
+    [hostDisplayByRefId]
+  );
+
+  const alertHostEntries = useMemo(
     () =>
-      collectNocHostEntries(activeFilters, nocMapScopes, {
-        hostDisplay,
+      collectAlertHostEntriesFromMaps(nocMapScopes, {
+        hostDisplay: nocHostDisplayBase,
         hostMetadata,
         hostProblems,
         linkMetricsByLink,
         options: filterOptions,
       }),
-    [activeFilters, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
+    [nocHostDisplayBase, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
+  );
+
+  const nocHostEntries = useMemo(
+    () =>
+      collectNocHostEntries(activeFilters, nocMapScopes, {
+        hostDisplay: nocHostDisplayBase,
+        hostMetadata,
+        hostProblems,
+        linkMetricsByLink,
+        options: filterOptions,
+      }),
+    [activeFilters, nocHostDisplayBase, hostMetadata, hostProblems, linkMetricsByLink, nocMapScopes, filterOptions]
   );
 
   const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
@@ -607,8 +623,8 @@ export function TopologyCanvas({
     [closeContextMenu, commitView, nodeLayoutsRef, setSelectedLink, setSelectedNodeIds, viewRef, viewportRef]
   );
 
-  const handleNocSelectHost = useCallback(
-    (entry: NocHostListEntry) => {
+  const handleSelectHostFromList = useCallback(
+    (entry: { mapId: string; mapLabel: string; nodeId: string }) => {
       if (entry.mapId !== mapNavigationKey) {
         pendingNocFocusRef.current = { mapId: entry.mapId, nodeId: entry.nodeId };
         onNavigateToMapId?.(entry.mapId, entry.mapLabel, viewRef.current);
@@ -617,6 +633,13 @@ export function TopologyCanvas({
       focusNodeOnMap(entry.nodeId);
     },
     [focusNodeOnMap, mapNavigationKey, onNavigateToMapId, viewRef]
+  );
+
+  const handleNocSelectHost = useCallback(
+    (entry: NocHostListEntry) => {
+      handleSelectHostFromList(entry);
+    },
+    [handleSelectHostFromList]
   );
 
   /**
@@ -1174,7 +1197,7 @@ export function TopologyCanvas({
           colorAlert={resolveColor(options.colorAlert)}
           queryReady={queryReady}
           showMinimap={minimapVisible}
-          onFocusHost={focusNodeOnMap}
+          onFocusHost={handleSelectHostFromList}
         />
       ) : null}
 

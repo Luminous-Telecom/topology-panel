@@ -5,6 +5,7 @@ import {
   isNodeVisibleForFilters,
   computeNocMapSummary,
   collectAlertHostEntries,
+  collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
@@ -112,6 +113,30 @@ describe('topologyFilters', () => {
     expect(collectAlertHostEntries(ctx)).toEqual([]);
   });
 
+  it('lista de alertas agrega hosts offline de mapa filho fora do mapa aberto', () => {
+    const child: TopologyMap = {
+      width: 800,
+      height: 600,
+      nodes: [{ id: 'sw1', type: 'host', icon: 'switch_managed', zabbixHost: '10.0.0.9', x: 0, y: 0 }],
+      links: [],
+    };
+    const ctx = {
+      hostDisplay: { '10.0.0.9': { value: 0, status: 'offline' as const } },
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntriesFromMaps(
+      [
+        { mapId: ROOT_MAP_ID, mapLabel: 'Início', map },
+        { mapId: 'apodi', mapLabel: 'Apodi', map: child },
+      ],
+      ctx
+    );
+    expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
+    expect(entries[0]?.reason).toBe('offline');
+  });
+
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {
     const child: TopologyMap = {
       width: 800,
@@ -122,6 +147,36 @@ describe('topologyFilters', () => {
     const ctx = {
       hostDisplay: { '10.0.0.9': { value: 0, status: 'offline' as const } },
       hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectNocHostEntries(new Set(['offline']), [
+      { mapId: ROOT_MAP_ID, mapLabel: 'Início', map },
+      { mapId: 'apodi', mapLabel: 'Apodi', map: child },
+    ], ctx);
+    expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
+  });
+
+  it('modo NOC detecta offline em mapa filho via IP do nó (fora do mapa aberto)', () => {
+    const child: TopologyMap = {
+      width: 800,
+      height: 600,
+      nodes: [
+        {
+          id: 'sw1',
+          type: 'host',
+          icon: 'switch_managed',
+          zabbixHost: 'switch-apodi',
+          subtitle: '10.0.0.9',
+          x: 0,
+          y: 0,
+        },
+      ],
+      links: [],
+    };
+    const ctx = {
+      hostDisplay: { 'switch-apodi': { value: 0, status: 'offline' as const } },
+      hostMetadata: { 'switch-apodi': { name: 'switch-apodi', ip: '10.0.0.9' } },
       hostProblems: {},
       options: { linkUtilThresholdHigh: 75 },
     };

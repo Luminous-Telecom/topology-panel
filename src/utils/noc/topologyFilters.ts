@@ -6,10 +6,11 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
-import { resolveHostIp } from '../hostLookup';
+import { enrichHostDisplayFromMap, resolveHostIp } from '../hostLookup';
 import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
+import { ROOT_MAP_ID } from '../topologyMapNavigation';
 import { HostProblemsMap, TopologyMapFilterId } from './types';
 
 export interface TopologyFilterContext {
@@ -182,6 +183,8 @@ export type HostAlertListReason = 'offline' | 'alert';
 
 export interface HostAlertListEntry {
   nodeId: string;
+  mapId: string;
+  mapLabel: string;
   label: string;
   reason: HostAlertListReason;
 }
@@ -218,7 +221,11 @@ function hostDisplayLabel(node: TopologyNode): string {
 }
 
 /** Hosts offline ou em alerta (status da Query) — para a lista do canto inferior. */
-export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertListEntry[] {
+function collectAlertHostEntriesForMap(
+  mapId: string,
+  mapLabel: string,
+  ctx: TopologyFilterContext
+): HostAlertListEntry[] {
   const entries: HostAlertListEntry[] = [];
 
   for (const node of ctx.map.nodes) {
@@ -241,12 +248,52 @@ export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertLi
 
     entries.push({
       nodeId: node.id,
+      mapId,
+      mapLabel,
       label: hostDisplayLabel(node),
       reason,
     });
   }
 
   return entries.sort((a, b) => {
+    const order = ALERT_REASON_ORDER[a.reason] - ALERT_REASON_ORDER[b.reason];
+    if (order !== 0) {
+      return order;
+    }
+    return a.label.localeCompare(b.label, 'pt-BR');
+  });
+}
+
+/** Hosts offline ou em alerta no mapa atual (atalho para testes e uso de mapa único). */
+export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertListEntry[] {
+  return collectAlertHostEntriesForMap(ROOT_MAP_ID, '', ctx);
+}
+
+/**
+ * Hosts offline ou em alerta em todos os mapas do painel (raiz + filhos) — lista sem modo NOC.
+ * O status da Query é resolvido por mapa, para hosts fora do mapa aberto.
+ */
+export function collectAlertHostEntriesFromMaps(
+  maps: readonly NocTopologyMapScope[],
+  baseCtx: Omit<TopologyFilterContext, 'map'>
+): HostAlertListEntry[] {
+  const entries: HostAlertListEntry[] = [];
+
+  for (const { mapId, mapLabel, map } of maps) {
+    const hostDisplay = enrichHostDisplayFromMap(
+      baseCtx.hostDisplay ?? {},
+      map,
+      baseCtx.hostMetadata
+    );
+    const ctx: TopologyFilterContext = { ...baseCtx, map, hostDisplay };
+    entries.push(...collectAlertHostEntriesForMap(mapId, mapLabel, ctx));
+  }
+
+  return entries.sort((a, b) => {
+    const mapOrder = a.mapLabel.localeCompare(b.mapLabel, 'pt-BR');
+    if (mapOrder !== 0) {
+      return mapOrder;
+    }
     const order = ALERT_REASON_ORDER[a.reason] - ALERT_REASON_ORDER[b.reason];
     if (order !== 0) {
       return order;
@@ -305,7 +352,12 @@ export function collectNocHostEntries(
   const entries: NocHostListEntry[] = [];
 
   for (const { mapId, mapLabel, map } of maps) {
-    const ctx: TopologyFilterContext = { ...baseCtx, map };
+    const hostDisplay = enrichHostDisplayFromMap(
+      baseCtx.hostDisplay ?? {},
+      map,
+      baseCtx.hostMetadata
+    );
+    const ctx: TopologyFilterContext = { ...baseCtx, map, hostDisplay };
     for (const node of map.nodes) {
       if (!isHostNode(node)) {
         continue;

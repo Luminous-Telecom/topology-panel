@@ -90,13 +90,20 @@ function reasonLabel(entry: HostAlertListEntry): string {
   }
 }
 
+const mapLabelStyle = css`
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.65;
+  white-space: nowrap;
+`;
+
 interface Props {
   entries: HostAlertListEntry[];
   colorOffline: string;
   colorAlert: string;
   queryReady?: boolean;
   showMinimap?: boolean;
-  onFocusHost: (nodeId: string) => void;
+  onFocusHost: (entry: HostAlertListEntry) => void;
 }
 
 /** Lista de hosts offline ou em alerta no canto inferior esquerdo do mapa. */
@@ -113,7 +120,7 @@ function TopologyHostAlertListComponent({
   const statusColorByEntry = useMemo(() => {
     const colors = new Map<string, string>();
     for (const entry of entries) {
-      colors.set(entry.nodeId, entry.reason === 'offline' ? colorOffline : colorAlert);
+      colors.set(`${entry.mapId}:${entry.nodeId}`, entry.reason === 'offline' ? colorOffline : colorAlert);
     }
     return colors;
   }, [colorAlert, colorOffline, entries]);
@@ -132,21 +139,25 @@ function TopologyHostAlertListComponent({
       <div className={headerStyle}>Hosts com alerta ({entries.length})</div>
       <ul className={listStyle}>
         {entries.map((entry) => {
-            const statusColor = statusColorByEntry.get(entry.nodeId) ?? colorAlert;
+            const entryKey = `${entry.mapId}:${entry.nodeId}`;
+            const statusColor = statusColorByEntry.get(entryKey) ?? colorAlert;
             return (
-              <li key={entry.nodeId}>
+              <li key={entryKey}>
                 <button
                   type="button"
                   className={itemButtonStyle}
                   title={`Ir para ${entry.label}`}
-                  aria-label={`Ir para ${entry.label} — ${reasonLabel(entry)}`}
+                  aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel} — ${reasonLabel(entry)}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onFocusHost(entry.nodeId);
+                    onFocusHost(entry);
                   }}
                 >
                   <span className={dotStyle(statusColor)} aria-hidden="true" />
                   <span className={hostNameStyle}>{entry.label}</span>
+                  {entry.mapLabel ? (
+                    <span className={mapLabelStyle}>{entry.mapLabel}</span>
+                  ) : null}
                   <span className={statusStyle} style={{ color: statusColor }}>
                     {reasonLabel(entry)}
                   </span>
