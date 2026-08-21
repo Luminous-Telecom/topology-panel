@@ -6,18 +6,15 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import { fetchZabbixDirectSnapshot, isBenignZabbixFetchError } from '../utils/zabbixApi';
 import { clearHostDisplayOverlay } from '../utils/hostDisplayOverlay';
+import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
 
 /**
  * Busca periódica do último valor no Zabbix, para o modo "Zabbix direto".
  *
  * O painel não usa a aba Query nesse modo, então nada dispara o ciclo de refresh do Grafana: o
- * polling vive aqui. Ele para quando a aba está oculta, nunca deixa duas buscas simultâneas e
- * respeita um intervalo mínimo entre chamadas, para não martelar o servidor Zabbix quando o
- * dashboard fica muito tempo aberto.
+ * polling vive aqui. Ele para quando a aba está oculta, não sobrepõe buscas rápidas e retoma o
+ * ciclo se a busca anterior não voltou (watchdog) — senão o mapa fica preso no primeiro snapshot.
  */
-
-/** Intervalo mínimo entre duas buscas, independente do que dispare o ciclo. */
-const MIN_FETCH_GAP_MS = 2_000;
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
 
@@ -80,17 +77,25 @@ export function useZabbixDirectIndex({
     let cancelled = false;
     let inFlight = false;
     let lastStartMs = 0;
+    let fetchGeneration = 0;
     setState((prev) => ({ ...prev, loading: true }));
 
     const fetchSnapshot = async () => {
-      if (cancelled || inFlight || document.hidden || Date.now() - lastStartMs < MIN_FETCH_GAP_MS) {
+      if (cancelled) {
+        return;
+      }
+      if (document.hidden && !inFlight && Date.now() - lastStartMs < POLL_WATCHDOG_MS) {
+        return;
+      }
+      if (!canStartPolledFetch(Date.now(), lastStartMs, inFlight)) {
         return;
       }
       lastStartMs = Date.now();
+      const generation = ++fetchGeneration;
       inFlight = true;
       try {
         const snapshot = await fetchZabbixDirectSnapshot(datasourceUid, groupsRef.current, itemKey);
-        if (cancelled) {
+        if (cancelled || generation !== fetchGeneration) {
           return;
         }
         if (!snapshot.resolvedGroups.length) {
@@ -111,7 +116,7 @@ export function useZabbixDirectIndex({
           error: undefined,
         });
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && generation === fetchGeneration) {
           if (isBenignZabbixFetchError(err)) {
             setState((prev) => ({ ...prev, loading: false }));
           } else {
@@ -119,7 +124,9 @@ export function useZabbixDirectIndex({
           }
         }
       } finally {
-        inFlight = false;
+        if (generation === fetchGeneration) {
+          inFlight = false;
+        }
       }
     };
 

@@ -37,18 +37,43 @@ function asZabbixId(value: unknown): string {
   return String(value).trim();
 }
 
-/** Requisição abortada pelo Grafana/React ou queda momentânea de rede — não é falha permanente. */
+const ZABBIX_CALL_TIMEOUT_MS = 15_000;
+
+/** Requisição abortada pelo Grafana/React, timeout ou queda momentânea de rede — não é falha permanente. */
 export function isBenignZabbixFetchError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
-  return /failed to fetch|context canceled|context cancelled|abort|network error|networkerror/i.test(msg);
+  return /failed to fetch|context canceled|context cancelled|abort|network error|networkerror|timeout/i.test(
+    msg
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error('timeout'));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        window.clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
 }
 
 async function zabbixCall<T>(datasourceUid: string, method: string, params: object): Promise<T> {
   let response: ZabbixApiResponse<T> | T;
   try {
-    response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
-      `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
-      { method, params }
+    response = await withTimeout(
+      getBackendSrv().post<ZabbixApiResponse<T> | T>(
+        `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
+        { method, params }
+      ),
+      ZABBIX_CALL_TIMEOUT_MS
     );
   } catch (err) {
     if (isBenignZabbixFetchError(err)) {

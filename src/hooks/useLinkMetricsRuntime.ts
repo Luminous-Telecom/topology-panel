@@ -9,10 +9,10 @@ import {
   utilizationThresholdsFromOptions,
 } from '../utils/linkMetricsRuntime';
 import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
+import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
 import { structuralShare } from '../utils/structuralIdentity';
 
 const LINK_METRICS_TTL_MS = 5_000;
-const MIN_FETCH_GAP_MS = 2_000;
 
 /** Identidade única para "sem métrica" — ver comentário no efeito abaixo. */
 const EMPTY_LINK_METRICS: LinkRuntimeMetricsMap = {};
@@ -81,6 +81,7 @@ export function useLinkMetricsRuntime(
     let cancelled = false;
     let inFlight = false;
     let lastStartMs = 0;
+    let fetchGeneration = 0;
 
     const applyMetrics = (next: LinkRuntimeMetricsMap) => {
       if (cancelled) {
@@ -105,10 +106,17 @@ export function useLinkMetricsRuntime(
     };
 
     const fetchMetrics = async (bypassCache = false) => {
-      if (cancelled || inFlight || document.hidden || Date.now() - lastStartMs < MIN_FETCH_GAP_MS) {
+      if (cancelled) {
+        return;
+      }
+      if (document.hidden && !inFlight && Date.now() - lastStartMs < POLL_WATCHDOG_MS) {
+        return;
+      }
+      if (!canStartPolledFetch(Date.now(), lastStartMs, inFlight)) {
         return;
       }
       lastStartMs = Date.now();
+      const generation = ++fetchGeneration;
       inFlight = true;
       setLoading(true);
       setStale(Object.keys(lastGoodRef.current).length > 0);
@@ -121,11 +129,18 @@ export function useLinkMetricsRuntime(
           const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current);
           return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
         });
+        if (cancelled || generation !== fetchGeneration) {
+          return;
+        }
         applyMetrics(next);
       } catch {
-        applyError();
+        if (generation === fetchGeneration) {
+          applyError();
+        }
       } finally {
-        inFlight = false;
+        if (generation === fetchGeneration) {
+          inFlight = false;
+        }
       }
     };
 
