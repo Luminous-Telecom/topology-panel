@@ -36,6 +36,7 @@ interface Props {
 const CHART_W = 260;
 const CHART_H = 56;
 const PAD = 4;
+const SPARKLINE_STROKE = 1.5;
 
 function hostTitle(node: TopologyNode): string {
   return node.label?.trim() || node.zabbixHost?.trim() || node.id;
@@ -85,13 +86,32 @@ function Sparkline({
   const toX = (t: number) => PAD + ((t - tMin) / tSpan) * innerW;
   const toY = (displayValue: number) => PAD + innerH - (displayValue / yMax) * innerH;
 
-  const pathD = points
-    .map((point, idx) => {
-      const x = toX(point.t);
-      const y = toY(sparklineDisplayValue(metric, point.value));
-      return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(' ');
+  const pathCmd = (point: (typeof points)[number], idx: number) => {
+    const x = toX(point.t);
+    const y = toY(sparklineDisplayValue(metric, point.value));
+    return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  };
+
+  const pathD = points.map(pathCmd).join(' ');
+  const offlinePathDs: string[] = [];
+  let offlineRun: typeof points = [];
+  const flushOfflineRun = () => {
+    if (offlineRun.length === 1) {
+      const cmd = pathCmd(offlineRun[0], 0);
+      offlinePathDs.push(`${cmd} ${cmd.replace(/^M/, 'L')}`);
+    } else if (offlineRun.length > 1) {
+      offlinePathDs.push(offlineRun.map(pathCmd).join(' '));
+    }
+    offlineRun = [];
+  };
+  for (const point of points) {
+    if (point.status === 'offline') {
+      offlineRun.push(point);
+    } else {
+      flushOfflineRun();
+    }
+  }
+  flushOfflineRun();
 
   return (
     <svg width={CHART_W} height={CHART_H} aria-hidden>
@@ -100,21 +120,21 @@ function Sparkline({
         d={pathD}
         fill="none"
         stroke={colorOnline}
-        strokeWidth={1.5}
+        strokeWidth={SPARKLINE_STROKE}
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      {points.map((point, idx) =>
-        point.status === 'offline' ? (
-          <circle
-            key={idx}
-            cx={toX(point.t)}
-            cy={toY(sparklineDisplayValue(metric, point.value))}
-            r={2.5}
-            fill={colorOffline}
-          />
-        ) : null
-      )}
+      {offlinePathDs.map((d, idx) => (
+        <path
+          key={idx}
+          d={d}
+          fill="none"
+          stroke={colorOffline}
+          strokeWidth={SPARKLINE_STROKE}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ))}
     </svg>
   );
 }
