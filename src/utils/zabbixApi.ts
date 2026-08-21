@@ -279,9 +279,11 @@ export interface HostIcmpStatus {
 }
 
 interface ZabbixIcmpItem {
+  itemid?: string;
   key_: string;
   lastvalue?: string;
   lastclock?: string;
+  value_type?: string | number;
 }
 
 function parseFloatOrNull(value?: string): number | null {
@@ -362,7 +364,11 @@ export async function executeHostPingScript(
   }
 }
 
-/** Última medição ICMP do host no Zabbix (icmpping / icmppingloss / icmppingsec). */
+/**
+ * Última medição ICMP do host no Zabbix (icmpping / icmppingloss / icmppingsec).
+ * Mesmo overlay de `history.get` do status do mapa — o lastvalue do icmppingsec pode ficar no
+ * último RTT com sucesso.
+ */
 export async function fetchHostIcmpStatus(
   datasourceUid: string,
   hostName: string
@@ -378,16 +384,28 @@ export async function fetchHostIcmpStatus(
     return { ...empty, error: `Host "${hostName.trim()}" não encontrado no Zabbix` };
   }
 
-  const items = await zabbixCall<ZabbixIcmpItem[]>(datasourceUid, 'item.get', {
+  const rawItems = await zabbixCall<ZabbixIcmpItem[]>(datasourceUid, 'item.get', {
     hostids: [hostId],
-    output: ['key_', 'lastvalue', 'lastclock'],
+    output: ['itemid', 'key_', 'lastvalue', 'lastclock', 'value_type'],
     search: { key_: 'icmpping' },
     searchByAny: true,
   });
 
-  if (!items?.length) {
+  if (!rawItems?.length) {
     return { ...empty, error: 'Itens ICMP (icmpping) não encontrados neste host' };
   }
+
+  const forHistory: ZabbixInterfaceItem[] = rawItems.map((item) => ({
+    itemid: asZabbixId(item.itemid),
+    key_: item.key_,
+    lastvalue: item.lastvalue,
+    lastclock: item.lastclock,
+    value_type: item.value_type,
+  }));
+  const latest = await fetchLatestHistoryByItemId(datasourceUid, forHistory);
+  const items = forHistory.map((item) =>
+    overlayStatusItemLastValue(item, latest.get(asZabbixId(item.itemid)))
+  );
 
   let reachable: boolean | null = null;
   let lossPct: number | null = null;
@@ -487,9 +505,10 @@ export interface ZabbixItemLastValue {
   itemid: string;
   lastvalue?: string;
   lastclock?: string;
+  value_type?: string | number;
 }
 
-/** Últimos valores de itens em lote — usado para métricas de link em runtime. */
+/** Últimos valores de itens em lote — tráfego dos cabos. Mesmo overlay de history.get do status. */
 export async function fetchZabbixItemLastValues(
   datasourceUid: string,
   itemIds: string[]
@@ -500,21 +519,42 @@ export async function fetchZabbixItemLastValues(
   }
 
   const result: Record<string, ZabbixItemLastValue> = {};
+  const rawItems: ZabbixInterfaceItem[] = [];
   for (const batch of chunk(ids, BATCH_SIZE)) {
     try {
       const items = await zabbixCall<ZabbixItemLastValue[]>(datasourceUid, 'item.get', {
         itemids: batch,
-        output: ['itemid', 'lastvalue', 'lastclock'],
+        output: ['itemid', 'lastvalue', 'lastclock', 'value_type'],
       });
       for (const item of items ?? []) {
         const itemid = asZabbixId(item.itemid);
         if (itemid) {
           result[itemid] = item;
+          rawItems.push({
+            itemid,
+            key_: '',
+            lastvalue: item.lastvalue,
+            lastclock: item.lastclock,
+            value_type: item.value_type,
+          });
         }
       }
     } catch {
       /* lote sem resposta */
     }
+  }
+  if (!rawItems.length) {
+    return result;
+  }
+  const latest = await fetchLatestHistoryByItemId(datasourceUid, rawItems);
+  for (const raw of rawItems) {
+    const itemid = asZabbixId(raw.itemid);
+    const overlaid = overlayStatusItemLastValue(raw, latest.get(itemid));
+    result[itemid] = {
+      ...result[itemid],
+      lastvalue: overlaid.lastvalue,
+      lastclock: overlaid.lastclock,
+    };
   }
   return result;
 }
@@ -647,7 +687,7 @@ async function fetchStatusItemsForHosts(
   return items;
 }
 
-/** Janela curta só para o último ponto de status — não monta série do hover. */
+/** Janela curta só para o último ponto — status dos hosts e tráfego dos cabos. */
 const STATUS_HISTORY_LOOKBACK_SEC = 180;
 const STATUS_HISTORY_LIMIT = 800;
 
@@ -655,7 +695,7 @@ function statusItemHistoryType(valueType: string | number | undefined): 0 | 3 {
   return Number(valueType) === 3 ? 3 : 0;
 }
 
-async function fetchLatestStatusHistoryByItemId(
+async function fetchLatestHistoryByItemId(
   datasourceUid: string,
   items: ZabbixInterfaceItem[]
 ): Promise<Map<string, ZabbixHistoryPoint>> {
@@ -721,7 +761,7 @@ async function fetchLatestStatusHistoryByItemId(
  *
  * `item.get` traz o lastvalue; `history.get` só o ponto mais recente da chave de status, para a
  * cor do mapa acompanhar Down/Up igual ao hover (o lastvalue do icmppingsec pode ficar no último
- * RTT com sucesso).
+ * RTT com sucesso). O tráfego dos cabos usa o mesmo overlay em `fetchZabbixItemLastValues`.
  */
 export async function fetchZabbixDirectSnapshot(
   datasourceUid: string,
@@ -757,7 +797,7 @@ export async function fetchZabbixDirectSnapshot(
   if (!rawItems.length) {
     return { hosts, statusItems: [], resolvedGroups };
   }
-  const latest = await fetchLatestStatusHistoryByItemId(datasourceUid, rawItems);
+  const latest = await fetchLatestHistoryByItemId(datasourceUid, rawItems);
   const statusItems = rawItems.map((item) =>
     overlayStatusItemLastValue(item, latest.get(asZabbixId(item.itemid)))
   );
@@ -837,81 +877,6 @@ export async function fetchZabbixHostInterfaceItems(
   const result: ZabbixHostInterfaceItems[] = [];
   for (const [hostKey, hostid] of hostIdByKey) {
     result.push({ hostKey, hostid, items: itemsByHostId.get(hostid) ?? [] });
-  }
-  return result;
-}
-
-const NEIGHBOR_ITEM_SEARCH_KEYS = ['lldp', 'cdp', 'cdpCache', 'LLDP', 'CDP', 'lldpRem', 'cdpRem'];
-
-async function fetchNeighborItemsForHostIds(
-  datasourceUid: string,
-  hostIds: string[]
-): Promise<ZabbixInterfaceItem[]> {
-  if (!hostIds.length) {
-    return [];
-  }
-  const items: ZabbixInterfaceItem[] = [];
-  for (const batch of chunk(hostIds, BATCH_SIZE)) {
-    try {
-      const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
-        hostids: batch,
-        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
-        selectTags: ['tag', 'value'],
-        search: { key_: NEIGHBOR_ITEM_SEARCH_KEYS },
-        searchByAny: true,
-      });
-      for (const item of batchItems ?? []) {
-        items.push(item);
-      }
-    } catch {
-      /* lote sem resposta */
-    }
-  }
-  return items;
-}
-
-/**
- * Itens LLDP/CDP monitorados no Zabbix — dependem do template/LLD configurado no host.
- * Sem itens lldp/cdp no host, retorna lista vazia (não é erro).
- */
-export async function fetchZabbixNeighborItems(
-  datasourceUid: string,
-  hostKeys: string[]
-): Promise<ZabbixHostInterfaceItems[]> {
-  const keys = [...new Set(hostKeys.map((k) => k.trim()).filter(Boolean))];
-  if (!datasourceUid || !keys.length) {
-    return [];
-  }
-
-  const hostIdByKey = new Map<string, string>();
-  for (const key of keys) {
-    const hostId = await resolveZabbixHostId(datasourceUid, key);
-    if (hostId) {
-      hostIdByKey.set(key, hostId);
-    }
-  }
-
-  const hostIds = [...new Set(hostIdByKey.values())];
-  const items = await fetchNeighborItemsForHostIds(datasourceUid, hostIds);
-
-  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
-  for (const item of items) {
-    const hostid = asZabbixId(item.hostid);
-    if (!hostid) {
-      continue;
-    }
-    const list = itemsByHostId.get(hostid) ?? [];
-    list.push(item);
-    itemsByHostId.set(hostid, list);
-  }
-
-  const result: ZabbixHostInterfaceItems[] = [];
-  for (const [hostKey, hostid] of hostIdByKey) {
-    result.push({
-      hostKey,
-      hostid,
-      items: itemsByHostId.get(hostid) ?? [],
-    });
   }
   return result;
 }

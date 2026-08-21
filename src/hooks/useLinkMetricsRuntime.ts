@@ -41,7 +41,8 @@ export interface UseLinkMetricsRuntimeOptions {
 
 /**
  * Métricas voláteis de links (RX/TX/utilização/status) — não persistidas no JSON.
- * Atualiza em lote via item.get, com polling configurável e dedupe curto (3s).
+ * Atualiza em lote via item.get + último ponto do history.get (igual ao status dos hosts).
+ * Polling no zabbixRefreshSec; dedupe curto (3s) só no remount.
  */
 export function useLinkMetricsRuntime(
   datasourceUid: string | undefined,

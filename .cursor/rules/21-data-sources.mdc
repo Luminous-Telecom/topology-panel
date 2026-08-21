@@ -42,14 +42,13 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
 
 | Consumidor autorizado | Uso permitido |
 |---|---|
-| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
+| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*` + `history.get` do último ponto), para o ping interativo |
 | `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote com grupos/tags), IP e regras de template |
 | `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` em lote), badges NOC — não altera cor/status do mapa |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` de interfaces), inventário para seletor de link |
-| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get` em lote), métricas voláteis de links (RX/TX/status) |
+| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get` + `history.get` do último ponto), métricas voláteis de links (RX/TX/status) |
 | `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectSnapshot` (`hostgroup.get` + `host.get` + `item.get` da chave de status + `history.get` só do último ponto), fonte do mapa |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`), seletor de grupos do painel de opções |
-| `utils/topologyDiscovery/discoverTopologyNeighbors.ts` | `fetchZabbixNeighborItems` + `fetchZabbixHostInterfaceItems` — vizinhança LLDP/CDP dos templates |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
@@ -59,7 +58,7 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
   Travas: aba oculta, watchdog e `canStartPolledFetch` (`utils/pollingGate.ts`). Não crie um
   terceiro laço.
 - Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get` fora do hover
-  e do último ponto de status do snapshot, ou metadata para outra finalidade) exige **aprovação
+  e do último ponto de status/tráfego/ICMP do ping, ou metadata para outra finalidade) exige **aprovação
   explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
 
 ## APIs do Grafana

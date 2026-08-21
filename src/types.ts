@@ -229,21 +229,6 @@ export interface LinkRuntimeMetrics {
 
 export type LinkRuntimeMetricsMap = Record<string, LinkRuntimeMetrics>;
 
-/** Link sugerido por descoberta LLDP/CDP — aguarda revisão do usuário. */
-export interface TopologySuggestedLink {
-  id: string;
-  fromNodeId: string;
-  toNodeId: string;
-  fromInterface?: TopologyInterfaceReference;
-  toInterface?: TopologyInterfaceReference;
-  source: 'lldp' | 'cdp';
-  state: 'suggested' | 'ignored';
-  confidence: MetricBindingConfidence;
-  localPort?: string;
-  remotePort?: string;
-  remoteSysName?: string;
-}
-
 export interface TopologyMap {
   /**
    * Versão do schema JSON do mapa.
@@ -256,8 +241,6 @@ export interface TopologyMap {
   height: number;
   nodes: TopologyNode[];
   links: TopologyLink[];
-  /** Links sugeridos por LLDP/CDP — não entram no mapa até confirmação */
-  suggestedLinks?: TopologySuggestedLink[];
   /** Ícone por nome do host Zabbix (persiste mesmo sem layout salvo) */
   hostIcons?: Partial<Record<string, TopologyHostIcon>>;
   /** Hosts from Zabbix query hidden from the map */
@@ -568,7 +551,6 @@ export function parseTopologyJson(raw: string): TopologyMap | null {
       locked: Boolean(parsed.locked),
       networksLocked: parsed.networksLocked !== false,
       hiddenHosts: Array.isArray(parsed.hiddenHosts) ? parsed.hiddenHosts : undefined,
-      suggestedLinks: Array.isArray(parsed.suggestedLinks) ? parsed.suggestedLinks : undefined,
       hostIcons:
         parsed.hostIcons && typeof parsed.hostIcons === 'object' && !Array.isArray(parsed.hostIcons)
           ? (parsed.hostIcons as TopologyMap['hostIcons'])

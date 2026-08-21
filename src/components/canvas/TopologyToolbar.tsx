@@ -58,10 +58,6 @@ export function TopologyToolbar({
   searchOpen,
   onSearchOpenChange,
   onSearchFocusNode,
-  onDiscoverNeighbors,
-  discoveringNeighbors = false,
-  suggestedLinksCount = 0,
-  onReviewSuggestedLinks,
   onInsertBlueprint,
   onToggleNocMode,
   nocModeActive = false,
@@ -93,10 +89,6 @@ export function TopologyToolbar({
   searchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
-  onDiscoverNeighbors?: () => void;
-  discoveringNeighbors?: boolean;
-  suggestedLinksCount?: number;
-  onReviewSuggestedLinks?: () => void;
   onInsertBlueprint?: () => void;
   onToggleNocMode?: () => void;
   nocModeActive?: boolean;
@@ -240,34 +232,6 @@ export function TopologyToolbar({
               {networksLocked ? 'Redes travadas' : 'Redes livres'}
             </span>
           </button>
-          {onDiscoverNeighbors ? (
-            <button
-              type="button"
-              className={toolbarOverlayButtonStyle}
-              onClick={onDiscoverNeighbors}
-              disabled={discoveringNeighbors}
-              title="Descobrir vizinhos LLDP/CDP via itens Zabbix dos templates"
-              style={btnStyle(false, false, discoveringNeighbors)}
-            >
-              <Icon name="channel-add" size="sm" />
-              <span className={toolbarLabelStyle}>
-                {discoveringNeighbors ? 'Descobrindo…' : 'Descobrir vizinhos'}
-              </span>
-            </button>
-          ) : null}
-          {suggestedLinksCount > 0 && onReviewSuggestedLinks ? (
-            <button
-              type="button"
-              className={toolbarOverlayButtonStyle}
-              onClick={onReviewSuggestedLinks}
-              title={`Revisar links sugeridos (${suggestedLinksCount})`}
-              aria-label={`Revisar ${suggestedLinksCount} links sugeridos`}
-              style={btnStyle(true)}
-            >
-              <span className={toolbarLabelStyle}>Sugestões</span>
-              ({suggestedLinksCount})
-            </button>
-          ) : null}
           {onInsertBlueprint ? (
             <button
               type="button"

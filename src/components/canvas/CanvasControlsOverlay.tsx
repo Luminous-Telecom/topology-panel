@@ -36,10 +36,6 @@ interface Props {
   setSearchOpen: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
   queryError: boolean;
-  onDiscoverNeighbors?: () => void;
-  discoveringNeighbors?: boolean;
-  suggestedLinksCount?: number;
-  onReviewSuggestedLinks?: () => void;
   onInsertBlueprint?: () => void;
   nocModeActive?: boolean;
   onToggleNocMode?: () => void;
@@ -83,10 +79,6 @@ export function CanvasControlsOverlay({
   setSearchOpen,
   onSearchFocusNode,
   queryError,
-  onDiscoverNeighbors,
-  discoveringNeighbors,
-  suggestedLinksCount,
-  onReviewSuggestedLinks,
   onInsertBlueprint,
   nocModeActive = false,
   onToggleNocMode,
@@ -139,10 +131,6 @@ export function CanvasControlsOverlay({
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
           onSearchFocusNode={onSearchFocusNode}
-          onDiscoverNeighbors={onDiscoverNeighbors}
-          discoveringNeighbors={discoveringNeighbors}
-          suggestedLinksCount={suggestedLinksCount}
-          onReviewSuggestedLinks={onReviewSuggestedLinks}
           onInsertBlueprint={onInsertBlueprint}
           nocModeActive={nocModeActive}
           onToggleNocMode={onToggleNocMode}

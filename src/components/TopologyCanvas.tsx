@@ -43,17 +43,8 @@ import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { TopologyToast } from './canvas/TopologyToast';
 import { LinkDetailsDrawer, resolveLinkDetailsMetrics } from './LinkDetailsDrawer';
-import { discoverTopologyNeighbors } from '../utils/topologyDiscovery/discoverTopologyNeighbors';
-import {
-  confirmAllSuggestedLinks,
-  confirmSuggestedLink,
-  ignoreSuggestedLink,
-  mergeSuggestedLinks,
-} from '../utils/mapSuggestedLinkEdits';
-import { SuggestedLinksReviewModal, NeighborDiscoveryReport } from './SuggestedLinksReviewModal';
 import { TopologyBlueprintModal } from './lazyModals';
 import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
-import { SuggestedLinkLine } from './canvas/SuggestedLinkLine';
 import { openDashboardUrl } from './DashboardPickerModal';
 import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
@@ -335,7 +326,6 @@ export function TopologyCanvas({
     toNode: TopologyNode;
   } | null>(null);
   const [detailsLink, setDetailsLink] = useState<TopologyLink | null>(null);
-  const [suggestedReviewOpen, setSuggestedReviewOpen] = useState(false);
   const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
   const pendingNocFocusRef = useRef<{ mapId: string; nodeId: string } | null>(null);
@@ -353,9 +343,6 @@ export function TopologyCanvas({
     onNocModeChange?.(next);
   }, [nocModeLocalOverride, onNocModeChange, options.nocMode]);
   const viewEditable = editable && !effectiveNocMode;
-  const [discoveringNeighbors, setDiscoveringNeighbors] = useState(false);
-  const [neighborReport, setNeighborReport] = useState<NeighborDiscoveryReport | undefined>();
-  const [neighborError, setNeighborError] = useState<string | undefined>();
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const {
     editNode,
@@ -861,40 +848,6 @@ export function TopologyCanvas({
     setSelectedNodeIds([]);
   }, []);
 
-  const pendingSuggestions = useMemo(
-    () => (storedMap.suggestedLinks ?? []).filter((s) => s.state === 'suggested'),
-    [storedMap.suggestedLinks]
-  );
-
-  const runNeighborDiscovery = useCallback(async () => {
-    if (!zabbixDatasourceUid) {
-        setNeighborError('Configure o datasource Zabbix em Fonte de dados.');
-      setSuggestedReviewOpen(true);
-      return;
-    }
-    setDiscoveringNeighbors(true);
-    setNeighborError(undefined);
-    setSuggestedReviewOpen(true);
-    try {
-      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata);
-      const merged = mergeSuggestedLinks(storedMap, result.suggestions);
-      if (merged !== storedMap) {
-        persist(merged);
-      }
-      setNeighborReport({
-        hostsScanned: result.hostsScanned,
-        neighborRecords: result.neighborRecords,
-        lldpAvailable: result.lldpAvailable,
-        cdpAvailable: result.cdpAvailable,
-        newSuggestions: result.suggestions.length,
-      });
-    } catch {
-      setNeighborError('Não foi possível consultar vizinhos no Zabbix.');
-    } finally {
-      setDiscoveringNeighbors(false);
-    }
-  }, [hostMetadata, persist, storedMap, zabbixDatasourceUid]);
-
   const handleNodeContextMenuWithClear = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
       clearHostHover();
@@ -1347,12 +1300,6 @@ export function TopologyCanvas({
         setSearchOpen={setSearchOpen}
         onSearchFocusNode={focusNodeOnMap}
         queryError={Boolean(queryError)}
-        onDiscoverNeighbors={
-          canEditCanvas && !effectiveNocMode && zabbixDatasourceUid ? runNeighborDiscovery : undefined
-        }
-        discoveringNeighbors={discoveringNeighbors}
-        suggestedLinksCount={pendingSuggestions.length}
-        onReviewSuggestedLinks={() => setSuggestedReviewOpen(true)}
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 
@@ -1426,17 +1373,6 @@ export function TopologyCanvas({
             onResizePointerDown={stableResizePointerDown}
             onResizePointerUp={stableResizePointerUp}
           />
-
-          {pendingSuggestions.map((suggestion) => (
-            <SuggestedLinkLine
-              key={suggestion.id}
-              suggestion={suggestion}
-              nodeLayouts={nodeLayouts}
-              options={options}
-              selected={false}
-              onSelect={() => setSuggestedReviewOpen(true)}
-            />
-          ))}
 
           <LinksLayer
             renderLinks={culledRenderLinks}
@@ -1554,24 +1490,6 @@ export function TopologyCanvas({
                 }
               : undefined
           }
-        />
-      ) : null}
-
-      {suggestedReviewOpen ? (
-        <SuggestedLinksReviewModal
-          map={storedMap}
-          suggestions={storedMap.suggestedLinks ?? []}
-          report={neighborReport}
-          loading={discoveringNeighbors}
-          loadError={neighborError}
-          onConfirm={(id) => persist(confirmSuggestedLink(storedMap, id))}
-          onIgnore={(id) => persist(ignoreSuggestedLink(storedMap, id))}
-          onConfirmAll={() => persist(confirmAllSuggestedLinks(storedMap))}
-          onClose={() => {
-            setSuggestedReviewOpen(false);
-            setNeighborReport(undefined);
-            setNeighborError(undefined);
-          }}
         />
       ) : null}
 
