@@ -25,6 +25,10 @@ interface Props {
   storedMap: { nodes: TopologyNode[] };
   queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
+  /** Fonte do inventário de interfaces quando o painel não usa a aba Query. */
+  zabbixDatasourceUid?: string;
+  zabbixRxItemKeyword?: string;
+  zabbixTxItemKeyword?: string;
   onSave: (patch: {
     medium?: TopologyLinkMedium;
     bandwidthMbps?: number;
@@ -94,6 +98,9 @@ export function LinkEditModal({
   storedMap,
   queryData,
   hostMetadata,
+  zabbixDatasourceUid,
+  zabbixRxItemKeyword,
+  zabbixTxItemKeyword,
   onSave,
   onClose,
 }: Props) {
@@ -114,7 +121,12 @@ export function LinkEditModal({
   const { interfacesByHost, loading: ifacesLoading, loadError } = useZabbixHostInterfaces(
     hostKeys,
     queryData,
-    hostMetadata
+    hostMetadata,
+    zabbixDatasourceUid,
+    {
+      rxKeyword: zabbixRxItemKeyword,
+      txKeyword: zabbixTxItemKeyword,
+    }
   );
   const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
   const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];

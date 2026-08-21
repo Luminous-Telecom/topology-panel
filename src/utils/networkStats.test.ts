@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RegionHostStats, buildRegionStatsMap, formatRegionStats, regionFillColor } from './networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats, regionFillColor } from './networkStats';
 import { defaultOptions } from '../types';
 import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
+import { emptyMap } from './testMapFixtures';
 
 describe('formatRegionStats — submapa', () => {
   it('mostra parado/alerta/online quando há hosts', () => {
@@ -21,6 +22,15 @@ describe('formatRegionStats — submapa', () => {
       'submap'
     );
     expect(text).toBe('Carregando…');
+  });
+
+  it('anexa tráfego agregado ao texto do submapa', () => {
+    const text = formatRegionStats(
+      { total: 3, offline: 0, alert: 0, online: 3, unknown: 0, rxBps: 1_200_000_000, txBps: 800_000_000 },
+      true,
+      'submap'
+    );
+    expect(text).toBe('0 / 0 / 3 · ↓ 1.2 Gbps ↑ 800 Mbps');
   });
 });
 
@@ -45,6 +55,44 @@ describe('regionFillColor — submapa', () => {
       true
     );
     expect(fill).toBe(options.colorOffline);
+  });
+});
+
+describe('mergeRegionTrafficStats', () => {
+  it('soma RX/TX dos links cujos endpoints pertencem ao submapa', () => {
+    const map = {
+      ...emptyMap(),
+      nodes: [
+        { id: 'sm1', type: 'submap' as const, label: 'Backbone', x: 0, y: 0 },
+        { id: 'h1', type: 'host' as const, zabbixHost: '10.0.0.1', x: 0, y: 0 },
+        { id: 'h2', type: 'host' as const, zabbixHost: '10.0.0.2', x: 0, y: 0 },
+      ],
+      links: [
+        {
+          from: 'h1',
+          to: 'h2',
+          fromInterface: { name: 'eth0', metrics: { rx: { itemId: '1' }, tx: { itemId: '2' } } },
+        },
+      ],
+    };
+    const layouts = new Map<string, import('./nodeLayout').NodeLayout & TopologyNode>();
+    const baseStats = buildRegionStatsMap(
+      map.nodes,
+      layouts,
+      {},
+      { sm1: ['10.0.0.1', '10.0.0.2'] }
+    );
+    const merged = mergeRegionTrafficStats(
+      baseStats,
+      map,
+      layouts,
+      {
+        'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
+      },
+      { sm1: ['10.0.0.1', '10.0.0.2'] }
+    );
+    expect(merged.get('sm1')?.rxBps).toBe(500_000_000);
+    expect(merged.get('sm1')?.txBps).toBe(100_000_000);
   });
 });
 

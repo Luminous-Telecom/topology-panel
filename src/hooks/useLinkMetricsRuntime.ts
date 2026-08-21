@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EventBus } from '@grafana/data';
+import { RefreshEvent } from '@grafana/runtime';
 import { LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
 import {
@@ -9,6 +11,7 @@ import {
 import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
 
 const LINK_METRICS_TTL_MS = 5_000;
+const MIN_FETCH_GAP_MS = 2_000;
 
 const metricsCache = createAsyncCache<LinkRuntimeMetricsMap>({
   ttlMs: LINK_METRICS_TTL_MS,
@@ -20,16 +23,26 @@ export interface UseLinkMetricsRuntimeResult {
   stale: boolean;
 }
 
+export interface UseLinkMetricsRuntimeOptions {
+  /** Intervalo periódico em segundos; `null` = só manual / refresh do dashboard. */
+  refreshSec?: number | null;
+  eventBus?: EventBus;
+  /** Muda a cada refresh da Query — dispara nova busca. */
+  queryRefreshKey?: unknown;
+}
+
 /**
  * Métricas voláteis de links (RX/TX/utilização/status) — não persistidas no JSON.
- * Atualiza em lote via item.get; TTL curto (5s) alinhado ao tráfego.
+ * Atualiza em lote via item.get, com polling configurável e dedupe curto (5s).
  */
 export function useLinkMetricsRuntime(
   datasourceUid: string | undefined,
   map: TopologyMap,
   options: TopologyPanelOptions,
-  enabled = true
+  enabled = true,
+  runtimeOptions: UseLinkMetricsRuntimeOptions = {}
 ): UseLinkMetricsRuntimeResult {
+  const { refreshSec = null, eventBus, queryRefreshKey } = runtimeOptions;
   const itemIds = useMemo(() => collectLinkMetricItemIds(map.links), [map.links]);
   const itemKey = useMemo(() => [...itemIds].sort().join('\0'), [itemIds]);
   const thresholds = useMemo(() => utilizationThresholdsFromOptions(options), [
@@ -49,6 +62,8 @@ export function useLinkMetricsRuntime(
   const thresholdsRef = useRef(thresholds);
   thresholdsRef.current = thresholds;
 
+  const cacheKey = `${datasourceUid ?? ''}\u0000linkmetrics\u0000${itemKey}`;
+
   useEffect(() => {
     if (!enabled || !datasourceUid || !itemKey) {
       setMetricsByLink({});
@@ -58,34 +73,76 @@ export function useLinkMetricsRuntime(
     }
 
     let cancelled = false;
-    setLoading(true);
-    setStale(Object.keys(lastGoodRef.current).length > 0);
+    let inFlight = false;
+    let lastStartMs = 0;
 
-    void metricsCache
-      .get(`${datasourceUid}\u0000linkmetrics\u0000${itemKey}`, async () => {
-        const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current);
-        return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
-      })
-      .then((next) => {
-        if (!cancelled) {
-          lastGoodRef.current = next;
-          setMetricsByLink(next);
-          setLoading(false);
-          setStale(false);
+    const applyMetrics = (next: LinkRuntimeMetricsMap) => {
+      if (cancelled) {
+        return;
+      }
+      lastGoodRef.current = next;
+      setMetricsByLink(next);
+      setLoading(false);
+      setStale(false);
+    };
+
+    const applyError = () => {
+      if (cancelled) {
+        return;
+      }
+      setMetricsByLink(lastGoodRef.current);
+      setLoading(false);
+      setStale(Object.keys(lastGoodRef.current).length > 0);
+    };
+
+    const fetchMetrics = async (bypassCache = false) => {
+      if (cancelled || inFlight || document.hidden || Date.now() - lastStartMs < MIN_FETCH_GAP_MS) {
+        return;
+      }
+      lastStartMs = Date.now();
+      inFlight = true;
+      setLoading(true);
+      setStale(Object.keys(lastGoodRef.current).length > 0);
+
+      try {
+        if (bypassCache) {
+          metricsCache.invalidate(cacheKey);
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMetricsByLink(lastGoodRef.current);
-          setLoading(false);
-          setStale(Object.keys(lastGoodRef.current).length > 0);
-        }
-      });
+        const next = await metricsCache.get(cacheKey, async () => {
+          const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current);
+          return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
+        });
+        applyMetrics(next);
+      } catch {
+        applyError();
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void fetchMetrics();
+
+    const intervalSec = refreshSec != null && refreshSec > 0 ? Math.floor(refreshSec) : null;
+    const timer =
+      intervalSec != null ? window.setInterval(() => void fetchMetrics(true), intervalSec * 1000) : undefined;
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        void fetchMetrics(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    const refreshSub = eventBus?.getStream(RefreshEvent).subscribe(() => void fetchMetrics(true));
 
     return () => {
       cancelled = true;
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+      }
+      document.removeEventListener('visibilitychange', handleVisibility);
+      refreshSub?.unsubscribe();
     };
-  }, [datasourceUid, itemKey, enabled]);
+  }, [enabled, datasourceUid, itemKey, cacheKey, refreshSec, eventBus, queryRefreshKey]);
 
   return { metricsByLink, loading, stale };
 }

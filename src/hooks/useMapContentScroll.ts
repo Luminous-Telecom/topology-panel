@@ -13,6 +13,8 @@ interface UseMapContentScrollParams {
   viewRef: MutableRefObject<TopologyView>;
   commitView: (next: TopologyView | ((prev: TopologyView) => TopologyView)) => void;
   viewport: { w: number; h: number };
+  /** Mesma referência estável de `useViewportSize` — evita ler `clientWidth` do scrollPane. */
+  viewportRef: MutableRefObject<{ w: number; h: number }>;
   /**
    * Enquanto `true` (pan/arraste ativo), não escreve `scrollLeft`/`scrollTop` a partir da view —
    * evita tranco por sync nativo a cada frame.
@@ -39,6 +41,7 @@ export function useMapContentScroll({
   viewRef,
   commitView,
   viewport,
+  viewportRef,
   suspendSyncRef,
 }: UseMapContentScrollParams): UseMapContentScrollResult {
   const ignoreScrollEventRef = useRef(false);
@@ -90,13 +93,13 @@ export function useMapContentScroll({
     if (suspendSyncRef.current) {
       return;
     }
-    const el = scrollRef.current;
-    if (!el || viewport.w <= 0 || viewport.h <= 0) {
+    const { w, h } = viewportRef.current;
+    if (!scrollRef.current || w <= 0 || h <= 0) {
       return;
     }
-    const next = computeMapScrollMetrics(bounds, viewRef.current, el.clientWidth, el.clientHeight);
+    const next = computeMapScrollMetrics(bounds, viewRef.current, w, h);
     writeScrollPosition(next.scrollLeft, next.scrollTop);
-  }, [bounds, scrollRef, suspendSyncRef, viewRef, viewport.h, viewport.w, writeScrollPosition]);
+  }, [bounds, scrollRef, suspendSyncRef, viewRef, viewportRef, writeScrollPosition]);
 
   // Sync passivo: zoom / commit externo — nunca durante pan (suspendSyncRef) nem durante um
   // scroll nativo em andamento (isNativeScrollingRef), pra não brigar com o navegador enquanto
@@ -128,7 +131,8 @@ export function useMapContentScroll({
     isNativeScrollingRef.current = true;
 
     const current = viewRef.current;
-    const nextMetrics = computeMapScrollMetrics(bounds, current, el.clientWidth, el.clientHeight);
+    const { w, h } = viewportRef.current;
+    const nextMetrics = computeMapScrollMetrics(bounds, current, w, h);
     if (nextMetrics.maxScrollLeft <= 0 && nextMetrics.maxScrollTop <= 0) {
       isNativeScrollingRef.current = false;
       return;
@@ -154,7 +158,7 @@ export function useMapContentScroll({
     requestAnimationFrame(() => {
       isNativeScrollingRef.current = false;
     });
-  }, [bounds, commitView, rememberNativeScroll, scrollRef, viewRef]);
+  }, [bounds, commitView, rememberNativeScroll, scrollRef, viewRef, viewportRef]);
 
   return {
     contentWidth: metrics.contentWidth,

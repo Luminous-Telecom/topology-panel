@@ -12,9 +12,10 @@ import {
   hostDisplayByRefIdFromIndex,
   numericHostsForRefIds,
   queryHostsByRefIdFromIndex,
+  QueryIndex,
   QuerySource,
 } from '../services/queryIndex';
-import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef } from './hostLookup';
+import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, preferHostDisplayInfo } from './hostLookup';
 import { StatusColorOptions } from './statusMapping';
 
 /**
@@ -120,9 +121,7 @@ export function flattenHostDisplayByRefId(
   for (const bucket of Object.values(byRefId)) {
     for (const [key, info] of Object.entries(bucket)) {
       const existing = result[key];
-      if (!existing || info.status) {
-        result[key] = info;
-      }
+      result[key] = existing ? preferHostDisplayInfo(existing, info) : info;
     }
   }
   return result;
@@ -169,16 +168,20 @@ export function resolveDisplayQueryRefIds(
   return options.displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean);
 }
 
-/** Hosts das queries marcadas para exibição (opt-in; submapas nunca importam). */
+/**
+ * Hosts das queries marcadas para exibição (opt-in; submapas nunca importam).
+ *
+ * Recebe o índice já montado — no modo "Zabbix direto" ele não vem de `data.series`, e sim da API
+ * Zabbix (ver `services/zabbixDirectIndex.ts`).
+ */
 export function extractDisplayQueryHosts(
-  data: PanelData | undefined,
+  index: QueryIndex,
   submapQueryRefIds: Set<string>,
   displayQueryRefIds: string[] = []
 ): string[] {
-  if (!data?.series?.length || !displayQueryRefIds.length) {
+  if (!index.hosts.length || !displayQueryRefIds.length) {
     return [];
   }
-  const index = buildQueryIndex(data);
   const allowed = new Set(displayQueryRefIds.map((r) => r.trim().toUpperCase()).filter(Boolean));
   const wanted: string[] = [];
   for (const refId of allowed) {
@@ -227,20 +230,15 @@ export function lookupHostDisplay(
     return undefined;
   }
   const candidates = collectHostLookupCandidates(ref, metadata);
-  for (const name of candidates) {
-    const info = displayMap[name];
-    if (info) {
-      return info;
-    }
-  }
   const byLowerKey = displayMapByLowerKey(displayMap);
+  let best: HostDisplayInfo | undefined;
   for (const name of candidates) {
-    const info = byLowerKey.get(name.toLowerCase());
+    const info = displayMap[name] ?? byLowerKey.get(name.toLowerCase());
     if (info) {
-      return info;
+      best = best ? preferHostDisplayInfo(best, info) : info;
     }
   }
-  return undefined;
+  return best;
 }
 
 /** Hosts da Query Zabbix crua (labels.host de cada série). */

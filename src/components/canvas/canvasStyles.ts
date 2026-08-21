@@ -25,6 +25,9 @@ export const canvasStyles = {
     position: absolute;
     inset: 0;
     overflow: auto;
+    /* Reserva espaço das barras antes delas aparecerem — evita loop resize quando o conteúdo
+     * encosta no limite do viewport (clássico em Windows/Linux com scrollbar clássica). */
+    scrollbar-gutter: stable;
     z-index: 0;
     overscroll-behavior: contain;
     /* O SVG (z-index 1) recebe os gestos do mapa; este container precisa aceitar eventos

@@ -1,4 +1,4 @@
-import { HostDisplayMap, HostMetadata, HostMetadataMap, TopologyMap, TopologyNode } from '../types';
+import { HostDisplayInfo, HostDisplayMap, HostMetadata, HostMetadataMap, TopologyMap, TopologyNode } from '../types';
 import { hostIp as hostIpFromNode } from './hostTools';
 import { isIpv4 } from './ipv4';
 import { isHostNode } from './topologyNodes';
@@ -214,6 +214,26 @@ function findMetadataEntry(
   return undefined;
 }
 
+/**
+ * Mescla entradas do mesmo host (nome vs IP, buckets distintos).
+ * Com `updatedAtSec`, vence o dado mais recente; sem timestamp, vence o incoming — assim recuperação
+ * e queda refletem o último refresh, sem fixar online quando o Zabbix já voltou a 0.
+ */
+export function preferHostDisplayInfo(
+  current: HostDisplayInfo,
+  incoming: HostDisplayInfo
+): HostDisplayInfo {
+  const currentTs = current.updatedAtSec ?? 0;
+  const incomingTs = incoming.updatedAtSec ?? 0;
+  if (incomingTs !== currentTs) {
+    return incomingTs > currentTs ? incoming : current;
+  }
+  if (incoming.value != null && current.value == null) {
+    return incoming;
+  }
+  return incoming;
+}
+
 /** Indexa status da Query também pelo IP salvo no mapa (quando o nome ainda casa). */
 export function enrichHostDisplayFromMap(
   display: HostDisplayMap,
@@ -231,23 +251,25 @@ export function enrichHostDisplayFromMap(
       continue;
     }
     const ip = resolveHostIp(node, metadata);
-    if (!ip || result[ip]) {
+    if (!ip) {
       continue;
     }
 
-    for (const key of collectHostLookupCandidates(
-      { zabbixHost: node.zabbixHost, subtitle: node.subtitle, label: node.label },
-      metadata
-    )) {
+    const ref = { zabbixHost: node.zabbixHost, subtitle: node.subtitle, label: node.label };
+    let alias: HostDisplayInfo | undefined;
+    for (const key of collectHostLookupCandidates(ref, metadata)) {
       if (key === ip) {
         continue;
       }
       const info = result[key];
       if (info) {
-        result[ip] = info;
-        break;
+        alias = alias ? preferHostDisplayInfo(alias, info) : info;
       }
     }
+    if (!alias) {
+      continue;
+    }
+    result[ip] = result[ip] ? preferHostDisplayInfo(result[ip], alias) : alias;
   }
 
   return result;

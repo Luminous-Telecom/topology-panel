@@ -1,9 +1,11 @@
-import { HostDisplayMap, HostMetadataMap, TopologyHostStatus, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
+import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyHostStatus, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from './hostLookup';
+import { linkKey } from './mapLinkEdits';
 import { NodeLayout } from './nodeLayout';
 import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 import { panelColorWithAlpha } from './panelColors';
+import { formatBitsPerSecond } from './zabbixAdapter/formatTraffic';
 
 export interface RegionHostStats {
   total: number;
@@ -15,6 +17,26 @@ export interface RegionHostStats {
   loadFailed?: boolean;
   /** Hosts do submapa ainda não resolvidos (query refId). */
   loadPending?: boolean;
+  /** Tráfego agregado dos links que tocam a região (bps). */
+  rxBps?: number;
+  txBps?: number;
+}
+
+/** Sufixo ↓/↑ quando há tráfego agregado na região. */
+function formatRegionTrafficSuffix(stats: RegionHostStats): string | undefined {
+  const rx = formatBitsPerSecond(stats.rxBps);
+  const tx = formatBitsPerSecond(stats.txBps);
+  if (!rx && !tx) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  if (rx) {
+    parts.push(`↓ ${rx}`);
+  }
+  if (tx) {
+    parts.push(`↑ ${tx}`);
+  }
+  return parts.join(' ');
 }
 
 /** Rede: texto descritivo. Submapa: parado / alerta / online. */
@@ -23,6 +45,9 @@ export function formatRegionStats(
   queryReady = true,
   kind: 'network' | 'submap' = 'network'
 ): string {
+  const traffic = formatRegionTrafficSuffix(stats);
+  const withTraffic = (base: string): string => (traffic ? `${base} · ${traffic}` : base);
+
   if (kind === 'submap') {
     if (stats.loadFailed) {
       return 'Mapa indisponível';
@@ -31,26 +56,29 @@ export function formatRegionStats(
       return 'Carregando…';
     }
     if (stats.total === 0) {
-      return '0 / 0 / 0';
+      return traffic ?? '0 / 0 / 0';
     }
-    return `${stats.offline} / ${stats.alert} / ${stats.online}`;
+    return withTraffic(`${stats.offline} / ${stats.alert} / ${stats.online}`);
   }
   if (stats.loadFailed) {
     return 'Mapa indisponível';
   }
   if (stats.total === 0) {
-    return '';
+    return traffic ?? '';
   }
   if (!queryReady) {
     return 'Carregando…';
   }
   if (stats.offline > 0) {
     const n = stats.offline;
-    return `${n} parado${n > 1 ? 's' : ''} · ${stats.total} hosts`;
+    return withTraffic(`${n} parado${n > 1 ? 's' : ''} · ${stats.total} hosts`);
   }
   if (stats.alert > 0) {
     const n = stats.alert;
-    return `${n} alerta${n > 1 ? 's' : ''} · ${stats.total} hosts`;
+    return withTraffic(`${n} alerta${n > 1 ? 's' : ''} · ${stats.total} hosts`);
+  }
+  if (traffic) {
+    return withTraffic(`${stats.total} hosts · OK`);
   }
   return `${stats.total} hosts · OK`;
 }
@@ -314,4 +342,147 @@ export function resolveHostNodeStatus(
     return 'unknown';
   }
   return display.status;
+}
+
+function trafficFromLinkMetrics(metrics?: LinkRuntimeMetrics): { rxBps?: number; txBps?: number } {
+  if (!metrics) {
+    return {};
+  }
+  return {
+    rxBps: metrics.from.rxBps,
+    txBps: metrics.from.txBps,
+  };
+}
+
+function addTrafficTotals(
+  current: { rxBps?: number; txBps?: number },
+  delta: { rxBps?: number; txBps?: number }
+): { rxBps?: number; txBps?: number } {
+  const rxBps =
+    current.rxBps !== undefined || delta.rxBps !== undefined
+      ? (current.rxBps ?? 0) + (delta.rxBps ?? 0)
+      : undefined;
+  const txBps =
+    current.txBps !== undefined || delta.txBps !== undefined
+      ? (current.txBps ?? 0) + (delta.txBps ?? 0)
+      : undefined;
+  return { rxBps, txBps };
+}
+
+function hostKeysForSubmapNode(
+  node: TopologyNode,
+  submapHosts: Record<string, string[] | null | undefined>,
+  childMaps?: Record<string, TopologyMap | undefined>,
+  hostMetadata?: HostMetadataMap
+): string[] | undefined {
+  const childId = node.submapChildMapId?.trim();
+  const childMap = childId ? childMaps?.[childId] : undefined;
+  if (childMap) {
+    return childMapHostKeys(childMap, hostMetadata);
+  }
+  const fetched = submapHosts[node.id];
+  if (fetched === undefined || fetched === null) {
+    return undefined;
+  }
+  return fetched;
+}
+
+function nodeIdsForHostKeys(
+  hostKeys: string[],
+  hostNodes: TopologyNode[],
+  hostMetadata?: HostMetadataMap
+): Set<string> {
+  const keySet = new Set(hostKeys.map((key) => key.trim().toLowerCase()).filter(Boolean));
+  const ids = new Set<string>();
+  for (const node of hostNodes) {
+    const key = resolveHostLookupKey(node, hostMetadata)?.trim().toLowerCase();
+    if (key && keySet.has(key)) {
+      ids.add(node.id);
+    }
+  }
+  return ids;
+}
+
+function regionNodeIdsForLink(
+  link: TopologyLink,
+  regionNodeIds: Set<string>
+): boolean {
+  return regionNodeIds.has(link.from) || regionNodeIds.has(link.to);
+}
+
+/** Soma RX/TX dos links que tocam cada submapa ou rede. */
+export function mergeRegionTrafficStats(
+  regionStats: Map<string, RegionHostStats>,
+  map: TopologyMap,
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>,
+  linkMetricsByLink: LinkRuntimeMetricsMap,
+  submapHosts: Record<string, string[] | null | undefined> = {},
+  hostMetadata: HostMetadataMap = {},
+  childMaps?: Record<string, TopologyMap | undefined>
+): Map<string, RegionHostStats> {
+  if (!map.links.length || !Object.keys(linkMetricsByLink).length) {
+    return regionStats;
+  }
+
+  const hostNodes = map.nodes.filter((node) => isHostNode(node));
+  const trafficByRegion = new Map<string, { rxBps?: number; txBps?: number }>();
+
+  for (const node of map.nodes) {
+    if (node.type === 'submap') {
+      const hostKeys = hostKeysForSubmapNode(node, submapHosts, childMaps, hostMetadata);
+      if (!hostKeys?.length) {
+        continue;
+      }
+      trafficByRegion.set(node.id, { rxBps: 0, txBps: 0 });
+      const nodeIds = nodeIdsForHostKeys(hostKeys, hostNodes, hostMetadata);
+      for (const link of map.links) {
+        if (!regionNodeIdsForLink(link, nodeIds)) {
+          continue;
+        }
+        const totals = trafficFromLinkMetrics(linkMetricsByLink[linkKey(link)]);
+        const prev = trafficByRegion.get(node.id) ?? {};
+        trafficByRegion.set(node.id, addTrafficTotals(prev, totals));
+      }
+      continue;
+    }
+
+    if (node.type !== 'network') {
+      continue;
+    }
+
+    const layout = nodeLayouts.get(node.id);
+    if (!layout) {
+      continue;
+    }
+
+    const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
+    if (!inside.length) {
+      continue;
+    }
+
+    const nodeIds = new Set(inside.map((host) => host.id));
+    trafficByRegion.set(node.id, { rxBps: 0, txBps: 0 });
+    for (const link of map.links) {
+      if (!regionNodeIdsForLink(link, nodeIds)) {
+        continue;
+      }
+      const totals = trafficFromLinkMetrics(linkMetricsByLink[linkKey(link)]);
+      const prev = trafficByRegion.get(node.id) ?? {};
+      trafficByRegion.set(node.id, addTrafficTotals(prev, totals));
+    }
+  }
+
+  if (!trafficByRegion.size) {
+    return regionStats;
+  }
+
+  const merged = new Map(regionStats);
+  for (const [regionId, traffic] of trafficByRegion) {
+    const stats = merged.get(regionId);
+    if (!stats) {
+      continue;
+    }
+    merged.set(regionId, { ...stats, ...traffic });
+  }
+  return merged;
 }

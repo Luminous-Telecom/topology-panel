@@ -11,6 +11,7 @@ import {
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
+import { resolvePanelQueryRefInfos } from '../../services/zabbixDirectIndex';
 import { addZabbixHostAt } from '../../utils/mapEdits';
 import { activeChildMaps } from '../../utils/childMapEdits';
 import { updateLinkProps } from '../../utils/mapLinkEdits';
@@ -102,7 +103,7 @@ export function CanvasModals({
         <NodeEditModal
           key={`${editNode.id}:${editNode.width ?? ''}:${editNode.height ?? ''}`}
           node={editNode}
-          queryRefInfos={options.queryRefInfosAvailable ?? []}
+          queryRefInfos={resolvePanelQueryRefInfos(options)}
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
           childMapIds={Object.keys(activeChildMaps(options.childMaps)).sort()}
@@ -165,6 +166,7 @@ export function CanvasModals({
           hostDisplay={hostDisplay}
           options={options}
           queryReady={queryReady}
+          zabbixDatasourceUid={zabbixDatasourceUid}
         />
       ) : null}
 
@@ -174,6 +176,9 @@ export function CanvasModals({
           storedMap={storedMap}
           queryData={queryData}
           hostMetadata={hostMetadata}
+          zabbixDatasourceUid={zabbixDatasourceUid}
+          zabbixRxItemKeyword={options.zabbixRxItemKeyword}
+          zabbixTxItemKeyword={options.zabbixTxItemKeyword}
           onClose={() => setEditLink(null)}
           onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
         />
@@ -184,6 +189,9 @@ export function CanvasModals({
           pending={pendingLink}
           hostMetadata={hostMetadata}
           queryData={queryData}
+          zabbixDatasourceUid={zabbixDatasourceUid}
+          zabbixRxItemKeyword={options.zabbixRxItemKeyword}
+          zabbixTxItemKeyword={options.zabbixTxItemKeyword}
           onClose={onPendingLinkClose}
           onSave={onPendingLinkSave}
         />

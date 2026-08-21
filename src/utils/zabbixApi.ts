@@ -1,7 +1,16 @@
 import { getBackendSrv } from '@grafana/runtime';
+import { TimeRange } from '@grafana/data';
 import { HostMetadata, HostMetadataMap } from '../types';
 import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 import { isIpv4 } from './ipv4';
+import { collectHostLookupCandidates, HostLookupRef } from './hostLookup';
+import { pickBestZabbixItemByKey } from '../services/zabbixDirectIndex';
+import {
+  buildHostHoverSeriesFromZabbixHistory,
+  HostHoverSeries,
+} from './hostTimeSeries';
+import { StatusColorOptions } from './statusMapping';
+import { createAsyncCache } from '../services/asyncCache';
 
 interface ZabbixApiResponse<T> {
   result?: T;
@@ -28,13 +37,27 @@ function asZabbixId(value: unknown): string {
   return String(value).trim();
 }
 
+/** Requisição abortada pelo Grafana/React ou queda momentânea de rede — não é falha permanente. */
+export function isBenignZabbixFetchError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /failed to fetch|context canceled|context cancelled|abort|network error|networkerror/i.test(msg);
+}
+
 async function zabbixCall<T>(datasourceUid: string, method: string, params: object): Promise<T> {
-  const response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
-    `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
-    { method, params }
-  );
+  let response: ZabbixApiResponse<T> | T;
+  try {
+    response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
+      `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
+      { method, params }
+    );
+  } catch (err) {
+    if (isBenignZabbixFetchError(err)) {
+      throw err;
+    }
+    throw new Error('Falha ao consultar o Zabbix.');
+  }
   if (response && typeof response === 'object' && 'error' in response && response.error) {
-    throw new Error(response.error.message ?? 'Zabbix API error');
+    throw new Error(response.error.message ?? 'Falha ao consultar o Zabbix.');
   }
   if (response && typeof response === 'object' && 'result' in response) {
     return (response as ZabbixApiResponse<T>).result as T;
@@ -434,6 +457,252 @@ export async function fetchZabbixItemLastValues(
   return result;
 }
 
+/** Host do Zabbix no modo direto — já com IP, grupos e tags resolvidos. */
+export interface ZabbixDirectHost {
+  hostid: string;
+  /** Nome técnico (`host`). */
+  host: string;
+  /** Nome visível (`name`). */
+  name: string;
+  ip?: string;
+  /** Grupos do host, restritos aos configurados no painel. */
+  groups: string[];
+  tags?: Array<{ tag: string; value: string }>;
+}
+
+export interface ZabbixDirectSnapshot {
+  hosts: ZabbixDirectHost[];
+  /** Itens de status (`search` pela chave configurada) de todos os hosts do snapshot. */
+  statusItems: ZabbixInterfaceItem[];
+  /** Grupos configurados que existem de fato no Zabbix — vazio indica configuração errada. */
+  resolvedGroups: string[];
+}
+
+/** Grupos de host disponíveis no Zabbix — alimenta o seletor de grupos do painel. */
+export async function fetchZabbixHostGroupNames(datasourceUid: string): Promise<string[]> {
+  if (!datasourceUid) {
+    return [];
+  }
+  const groups = await zabbixCall<Array<{ name?: string }>>(datasourceUid, 'hostgroup.get', {
+    output: ['groupid', 'name'],
+    sortfield: 'name',
+    real_hosts: true,
+  });
+  const names = new Set<string>();
+  for (const group of groups ?? []) {
+    const name = group.name?.trim();
+    if (name) {
+      names.add(name);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+async function fetchGroupIdsByName(
+  datasourceUid: string,
+  groupNames: string[]
+): Promise<Map<string, string>> {
+  const groups = await zabbixCall<Array<{ groupid?: string; name?: string }>>(
+    datasourceUid,
+    'hostgroup.get',
+    { output: ['groupid', 'name'], filter: { name: groupNames } }
+  );
+  const byName = new Map<string, string>();
+  for (const group of groups ?? []) {
+    const name = group.name?.trim();
+    const groupid = asZabbixId(group.groupid);
+    if (name && groupid) {
+      byName.set(name, groupid);
+    }
+  }
+  return byName;
+}
+
+async function fetchMonitoredHostsInGroups(
+  datasourceUid: string,
+  groupIds: string[],
+  wantedGroups: Set<string>
+): Promise<ZabbixDirectHost[]> {
+  const rows = await zabbixCall<
+    Array<ZabbixHost & { groups?: Array<{ name?: string }>; hostgroups?: Array<{ name?: string }> }>
+  >(datasourceUid, 'host.get', {
+    groupids: groupIds,
+    output: ['hostid', 'host', 'name'],
+    selectInterfaces: ['ip', 'main', 'type'],
+    selectHostGroups: ['name'],
+    selectTags: ['tag', 'value'],
+    filter: { status: ZABBIX_HOST_MONITORED },
+    monitored_hosts: true,
+  });
+
+  const hosts: ZabbixDirectHost[] = [];
+  for (const row of rows ?? []) {
+    const hostid = asZabbixId(row.hostid);
+    const technical = row.host?.trim() ?? '';
+    const visible = row.name?.trim() || technical;
+    if (!hostid || !visible) {
+      continue;
+    }
+    const rawGroups = row.hostgroups ?? row.groups ?? [];
+    const groups = rawGroups
+      .map((group) => group.name?.trim() ?? '')
+      .filter((name) => wantedGroups.has(name));
+    hosts.push({
+      hostid,
+      host: technical,
+      name: visible,
+      ip: pickMainInterfaceIp(row.interfaces),
+      groups,
+      tags: row.tags
+        ?.map((tag) => ({ tag: tag.tag?.trim() ?? '', value: tag.value?.trim() ?? '' }))
+        .filter((tag) => Boolean(tag.tag)),
+    });
+  }
+  return hosts;
+}
+
+async function fetchStatusItemsForHosts(
+  datasourceUid: string,
+  hostIds: string[],
+  statusItemKey: string
+): Promise<ZabbixInterfaceItem[]> {
+  const items: ZabbixInterfaceItem[] = [];
+  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+    try {
+      const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
+        hostids: batch,
+        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+        search: { key_: statusItemKey },
+        monitored: true,
+      });
+      for (const item of batchItems ?? []) {
+        items.push(item);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+  return items;
+}
+
+/**
+ * Hosts e últimos valores de status dos grupos configurados — base do modo "Zabbix direto".
+ *
+ * Substitui a aba Query como fonte do mapa: sem `history.get`, sem intervalo de tempo, só o
+ * último valor que o Zabbix já mantém em `item.lastvalue`.
+ */
+export async function fetchZabbixDirectSnapshot(
+  datasourceUid: string,
+  groupNames: string[],
+  statusItemKey: string
+): Promise<ZabbixDirectSnapshot> {
+  const wanted = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
+  const itemKey = statusItemKey.trim();
+  if (!datasourceUid || !wanted.length || !itemKey) {
+    return { hosts: [], statusItems: [], resolvedGroups: [] };
+  }
+
+  const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted);
+  const resolvedGroups = [...groupIdByName.keys()];
+  if (!resolvedGroups.length) {
+    return { hosts: [], statusItems: [], resolvedGroups };
+  }
+
+  const hosts = await fetchMonitoredHostsInGroups(
+    datasourceUid,
+    [...groupIdByName.values()],
+    new Set(resolvedGroups)
+  );
+  if (!hosts.length) {
+    return { hosts, statusItems: [], resolvedGroups };
+  }
+
+  const statusItems = await fetchStatusItemsForHosts(
+    datasourceUid,
+    hosts.map((host) => host.hostid),
+    itemKey
+  );
+  return { hosts, statusItems, resolvedGroups };
+}
+
+/**
+ * Prefixos de key que cobrem as métricas de interface reconhecidas por `parseInterfaceItemKey`.
+ * A classificação final continua sendo dela — aqui a lista só evita puxar o inventário inteiro do
+ * host, que em roteador grande passa de milhares de itens.
+ */
+const INTERFACE_ITEM_SEARCH_KEYS = [
+  'net.if.',
+  'ifHCInOctets',
+  'ifHCOutOctets',
+  'ifInOctets',
+  'ifOutOctets',
+  'ifOperStatus',
+  'ifAdminStatus',
+  'ifSpeed',
+  'ifInErrors',
+  'ifOutErrors',
+  'ifInDiscards',
+  'ifOutDiscards',
+];
+
+/**
+ * Itens de interface monitorados por host — inventário do seletor de interface do link.
+ * Usado quando o painel não tem aba Query alimentando o índice (modo "Zabbix direto").
+ */
+export async function fetchZabbixHostInterfaceItems(
+  datasourceUid: string,
+  hostKeys: string[],
+  extraSearchKeys: string[] = []
+): Promise<ZabbixHostInterfaceItems[]> {
+  const keys = [...new Set(hostKeys.map((key) => key.trim()).filter(Boolean))];
+  if (!datasourceUid || !keys.length) {
+    return [];
+  }
+
+  const hostIdByKey = new Map<string, string>();
+  for (const key of keys) {
+    const hostId = await resolveZabbixHostId(datasourceUid, key);
+    if (hostId) {
+      hostIdByKey.set(key, hostId);
+    }
+  }
+
+  const hostIds = [...new Set(hostIdByKey.values())];
+  const searchKeys = [
+    ...INTERFACE_ITEM_SEARCH_KEYS,
+    ...extraSearchKeys.map((key) => key.trim()).filter(Boolean),
+  ];
+  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
+  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+    try {
+      const items = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
+        hostids: batch,
+        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+        search: { key_: searchKeys },
+        searchByAny: true,
+        monitored: true,
+      });
+      for (const item of items ?? []) {
+        const hostid = asZabbixId(item.hostid);
+        if (!hostid) {
+          continue;
+        }
+        const list = itemsByHostId.get(hostid) ?? [];
+        list.push(item);
+        itemsByHostId.set(hostid, list);
+      }
+    } catch {
+      /* lote sem resposta */
+    }
+  }
+
+  const result: ZabbixHostInterfaceItems[] = [];
+  for (const [hostKey, hostid] of hostIdByKey) {
+    result.push({ hostKey, hostid, items: itemsByHostId.get(hostid) ?? [] });
+  }
+  return result;
+}
+
 const NEIGHBOR_ITEM_SEARCH_KEYS = ['lldp', 'cdp', 'cdpCache', 'LLDP', 'CDP', 'lldpRem', 'cdpRem'];
 
 async function fetchNeighborItemsForHostIds(
@@ -591,4 +860,153 @@ export async function fetchZabbixHostProblems(
   }
 
   return summary;
+}
+
+interface ZabbixHoverItem {
+  itemid: string;
+  key_: string;
+  name?: string;
+  value_type?: string;
+  lastvalue?: string;
+  lastclock?: string;
+}
+
+interface ZabbixHistoryRow {
+  clock: string;
+  value: string;
+}
+
+const hoverSeriesCache = createAsyncCache<HostHoverSeries | undefined>({
+  ttlMs: 15_000,
+  isCacheable: (value) => Boolean(value?.points.length),
+});
+
+function resolveHostIdFromLookup(ref: HostLookupRef, metadata?: HostMetadataMap): string | undefined {
+  for (const candidate of collectHostLookupCandidates(ref, metadata)) {
+    const entry = metadata?.[candidate];
+    const hostid = entry?.hostid?.trim();
+    if (hostid) {
+      return hostid;
+    }
+  }
+  return undefined;
+}
+
+function zabbixHistoryType(valueType: number | undefined): 0 | 3 {
+  return valueType === 0 ? 0 : 3;
+}
+
+function hoverItemLabel(item: ZabbixHoverItem): string {
+  const name = item.name?.trim();
+  if (name) {
+    return name;
+  }
+  const key = item.key_?.trim();
+  return key || 'ICMP';
+}
+
+async function fetchZabbixItemHistory(
+  datasourceUid: string,
+  item: ZabbixHoverItem,
+  timeFromSec: number,
+  timeTillSec: number
+): Promise<Array<{ clockSec: number; value: number }>> {
+  const itemid = asZabbixId(item.itemid);
+  if (!itemid) {
+    return [];
+  }
+  const valueType = item.value_type != null ? Number(item.value_type) : undefined;
+  const rows = await zabbixCall<ZabbixHistoryRow[]>(datasourceUid, 'history.get', {
+    output: ['clock', 'value'],
+    history: zabbixHistoryType(Number.isFinite(valueType) ? valueType : undefined),
+    itemids: [itemid],
+    time_from: timeFromSec,
+    time_till: timeTillSec,
+    sortfield: 'clock',
+    sortorder: 'ASC',
+    limit: 500,
+  });
+
+  const points: Array<{ clockSec: number; value: number }> = [];
+  for (const row of rows ?? []) {
+    const clockSec = parseFloatOrNull(row.clock);
+    const value = parseFloatOrNull(row.value);
+    if (clockSec === null || value === null) {
+      continue;
+    }
+    points.push({ clockSec, value });
+  }
+
+  if (points.length) {
+    return points;
+  }
+
+  const lastClock = parseFloatOrNull(item.lastclock ?? undefined);
+  const lastValue = parseFloatOrNull(item.lastvalue ?? undefined);
+  if (lastClock !== null && lastValue !== null) {
+    return [{ clockSec: lastClock, value: lastValue }];
+  }
+
+  return [];
+}
+
+/** Histórico ICMP/perda para o hover no modo Zabbix direto (substitui séries da aba Query). */
+export async function fetchHostHoverSeriesFromZabbix(
+  datasourceUid: string,
+  ref: HostLookupRef,
+  metadata: HostMetadataMap | undefined,
+  timeRange: TimeRange | undefined,
+  statusItemKey: string,
+  statusOptions: StatusColorOptions
+): Promise<HostHoverSeries | undefined> {
+  if (!datasourceUid) {
+    return undefined;
+  }
+
+  const hostid =
+    resolveHostIdFromLookup(ref, metadata) ??
+    (await resolveZabbixHostId(
+      datasourceUid,
+      ref.zabbixHost?.trim() || ref.label?.trim() || ''
+    ));
+  if (!hostid) {
+    return undefined;
+  }
+
+  const fromSec = Math.floor((timeRange?.from.valueOf() ?? Date.now() - 5 * 60_000) / 1000);
+  const tillSec = Math.floor((timeRange?.to.valueOf() ?? Date.now()) / 1000);
+  const cacheKey = `${datasourceUid}\u0000${hostid}\u0000${fromSec}\u0000${tillSec}\u0000${statusItemKey.trim().toLowerCase()}`;
+
+  return hoverSeriesCache.get(cacheKey, async () => {
+    const wantedKey = statusItemKey.trim() || 'icmpping';
+    let items = await zabbixCall<ZabbixHoverItem[]>(datasourceUid, 'item.get', {
+      hostids: [hostid],
+      output: ['itemid', 'key_', 'name', 'value_type', 'lastvalue', 'lastclock'],
+      search: { key_: wantedKey },
+      monitored: true,
+    });
+
+    let picked = pickBestZabbixItemByKey(items ?? [], wantedKey);
+    if (!picked) {
+      items = await zabbixCall<ZabbixHoverItem[]>(datasourceUid, 'item.get', {
+        hostids: [hostid],
+        output: ['itemid', 'key_', 'name', 'value_type', 'lastvalue', 'lastclock'],
+        search: { key_: 'icmpping' },
+        searchByAny: true,
+        monitored: true,
+      });
+      picked = pickBestZabbixItemByKey(items ?? [], wantedKey);
+    }
+    if (!picked) {
+      return undefined;
+    }
+
+    const rawPoints = await fetchZabbixItemHistory(datasourceUid, picked, fromSec, tillSec);
+    return buildHostHoverSeriesFromZabbixHistory(
+      rawPoints,
+      picked.key_ ?? wantedKey,
+      hoverItemLabel(picked),
+      statusOptions
+    );
+  });
 }

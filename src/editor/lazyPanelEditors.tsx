@@ -44,6 +44,16 @@ const LazyTopologyTemplatesEditor = lazy(() =>
     default: m.TopologyTemplatesEditor,
   }))
 );
+const LazyZabbixDatasourceEditor = lazy(() =>
+  import('../components/ZabbixDatasourceEditor').then((m) => ({
+    default: m.ZabbixDatasourceEditor,
+  }))
+);
+const LazyZabbixHostGroupsEditor = lazy(() =>
+  import('../components/ZabbixHostGroupsEditor').then((m) => ({
+    default: m.ZabbixHostGroupsEditor,
+  }))
+);
 
 export function TopologyLayoutEditor(
   props: ComponentProps<typeof LazyTopologyLayoutEditor>
@@ -129,6 +139,26 @@ export function TopologyTemplatesEditor(
   return (
     <Suspense fallback={loading}>
       <LazyTopologyTemplatesEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function ZabbixDatasourceEditor(
+  props: ComponentProps<typeof LazyZabbixDatasourceEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyZabbixDatasourceEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function ZabbixHostGroupsEditor(
+  props: ComponentProps<typeof LazyZabbixHostGroupsEditor>
+): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyZabbixHostGroupsEditor {...props} />
     </Suspense>
   );
 }

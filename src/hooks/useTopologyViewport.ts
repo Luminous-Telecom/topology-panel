@@ -7,8 +7,9 @@ import { useViewportSize } from './useViewportSize';
 interface UseTopologyViewportParams {
   wrapRef: RefObject<HTMLDivElement>;
   /**
-   * Elemento montado cuja `clientWidth`/`clientHeight` define o viewport (ex.: painel de scroll
-   * sem a largura das barras). Enquanto `null`, usa `wrapRef`.
+   * Elemento montado cuja `clientWidth`/`clientHeight` define o viewport. Por padrão usa o
+   * `wrapRef` (overflow hidden) — nunca o painel de scroll, cujo client area encolhe quando
+   * as barras nativas aparecem e re-dispara o ResizeObserver em loop.
    */
   sizeElement?: HTMLElement | null;
   savedView: TopologyView | undefined;

@@ -10,16 +10,94 @@ import {
   TopologyLinksEditor,
   TopologySubmapsEditor,
   TopologyTemplatesEditor,
+  ZabbixDatasourceEditor,
+  ZabbixHostGroupsEditor,
 } from './editor/lazyPanelEditors';
 import { addMapSection, MAP_SECTION_ROOT } from './editor/mapSectionNested';
 import {
   TopologyPanelOptions,
+  ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
+  ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
+  ZABBIX_DIRECT_MIN_REFRESH_SEC,
   defaultHostTypeColors,
   defaultStatusValueMappings,
 } from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
   .setPanelOptions((builder) => {
+    builder
+      .addRadio({
+        path: 'dataMode',
+        name: 'Modo de dados',
+        description:
+          "'Queries do painel' usa as queries/transformations do painel. 'Zabbix direto' busca o último valor dos itens direto do Zabbix, sem queries nem histórico.",
+        defaultValue: 'query',
+        category: ['Fonte de dados'],
+        settings: {
+          options: [
+            { value: 'query', label: 'Queries do painel' },
+            { value: 'zabbix', label: 'Zabbix direto (último valor)' },
+          ],
+        },
+      })
+      .addCustomEditor({
+        id: 'zabbixDatasourceUid',
+        path: 'zabbixDatasourceUid',
+        name: 'Datasource Zabbix',
+        description: 'Servidor consultado no modo direto.',
+        editor: ZabbixDatasourceEditor,
+        category: ['Fonte de dados'],
+        defaultValue: undefined,
+        showIf: (config) => config.dataMode === 'zabbix',
+      })
+      .addCustomEditor({
+        id: 'zabbixHostGroups',
+        path: 'zabbixHostGroups',
+        name: 'Grupos de host',
+        description:
+          'Cada grupo ocupa o lugar de uma consulta: aparece em "Mostrar hosts da query no mapa" e no campo Consulta dos submapas.',
+        editor: ZabbixHostGroupsEditor,
+        category: ['Fonte de dados'],
+        defaultValue: undefined,
+        showIf: (config) => config.dataMode === 'zabbix',
+      })
+      .addTextInput({
+        path: 'zabbixStatusItemKey',
+        name: 'Item de status',
+        description:
+          'Chave do item lido em cada host para decidir online/offline (ex.: icmpping). O valor passa pelo mapeamento de status configurado em Aparência.',
+        defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
+        category: ['Fonte de dados'],
+        showIf: (config) => config.dataMode === 'zabbix',
+      })
+      .addTextInput({
+        path: 'zabbixRxItemKeyword',
+        name: 'Palavra-chave RX (interface)',
+        description:
+          'Termo extra para localizar itens de download/tráfego de entrada no inventário de interfaces (ex.: ifHCInOctets ou trecho da key customizada).',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+        showIf: (config) => config.dataMode === 'zabbix',
+      })
+      .addTextInput({
+        path: 'zabbixTxItemKeyword',
+        name: 'Palavra-chave TX (interface)',
+        description:
+          'Termo extra para localizar itens de upload/tráfego de saída no inventário de interfaces (ex.: ifHCOutOctets ou trecho da key customizada).',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+        showIf: (config) => config.dataMode === 'zabbix',
+      })
+      .addNumberInput({
+        path: 'zabbixRefreshSec',
+        name: 'Intervalo de atualização (segundos)',
+        description: `Frequência de busca dos últimos valores no Zabbix (mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s)`,
+        defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
+        category: ['Fonte de dados'],
+        settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },
+        showIf: (config) => config.dataMode === 'zabbix',
+      });
+
     addMapSection(builder, ['Layout'], (section) => {
       section.addCustomEditor({
         id: 'mapLayout',

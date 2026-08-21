@@ -3,7 +3,9 @@ import { StandardEditorProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
+import { resolvePanelQueryRefInfos } from '../services/zabbixDirectIndex';
 import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils/queryHosts';
+import { queryRefBadgeLabel, queryRefRowTitle } from '../utils/queryRefLabel';
 
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 
@@ -11,6 +13,9 @@ function resolveAvailableQueryRefs(context: Props['context']): TopologyQueryRefI
   const synced = context.options.queryRefInfosAvailable ?? [];
   if (synced.length) {
     return synced;
+  }
+  if (context.options.dataMode === 'zabbix') {
+    return resolvePanelQueryRefInfos(context.options);
   }
   return collectQueryRefInfosFromPanelData(context.data);
 }
@@ -46,15 +51,21 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 36px;
     height: 28px;
+    padding: 0 4px;
     border-radius: 4px;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1;
     color: ${theme.colors.text.primary};
     background: ${theme.colors.background.secondary};
     border: 1px solid ${theme.colors.border.weak};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `;
 
   const lockedStyle = css`
@@ -77,9 +88,12 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   };
 
   if (!queryRefs.length) {
+    const directMode = context.options.dataMode === 'zabbix';
     return (
       <span style={{ fontSize: 12, opacity: 0.75 }}>
-        Nenhuma query detectada ainda — salve ou aguarde a visualização do painel.
+        {directMode
+          ? 'Escolha o datasource Zabbix e ao menos um grupo de host em Fonte de dados.'
+          : 'Nenhuma query detectada ainda — salve ou aguarde a visualização do painel.'}
       </span>
     );
   }
@@ -92,11 +106,22 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
 
         return (
           <div key={refId} className={rowStyle}>
-            <span className={badgeStyle} title={`Consulta ${refId}`}>
-              {refId}
+            <span className={badgeStyle} title={refId}>
+              {queryRefBadgeLabel(refId)}
             </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>Consulta {refId}</div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={queryRefRowTitle(refId, hint)}
+              >
+                {queryRefRowTitle(refId, hint)}
+              </div>
               <div style={{ fontSize: 11, color: theme.colors.text.secondary, lineHeight: 1.35 }}>
                 {reservedForSubmap
                   ? 'Reservada a submapa — não importa hosts no mapa pai'

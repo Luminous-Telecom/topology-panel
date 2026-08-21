@@ -15,6 +15,11 @@ export interface ParsedInterfaceKey {
   snmpIndex?: string;
 }
 
+export interface InterfaceKeyParseOptions {
+  rxKeyword?: string;
+  txKeyword?: string;
+}
+
 const RX_PATTERNS = [
   /^net\.if\.in\[/i,
   /^vfs\.net\.if\.in\[/i,
@@ -52,6 +57,22 @@ export function extractInterfaceTokenFromKey(key: string): string | undefined {
     return undefined;
   }
   return inner;
+}
+
+function classifyByCustomKeywords(
+  key: string,
+  opts?: InterfaceKeyParseOptions
+): InterfaceMetricKind | undefined {
+  const lower = key.toLowerCase();
+  const rx = opts?.rxKeyword?.trim().toLowerCase();
+  const tx = opts?.txKeyword?.trim().toLowerCase();
+  if (rx && lower.includes(rx)) {
+    return 'rx';
+  }
+  if (tx && lower.includes(tx)) {
+    return 'tx';
+  }
+  return undefined;
 }
 
 function classifyByPatterns(key: string): InterfaceMetricKind | undefined {
@@ -187,7 +208,10 @@ export function snmpIndexFromToken(token: string): string | undefined {
 }
 
 /** Classifica uma key Zabbix e extrai identificador da interface. */
-export function parseInterfaceItemKey(key: string): ParsedInterfaceKey | undefined {
+export function parseInterfaceItemKey(
+  key: string,
+  opts?: InterfaceKeyParseOptions
+): ParsedInterfaceKey | undefined {
   const trimmed = key.trim();
   const interfaceToken = extractInterfaceTokenFromKey(trimmed);
   if (!interfaceToken || isDiscoveryPrototype(interfaceToken)) {
@@ -196,7 +220,9 @@ export function parseInterfaceItemKey(key: string): ParsedInterfaceKey | undefin
 
   const baseKey = baseKeyFromItemKey(trimmed);
   const kind =
-    classifyByPatterns(trimmed) ?? (baseKey ? classifyGenericBaseKey(baseKey) : undefined);
+    classifyByPatterns(trimmed) ??
+    (baseKey ? classifyGenericBaseKey(baseKey) : undefined) ??
+    classifyByCustomKeywords(trimmed, opts);
   if (!kind) {
     return undefined;
   }

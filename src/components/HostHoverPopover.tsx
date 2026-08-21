@@ -10,15 +10,15 @@ import {
   TopologyPanelOptions,
 } from '../types';
 import { HostLookupRef, resolveHostIp } from '../utils/hostLookup';
-import { lookupHostDisplay, resolveDisplayQueryRefIds } from '../utils/queryHosts';
+import { lookupHostDisplay } from '../utils/queryHosts';
+import { useHostHoverSeries } from '../hooks/useHostHoverSeries';
 import {
-  extractHostHoverSeries,
   formatHoverFieldValue,
   hostHoverPeriodLabel,
+  HostHoverSeries,
   hoverMetricLabel,
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
-import { StatusColorOptions } from '../utils/statusMapping';
 
 interface Props {
   node: TopologyNode;
@@ -29,6 +29,7 @@ interface Props {
   hostDisplay?: HostDisplayMap;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  zabbixDatasourceUid?: string;
 }
 
 const CHART_W = 260;
@@ -54,7 +55,7 @@ function Sparkline({
   colorOnline,
   colorOffline,
 }: {
-  series: NonNullable<ReturnType<typeof extractHostHoverSeries>>;
+  series: HostHoverSeries;
   colorOnline: string;
   colorOffline: string;
 }) {
@@ -126,43 +127,32 @@ export function HostHoverPopover({
   hostDisplay,
   options,
   queryReady,
+  zabbixDatasourceUid,
 }: Props) {
   const theme = useTheme2();
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
-
-  const displayQueryRefIds = useMemo(() => resolveDisplayQueryRefIds(options), [options.displayQueryRefIds]);
-
-  const statusColorOptions = useMemo<StatusColorOptions>(
-    () => ({
-      colorOnline: options.colorOnline,
-      colorOffline: options.colorOffline,
-      colorAlert: options.colorAlert,
-      statusValueMappings: options.statusValueMappings,
-    }),
-    [options.colorOnline, options.colorOffline, options.colorAlert, options.statusValueMappings]
-  );
 
   const lookupRef = useMemo<HostLookupRef>(
     () => ({
       zabbixHost: node.zabbixHost,
       subtitle: node.subtitle,
       label: node.label,
+      zabbixHostId: node.zabbixHostId,
     }),
-    [node.zabbixHost, node.subtitle, node.label]
+    [node.zabbixHost, node.subtitle, node.label, node.zabbixHostId]
   );
 
-  const series = useMemo(
-    () =>
-      extractHostHoverSeries(
-        queryData,
-        lookupRef,
-        hostMetadata,
-        displayQueryRefIds,
-        statusColorOptions
-      ),
-    [displayQueryRefIds, hostMetadata, lookupRef, queryData, statusColorOptions]
-  );
+  const { series, loading: seriesLoading, directMode } = useHostHoverSeries({
+    enabled: true,
+    dataMode: options.dataMode,
+    queryData,
+    lookupRef,
+    hostMetadata,
+    options,
+    queryReady,
+    zabbixDatasourceUid,
+  });
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   const ip = resolveHostIp(node, hostMetadata);
@@ -245,8 +235,10 @@ export function HostHoverPopover({
       {ip ? <div className={subtitleStyle}>{ip}</div> : null}
       <div className={subtitleStyle}>{periodLabel}</div>
 
-      {!queryReady ? (
-        <div className={emptyStyle}>Aguardando dados da Query…</div>
+      {!queryReady || seriesLoading ? (
+        <div className={emptyStyle}>
+          {directMode ? 'Carregando histórico do Zabbix…' : 'Aguardando dados da Query…'}
+        </div>
       ) : series ? (
         <>
           <div className={statRowStyle}>
@@ -272,7 +264,9 @@ export function HostHoverPopover({
         </>
       ) : (
         <div className={emptyStyle}>
-          Sem série ICMP da Query para este host (icmppingsec / icmppingloss)
+          {directMode
+            ? 'Sem histórico ICMP no período (icmppingsec / icmppingloss)'
+            : 'Sem série ICMP da Query para este host (icmppingsec / icmppingloss)'}
         </div>
       )}
     </div>,

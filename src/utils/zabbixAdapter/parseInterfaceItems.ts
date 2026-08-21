@@ -4,7 +4,7 @@ import {
   TopologyMetricReference,
   TopologyNetworkInterface,
 } from '../../types';
-import { InterfaceMetricKind, parseInterfaceItemKey, snmpIndexFromToken } from './interfaceItemKeys';
+import { InterfaceMetricKind, InterfaceKeyParseOptions, parseInterfaceItemKey, snmpIndexFromToken } from './interfaceItemKeys';
 
 export interface RawZabbixInterfaceItem {
   itemid: string;
@@ -251,7 +251,8 @@ function finalizeInterface(acc: InterfaceAccumulator): TopologyNetworkInterface 
 export function parseZabbixInterfaceItems(
   hostKey: string,
   hostid: string | undefined,
-  items: RawZabbixInterfaceItem[]
+  items: RawZabbixInterfaceItem[],
+  keyParseOptions?: InterfaceKeyParseOptions
 ): TopologyNetworkInterface[] {
   const groups = new Map<string, InterfaceAccumulator>();
 
@@ -260,7 +261,7 @@ export function parseZabbixInterfaceItems(
     if (!key) {
       continue;
     }
-    const parsed = parseInterfaceItemKey(key);
+    const parsed = parseInterfaceItemKey(key, keyParseOptions);
     if (!parsed) {
       continue;
     }
@@ -301,11 +302,17 @@ export function parseZabbixInterfaceItems(
 
 /** Mapa hostKey → interfaces descobertas. */
 export function groupInterfacesByHost(
-  entries: Array<{ hostKey: string; hostid?: string; items: RawZabbixInterfaceItem[] }>
+  entries: Array<{ hostKey: string; hostid?: string; items: RawZabbixInterfaceItem[] }>,
+  keyParseOptions?: InterfaceKeyParseOptions
 ): Record<string, TopologyNetworkInterface[]> {
   const result: Record<string, TopologyNetworkInterface[]> = {};
   for (const entry of entries) {
-    result[entry.hostKey] = parseZabbixInterfaceItems(entry.hostKey, entry.hostid, entry.items);
+    result[entry.hostKey] = parseZabbixInterfaceItems(
+      entry.hostKey,
+      entry.hostid,
+      entry.items,
+      keyParseOptions
+    );
   }
   return result;
 }

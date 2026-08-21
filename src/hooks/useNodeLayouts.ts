@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
+import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
-import { RegionHostStats, buildRegionStatsMap, formatRegionStats } from '../utils/networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats } from '../utils/networkStats';
 import {
   NodeLayout,
   computeNetworkLayout,
@@ -24,6 +24,7 @@ export interface NodeLayoutsParams {
   submapHosts?: Record<string, string[] | null | undefined>;
   childMaps?: Record<string, TopologyMap | undefined>;
   queryReady?: boolean;
+  linkMetricsByLink?: LinkRuntimeMetricsMap;
 }
 
 export interface NodeLayoutsResult {
@@ -98,6 +99,7 @@ export function useNodeLayouts({
   submapHosts,
   childMaps,
   queryReady,
+  linkMetricsByLink,
 }: NodeLayoutsParams): NodeLayoutsResult {
   const uplinkCountByNode = useMemo(() => {
     const counts = new Map<string, number>();
@@ -126,13 +128,21 @@ export function useNodeLayouts({
       );
     }
 
-    const stats = buildRegionStatsMap(
-      map.nodes,
+    const stats = mergeRegionTrafficStats(
+      buildRegionStatsMap(
+        map.nodes,
+        layouts,
+        hostDisplay ?? {},
+        submapHosts,
+        hostMetadata,
+        hostDisplayByRefId,
+        childMaps
+      ),
+      map,
       layouts,
-      hostDisplay ?? {},
+      linkMetricsByLink ?? {},
       submapHosts,
       hostMetadata,
-      hostDisplayByRefId,
       childMaps
     );
     for (const node of map.nodes) {
@@ -168,6 +178,7 @@ export function useNodeLayouts({
     childMaps,
     queryReady,
     uplinkCountByNode,
+    linkMetricsByLink,
   ]);
 
   return useMemo(() => {

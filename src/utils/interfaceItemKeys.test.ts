@@ -49,4 +49,10 @@ describe('interfaceItemKeys', () => {
     expect(parseInterfaceItemKey('vendor.traffic.in[eth0]')?.kind).toBe('rx');
     expect(parseInterfaceItemKey('vendor.traffic.out[eth0]')?.kind).toBe('tx');
   });
+
+  it('usa palavras-chave configuradas quando os padrões não reconhecem a key', () => {
+    const opts = { rxKeyword: 'customrx', txKeyword: 'customtx' };
+    expect(parseInterfaceItemKey('vendor.customrx.uplink[eth0]', opts)?.kind).toBe('rx');
+    expect(parseInterfaceItemKey('vendor.customtx.uplink[eth0]', opts)?.kind).toBe('tx');
+  });
 });

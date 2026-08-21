@@ -202,10 +202,8 @@ export function TopologyCanvas({
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFitViewportRef = useRef<TopologyFitViewportRecord | null>(null);
-  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const bindScrollRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
-    setScrollElement(node);
   }, []);
   const svgRef = useRef<SVGSVGElement>(null);
   useLinkFlowAnimation(wrapRef);
@@ -277,7 +275,6 @@ export function TopologyCanvas({
     pinchActiveRef,
   } = useTopologyViewport({
     wrapRef,
-    sizeElement: scrollElement,
     savedView,
     onViewChange,
     enableZoom: Boolean(options.enableZoom),
@@ -512,6 +509,7 @@ export function TopologyCanvas({
     submapHosts,
     childMaps: activeChildMaps(options.childMaps),
     queryReady,
+    linkMetricsByLink,
   });
 
   /** Caixas medidas para callbacks que não devem trocar de identidade a cada refresh da Query. */
@@ -536,6 +534,7 @@ export function TopologyCanvas({
     viewRef,
     commitView,
     viewport,
+    viewportRef,
     suspendSyncRef: suspendScrollSyncRef,
   });
 
@@ -543,12 +542,8 @@ export function TopologyCanvas({
   // para o zoom da roda não voltar atrás. Se o viewport ainda for 0, tenta de novo quando
   // `viewport` tiver medida — não marca o mapa como “já encaixado” nesse caso.
   useLayoutEffect(() => {
-    const el = scrollRef.current ?? wrapRef.current;
-    if (!el) {
-      return;
-    }
-    const w = el.clientWidth;
-    const h = el.clientHeight;
+    const w = viewport.w;
+    const h = viewport.h;
     if (w <= 0 || h <= 0) {
       return;
     }
@@ -584,7 +579,6 @@ export function TopologyCanvas({
     map,
     mapNavigationKey,
     nodeLayouts.size,
-    scrollElement,
     syncScrollFromView,
     viewport.h,
     viewport.w,

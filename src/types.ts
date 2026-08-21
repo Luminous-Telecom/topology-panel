@@ -312,6 +312,21 @@ export interface TopologyStatusValueMapping {
   label?: string;
 }
 
+/**
+ * Origem do status do mapa.
+ * `query` lê a aba Query do painel; `zabbix` busca o último valor direto na API Zabbix,
+ * sem queries nem histórico.
+ */
+export type TopologyDataMode = 'query' | 'zabbix';
+
+/** Piso do intervalo de busca no modo Zabbix direto — protege o servidor de polling agressivo. */
+export const ZABBIX_DIRECT_MIN_REFRESH_SEC = 5;
+
+export const ZABBIX_DIRECT_DEFAULT_REFRESH_SEC = 60;
+
+/** Item lido em cada host para decidir online/offline quando não há Query. */
+export const ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY = 'icmpping';
+
 export interface TopologyPanelOptions {
   map: TopologyMap;
   /** Posição e zoom do canvas (persiste ao salvar o dashboard) */
@@ -365,6 +380,30 @@ export interface TopologyPanelOptions {
   /** Tamanho da fonte dos títulos e contagem nas caixas de rede */
   networkFontSize?: number;
   showSubtitle: boolean;
+  /** Origem do status: aba Query (padrão) ou API Zabbix. */
+  dataMode?: TopologyDataMode;
+  /** Datasource Zabbix consultado no modo direto. */
+  zabbixDatasourceUid?: string;
+  /**
+   * Grupos de host do Zabbix que alimentam o mapa no modo direto.
+   * Cada grupo ocupa o lugar de uma consulta: vira um refId virtual em `displayQueryRefIds`
+   * e no campo "Consulta" dos submapas.
+   */
+  zabbixHostGroups?: string[];
+  /** Chave do item lido em cada host para resolver o status no modo direto. */
+  zabbixStatusItemKey?: string;
+  /**
+   * Palavra-chave extra para localizar itens RX de interface no Zabbix (modo direto).
+   * Complementa os padrões automáticos em `interfaceItemKeys.ts`.
+   */
+  zabbixRxItemKeyword?: string;
+  /**
+   * Palavra-chave extra para localizar itens TX de interface no Zabbix (modo direto).
+   * Complementa os padrões automáticos em `interfaceItemKeys.ts`.
+   */
+  zabbixTxItemKeyword?: string;
+  /** Frequência de busca dos últimos valores no modo direto, em segundos. */
+  zabbixRefreshSec?: number;
   /**
    * RefIds das queries que importam hosts ao mapa (opt-in).
    * Vazio = nenhuma query adiciona hosts automaticamente.
@@ -463,6 +502,9 @@ export const defaultHostTypeColors = (): NonNullable<TopologyPanelOptions['hostT
 
 export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
+  dataMode: 'query',
+  zabbixStatusItemKey: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
+  zabbixRefreshSec: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
   colorOnline: '#28eb0e',
   colorOffline: '#ff0101',
   colorAlert: '#ff7300',
@@ -514,6 +556,8 @@ export interface HostDisplayInfo {
   color?: string;
   text?: string;
   status?: TopologyHostStatus;
+  /** Epoch (s) do lastclock Zabbix — desempate entre alias nome/IP. */
+  updatedAtSec?: number;
 }
 
 export type HostDisplayMap = Record<string, HostDisplayInfo>;

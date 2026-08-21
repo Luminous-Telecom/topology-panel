@@ -1,8 +1,7 @@
 import { HostMetadata, HostMetadataMap, TopologyMap } from '../types';
-import { QuerySource } from '../services/queryIndex';
+import { QueryIndex } from '../services/queryIndex';
 import { resolveHostIp } from './hostLookup';
 import { isIpv4 } from './ipv4';
-import { extractHostMetadataFromData, extractQueryHosts } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 
 /** Lista de hosts da Query oferecida nos pickers (adicionar host, vincular nó, bulk edit). */
@@ -136,13 +135,13 @@ export function enrichQueryHostOptionsFromMap(
   });
 }
 
-/** Hosts visíveis + IP a partir das séries da Query do painel. */
+/** Hosts visíveis + IP a partir do índice de dados do painel (Query ou Zabbix direto). */
 export function extractQueryHostOptions(
-  data: QuerySource,
+  index: QueryIndex,
   metadataOverride?: HostMetadataMap
 ): QueryHostOption[] {
-  const metadata = metadataOverride ?? extractHostMetadataFromData(data);
-  const hostKeys = extractQueryHosts(data);
+  const metadata = metadataOverride ?? index.metadata;
+  const hostKeys = index.hosts;
   const options: QueryHostOption[] = [];
   const seen = new Set<string>();
 

@@ -35,6 +35,8 @@ export interface QueryRefBucket {
   hosts: Set<string>;
   /** Host -> último valor numérico. O primeiro campo que resolve um valor vence. */
   lastValues: Map<string, number>;
+  /** Host -> epoch (s) do lastclock Zabbix, quando disponível. */
+  lastUpdatedAtSec: Map<string, number>;
 }
 
 export interface QueryIndex {
@@ -318,7 +320,11 @@ function ensureBucket(byRefId: Map<string, QueryRefBucket>, refId: string): Quer
   if (existing) {
     return existing;
   }
-  const created: QueryRefBucket = { hosts: new Set(), lastValues: new Map() };
+  const created: QueryRefBucket = {
+    hosts: new Set(),
+    lastValues: new Map(),
+    lastUpdatedAtSec: new Map(),
+  };
   byRefId.set(refId, created);
   return created;
 }
@@ -474,10 +480,17 @@ export function hostDisplayByRefIdFromIndex(
   for (const [refId, bucket] of index.byRefId) {
     const display: HostDisplayMap = {};
     for (const [host, value] of bucket.lastValues) {
+      const updatedAtSec = bucket.lastUpdatedAtSec.get(host);
       const resolved = resolveHostStatusDisplay(value, statusOptions);
       const entry: HostDisplayInfo = resolved
-        ? { value, color: resolved.color, text: resolved.text, status: resolved.status }
-        : { value };
+        ? {
+            value,
+            color: resolved.color,
+            text: resolved.text,
+            status: resolved.status,
+            ...(updatedAtSec != null ? { updatedAtSec } : {}),
+          }
+        : { value, ...(updatedAtSec != null ? { updatedAtSec } : {}) };
       display[host] = entry;
     }
     result[refId] = display;

@@ -46,7 +46,7 @@ const queryErrorShortStyle = css`
   }
 `;
 
-/** Aviso discreto (não bloqueia o mapa) quando a Query do painel falhou — status ao vivo indisponível. */
+/** Aviso discreto (não bloqueia o mapa) quando a fonte de dados falhou — status ao vivo indisponível. */
 export function TopologyQueryErrorBadge({ visible }: { visible: boolean }) {
   if (!visible) {
     return null;
@@ -54,8 +54,10 @@ export function TopologyQueryErrorBadge({ visible }: { visible: boolean }) {
   return (
     <div className={queryErrorBadgeStyle} role="status">
       <Icon name="exclamation-triangle" size="sm" />
-      <span className={queryErrorDetailStyle}>Falha na Query do painel — sem status ao vivo dos hosts.</span>
-      <span className={queryErrorShortStyle}>Query falhou — sem status ao vivo.</span>
+      <span className={queryErrorDetailStyle}>
+        Falha na fonte de dados — sem status ao vivo dos hosts.
+      </span>
+      <span className={queryErrorShortStyle}>Fonte falhou — sem status ao vivo.</span>
     </div>
   );
 }

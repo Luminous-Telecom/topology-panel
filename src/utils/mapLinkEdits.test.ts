@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLinkToMap, linksMatchEndpoints } from './mapLinkEdits';
+import { addLinkToMap, addLinkWithInterfaces, linksMatchEndpoints } from './mapLinkEdits';
 import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('linksMatchEndpoints', () => {
@@ -38,5 +38,12 @@ describe('addLinkToMap', () => {
         discovery: { source: 'manual', state: 'confirmed', confirmed: true },
       },
     ]);
+  });
+
+  it('permite link manual sem interfaces (sem monitoramento de tráfego)', () => {
+    const map = emptyMap({ nodes: [hostNode(), hostNode({ id: 'b' })] });
+    const next = addLinkWithInterfaces(map, 'a', 'b');
+    expect(next.links[0]?.fromInterface).toBeUndefined();
+    expect(next.links[0]?.toInterface).toBeUndefined();
   });
 });

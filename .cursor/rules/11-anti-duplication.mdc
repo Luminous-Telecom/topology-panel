@@ -27,6 +27,9 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Necessidade | Já existe em |
 |---|---|
 | Ler a aba Query uma única vez (com cache por identidade) | `buildQueryIndex` em `services/queryIndex.ts` |
+| Montar o mesmo índice a partir do Zabbix (`dataMode: 'zabbix'`) | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (único polling do plugin) |
+| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |

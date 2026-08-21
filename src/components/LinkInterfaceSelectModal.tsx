@@ -24,6 +24,10 @@ interface Props {
   pending: PendingLinkEndpoints;
   hostMetadata?: HostMetadataMap;
   queryData?: PanelData;
+  /** Fonte do inventário de interfaces quando o painel não usa a aba Query. */
+  zabbixDatasourceUid?: string;
+  zabbixRxItemKeyword?: string;
+  zabbixTxItemKeyword?: string;
   onSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
@@ -148,6 +152,9 @@ export function LinkInterfaceSelectModal({
   pending,
   hostMetadata,
   queryData,
+  zabbixDatasourceUid,
+  zabbixRxItemKeyword,
+  zabbixTxItemKeyword,
   onSave,
   onClose,
 }: Props) {
@@ -166,21 +173,39 @@ export function LinkInterfaceSelectModal({
   const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(
     hostKeys,
     queryData,
-    hostMetadata
+    hostMetadata,
+    zabbixDatasourceUid,
+    {
+      rxKeyword: zabbixRxItemKeyword,
+      txKeyword: zabbixTxItemKeyword,
+    }
   );
 
   const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
   const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];
 
   const previewCapacity = resolveLinkCapacityMbps(fromIface, toIface);
-  const canSave = Boolean(fromIface && toIface);
+  const monitorsTraffic = Boolean(fromIface?.metrics.rx?.itemId || fromIface?.metrics.tx?.itemId
+    || toIface?.metrics.rx?.itemId || toIface?.metrics.tx?.itemId);
+
+  const commitLink = () => {
+    onSave(
+      fromIface ? interfaceToReference(fromIface) : undefined,
+      toIface ? interfaceToReference(toIface) : undefined,
+      previewCapacity
+    );
+    onClose();
+  };
 
   return (
-    <Modal title="Selecionar interfaces do link" isOpen onDismiss={onClose}>
+    <Modal title="Novo link" isOpen onDismiss={onClose}>
       {loadError && (
         <div style={{ color: 'var(--error-text)', marginBottom: 8, fontSize: 12 }}>{loadError}</div>
       )}
-      <Field label="Buscar interface">
+      <p style={{ margin: '0 0 12px', fontSize: 12, lineHeight: 1.45, opacity: 0.85 }}>
+        Interfaces opcionais. Sem seleção, o link aparece no mapa mas não monitora tráfego RX/TX.
+      </p>
+      <Field label="Buscar interface (opcional)">
         <Input
           id={`${uid}-filter`}
           value={filter}
@@ -212,48 +237,35 @@ export function LinkInterfaceSelectModal({
         />
       </div>
 
-      {fromIface && toIface && (
-        <div style={{ marginTop: 12 }}>
-          <FieldReadout label="Pré-visualização">
+      <div style={{ marginTop: 12 }}>
+        <FieldReadout label="Pré-visualização">
           <div style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6 }}>
             <div>{pending.fromNode.label ?? pending.fromNode.id}</div>
-            <div style={{ paddingLeft: 8 }}>{fromIface.name}</div>
+            <div style={{ paddingLeft: 8, opacity: fromIface ? 1 : 0.55 }}>
+              {fromIface?.name ?? '— sem interface —'}
+            </div>
             <div style={{ textAlign: 'center', opacity: 0.6 }}>↕</div>
             <div>{pending.toNode.label ?? pending.toNode.id}</div>
-            <div style={{ paddingLeft: 8 }}>{toIface.name}</div>
+            <div style={{ paddingLeft: 8, opacity: toIface ? 1 : 0.55 }}>
+              {toIface?.name ?? '— sem interface —'}
+            </div>
             {previewCapacity ? (
               <div style={{ marginTop: 4 }}>{formatLinkBandwidth(previewCapacity)}</div>
             ) : null}
-            <div style={{ marginTop: 4, fontSize: 11 }}>
-              RX origem {fromIface.metrics.rx?.itemId ? '✓' : '—'} · TX origem{' '}
-              {fromIface.metrics.tx?.itemId ? '✓' : '—'} · OperStatus{' '}
-              {fromIface.metrics.operStatus?.itemId ? '✓' : '—'}
+            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.85 }}>
+              {monitorsTraffic
+                ? 'Monitoramento de tráfego ativo nas interfaces selecionadas.'
+                : 'Sem monitoramento de tráfego — edite depois para vincular interfaces.'}
             </div>
           </div>
         </FieldReadout>
-        </div>
-      )}
+      </div>
 
       <Modal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
-        <Button
-          disabled={!canSave}
-          onClick={() => {
-            if (!fromIface || !toIface) {
-              return;
-            }
-            onSave(
-              interfaceToReference(fromIface),
-              interfaceToReference(toIface),
-              previewCapacity
-            );
-            onClose();
-          }}
-        >
-          Criar link
-        </Button>
+        <Button onClick={commitLink}>Criar link</Button>
       </Modal.ButtonRow>
     </Modal>
   );

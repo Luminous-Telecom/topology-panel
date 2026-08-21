@@ -84,7 +84,7 @@ describe('TopologyPanel — inicialização de mapas', () => {
     const options = defaultOptions();
     options.map = { width: 1200, height: 800, nodes: [], links: [] };
     renderTopologyPanel(options, { data: emptyPanelData(LoadingState.Error) });
-    expect(screen.getByText(/falha na query do painel/i)).toBeInTheDocument();
+    expect(screen.getByText(/falha na fonte de dados/i)).toBeInTheDocument();
   });
 
   it('mapa com rede, host, submapa e cabo desenha todas as camadas', () => {

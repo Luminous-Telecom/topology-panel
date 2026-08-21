@@ -164,6 +164,34 @@ function filterPointsToTimeRange(points: HostTimeSeriesPoint[], range?: TimeRang
   return filtered.length ? filtered : points;
 }
 
+export function hoverMetricFromItemKey(itemKey: string): TopologyHoverMetric {
+  const key = itemKey.trim().toLowerCase();
+  if (key.includes('icmppingloss')) {
+    return 'packet_loss';
+  }
+  return 'icmp_rtt';
+}
+
+export function buildHostHoverSeriesFromZabbixHistory(
+  rawPoints: Array<{ clockSec: number; value: number }>,
+  itemKey: string,
+  fieldLabel: string,
+  statusOptions: StatusColorOptions
+): HostHoverSeries | undefined {
+  if (!rawPoints.length) {
+    return undefined;
+  }
+  const metric = hoverMetricFromItemKey(itemKey);
+  const points: HostTimeSeriesPoint[] = rawPoints
+    .map(({ clockSec, value }) => ({
+      t: clockSec * 1000,
+      value,
+      status: resolveHostStatusFromValue(value, statusOptions.statusValueMappings),
+    }))
+    .sort((a, b) => a.t - b.t);
+  return summarizeHoverSeries(points, metric, fieldLabel);
+}
+
 function summarizeHoverSeries(
   points: HostTimeSeriesPoint[],
   metric: TopologyHoverMetric,

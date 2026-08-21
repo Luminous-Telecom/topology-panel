@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { SelectableValue } from '@grafana/data';
 import { Select } from '@grafana/ui';
 import { TopologyQueryRefInfo } from '../types';
+import { queryRefRowTitle } from '../utils/queryRefLabel';
 
 interface Props {
   value: string;
@@ -16,7 +17,7 @@ interface Props {
 function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
   return {
     value: info.refId,
-    label: `Consulta ${info.refId}`,
+    label: queryRefRowTitle(info.refId, info.hint),
     description: info.hint,
   };
 }
