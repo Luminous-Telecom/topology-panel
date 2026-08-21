@@ -240,34 +240,6 @@ export function preferHostDisplayInfo(
   return incoming;
 }
 
-/** Escolhe o melhor status entre aliases (nome, IP, overlay) do mesmo host. */
-export function pickBestHostDisplayInfo(infos: HostDisplayInfo[]): HostDisplayInfo | undefined {
-  if (!infos.length) {
-    return undefined;
-  }
-  if (infos.length === 1) {
-    return infos[0];
-  }
-
-  const maxTs = Math.max(...infos.map((info) => info.updatedAtSec ?? 0));
-  if (maxTs > 0) {
-    const newest = infos.filter((info) => (info.updatedAtSec ?? 0) === maxTs);
-    const offlineAtNewest = newest.find((info) => info.status === 'offline' && info.value === 0);
-    if (offlineAtNewest) {
-      return offlineAtNewest;
-    }
-    if (newest.length === 1) {
-      return newest[0];
-    }
-  }
-
-  let best = infos[0];
-  for (let i = 1; i < infos.length; i++) {
-    best = preferHostDisplayInfo(best, infos[i]);
-  }
-  return best;
-}
-
 /** Indexa status da Query também pelo IP salvo no mapa (quando o nome ainda casa). */
 export function enrichHostDisplayFromMap(
   display: HostDisplayMap,
@@ -303,8 +275,7 @@ export function enrichHostDisplayFromMap(
     if (!alias) {
       continue;
     }
-    const merged = result[ip] ? [result[ip], alias] : [alias];
-    result[ip] = pickBestHostDisplayInfo(merged) ?? alias;
+    result[ip] = result[ip] ? preferHostDisplayInfo(result[ip], alias) : alias;
   }
 
   return result;

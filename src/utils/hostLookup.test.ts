@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { enrichHostDisplayFromMap, pickBestHostDisplayInfo, preferHostDisplayInfo } from './hostLookup';
+import { enrichHostDisplayFromMap, preferHostDisplayInfo } from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
 
 describe('preferHostDisplayInfo', () => {
@@ -25,27 +25,6 @@ describe('preferHostDisplayInfo', () => {
     const offlineAtTs: HostDisplayInfo = { ...offline, updatedAtSec: ts };
     expect(preferHostDisplayInfo(onlineAtTs, offlineAtTs)).toEqual(offlineAtTs);
     expect(preferHostDisplayInfo(offlineAtTs, onlineAtTs)).toEqual(offlineAtTs);
-  });
-});
-
-describe('pickBestHostDisplayInfo', () => {
-  const offline: HostDisplayInfo = { value: 0, status: 'offline', color: '#f00' };
-  const online: HostDisplayInfo = { value: 0.0006, status: 'online', color: '#0f0' };
-
-  it('prefere offline quando compartilha o updatedAtSec mais recente', () => {
-    const picked = pickBestHostDisplayInfo([
-      { ...online, updatedAtSec: 300 },
-      { ...offline, updatedAtSec: 300 },
-    ]);
-    expect(picked?.status).toBe('offline');
-  });
-
-  it('mantém online quando é o dado mais recente', () => {
-    const picked = pickBestHostDisplayInfo([
-      { ...offline, updatedAtSec: 100 },
-      { ...online, updatedAtSec: 200 },
-    ]);
-    expect(picked?.status).toBe('online');
   });
 });
 

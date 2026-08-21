@@ -437,8 +437,44 @@ export interface ZabbixInterfaceItem {
   lastvalue?: string;
   lastclock?: string;
   hostid?: string;
-  value_type?: string;
+  value_type?: string | number;
   tags?: Array<{ tag: string; value: string }>;
+}
+
+export interface ZabbixHistoryPoint {
+  clockSec: number;
+  value: number;
+}
+
+function itemLastClockSec(item: Pick<ZabbixInterfaceItem, 'lastclock'>): number | undefined {
+  const raw = item.lastclock?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Último ponto do `history.get` substitui `item.lastvalue` quando é mais novo — o lastvalue do
+ * icmppingsec pode ficar no último RTT com sucesso enquanto o histórico já tem Down/Up.
+ */
+export function overlayStatusItemLastValue(
+  item: ZabbixInterfaceItem,
+  point: ZabbixHistoryPoint | undefined
+): ZabbixInterfaceItem {
+  if (!point) {
+    return item;
+  }
+  const currentClock = itemLastClockSec(item) ?? Number.NEGATIVE_INFINITY;
+  if (point.clockSec < currentClock) {
+    return item;
+  }
+  return {
+    ...item,
+    lastvalue: String(point.value),
+    lastclock: String(Math.trunc(point.clockSec)),
+  };
 }
 
 export interface ZabbixHostInterfaceItems {
@@ -611,99 +647,81 @@ async function fetchStatusItemsForHosts(
   return items;
 }
 
-interface ZabbixHistoryStatusRow {
-  itemid?: string;
-  clock?: string;
-  value?: string;
+/** Janela curta só para o último ponto de status — não monta série do hover. */
+const STATUS_HISTORY_LOOKBACK_SEC = 180;
+const STATUS_HISTORY_LIMIT = 800;
+
+function statusItemHistoryType(valueType: string | number | undefined): 0 | 3 {
+  return Number(valueType) === 3 ? 3 : 0;
 }
 
-function zabbixHistoryTypeFromItem(item: ZabbixInterfaceItem): 0 | 3 {
-  const valueType = item.value_type != null ? Number(item.value_type) : undefined;
-  return valueType === 0 ? 0 : 3;
-}
-
-/** Alinha lastvalue/lastclock do poll com o histórico ICMP recente (mesma fonte do hover). */
-async function applyRecentHistoryToStatusItems(
+async function fetchLatestStatusHistoryByItemId(
   datasourceUid: string,
-  items: ZabbixInterfaceItem[],
-  lookbackSec = 120
-): Promise<ZabbixInterfaceItem[]> {
-  if (!items.length) {
-    return items;
+  items: ZabbixInterfaceItem[]
+): Promise<Map<string, ZabbixHistoryPoint>> {
+  const latest = new Map<string, ZabbixHistoryPoint>();
+  const idsByType = new Map<0 | 3, string[]>();
+  for (const item of items) {
+    const itemid = asZabbixId(item.itemid);
+    if (!itemid) {
+      continue;
+    }
+    const historyType = statusItemHistoryType(item.value_type);
+    const ids = idsByType.get(historyType);
+    if (ids) {
+      ids.push(itemid);
+    } else {
+      idsByType.set(historyType, [itemid]);
+    }
   }
 
-  const nowSec = Math.floor(Date.now() / 1000);
-  const timeFrom = nowSec - lookbackSec;
-  const next = items.map((item) => ({ ...item }));
-  const byHistoryType = new Map<0 | 3, ZabbixInterfaceItem[]>();
+  const timeTill = Math.floor(Date.now() / 1000);
+  const timeFrom = timeTill - STATUS_HISTORY_LOOKBACK_SEC;
 
-  for (const item of next) {
-    const historyType = zabbixHistoryTypeFromItem(item);
-    const bucket = byHistoryType.get(historyType) ?? [];
-    bucket.push(item);
-    byHistoryType.set(historyType, bucket);
-  }
-
-  for (const [historyType, typedItems] of byHistoryType) {
-    const itemIds = typedItems
-      .map((item) => asZabbixId(item.itemid))
-      .filter((itemid): itemid is string => Boolean(itemid));
-
-    for (const batch of chunk(itemIds, BATCH_SIZE)) {
+  for (const [historyType, itemIds] of idsByType) {
+    for (const batch of chunk([...new Set(itemIds)], BATCH_SIZE)) {
       try {
-        const rows = await zabbixCall<ZabbixHistoryStatusRow[]>(datasourceUid, 'history.get', {
-          output: ['itemid', 'clock', 'value'],
-          history: historyType,
-          itemids: batch,
-          time_from: timeFrom,
-          time_till: nowSec,
-          sortfield: 'clock',
-          sortorder: 'DESC',
-          limit: Math.min(batch.length * 5, 500),
-        });
-
-        const latestByItem = new Map<string, ZabbixHistoryStatusRow>();
+        const rows = await zabbixCall<Array<{ itemid?: string; clock?: string | number; value?: string | number }>>(
+          datasourceUid,
+          'history.get',
+          {
+            output: ['itemid', 'clock', 'value'],
+            history: historyType,
+            itemids: batch,
+            time_from: timeFrom,
+            time_till: timeTill,
+            sortfield: 'clock',
+            sortorder: 'DESC',
+            limit: STATUS_HISTORY_LIMIT,
+          }
+        );
         for (const row of rows ?? []) {
           const itemid = asZabbixId(row.itemid);
-          if (!itemid || latestByItem.has(itemid)) {
+          const clockSec = parseFloatOrNull(row.clock != null ? String(row.clock) : undefined);
+          const value = parseFloatOrNull(row.value != null ? String(row.value) : undefined);
+          if (!itemid || clockSec === null || value === null) {
             continue;
           }
-          latestByItem.set(itemid, row);
-        }
-
-        for (const item of typedItems) {
-          const itemid = asZabbixId(item.itemid);
-          if (!itemid) {
-            continue;
-          }
-          const row = latestByItem.get(itemid);
-          if (!row?.clock) {
-            continue;
-          }
-          const histClock = parseFloatOrNull(row.clock);
-          const itemClock = parseFloatOrNull(item.lastclock ?? undefined);
-          if (histClock === null) {
-            continue;
-          }
-          if (itemClock === null || histClock >= itemClock) {
-            item.lastvalue = row.value;
-            item.lastclock = row.clock;
+          const current = latest.get(itemid);
+          if (!current || clockSec > current.clockSec) {
+            latest.set(itemid, { clockSec, value });
           }
         }
       } catch {
-        /* lote sem resposta */
+        /* lote sem histórico — o lastvalue do item.get permanece */
       }
     }
   }
 
-  return next;
+  return latest;
 }
 
 /**
  * Hosts e últimos valores de status dos grupos configurados — base do modo "Zabbix direto".
  *
- * Usa `item.get` e complementa com o ponto mais recente do histórico ICMP no intervalo curto,
- * alinhando a cor do mapa ao hover (sem depender de passar o mouse).
+ * `item.get` traz o lastvalue; `history.get` só o ponto mais recente da chave de status, para a
+ * cor do mapa acompanhar Down/Up igual ao hover (o lastvalue do icmppingsec pode ficar no último
+ * RTT com sucesso).
  */
 export async function fetchZabbixDirectSnapshot(
   datasourceUid: string,
@@ -731,13 +749,19 @@ export async function fetchZabbixDirectSnapshot(
     return { hosts, statusItems: [], resolvedGroups };
   }
 
-  const statusItems = await fetchStatusItemsForHosts(
+  const rawItems = await fetchStatusItemsForHosts(
     datasourceUid,
     hosts.map((host) => host.hostid),
     itemKey
   );
-  const refreshedStatusItems = await applyRecentHistoryToStatusItems(datasourceUid, statusItems);
-  return { hosts, statusItems: refreshedStatusItems, resolvedGroups };
+  if (!rawItems.length) {
+    return { hosts, statusItems: [], resolvedGroups };
+  }
+  const latest = await fetchLatestStatusHistoryByItemId(datasourceUid, rawItems);
+  const statusItems = rawItems.map((item) =>
+    overlayStatusItemLastValue(item, latest.get(asZabbixId(item.itemid)))
+  );
+  return { hosts, statusItems, resolvedGroups };
 }
 
 /**

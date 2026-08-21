@@ -38,6 +38,15 @@ describe('hostNodeFill', () => {
     ).toBe(options.colorOffline);
   });
 
+  it('câmera online usa a cor pintada do tipo', () => {
+    const display: HostDisplayMap = {
+      'cam-01': { status: 'online', color: options.colorOnline, value: 0.0006 },
+    };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'cam-01', icon: 'camera' }), options, {}, display, identity)
+    ).toBe(options.hostTypeColors?.camera);
+  });
+
   it('problemas Zabbix não pintam host online com colorAlert', () => {
     const display: HostDisplayMap = {
       'rb-01': { status: 'online', color: options.colorOnline, value: 1 },

@@ -5,7 +5,6 @@ import { ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import { fetchZabbixDirectSnapshot, isBenignZabbixFetchError } from '../utils/zabbixApi';
-import { clearHostDisplayOverlay } from '../utils/hostDisplayOverlay';
 import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
 
 /**
@@ -102,7 +101,6 @@ export function useZabbixDirectIndex({
           setState({ index: EMPTY_INDEX, ready: false, loading: false, error: NO_GROUPS_ERROR });
           return;
         }
-        clearHostDisplayOverlay();
         setState({
           index: buildZabbixDirectIndex({
             datasourceUid,

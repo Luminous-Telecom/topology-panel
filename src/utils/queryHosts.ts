@@ -15,14 +15,7 @@ import {
   QueryIndex,
   QuerySource,
 } from '../services/queryIndex';
-import {
-  canonicalizeHostKeys,
-  collectHostLookupCandidates,
-  HostLookupRef,
-  pickBestHostDisplayInfo,
-  preferHostDisplayInfo,
-} from './hostLookup';
-import { lookupHostDisplayOverlay } from './hostDisplayOverlay';
+import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, preferHostDisplayInfo } from './hostLookup';
 import { StatusColorOptions } from './statusMapping';
 
 /**
@@ -238,18 +231,14 @@ export function lookupHostDisplay(
   }
   const candidates = collectHostLookupCandidates(ref, metadata);
   const byLowerKey = displayMapByLowerKey(displayMap);
-  const matched: HostDisplayInfo[] = [];
+  let best: HostDisplayInfo | undefined;
   for (const name of candidates) {
     const info = displayMap[name] ?? byLowerKey.get(name.toLowerCase());
     if (info) {
-      matched.push(info);
-    }
-    const overlay = lookupHostDisplayOverlay(name);
-    if (overlay) {
-      matched.push(overlay);
+      best = best ? preferHostDisplayInfo(best, info) : info;
     }
   }
-  return pickBestHostDisplayInfo(matched);
+  return best;
 }
 
 /** Hosts da Query Zabbix crua (labels.host de cada série). */
