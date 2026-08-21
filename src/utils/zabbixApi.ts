@@ -1044,6 +1044,45 @@ function hoverItemLabel(item: ZabbixHoverItem): string {
   return key || 'ICMP';
 }
 
+/**
+ * Tamanho de cada página do `history.get` do hover.
+ *
+ * Com `limit: 500` e `sortorder: ASC` o Zabbix devolvia só o **começo** da janela: em 24h o
+ * sparkline mostrava ~2 h do início (sem as falhas) enquanto `now-3h` cabia inteiro na página e
+ * listava as mesmas falhas. Paginar até `time_till` cobre o período todo.
+ */
+export const ZABBIX_HOVER_HISTORY_PAGE_LIMIT = 1000;
+
+/** Teto de pontos no hover — 24 h a 10 s ≈ 8640; acima disso o sparkline já compacta. */
+export const ZABBIX_HOVER_HISTORY_MAX_POINTS = 10_000;
+
+/**
+ * Próximo `time_from` (s) para a página seguinte do histórico crescente.
+ * `undefined` = última página (curta) ou série vazia.
+ */
+export function nextHistoryTimeFromSec(
+  page: ReadonlyArray<{ clockSec: number }>,
+  pageLimit: number = ZABBIX_HOVER_HISTORY_PAGE_LIMIT
+): number | undefined {
+  if (page.length === 0 || page.length < pageLimit) {
+    return undefined;
+  }
+  return page[page.length - 1].clockSec + 1;
+}
+
+function parseHistoryRows(rows: ZabbixHistoryRow[] | undefined): Array<{ clockSec: number; value: number }> {
+  const points: Array<{ clockSec: number; value: number }> = [];
+  for (const row of rows ?? []) {
+    const clockSec = parseFloatOrNull(row.clock);
+    const value = parseFloatOrNull(row.value);
+    if (clockSec === null || value === null) {
+      continue;
+    }
+    points.push({ clockSec, value });
+  }
+  return points;
+}
+
 async function fetchZabbixItemHistory(
   datasourceUid: string,
   item: ZabbixHoverItem,
@@ -1055,25 +1094,60 @@ async function fetchZabbixItemHistory(
     return [];
   }
   const valueType = item.value_type != null ? Number(item.value_type) : undefined;
-  const rows = await zabbixCall<ZabbixHistoryRow[]>(datasourceUid, 'history.get', {
-    output: ['clock', 'value'],
-    history: zabbixHistoryType(Number.isFinite(valueType) ? valueType : undefined),
-    itemids: [itemid],
-    time_from: timeFromSec,
-    time_till: timeTillSec,
-    sortfield: 'clock',
-    sortorder: 'ASC',
-    limit: 500,
-  });
-
+  const history = zabbixHistoryType(Number.isFinite(valueType) ? valueType : undefined);
   const points: Array<{ clockSec: number; value: number }> = [];
-  for (const row of rows ?? []) {
-    const clockSec = parseFloatOrNull(row.clock);
-    const value = parseFloatOrNull(row.value);
-    if (clockSec === null || value === null) {
-      continue;
+  let pageFrom = timeFromSec;
+
+  while (points.length < ZABBIX_HOVER_HISTORY_MAX_POINTS && pageFrom <= timeTillSec) {
+    const rows = await zabbixCall<ZabbixHistoryRow[]>(datasourceUid, 'history.get', {
+      output: ['clock', 'value'],
+      history,
+      itemids: [itemid],
+      time_from: pageFrom,
+      time_till: timeTillSec,
+      sortfield: 'clock',
+      sortorder: 'ASC',
+      limit: ZABBIX_HOVER_HISTORY_PAGE_LIMIT,
+    });
+    const page = parseHistoryRows(rows);
+    const lastClock = points.length ? points[points.length - 1].clockSec : undefined;
+    let appended = 0;
+    for (const point of page) {
+      if (lastClock !== undefined && point.clockSec <= lastClock) {
+        continue;
+      }
+      points.push(point);
+      appended += 1;
+      if (points.length >= ZABBIX_HOVER_HISTORY_MAX_POINTS) {
+        break;
+      }
     }
-    points.push({ clockSec, value });
+    const nextFrom = nextHistoryTimeFromSec(page);
+    if (nextFrom === undefined || appended === 0) {
+      break;
+    }
+    pageFrom = nextFrom;
+  }
+
+  if (points.length >= ZABBIX_HOVER_HISTORY_MAX_POINTS) {
+    const tailRows = await zabbixCall<ZabbixHistoryRow[]>(datasourceUid, 'history.get', {
+      output: ['clock', 'value'],
+      history,
+      itemids: [itemid],
+      time_from: timeFromSec,
+      time_till: timeTillSec,
+      sortfield: 'clock',
+      sortorder: 'DESC',
+      limit: ZABBIX_HOVER_HISTORY_PAGE_LIMIT,
+    });
+    const seen = new Set(points.map((point) => point.clockSec));
+    for (const point of parseHistoryRows(tailRows)) {
+      if (!seen.has(point.clockSec)) {
+        points.push(point);
+        seen.add(point.clockSec);
+      }
+    }
+    points.sort((a, b) => a.clockSec - b.clockSec);
   }
 
   if (points.length) {

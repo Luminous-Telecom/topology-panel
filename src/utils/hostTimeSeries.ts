@@ -192,6 +192,54 @@ export function buildHostHoverSeriesFromZabbixHistory(
   return summarizeHoverSeries(points, metric, fieldLabel);
 }
 
+/** Pontos no sparkline — um por coluna de pixel, mais folga para falhas ICMP. */
+export const HOVER_SPARKLINE_MAX_POINTS = 240;
+
+/**
+ * Reduz a série para o sparkline sem perder falha ICMP.
+ *
+ * Em cada fatia de tempo fica o ponto offline se houver; senão o último da fatia (o "Agora" da
+ * última coluna). A contagem de falhas **não** passa por aqui — `summarizeHoverSeries` conta na
+ * série completa antes de compactar.
+ */
+export function compactHoverPoints(
+  points: HostTimeSeriesPoint[],
+  maxPoints: number = HOVER_SPARKLINE_MAX_POINTS
+): HostTimeSeriesPoint[] {
+  if (points.length <= maxPoints) {
+    return points;
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  const span = Math.max(last.t - first.t, 1);
+  const slots: Array<HostTimeSeriesPoint | undefined> = new Array(maxPoints);
+  for (const point of points) {
+    const idx = Math.min(maxPoints - 1, Math.max(0, Math.floor(((point.t - first.t) / span) * maxPoints)));
+    const prev = slots[idx];
+    if (!prev) {
+      slots[idx] = point;
+      continue;
+    }
+    if (point.status === 'offline' && prev.status !== 'offline') {
+      slots[idx] = point;
+      continue;
+    }
+    if (point.t >= prev.t && (point.status === 'offline' || prev.status !== 'offline')) {
+      slots[idx] = point;
+    }
+  }
+  const compacted: HostTimeSeriesPoint[] = [];
+  for (const slot of slots) {
+    if (slot) {
+      compacted.push(slot);
+    }
+  }
+  if (compacted[compacted.length - 1] !== last) {
+    compacted.push(last);
+  }
+  return compacted;
+}
+
 function summarizeHoverSeries(
   points: HostTimeSeriesPoint[],
   metric: TopologyHoverMetric,
@@ -206,7 +254,7 @@ function summarizeHoverSeries(
     }
   }
   return {
-    points,
+    points: compactHoverPoints(points),
     metric,
     fieldLabel,
     failureCount,
