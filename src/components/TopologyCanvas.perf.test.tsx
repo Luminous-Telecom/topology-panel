@@ -156,3 +156,85 @@ describe(`custo de re-render de um gesto (${HOST_COUNT} hosts)`, () => {
     expect(renderCounts.link).toBeLessThanOrEqual(MOVES * 2 + 2);
   });
 });
+
+/**
+ * Ao abrir, o canvas encaixa a topologia inteira na tela — nesse zoom **nada** fica fora da
+ * viewport e o recorte não tem o que remover. O ganho aparece quando o usuário aproxima, que é o
+ * que estes testes reproduzem com a roda do mouse.
+ */
+function zoomIn(wrap: Element, steps: number): void {
+  for (let i = 0; i < steps; i += 1) {
+    fireEvent.wheel(wrap, { deltaY: -120, clientX: 600, clientY: 400 });
+  }
+}
+
+function wrapOf(container: HTMLElement): Element {
+  const wrap = container.querySelector('svg')?.parentElement;
+  if (!wrap) {
+    throw new Error('wrapper do canvas não encontrado');
+  }
+  return wrap;
+}
+
+describe(`recorte por viewport (${HOST_COUNT} hosts)`, () => {
+  it('no zoom de entrada (mapa inteiro na tela) nada é recortado', () => {
+    const map = buildMap(HOST_COUNT);
+    const { container } = renderEditableCanvas(map);
+    expect(container.querySelectorAll('[data-node-id]').length).toBe(HOST_COUNT);
+  });
+
+  it('aproximando o zoom, só os nós perto da viewport ficam no DOM', () => {
+    const map = buildMap(HOST_COUNT);
+    const { container } = renderEditableCanvas(map);
+    const before = container.querySelectorAll('svg *').length;
+
+    zoomIn(wrapOf(container), 25);
+
+    const mounted = container.querySelectorAll('[data-node-id]').length;
+    const after = container.querySelectorAll('svg *').length;
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[perf] zoom aproximado: ${mounted}/${HOST_COUNT} nós no DOM, ` +
+        `elementos SVG ${before} -> ${after}`
+    );
+
+    expect(mounted).toBeGreaterThan(0);
+    expect(mounted).toBeLessThan(HOST_COUNT);
+    expect(after).toBeLessThan(before);
+  });
+
+  it('pan curto depois do zoom não redesenha nada: o recorte é alinhado a uma grade grossa', () => {
+    const map = buildMap(HOST_COUNT);
+    const { container } = renderEditableCanvas(map);
+    const wrap = wrapOf(container);
+    zoomIn(wrap, 25);
+
+    const mountedBefore = container.querySelectorAll('[data-node-id]').length;
+    renderCounts.host = 0;
+    renderCounts.link = 0;
+
+    // Pan de 1 dedo bem abaixo do lado da grade de recorte (512 unidades do mundo).
+    fireEvent.pointerDown(wrap, { pointerId: 2, button: 0, clientX: 500, clientY: 400 });
+    for (let step = 1; step <= 5; step += 1) {
+      fireEvent.pointerMove(wrap, { pointerId: 2, clientX: 500 - step * 8, clientY: 400 });
+    }
+    fireEvent.pointerUp(wrap, { pointerId: 2 });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[perf] pan curto: ${renderCounts.host} renders de host, ${renderCounts.link} de cabo, ` +
+        `${container.querySelectorAll('[data-node-id]').length}/${mountedBefore} nós no DOM`
+    );
+
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+  });
+
+  it('mapa pequeno não é recortado nem depois de aproximar', () => {
+    const small = buildMap(20);
+    const { container } = renderEditableCanvas(small);
+    zoomIn(wrapOf(container), 25);
+    expect(container.querySelectorAll('[data-node-id]').length).toBe(20);
+  });
+});

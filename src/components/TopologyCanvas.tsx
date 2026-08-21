@@ -59,7 +59,15 @@ import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useStableCallback } from '../hooks/useStableCallback';
+import { useStableIdentity } from '../hooks/useStableIdentity';
 import { structuralShareMap } from '../utils/structuralIdentity';
+import {
+  boxIntersectsRect,
+  CULL_MIN_NODES,
+  linkBoundingBox,
+  visibleWorldRect,
+  WorldRect,
+} from '../utils/viewportCulling';
 import { useTopologySelection } from '../hooks/useTopologySelection';
 import { useBulkEditModals } from '../hooks/useBulkEditModals';
 import { nodeSupportsProperties, NODE_DOUBLE_TAP_MS, useNodePropertiesModals } from '../hooks/useNodePropertiesModals';
@@ -1199,6 +1207,47 @@ export function TopologyCanvas({
   });
 
   /**
+   * Recorte por viewport.
+   *
+   * O retângulo é alinhado a uma grade grossa, então ele só muda ao cruzar uma linha dessa grade —
+   * é isso que mantém pan e zoom sem re-render de camada. Bounds, fit, minimapa e seleção seguem
+   * lendo `map.nodes` inteiro; só o que vai para o DOM é recortado.
+   */
+  const cullingEnabled = map.nodes.length >= CULL_MIN_NODES;
+  const { x0, y0, x1, y1 } = visibleWorldRect(view, viewport);
+  const cullRect = useMemo<WorldRect>(() => ({ x0, y0, x1, y1 }), [x0, y0, x1, y1]);
+
+  const visibleNodesRaw = useMemo(() => {
+    if (!cullingEnabled) {
+      return map.nodes;
+    }
+    return map.nodes.filter((node) => {
+      const layout = nodeLayouts.get(node.id);
+      // Nó ainda sem caixa medida continua montado — recortar pelo que não se sabe some com ele.
+      return !layout || boxIntersectsRect(layout, cullRect);
+    });
+  }, [cullingEnabled, map.nodes, nodeLayouts, cullRect]);
+
+  const culledRenderLinksRaw = useMemo(() => {
+    if (!cullingEnabled) {
+      return filteredRenderLinks;
+    }
+    return filteredRenderLinks.filter(({ link }) => {
+      const box = linkBoundingBox(
+        nodeLayouts.get(link.from),
+        nodeLayouts.get(link.to),
+        resolveLinkWaypoints(link)
+      );
+      return !box || boxIntersectsRect(box, cullRect);
+    });
+  }, [cullingEnabled, filteredRenderLinks, nodeLayouts, resolveLinkWaypoints, cullRect]);
+
+  // `filter` devolve um array novo mesmo quando o recorte não mudou de conteúdo; sem isto a lista
+  // recortada invalidaria o `React.memo` das camadas justamente durante o pan.
+  const visibleNodes = useStableIdentity(visibleNodesRaw);
+  const culledRenderLinks = useStableIdentity(culledRenderLinksRaw);
+
+  /**
    * Handlers de identidade fixa para as camadas de nó.
    *
    * Cada um deles depende de seleção, modo de edição, layouts ou do estado do arraste, então troca
@@ -1359,7 +1408,7 @@ export function TopologyCanvas({
           />
 
           <NetworkNodesLayer
-            nodes={map.nodes}
+            nodes={visibleNodes}
             nodeLayouts={nodeLayouts}
             regionStats={regionStats}
             options={options}
@@ -1388,7 +1437,7 @@ export function TopologyCanvas({
           ))}
 
           <LinksLayer
-            renderLinks={filteredRenderLinks}
+            renderLinks={culledRenderLinks}
             nodeLayouts={nodeLayouts}
             options={options}
             editable={viewEditable}
@@ -1408,7 +1457,7 @@ export function TopologyCanvas({
           <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
 
           <HostNodesLayer
-            nodes={map.nodes}
+            nodes={visibleNodes}
             nodeLayouts={nodeLayouts}
             regionStats={regionStats}
             options={options}
