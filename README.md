@@ -227,10 +227,13 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
 
 ## Desenvolvimento
 
+O Grafana não carrega `src/` direto (só `module.js` AMD). O watch recompila o TypeScript
+na pasta do plugin; `dist/` é só o pacote de produção.
+
 ```bash
-npm run dev        # build em watch
+npm run dev        # watch src/ → /var/lib/grafana/plugins/luminous-topology-panel
 npm run typecheck  # TypeScript
-npm run build      # produção → dist/
+npm run build      # produção → dist/ (deploy)
 ```
 
 ## Estrutura do repositório

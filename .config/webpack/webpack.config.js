@@ -14,7 +14,11 @@ module.exports = (env) => {
       module: './src/module.ts',
     },
     output: {
-      path: path.resolve(__dirname, '../../dist'),
+      // Produção (`npm run build`) → dist/. Desenvolvimento (`npm run dev`) → pasta do plugin
+      // no Grafana. O host não executa TypeScript de src/; o watch recompila a cada save.
+      path: isProd
+        ? path.resolve(__dirname, '../../dist')
+        : process.env.GRAFANA_PLUGIN_DIR?.trim() || `/var/lib/grafana/plugins/${PLUGIN_ID}`,
       filename: '[name].js',
       // Chunks assíncronos: hash na query (convenção create-plugin). O entry module.js mantém nome
       // fixo — o Grafana busta o cache do browser com plugin.json info.version (?_cache=X.Y.Z).

@@ -17,7 +17,7 @@
       "small": "img/plugin-icon.svg",
       "large": "img/plugin-icon.svg"
     },
-    "version": "1.4.320",
+    "version": "1.4.321",
     "updated": "2026-08-21"
   },
   "dependencies": {
