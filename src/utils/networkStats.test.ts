@@ -24,6 +24,15 @@ describe('formatRegionStats — submapa', () => {
     expect(text).toBe('Carregando…');
   });
 
+  it('mostra os hosts do mapa interno antes do status Zabbix chegar', () => {
+    const text = formatRegionStats(
+      { total: 12, offline: 0, alert: 0, online: 0, unknown: 12 },
+      false,
+      'submap'
+    );
+    expect(text).toBe('12 hosts');
+  });
+
   it('anexa tráfego agregado ao texto do submapa', () => {
     const text = formatRegionStats(
       { total: 3, offline: 0, alert: 0, online: 3, unknown: 0, rxBps: 1_200_000_000, txBps: 800_000_000 },
@@ -55,6 +64,37 @@ describe('regionFillColor — submapa', () => {
       true
     );
     expect(fill).toBe(options.colorOffline);
+  });
+
+  it('sem status Zabbix usa colorUnknown, não a cor de submapa/online', () => {
+    expect(regionFillColor(undefined, options, 'submap', false)).toBe(options.colorUnknown);
+    expect(
+      regionFillColor(
+        { total: 12, offline: 0, alert: 0, online: 0, unknown: 12 },
+        options,
+        'submap',
+        false
+      )
+    ).toBe(options.colorUnknown);
+    expect(
+      regionFillColor(
+        { total: 4, offline: 0, alert: 0, online: 0, unknown: 4 },
+        options,
+        'submap',
+        true
+      )
+    ).toBe(options.colorUnknown);
+  });
+
+  it('com hosts online e sem problema usa a cor de submapa', () => {
+    expect(
+      regionFillColor(
+        { total: 3, offline: 0, alert: 0, online: 3, unknown: 0 },
+        options,
+        'submap',
+        true
+      )
+    ).toBe(options.colorSubmap);
   });
 });
 

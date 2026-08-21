@@ -243,6 +243,7 @@ function buildDirectIndex(hostCount: number, downHosts: ReadonlySet<number> = ne
       groups: ['A'],
     });
     statusItems.push({
+      itemid: `item-${i}`,
       hostid: String(i),
       key_: 'icmpping',
       lastvalue: downHosts.has(i) ? '0' : '1',

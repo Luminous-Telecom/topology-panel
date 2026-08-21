@@ -13,7 +13,7 @@ describe('buildLegendItems', () => {
 
   it('abre pelos quatro status, na ordem', () => {
     const labels = buildLegendItems(options()).map((i) => i.label);
-    expect(labels.slice(0, 4)).toEqual(['Sem query', 'Online', 'Offline', 'Alerta']);
+    expect(labels.slice(0, 4)).toEqual(['Sem dados', 'Online', 'Offline', 'Alerta']);
   });
 
   it('esconde o status que o usuário desligou', () => {

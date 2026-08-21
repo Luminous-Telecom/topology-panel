@@ -20,6 +20,13 @@ const EMPTY_INDEX = buildQueryIndex(undefined);
 const GENERIC_ERROR = 'Falha ao consultar o Zabbix. Verifique o datasource e os grupos configurados.';
 const NO_GROUPS_ERROR = 'Nenhum dos grupos configurados existe no Zabbix.';
 
+/** Último índice bom por datasource+grupos+item — sobrevive a remount do painel na mesma sessão. */
+const lastGoodIndexByKey = new Map<string, QueryIndex>();
+
+function snapshotCacheKey(datasourceUid: string, groups: string[], itemKey: string): string {
+  return `${datasourceUid}\u0000${groups.join('\u0001')}\u0000${itemKey}`;
+}
+
 export interface UseZabbixDirectIndexOptions {
   enabled: boolean;
   datasourceUid?: string;
@@ -65,7 +72,15 @@ export function useZabbixDirectIndex({
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
 
-  const [state, setState] = useState<DirectState>(IDLE_STATE);
+  const [state, setState] = useState<DirectState>(() => {
+    if (!enabled || !datasourceUid || !groups.length || !itemKey) {
+      return IDLE_STATE;
+    }
+    const cached = lastGoodIndexByKey.get(snapshotCacheKey(datasourceUid, groups, itemKey));
+    return cached
+      ? { index: cached, ready: true, loading: false, error: undefined }
+      : IDLE_STATE;
+  });
 
   useEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
@@ -73,11 +88,18 @@ export function useZabbixDirectIndex({
       return;
     }
 
+    const cacheKey = snapshotCacheKey(datasourceUid, groups, itemKey);
+    const cached = lastGoodIndexByKey.get(cacheKey);
+    setState(
+      cached
+        ? { index: cached, ready: true, loading: true, error: undefined }
+        : { ...IDLE_STATE, loading: true }
+    );
+
     let cancelled = false;
     let inFlight = false;
     let lastStartMs = 0;
     let fetchGeneration = 0;
-    setState((prev) => ({ ...prev, loading: true }));
 
     const fetchSnapshot = async () => {
       if (cancelled) {
@@ -101,14 +123,16 @@ export function useZabbixDirectIndex({
           setState({ index: EMPTY_INDEX, ready: false, loading: false, error: NO_GROUPS_ERROR });
           return;
         }
+        const index = buildZabbixDirectIndex({
+          datasourceUid,
+          groupNames: groupsRef.current,
+          statusItemKey: itemKey,
+          hosts: snapshot.hosts,
+          statusItems: snapshot.statusItems,
+        });
+        lastGoodIndexByKey.set(cacheKey, index);
         setState({
-          index: buildZabbixDirectIndex({
-            datasourceUid,
-            groupNames: groupsRef.current,
-            statusItemKey: itemKey,
-            hosts: snapshot.hosts,
-            statusItems: snapshot.statusItems,
-          }),
+          index,
           ready: true,
           loading: false,
           error: undefined,

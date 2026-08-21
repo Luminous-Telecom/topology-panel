@@ -176,7 +176,7 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
         </div>
       ) : (
         <div style={{ fontSize: 12, color: theme.colors.text.secondary }}>
-          Nenhuma regra — hosts com query ficam na cor &quot;Sem query&quot;.
+          Nenhuma regra — hosts sem mapeamento ficam na cor &quot;Sem dados&quot;.
         </div>
       )}
 

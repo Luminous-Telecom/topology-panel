@@ -9,7 +9,7 @@ export interface LegendItem {
 /**
  * Itens da legenda, na ordem em que aparecem no mapa.
  *
- * Status (sem query, online, offline, alerta) entram por padrão — `!== false` — porque são o que
+ * Status (sem dados, online, offline, alerta) entram por padrão — `!== false` — porque são o que
  * qualquer mapa mostra; os demais só entram se o usuário ligar.
  */
 export function buildLegendItems(options: TopologyPanelOptions): LegendItem[] {
@@ -18,7 +18,7 @@ export function buildLegendItems(options: TopologyPanelOptions): LegendItem[] {
   }
   const items: LegendItem[] = [];
   if (options.legendUnknown !== false) {
-    items.push({ label: 'Sem query', color: options.colorUnknown });
+    items.push({ label: 'Sem dados', color: options.colorUnknown });
   }
   if (options.legendOnline !== false) {
     items.push({ label: 'Online', color: options.colorOnline });

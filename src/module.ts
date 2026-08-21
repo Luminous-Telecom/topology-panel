@@ -263,8 +263,8 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addColorPicker({
         path: 'colorUnknown',
-        name: 'Cor sem query',
-        description: 'Host sem valor na Query ou sem regra de mapeamento',
+        name: 'Cor sem dados',
+        description: 'Host sem valor de status ou sem regra de mapeamento',
         defaultValue: '#616161',
         category: ['Aparência'],
       })
@@ -273,7 +273,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'hostTypeColors',
         name: 'Cor por tipo de host',
         description:
-          'Fundo do card por tipo/ícone quando online ou sem query (offline/alerta usam as cores globais)',
+          'Fundo do card por tipo/ícone quando online ou sem dados (offline/alerta usam as cores globais)',
         editor: HostTypeColorsEditor,
         category: ['Aparência'],
         defaultValue: defaultHostTypeColors(),
@@ -353,7 +353,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addBooleanSwitch({
         path: 'legendUnknown',
-        name: 'Sem query',
+        name: 'Sem dados',
         defaultValue: true,
         category: ['Legenda'],
       })

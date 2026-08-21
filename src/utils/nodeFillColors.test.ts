@@ -103,4 +103,10 @@ describe('resolveNodeFill', () => {
       options.colorUnknown
     );
   });
+
+  it('submapa sem dados fica em colorUnknown', () => {
+    expect(
+      resolveNodeFill(node({ type: 'submap', label: 'Filial' }), undefined, options, false, {}, {}, identity)
+    ).toBe(options.colorUnknown);
+  });
 });

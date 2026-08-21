@@ -52,8 +52,14 @@ export function formatRegionStats(
     if (stats.loadFailed) {
       return 'Mapa indisponível';
     }
-    if (!queryReady || stats.loadPending) {
+    if (stats.loadPending) {
       return 'Carregando…';
+    }
+    if (!queryReady) {
+      if (stats.total > 0) {
+        return withTraffic(`${stats.total} hosts`);
+      }
+      return traffic ?? '0 / 0 / 0';
     }
     if (stats.total === 0) {
       return traffic ?? '0 / 0 / 0';
@@ -251,7 +257,7 @@ export function childMapHostKeys(childMap: TopologyMap, hostMetadata?: HostMetad
 
 type RegionColorOptions = Pick<
   TopologyPanelOptions,
-  'colorOnline' | 'colorOffline' | 'colorAlert' | 'colorSubmap' | 'colorNetworkFill'
+  'colorOnline' | 'colorOffline' | 'colorAlert' | 'colorSubmap' | 'colorUnknown' | 'colorNetworkFill'
 >;
 
 export function regionFillColor(
@@ -261,8 +267,8 @@ export function regionFillColor(
   queryReady = true
 ): string | undefined {
   if (kind === 'submap') {
-    if (!queryReady || !stats || stats.loadFailed || stats.total === 0) {
-      return options.colorSubmap;
+    if (!queryReady || !stats || stats.loadFailed || stats.loadPending || stats.total === 0) {
+      return options.colorUnknown;
     }
     if (stats.offline > 0) {
       return options.colorOffline;
@@ -270,7 +276,10 @@ export function regionFillColor(
     if (stats.alert > 0) {
       return options.colorAlert;
     }
-    return options.colorSubmap;
+    if (stats.online > 0) {
+      return options.colorSubmap;
+    }
+    return options.colorUnknown;
   }
   if (!stats || stats.loadFailed || stats.total === 0 || !queryReady) {
     return options.colorNetworkFill;
