@@ -33,7 +33,7 @@ de topologia de rede com status vindo do Zabbix.
 - Ao mudar a versão, faça bump de `package.json` e `src/plugin.json` **juntos**, com o mesmo número.
 - Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh [homolog|prod]` (build,
   `rsync` do `dist/` por SSH e restart do serviço). A pasta `scripts/` é local e **não** vai para o
-  git, assim como o `.env` de onde saem host, usuário e senha. Nunca publique em `prod` sem o usuário
+  git — host, usuário e senha ficam no próprio `deploy.sh`. Nunca publique em `prod` sem o usuário
   dizer `prod` explicitamente.
 
 ## Exceções
