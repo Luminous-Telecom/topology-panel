@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { enrichHostDisplayFromMap, preferHostDisplayInfo } from './hostLookup';
+import { enrichHostDisplayFromMap, pickBestHostDisplayInfo, preferHostDisplayInfo } from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
 
 describe('preferHostDisplayInfo', () => {
   const offline: HostDisplayInfo = { value: 0, status: 'offline', color: '#f00' };
   const online: HostDisplayInfo = { value: 0.0006, status: 'online', color: '#0f0' };
 
-  it('prefere incoming quando não há timestamp', () => {
-    expect(preferHostDisplayInfo(offline, online)).toEqual(online);
+  it('sem timestamp, offline (0) vence online stale', () => {
+    expect(preferHostDisplayInfo(offline, online)).toEqual(offline);
     expect(preferHostDisplayInfo(online, offline)).toEqual(offline);
   });
 
@@ -18,13 +18,42 @@ describe('preferHostDisplayInfo', () => {
     expect(preferHostDisplayInfo(staleOnline, freshOffline)).toEqual(freshOffline);
     expect(preferHostDisplayInfo(freshOffline, staleOnline)).toEqual(freshOffline);
   });
+
+  it('no mesmo timestamp, offline (0) vence online', () => {
+    const ts = 200;
+    const onlineAtTs: HostDisplayInfo = { ...online, updatedAtSec: ts };
+    const offlineAtTs: HostDisplayInfo = { ...offline, updatedAtSec: ts };
+    expect(preferHostDisplayInfo(onlineAtTs, offlineAtTs)).toEqual(offlineAtTs);
+    expect(preferHostDisplayInfo(offlineAtTs, onlineAtTs)).toEqual(offlineAtTs);
+  });
+});
+
+describe('pickBestHostDisplayInfo', () => {
+  const offline: HostDisplayInfo = { value: 0, status: 'offline', color: '#f00' };
+  const online: HostDisplayInfo = { value: 0.0006, status: 'online', color: '#0f0' };
+
+  it('prefere offline quando compartilha o updatedAtSec mais recente', () => {
+    const picked = pickBestHostDisplayInfo([
+      { ...online, updatedAtSec: 300 },
+      { ...offline, updatedAtSec: 300 },
+    ]);
+    expect(picked?.status).toBe('offline');
+  });
+
+  it('mantém online quando é o dado mais recente', () => {
+    const picked = pickBestHostDisplayInfo([
+      { ...offline, updatedAtSec: 100 },
+      { ...online, updatedAtSec: 200 },
+    ]);
+    expect(picked?.status).toBe('online');
+  });
 });
 
 describe('lookupHostDisplay', () => {
   it('não fica preso em IP offline quando o nome já voltou online', () => {
     const display = {
-      '100.126.32.6': { value: 0, status: 'offline' as const, color: '#f00' },
-      'CAM - INTERNO': { value: 0.000663, status: 'online' as const, color: '#0f0' },
+      '100.126.32.6': { value: 0, status: 'offline' as const, color: '#f00', updatedAtSec: 100 },
+      'CAM - INTERNO': { value: 0.000663, status: 'online' as const, color: '#0f0', updatedAtSec: 200 },
     };
     const info = lookupHostDisplay(
       display,
@@ -72,8 +101,8 @@ describe('enrichHostDisplayFromMap', () => {
     };
     const enriched = enrichHostDisplayFromMap(
       {
-        '100.126.32.6': { value: 0, status: 'offline', color: '#f00' },
-        'CAM - INTERNO': { value: 0.000663, status: 'online', color: '#0f0' },
+        '100.126.32.6': { value: 0, status: 'offline', color: '#f00', updatedAtSec: 100 },
+        'CAM - INTERNO': { value: 0.000663, status: 'online', color: '#0f0', updatedAtSec: 200 },
       },
       map
     );

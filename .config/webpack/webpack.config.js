@@ -8,7 +8,8 @@ module.exports = (env) => {
 
   return {
     mode: isProd ? 'production' : 'development',
-    devtool: isProd ? 'source-map' : 'eval-source-map',
+    // eval-source-map quebra no Grafana (CSP) e jsx-dev-runtime não existe no host.
+    devtool: isProd ? 'source-map' : 'cheap-module-source-map',
     entry: {
       module: './src/module.ts',
     },
@@ -62,7 +63,8 @@ module.exports = (env) => {
             options: {
               jsc: {
                 parser: { syntax: 'typescript', tsx: true },
-                transform: { react: { runtime: 'automatic' } },
+                // Grafana só expõe react/jsx-runtime — nunca jsx-dev-runtime.
+                transform: { react: { runtime: 'automatic', development: false } },
               },
             },
           },

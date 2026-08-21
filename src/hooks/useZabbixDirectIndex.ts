@@ -5,6 +5,7 @@ import { ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import { fetchZabbixDirectSnapshot, isBenignZabbixFetchError } from '../utils/zabbixApi';
+import { clearHostDisplayOverlay } from '../utils/hostDisplayOverlay';
 
 /**
  * Busca periódica do último valor no Zabbix, para o modo "Zabbix direto".
@@ -96,6 +97,7 @@ export function useZabbixDirectIndex({
           setState({ index: EMPTY_INDEX, ready: false, loading: false, error: NO_GROUPS_ERROR });
           return;
         }
+        clearHostDisplayOverlay();
         setState({
           index: buildZabbixDirectIndex({
             datasourceUid,

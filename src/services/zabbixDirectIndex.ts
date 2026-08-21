@@ -119,6 +119,19 @@ export function statusValuesByHostId(
     const current = best.get(hostid);
     if (!current || rank < current.rank) {
       best.set(hostid, { rank, value, updatedAtSec });
+      continue;
+    }
+    if (rank !== current.rank) {
+      continue;
+    }
+    const currentTs = current.updatedAtSec ?? 0;
+    const nextTs = updatedAtSec ?? 0;
+    if (nextTs > currentTs) {
+      best.set(hostid, { rank, value, updatedAtSec });
+      continue;
+    }
+    if (nextTs === currentTs && value === 0 && current.value !== 0) {
+      best.set(hostid, { rank, value, updatedAtSec });
     }
   }
 

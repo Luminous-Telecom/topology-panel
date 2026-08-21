@@ -41,6 +41,18 @@ describe('statusValuesByHostId', () => {
     const values = statusValuesByHostId([item('10', 'icmpping', 'nodata')], 'icmpping');
     expect(values.has('10')).toBe(false);
   });
+
+  it('com mesmo rank, prefere lastclock mais recente e depois falha (0)', () => {
+    const values = statusValuesByHostId(
+      [
+        { ...item('10', 'icmppingsec', '0.0006'), lastclock: '100' },
+        { ...item('10', 'icmppingsec', '0'), lastclock: '200' },
+      ],
+      'icmppingsec'
+    );
+    expect(values.get('10')?.value).toBe(0);
+    expect(values.get('10')?.updatedAtSec).toBe(200);
+  });
 });
 
 describe('buildZabbixDirectIndex', () => {

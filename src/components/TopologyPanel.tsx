@@ -14,6 +14,7 @@ import {
   defaultOptions,
 } from '../types';
 import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { subscribeHostDisplayOverlay } from '../utils/hostDisplayOverlay';
 import { mergeMapWithQueryHosts, syncMapWithQueryMeta } from '../utils/mapSync';
 import { applyTemplateRulesToMap } from '../utils/topologyTemplates/resolveTemplates';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
@@ -61,6 +62,7 @@ export function TopologyPanel({
   const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
+  const [, setHostDisplayOverlayTick] = useState(0);
 
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
@@ -245,6 +247,8 @@ export function TopologyPanel({
       lastGoodHostDisplayByRefIdRef.current = hostDisplayByRefId;
     }
   }, [hostDisplayByRefId, queryError]);
+
+  useEffect(() => subscribeHostDisplayOverlay(() => setHostDisplayOverlayTick((tick) => tick + 1)), []);
 
   const hostDisplay = useMemo(
     () =>

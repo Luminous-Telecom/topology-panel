@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { HostMetadataMap, TopologyPanelOptions } from '../types';
-import { HostLookupRef } from '../utils/hostLookup';
+import { HostLookupRef, collectHostLookupCandidates } from '../utils/hostLookup';
+import { applyHostDisplayOverlayFromHoverPoint } from '../utils/hostDisplayOverlay';
 import { extractHostHoverSeries, HostHoverSeries } from '../utils/hostTimeSeries';
 import { resolveDisplayQueryRefIds } from '../utils/queryHosts';
 import { StatusColorOptions } from '../utils/statusMapping';
@@ -104,6 +105,14 @@ export function useHostHoverSeries({
       .then((series) => {
         if (!cancelled) {
           setDirectSeries(series);
+          const lastPoint = series?.points[series.points.length - 1];
+          if (lastPoint) {
+            applyHostDisplayOverlayFromHoverPoint(
+              collectHostLookupCandidates(lookupRef, hostMetadata),
+              lastPoint,
+              statusOptions
+            );
+          }
         }
       })
       .catch((err) => {

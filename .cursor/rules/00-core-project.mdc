@@ -31,10 +31,10 @@ de topologia de rede com status vindo do Zabbix.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).
 - Ao mudar a versão, faça bump de `package.json` e `src/plugin.json` **juntos**, com o mesmo número.
-- Deploy roda por `./scripts/deploy.sh [homolog|prod]`: build, `rsync` do `dist/` por SSH e restart
-  do serviço. A pasta `scripts/` é local e **não** vai para o git, assim como o `.env` de onde saem
-  host, usuário e senha. Após qualquer alteração em código do plugin, publique automaticamente em
-  `homolog` (padrão). Nunca em `prod` sem o usuário dizer `prod` explicitamente.
+- Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh [homolog|prod]` (build,
+  `rsync` do `dist/` por SSH e restart do serviço). A pasta `scripts/` é local e **não** vai para o
+  git, assim como o `.env` de onde saem host, usuário e senha. Nunca publique em `prod` sem o usuário
+  dizer `prod` explicitamente.
 
 ## Exceções
 

@@ -108,8 +108,7 @@ export function TopologyColorLegend({
     .filter((item) => Boolean(item.color));
 
   // Contador local, isolado do resto do mapa: sem isto, o tick de 1s subia até o `TopologyPanel`
-  // e forçava um re-render do `TopologyCanvas` inteiro a cada segundo (ver auto-deploy.mdc /
-  // pontos prioritários de performance do arraste).
+  // e forçava um re-render do `TopologyCanvas` inteiro a cada segundo.
   const [countdown, setCountdown] = useState<number | null>(refreshIntervalSec);
   useEffect(() => {
     if (refreshIntervalSec == null) {

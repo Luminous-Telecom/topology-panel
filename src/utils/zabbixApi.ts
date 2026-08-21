@@ -412,6 +412,7 @@ export interface ZabbixInterfaceItem {
   lastvalue?: string;
   lastclock?: string;
   hostid?: string;
+  value_type?: string;
   tags?: Array<{ tag: string; value: string }>;
 }
 
@@ -571,7 +572,7 @@ async function fetchStatusItemsForHosts(
     try {
       const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
         hostids: batch,
-        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid', 'value_type'],
         search: { key_: statusItemKey },
         monitored: true,
       });
@@ -585,11 +586,99 @@ async function fetchStatusItemsForHosts(
   return items;
 }
 
+interface ZabbixHistoryStatusRow {
+  itemid?: string;
+  clock?: string;
+  value?: string;
+}
+
+function zabbixHistoryTypeFromItem(item: ZabbixInterfaceItem): 0 | 3 {
+  const valueType = item.value_type != null ? Number(item.value_type) : undefined;
+  return valueType === 0 ? 0 : 3;
+}
+
+/** Alinha lastvalue/lastclock do poll com o histórico ICMP recente (mesma fonte do hover). */
+async function applyRecentHistoryToStatusItems(
+  datasourceUid: string,
+  items: ZabbixInterfaceItem[],
+  lookbackSec = 120
+): Promise<ZabbixInterfaceItem[]> {
+  if (!items.length) {
+    return items;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const timeFrom = nowSec - lookbackSec;
+  const next = items.map((item) => ({ ...item }));
+  const byHistoryType = new Map<0 | 3, ZabbixInterfaceItem[]>();
+
+  for (const item of next) {
+    const historyType = zabbixHistoryTypeFromItem(item);
+    const bucket = byHistoryType.get(historyType) ?? [];
+    bucket.push(item);
+    byHistoryType.set(historyType, bucket);
+  }
+
+  for (const [historyType, typedItems] of byHistoryType) {
+    const itemIds = typedItems
+      .map((item) => asZabbixId(item.itemid))
+      .filter((itemid): itemid is string => Boolean(itemid));
+
+    for (const batch of chunk(itemIds, BATCH_SIZE)) {
+      try {
+        const rows = await zabbixCall<ZabbixHistoryStatusRow[]>(datasourceUid, 'history.get', {
+          output: ['itemid', 'clock', 'value'],
+          history: historyType,
+          itemids: batch,
+          time_from: timeFrom,
+          time_till: nowSec,
+          sortfield: 'clock',
+          sortorder: 'DESC',
+          limit: Math.min(batch.length * 5, 500),
+        });
+
+        const latestByItem = new Map<string, ZabbixHistoryStatusRow>();
+        for (const row of rows ?? []) {
+          const itemid = asZabbixId(row.itemid);
+          if (!itemid || latestByItem.has(itemid)) {
+            continue;
+          }
+          latestByItem.set(itemid, row);
+        }
+
+        for (const item of typedItems) {
+          const itemid = asZabbixId(item.itemid);
+          if (!itemid) {
+            continue;
+          }
+          const row = latestByItem.get(itemid);
+          if (!row?.clock) {
+            continue;
+          }
+          const histClock = parseFloatOrNull(row.clock);
+          const itemClock = parseFloatOrNull(item.lastclock ?? undefined);
+          if (histClock === null) {
+            continue;
+          }
+          if (itemClock === null || histClock >= itemClock) {
+            item.lastvalue = row.value;
+            item.lastclock = row.clock;
+          }
+        }
+      } catch {
+        /* lote sem resposta */
+      }
+    }
+  }
+
+  return next;
+}
+
 /**
  * Hosts e últimos valores de status dos grupos configurados — base do modo "Zabbix direto".
  *
- * Substitui a aba Query como fonte do mapa: sem `history.get`, sem intervalo de tempo, só o
- * último valor que o Zabbix já mantém em `item.lastvalue`.
+ * Usa `item.get` e complementa com o ponto mais recente do histórico ICMP no intervalo curto,
+ * alinhando a cor do mapa ao hover (sem depender de passar o mouse).
  */
 export async function fetchZabbixDirectSnapshot(
   datasourceUid: string,
@@ -622,7 +711,8 @@ export async function fetchZabbixDirectSnapshot(
     hosts.map((host) => host.hostid),
     itemKey
   );
-  return { hosts, statusItems, resolvedGroups };
+  const refreshedStatusItems = await applyRecentHistoryToStatusItems(datasourceUid, statusItems);
+  return { hosts, statusItems: refreshedStatusItems, resolvedGroups };
 }
 
 /**

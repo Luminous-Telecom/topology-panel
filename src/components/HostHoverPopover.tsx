@@ -19,6 +19,7 @@ import {
   hoverMetricLabel,
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
+import { resolveMappingLabel } from '../utils/statusMapping';
 
 interface Props {
   node: TopologyNode;
@@ -162,6 +163,9 @@ export function HostHoverPopover({
   const lastPoint = series?.points[series.points.length - 1];
   const periodLabel = hostHoverPeriodLabel(series, queryData?.timeRange);
   const metricLabel = series ? hoverMetricLabel(series.metric) : 'ICMP';
+  const statusLabel = lastPoint
+    ? resolveMappingLabel(lastPoint.value, options.statusValueMappings)
+    : display?.text;
 
   useLayoutEffect(() => {
     const el = popoverRef.current;
@@ -246,7 +250,7 @@ export function HostHoverPopover({
             {lastPoint ? (
               <span>
                 Agora: {formatHoverFieldValue(lastPoint, series.metric)}
-                {display?.text ? ` · ${display.text}` : ''}
+                {statusLabel ? ` · ${statusLabel}` : ''}
               </span>
             ) : null}
           </div>
