@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EventBus } from '@grafana/data';
 import { RefreshEvent } from '@grafana/runtime';
-import { LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions } from '../types';
+import { LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
 import {
   buildLinkRuntimeMetricsMap,
@@ -12,7 +12,11 @@ import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
 import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
 import { structuralShare } from '../utils/structuralIdentity';
 
-const LINK_METRICS_TTL_MS = 5_000;
+/**
+ * Dedupe de remount/corrida — estritamente abaixo do piso de 5s do modo Zabbix, para o tick
+ * mínimo não cair no cache do mount no limite exato.
+ */
+const LINK_METRICS_TTL_MS = 3_000;
 
 /** Identidade única para "sem métrica" — ver comentário no efeito abaixo. */
 const EMPTY_LINK_METRICS: LinkRuntimeMetricsMap = {};
@@ -37,7 +41,7 @@ export interface UseLinkMetricsRuntimeOptions {
 
 /**
  * Métricas voláteis de links (RX/TX/utilização/status) — não persistidas no JSON.
- * Atualiza em lote via item.get, com polling configurável e dedupe curto (5s).
+ * Atualiza em lote via item.get, com polling configurável e dedupe curto (3s).
  */
 export function useLinkMetricsRuntime(
   datasourceUid: string | undefined,
@@ -144,9 +148,14 @@ export function useLinkMetricsRuntime(
       }
     };
 
-    void fetchMetrics();
+    // Modo query: cada run deste efeito *é* o refresh do dashboard — não serve cache.
+    // Modo Zabbix: o efeito vive no setInterval; o tick abaixo passa bypassCache.
+    void fetchMetrics(refreshSec == null);
 
-    const intervalSec = refreshSec != null && refreshSec > 0 ? Math.floor(refreshSec) : null;
+    const intervalSec =
+      refreshSec != null && refreshSec > 0
+        ? Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec))
+        : null;
     const timer =
       intervalSec != null ? window.setInterval(() => void fetchMetrics(true), intervalSec * 1000) : undefined;
 

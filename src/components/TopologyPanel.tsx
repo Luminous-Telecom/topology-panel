@@ -209,19 +209,17 @@ export function TopologyPanel({
    */
   const queryError = directMode ? Boolean(direct.error) : data.state === LoadingState.Error;
 
-  const linkMetricsRefreshSec = directMode
-    ? resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC
-    : refreshIntervalSec;
-
   const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
     zabbixDatasourceUid,
     activeStoredMap,
     resolvedOptions,
     !queryError,
     {
-      refreshSec: linkMetricsRefreshSec,
+      refreshSec: directMode
+        ? resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC
+        : null,
       eventBus,
-      queryRefreshKey: data,
+      queryRefreshKey: directMode ? undefined : data,
     }
   );
 

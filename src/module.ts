@@ -91,7 +91,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addNumberInput({
         path: 'zabbixRefreshSec',
         name: 'Intervalo de atualização (segundos)',
-        description: `Frequência de busca dos últimos valores no Zabbix (mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s)`,
+        description: `Frequência de busca no Zabbix — status dos hosts e tráfego dos cabos (mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s)`,
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },

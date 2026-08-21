@@ -58,8 +58,10 @@ implementações, escolhidas pela opção `dataMode` do painel:
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
-- Polling só existe em `useZabbixDirectIndex.ts`, e com as travas que já estão lá: para quando a aba
-  está oculta, uma busca por vez e intervalo mínimo entre chamadas. Não crie um segundo laço.
+- Polling do mapa: `useZabbixDirectIndex.ts` (status) e `useLinkMetricsRuntime.ts` (tráfego RX/TX),
+  ambos no `zabbixRefreshSec` no modo `zabbix`. No modo `query`, o tráfego reage ao refresh do
+  dashboard — sem `setInterval` próprio. Travas: aba oculta, watchdog e `canStartPolledFetch`
+  (`utils/pollingGate.ts`). Não crie um terceiro laço.
 - Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get` fora do hover
   e do último ponto de status do snapshot, ou metadata para outra finalidade) exige **aprovação
   explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
