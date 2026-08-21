@@ -2,15 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { HostMetadataMap, TopologyPanelOptions } from '../types';
 import { HostLookupRef } from '../utils/hostLookup';
-import { extractHostHoverSeries, HostHoverSeries } from '../utils/hostTimeSeries';
-import { resolveDisplayQueryRefIds } from '../utils/queryHosts';
+import { HostHoverSeries } from '../utils/hostTimeSeries';
 import { StatusColorOptions } from '../utils/statusMapping';
 import { fetchHostHoverSeriesFromZabbix, isBenignZabbixFetchError } from '../utils/zabbixApi';
 import { ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY } from '../types';
 
 interface UseHostHoverSeriesParams {
   enabled: boolean;
-  dataMode: TopologyPanelOptions['dataMode'];
   queryData?: PanelData;
   lookupRef: HostLookupRef;
   hostMetadata?: HostMetadataMap;
@@ -22,12 +20,10 @@ interface UseHostHoverSeriesParams {
 interface UseHostHoverSeriesResult {
   series: HostHoverSeries | undefined;
   loading: boolean;
-  directMode: boolean;
 }
 
 export function useHostHoverSeries({
   enabled,
-  dataMode,
   queryData,
   lookupRef,
   hostMetadata,
@@ -35,13 +31,6 @@ export function useHostHoverSeries({
   queryReady,
   zabbixDatasourceUid,
 }: UseHostHoverSeriesParams): UseHostHoverSeriesResult {
-  const directMode = dataMode === 'zabbix';
-
-  const displayQueryRefIds = useMemo(
-    () => resolveDisplayQueryRefIds(options),
-    [options.displayQueryRefIds]
-  );
-
   const statusOptions = useMemo<StatusColorOptions>(
     () => ({
       colorOnline: options.colorOnline,
@@ -51,19 +40,6 @@ export function useHostHoverSeries({
     }),
     [options.colorAlert, options.colorOffline, options.colorOnline, options.statusValueMappings]
   );
-
-  const querySeries = useMemo(() => {
-    if (directMode) {
-      return undefined;
-    }
-    return extractHostHoverSeries(
-      queryData,
-      lookupRef,
-      hostMetadata,
-      displayQueryRefIds,
-      statusOptions
-    );
-  }, [directMode, displayQueryRefIds, hostMetadata, lookupRef, queryData, statusOptions]);
 
   const statusItemKey = options.zabbixStatusItemKey?.trim() || ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY;
   const lookupKey = useMemo(
@@ -80,18 +56,18 @@ export function useHostHoverSeries({
     ? `${queryData.timeRange.from.valueOf()}-${queryData.timeRange.to.valueOf()}`
     : '';
 
-  const [directSeries, setDirectSeries] = useState<HostHoverSeries | undefined>();
-  const [directLoading, setDirectLoading] = useState(false);
+  const [series, setSeries] = useState<HostHoverSeries | undefined>();
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!enabled || !directMode || !queryReady || !zabbixDatasourceUid) {
-      setDirectSeries(undefined);
-      setDirectLoading(false);
+    if (!enabled || !queryReady || !zabbixDatasourceUid) {
+      setSeries(undefined);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
-    setDirectLoading(true);
+    setLoading(true);
 
     fetchHostHoverSeriesFromZabbix(
       zabbixDatasourceUid,
@@ -101,19 +77,19 @@ export function useHostHoverSeries({
       statusItemKey,
       statusOptions
     )
-      .then((series) => {
+      .then((next) => {
         if (!cancelled) {
-          setDirectSeries(series);
+          setSeries(next);
         }
       })
       .catch((err) => {
         if (!cancelled && !isBenignZabbixFetchError(err)) {
-          setDirectSeries(undefined);
+          setSeries(undefined);
         }
       })
       .finally(() => {
         if (!cancelled) {
-          setDirectLoading(false);
+          setLoading(false);
         }
       });
 
@@ -121,7 +97,6 @@ export function useHostHoverSeries({
       cancelled = true;
     };
   }, [
-    directMode,
     enabled,
     hostMetadata,
     lookupKey,
@@ -134,13 +109,5 @@ export function useHostHoverSeries({
     zabbixDatasourceUid,
   ]);
 
-  if (directMode) {
-    return { series: directSeries, loading: directLoading, directMode: true };
-  }
-
-  return {
-    series: querySeries,
-    loading: !queryReady,
-    directMode: false,
-  };
+  return { series, loading };
 }

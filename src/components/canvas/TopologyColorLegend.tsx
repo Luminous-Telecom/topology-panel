@@ -99,7 +99,7 @@ export function TopologyColorLegend({
 }: {
   items: TopologyLegendItem[];
   refreshIntervalSec?: number | null;
-  /** Muda a cada refresh de verdade da Query — reinicia o contador local para `refreshIntervalSec`. */
+  /** Muda a cada busca boa de tráfego — reinicia o contador local para `refreshIntervalSec`. */
   refreshResetKey?: unknown;
 }) {
   const theme = useTheme2();

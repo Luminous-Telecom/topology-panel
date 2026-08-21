@@ -26,40 +26,24 @@ import {
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
   .setPanelOptions((builder) => {
     builder
-      .addRadio({
-        path: 'dataMode',
-        name: 'Modo de dados',
-        description:
-          "'Queries do painel' usa as queries/transformations do painel. 'Zabbix direto' busca o último valor dos itens direto do Zabbix, sem queries nem histórico.",
-        defaultValue: 'query',
-        category: ['Fonte de dados'],
-        settings: {
-          options: [
-            { value: 'query', label: 'Queries do painel' },
-            { value: 'zabbix', label: 'Zabbix direto (último valor)' },
-          ],
-        },
-      })
       .addCustomEditor({
         id: 'zabbixDatasourceUid',
         path: 'zabbixDatasourceUid',
         name: 'Datasource Zabbix',
-        description: 'Servidor consultado no modo direto.',
+        description: 'Servidor consultado para status dos hosts e tráfego dos cabos.',
         editor: ZabbixDatasourceEditor,
         category: ['Fonte de dados'],
         defaultValue: undefined,
-        showIf: (config) => config.dataMode === 'zabbix',
       })
       .addCustomEditor({
         id: 'zabbixHostGroups',
         path: 'zabbixHostGroups',
         name: 'Grupos de host',
         description:
-          'Cada grupo ocupa o lugar de uma consulta: aparece em "Mostrar hosts da query no mapa" e no campo Consulta dos submapas.',
+          'Cada grupo aparece em "Mostrar hosts do grupo no mapa" e no campo de grupo dos submapas.',
         editor: ZabbixHostGroupsEditor,
         category: ['Fonte de dados'],
         defaultValue: undefined,
-        showIf: (config) => config.dataMode === 'zabbix',
       })
       .addTextInput({
         path: 'zabbixStatusItemKey',
@@ -68,7 +52,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
           'Chave do item lido em cada host para decidir online/offline (ex.: icmpping). O valor passa pelo mapeamento de status configurado em Aparência.',
         defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
         category: ['Fonte de dados'],
-        showIf: (config) => config.dataMode === 'zabbix',
       })
       .addTextInput({
         path: 'zabbixRxItemKeyword',
@@ -77,7 +60,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
           'Termo extra para localizar itens de download/tráfego de entrada no inventário de interfaces (ex.: ifHCInOctets ou trecho da key customizada).',
         defaultValue: '',
         category: ['Fonte de dados'],
-        showIf: (config) => config.dataMode === 'zabbix',
       })
       .addTextInput({
         path: 'zabbixTxItemKeyword',
@@ -86,16 +68,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
           'Termo extra para localizar itens de upload/tráfego de saída no inventário de interfaces (ex.: ifHCOutOctets ou trecho da key customizada).',
         defaultValue: '',
         category: ['Fonte de dados'],
-        showIf: (config) => config.dataMode === 'zabbix',
       })
       .addNumberInput({
         path: 'zabbixRefreshSec',
         name: 'Intervalo de atualização (segundos)',
-        description: `Frequência de busca no Zabbix — status dos hosts e tráfego dos cabos (mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s)`,
+        description: `Frequência de busca do status dos hosts e do tráfego dos cabos. Mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s`,
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },
-        showIf: (config) => config.dataMode === 'zabbix',
       });
 
     addMapSection(builder, ['Layout'], (section) => {
@@ -145,7 +125,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addCustomEditor({
         id: 'displayQueryRefIds',
         path: 'displayQueryRefIds',
-        name: 'Mostrar hosts da query no mapa',
+        name: 'Mostrar hosts do grupo no mapa',
         editor: QueryDisplayRefIdsEditor,
         category: ['Hosts Zabbix'],
         defaultValue: undefined,

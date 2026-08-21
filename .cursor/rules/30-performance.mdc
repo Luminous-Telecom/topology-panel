@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Objetivo
 
-O painel redesenha um SVG com dezenas de nós a cada refresh do dashboard. Custo de render e de
+O painel redesenha um SVG com dezenas de nós a cada poll do Zabbix. Custo de render e de
 varredura de dados precisa ficar linear e fora do caminho do gesto do usuário.
 
 ## Escopo
@@ -16,10 +16,10 @@ varredura de dados precisa ficar linear e fora do caminho do gesto do usuário.
 Qualquer arquivo em `src/`, com atenção redobrada em `TopologyCanvas.tsx`, `TopologyPanel.tsx` e nos
 hooks de arraste/viewport.
 
-## Dados da Query
+## Dados de status
 
-- Varra `data.series` **uma vez** por refresh, via `buildQueryIndex` (`services/queryIndex.ts`), que
-  já tem cache por identidade do `PanelData` (`WeakMap`). Nunca adicione uma varredura paralela.
+- O índice do mapa sai de `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`). Não varra
+  `data.series` para status, cor ou lista de hosts.
 - Derive display de status com `hostDisplayByRefIdFromIndex`: custo O(hosts), não O(hosts × pontos).
 - Não recalcule por nó dentro do laço de render. Monte `Map`/`Set` antes do laço e consulte por
   chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).

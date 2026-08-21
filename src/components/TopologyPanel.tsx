@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LoadingState, PanelProps } from '@grafana/data';
-import { locationService } from '@grafana/runtime';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { PanelProps } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
@@ -14,15 +13,13 @@ import {
   defaultOptions,
 } from '../types';
 import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
-import { mergeMapWithQueryHosts, syncMapWithQueryMeta } from '../utils/mapSync';
-import { applyTemplateRulesToMap } from '../utils/topologyTemplates/resolveTemplates';
+import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveHostLookupKey } from '../utils/hostLookup';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
-import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, mergeHostDisplayByRefId, mergeQueryHostsByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
+import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
 import {
-  buildQueryIndex,
   hostDisplayByRefIdFromIndex,
   queryHostsByRefIdFromIndex,
 } from '../services/queryIndex';
@@ -38,7 +35,6 @@ import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
-import { parseGrafanaRefreshSeconds, readDashboardRefreshSeconds } from '../utils/dashboardRefresh';
 import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
 import {
   ROOT_MAP_ID,
@@ -46,6 +42,8 @@ import {
   resolveTopologyMapById,
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
+
+const NO_METADATA_HOSTS: string[] = [];
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -61,13 +59,9 @@ export function TopologyPanel({
   const dashboardEditing = useDashboardEditMode();
   const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
-  const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
 
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
-  /** Último status da Query — evita flash no refresh (séries parciais por refId). */
-  const lastGoodHostDisplayByRefIdRef = useRef<Record<string, HostDisplayMap>>({});
-  const lastGoodQueryHostsByRefIdRef = useRef<Record<string, string[]>>({});
 
   /**
    * Erros estruturais em `options.map` (JSON editado à mão, fora do `TopologyEditor`) — `nodes`/
@@ -155,18 +149,11 @@ export function TopologyPanel({
   );
 
   /**
-   * Leitura única das séries da Query. Metadata, hosts, refIds e status por refId saem todos
-   * daqui — antes cada um percorria `data.series` por conta própria a cada refresh.
+   * Status, hosts, grupos (refIds virtuais) e metadata vêm da API Zabbix. O índice tem o mesmo
+   * formato que o painel já consome rio abaixo.
    */
-  const panelQueryIndex = useMemo(() => buildQueryIndex(data), [data]);
-
-  /**
-   * Modo "Zabbix direto": o mapa ignora a aba Query e lê o último valor na API Zabbix. O índice
-   * tem exatamente o mesmo formato do da Query, então nada daqui para baixo muda.
-   */
-  const directMode = resolvedOptions.dataMode === 'zabbix';
   const direct = useZabbixDirectIndex({
-    enabled: directMode,
+    enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: resolvedOptions.zabbixHostGroups ?? [],
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
@@ -174,16 +161,15 @@ export function TopologyPanel({
     eventBus,
   });
 
-  const queryIndex = directMode ? direct.index : panelQueryIndex;
+  const queryIndex = direct.index;
   const queryMeta = queryIndex.metadata;
-  const queryHosts = queryIndex.hosts;
-  const zabbixDatasourceUid = queryIndex.datasourceUid;
+  const zabbixDatasourceUid = resolvedOptions.zabbixDatasourceUid;
 
   /**
-   * No modo direto o `host.get` já traz nome, IP, grupos e tags — buscar metadata de novo seria
+   * O `host.get` do snapshot já traz nome, IP, grupos e tags — buscar metadata de novo seria
    * uma segunda volta na API pelo mesmo dado.
    */
-  const metadataHostNames = useMemo(() => (directMode ? [] : queryHosts), [directMode, queryHosts]);
+  const metadataHostNames = NO_METADATA_HOSTS;
 
   const { metadata: apiHostMetadata, loading: zabbixMetadataLoading } = useZabbixHostMetadata(
     zabbixDatasourceUid,
@@ -207,19 +193,16 @@ export function TopologyPanel({
    * último status bom indefinidamente. Sem isto, uma falha permanente mascararia o problema
    * mostrando para sempre o último status visto (ver `no-fallbacks.mdc`).
    */
-  const queryError = directMode ? Boolean(direct.error) : data.state === LoadingState.Error;
+  const queryError = Boolean(direct.error);
 
-  const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
+  const { metricsByLink: linkMetricsByLink, fetchedAtMs: linkMetricsFetchedAtMs } = useLinkMetricsRuntime(
     zabbixDatasourceUid,
     activeStoredMap,
     resolvedOptions,
     !queryError,
     {
-      refreshSec: directMode
-        ? resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC
-        : null,
+      refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
       eventBus,
-      queryRefreshKey: directMode ? undefined : data,
     }
   );
 
@@ -233,14 +216,11 @@ export function TopologyPanel({
   }, [queryIndex, statusColorOptions, activeStoredMap, dataMeta]);
 
   const hostDisplayByRefIdRaw = useMemo(() => {
-    if (queryError) {
+    if (queryError || !direct.ready) {
       return {};
     }
-    if (directMode && direct.ready) {
-      return liveHostDisplayByRefId;
-    }
-    return mergeHostDisplayByRefId(liveHostDisplayByRefId, lastGoodHostDisplayByRefIdRef.current);
-  }, [liveHostDisplayByRefId, queryError, directMode, direct.ready]);
+    return liveHostDisplayByRefId;
+  }, [liveHostDisplayByRefId, queryError, direct.ready]);
 
   /**
    * O refresh entrega objetos novos mesmo para host que não mudou de valor. Sem reaproveitar a
@@ -248,16 +228,6 @@ export function TopologyPanel({
    * falha — um poll sem mudança nenhuma redesenhava o mapa inteiro.
    */
   const hostDisplayByRefId = useStableIdentity(hostDisplayByRefIdRaw);
-
-  useEffect(() => {
-    if (queryError) {
-      lastGoodHostDisplayByRefIdRef.current = {};
-      return;
-    }
-    if (Object.keys(hostDisplayByRefId).length > 0) {
-      lastGoodHostDisplayByRefIdRef.current = hostDisplayByRefId;
-    }
-  }, [hostDisplayByRefId, queryError]);
 
   const hostDisplayRaw = useMemo(
     () =>
@@ -312,11 +282,7 @@ export function TopologyPanel({
 
   const hostMetadata = dataMeta;
 
-  const queryReady = directMode
-    ? direct.ready
-    : data.state === LoadingState.Done ||
-      data.state === LoadingState.Streaming ||
-      (data.state === LoadingState.Loading && Object.keys(hostDisplay).length > 0);
+  const queryReady = direct.ready;
 
   const displayMap = useMemo(
     () => mergeMapWithQueryHosts(activeStoredMap, displayQueryHosts, hostMetadata),
@@ -344,22 +310,11 @@ export function TopologyPanel({
   const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
   const queryHostsByRefIdRaw = useMemo(
-    () =>
-      queryError ? {} : mergeQueryHostsByRefId(liveQueryHostsByRefId, lastGoodQueryHostsByRefIdRef.current),
-    [liveQueryHostsByRefId, queryError]
+    () => (queryError || !direct.ready ? {} : liveQueryHostsByRefId),
+    [liveQueryHostsByRefId, queryError, direct.ready]
   );
 
   const queryHostsByRefId = useStableIdentity(queryHostsByRefIdRaw);
-
-  useEffect(() => {
-    if (queryError) {
-      lastGoodQueryHostsByRefIdRef.current = {};
-      return;
-    }
-    if (Object.keys(queryHostsByRefId).length > 0) {
-      lastGoodQueryHostsByRefIdRef.current = queryHostsByRefId;
-    }
-  }, [queryHostsByRefId, queryError]);
 
   const parentHostKeys = useMemo(
     () => parentMapHostKeys(displayMap, hostMetadata),
@@ -396,40 +351,6 @@ export function TopologyPanel({
     }
   }, [canPersistOptions, options, theme, onOptionsChange]);
 
-  useEffect(() => {
-    const syncInterval = () => {
-      setRefreshIntervalSec(parseGrafanaRefreshSeconds(locationService.getSearchObject().refresh));
-    };
-    syncInterval();
-    return locationService.getHistory().listen(syncInterval);
-  }, []);
-
-  useEffect(() => {
-    if (!canPersistOptions || mapValidationErrors.length > 0 || directMode) {
-      return;
-    }
-    const currentMap = latestOptionsRef.current.map;
-    if (!currentMap || !Array.isArray(currentMap.nodes)) {
-      return;
-    }
-    if ((currentMap.schemaVersion ?? 1) < CURRENT_MAP_SCHEMA_VERSION) {
-      onOptionsChange({
-        ...latestOptionsRef.current,
-        map: migrateTopologyMap(currentMap),
-      });
-      return;
-    }
-    const unique = ensureUniqueNodeIds(currentMap);
-    const synced = Object.keys(dataMeta).length ? syncMapWithQueryMeta(unique, dataMeta) : null;
-    let candidate = synced ?? (unique !== currentMap ? unique : null);
-    if (candidate) {
-      const templated = applyTemplateRulesToMap(candidate, latestOptionsRef.current, dataMeta);
-      if (templated !== candidate) {
-        candidate = templated;
-      }
-      onOptionsChange({ ...latestOptionsRef.current, map: candidate });
-    }
-  }, [canPersistOptions, dataMeta, mapValidationErrors, onOptionsChange, directMode]);
 
   const problemsHostMetadata = useMemo(() => {
     if (!queryReady) {
@@ -587,11 +508,12 @@ export function TopologyPanel({
         queryError={queryError}
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
-        refreshIntervalSec={refreshIntervalSec}
+        refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
         queryData={data}
         zabbixDatasourceUid={zabbixDatasourceUid}
         zabbixMetadataLoading={zabbixMetadataLoading}
         linkMetricsByLink={linkMetricsByLink}
+        linkMetricsFetchedAtMs={linkMetricsFetchedAtMs}
         hostProblems={hostProblems}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? commitChange : undefined}

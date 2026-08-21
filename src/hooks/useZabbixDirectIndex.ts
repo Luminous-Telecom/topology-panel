@@ -8,11 +8,11 @@ import { fetchZabbixDirectSnapshot, isBenignZabbixFetchError } from '../utils/za
 import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
 
 /**
- * Busca periódica do último valor no Zabbix, para o modo "Zabbix direto".
+ * Busca periódica do último valor no Zabbix.
  *
- * O painel não usa a aba Query nesse modo, então nada dispara o ciclo de refresh do Grafana: o
- * polling vive aqui. Ele para quando a aba está oculta, não sobrepõe buscas rápidas e retoma o
- * ciclo se a busca anterior não voltou (watchdog) — senão o mapa fica preso no primeiro snapshot.
+ * O painel não usa a aba Query, então o polling vive aqui. Ele para quando a aba está oculta,
+ * não sobrepõe buscas rápidas e retoma o ciclo se a busca anterior não voltou (watchdog) —
+ * senão o mapa fica preso no primeiro snapshot.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);

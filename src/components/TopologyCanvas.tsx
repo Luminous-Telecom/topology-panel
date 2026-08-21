@@ -100,22 +100,23 @@ interface Props {
   queryError?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
-  /**
-   * Intervalo de auto-refresh do dashboard em segundos (null = off/manual). O contador
+  /** Intervalo de busca do plugin (zabbixRefreshSec). O contador
    * "Atualiza em Ns" conta o tempo sozinho dentro de `TopologyColorLegend` — não fica em estado
    * do painel para não forçar um re-render do mapa inteiro a cada segundo.
    */
   refreshIntervalSec?: number | null;
-  /** Frames da Query Zabbix (com overrides de cor/threshold) */
+  /** `PanelData` do Grafana — só o timeRange do dashboard, para o hover ICMP. */
   queryData?: PanelData;
-  /** UID do datasource Zabbix (aba Query) — usado pelo modal de ping */
+  /** UID do datasource Zabbix — ping, interfaces e histórico. */
   zabbixDatasourceUid?: string;
   /** Métricas voláteis de links (RX/TX/utilização) */
   linkMetricsByLink?: LinkRuntimeMetricsMap;
+  /** Instantâneo da última busca boa de tráfego (não o lastclock do item). */
+  linkMetricsFetchedAtMs?: number;
   /** Problemas Zabbix para badges NOC */
   hostProblems?: HostProblemsMap;
   onNocModeChange?: (enabled: boolean) => void;
-  /** Buscando IP da interface principal no Zabbix (fallback quando a Query não traz IP). */
+  /** Buscando IP da interface principal no Zabbix. */
   zabbixMetadataLoading?: boolean;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
@@ -166,6 +167,7 @@ export function TopologyCanvas({
   queryData: liveQueryData,
   zabbixDatasourceUid,
   linkMetricsByLink = NO_LINK_METRICS,
+  linkMetricsFetchedAtMs,
   hostProblems,
   onNocModeChange,
   zabbixMetadataLoading = false,
@@ -866,7 +868,7 @@ export function TopologyCanvas({
 
   const runNeighborDiscovery = useCallback(async () => {
     if (!zabbixDatasourceUid) {
-      setNeighborError('Configure o datasource Zabbix na aba Query do painel.');
+        setNeighborError('Configure o datasource Zabbix em Fonte de dados.');
       setSuggestedReviewOpen(true);
       return;
     }
@@ -874,7 +876,7 @@ export function TopologyCanvas({
     setNeighborError(undefined);
     setSuggestedReviewOpen(true);
     try {
-      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata, queryData);
+      const result = await discoverTopologyNeighbors(zabbixDatasourceUid, storedMap, hostMetadata);
       const merged = mergeSuggestedLinks(storedMap, result.suggestions);
       if (merged !== storedMap) {
         persist(merged);
@@ -891,7 +893,7 @@ export function TopologyCanvas({
     } finally {
       setDiscoveringNeighbors(false);
     }
-  }, [hostMetadata, persist, queryData, storedMap, zabbixDatasourceUid]);
+  }, [hostMetadata, persist, storedMap, zabbixDatasourceUid]);
 
   const handleNodeContextMenuWithClear = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
@@ -1501,7 +1503,7 @@ export function TopologyCanvas({
         showLegend={showLegend}
         legendItems={legendItems}
         refreshIntervalSec={refreshIntervalSec}
-        refreshResetKey={queryData}
+        refreshResetKey={linkMetricsFetchedAtMs}
         contextMenu={contextMenu}
         onCloseContextMenu={closeContextMenu}
         canvasMenuItems={canvasMenuItems}
@@ -1542,6 +1544,7 @@ export function TopologyCanvas({
           storedMap={storedMap}
           options={options}
           runtimeMetrics={resolveLinkDetailsMetrics(detailsLink, linkMetricsByLink)}
+          fetchedAtMs={linkMetricsFetchedAtMs}
           onClose={() => setDetailsLink(null)}
           onEdit={
             editable

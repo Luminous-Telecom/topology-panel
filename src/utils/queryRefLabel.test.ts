@@ -18,7 +18,7 @@ describe('queryRefRowTitle', () => {
     expect(queryRefRowTitle('DUDE/MAPA/APD', 'Grupo Zabbix: Dude/Mapa/APD')).toBe('Dude/Mapa/APD');
   });
 
-  it('mantém o prefixo Consulta no modo query', () => {
+  it('usa o refId quando o hint não é de grupo Zabbix', () => {
     expect(queryRefRowTitle('APD', 'Host group Apodi')).toBe('Consulta APD');
   });
 });

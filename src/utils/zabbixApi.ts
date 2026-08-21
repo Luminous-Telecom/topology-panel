@@ -786,7 +786,6 @@ const INTERFACE_ITEM_SEARCH_KEYS = [
 
 /**
  * Itens de interface monitorados por host — inventário do seletor de interface do link.
- * Usado quando o painel não tem aba Query alimentando o índice (modo "Zabbix direto").
  */
 export async function fetchZabbixHostInterfaceItems(
   datasourceUid: string,
@@ -1163,7 +1162,7 @@ async function fetchZabbixItemHistory(
   return [];
 }
 
-/** Histórico ICMP/perda para o hover no modo Zabbix direto (substitui séries da aba Query). */
+/** Histórico ICMP/perda para o hover (icmppingsec / icmppingloss). */
 export async function fetchHostHoverSeriesFromZabbix(
   datasourceUid: string,
   ref: HostLookupRef,

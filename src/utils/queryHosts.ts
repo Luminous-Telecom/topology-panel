@@ -1,4 +1,3 @@
-import { PanelData } from '@grafana/data';
 import {
   HostDisplayInfo,
   HostDisplayMap,
@@ -8,35 +7,15 @@ import {
   TopologyQueryRefInfo,
 } from '../types';
 import {
-  buildQueryIndex,
-  hostDisplayByRefIdFromIndex,
   numericHostsForRefIds,
-  queryHostsByRefIdFromIndex,
   QueryIndex,
-  QuerySource,
 } from '../services/queryIndex';
 import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, preferHostDisplayInfo } from './hostLookup';
-import { StatusColorOptions } from './statusMapping';
 
 /**
- * Leitura da aba Query do painel. Tudo aqui deriva de `buildQueryIndex` — nenhuma função
- * percorre `data.series` por conta própria (ver `services/queryIndex.ts`).
+ * Helpers do índice de hosts (grupos Zabbix como refId virtual).
+ * Status e listas vêm do `QueryIndex` montado pelo snapshot Zabbix — nada percorre `data.series`.
  */
-
-/** UID do datasource Zabbix a partir das queries do painel (aba Query). */
-export function resolveZabbixDatasourceUid(data?: PanelData): string | undefined {
-  return buildQueryIndex(data).datasourceUid;
-}
-
-/** RefIds (A, B, C…) configurados na aba Query do painel. */
-export function collectQueryRefIdsFromPanelData(data?: QuerySource): string[] {
-  return buildQueryIndex(data).refIds;
-}
-
-/** Queries do painel com refId visível e resumo opcional (host group etc.). */
-export function collectQueryRefInfosFromPanelData(data?: QuerySource): TopologyQueryRefInfo[] {
-  return buildQueryIndex(data).refInfos;
-}
 
 export function sameQueryRefInfos(a: TopologyQueryRefInfo[], b: TopologyQueryRefInfo[]): boolean {
   if (a.length !== b.length) {
@@ -74,45 +53,6 @@ export function findHostDisplayBucket(
   return undefined;
 }
 
-/**
- * Mantém refIds que ainda não voltaram no refresh; os que chegaram substituem o valor inteiro.
- * `keep` decide se o valor recém-chegado é bom o bastante para sobrescrever o anterior.
- */
-function mergeByRefId<T>(
-  live: Record<string, T>,
-  previous: Record<string, T>,
-  keep: (value: T) => boolean
-): Record<string, T> {
-  if (Object.keys(live).length === 0) {
-    return previous;
-  }
-  if (Object.keys(previous).length === 0) {
-    return live;
-  }
-  const merged: Record<string, T> = { ...previous };
-  for (const [refId, value] of Object.entries(live)) {
-    if (keep(value)) {
-      merged[refId] = value;
-    }
-  }
-  return merged;
-}
-
-export function mergeHostDisplayByRefId(
-  live: Record<string, HostDisplayMap>,
-  previous: Record<string, HostDisplayMap>
-): Record<string, HostDisplayMap> {
-  return mergeByRefId(live, previous, () => true);
-}
-
-/** Mantém listas de hosts por refId quando o refresh ainda não trouxe aquela query. */
-export function mergeQueryHostsByRefId(
-  live: Record<string, string[]>,
-  previous: Record<string, string[]>
-): Record<string, string[]> {
-  return mergeByRefId(live, previous, (hosts) => hosts.length > 0);
-}
-
 /** Achata buckets por refId num mapa único (hosts do canvas). */
 export function flattenHostDisplayByRefId(
   byRefId: Record<string, HostDisplayMap>
@@ -127,23 +67,7 @@ export function flattenHostDisplayByRefId(
   return result;
 }
 
-/** Host -> status por refId da query Grafana (A, B, C…). */
-export function extractHostDisplayByRefId(
-  data: PanelData,
-  statusOptions: StatusColorOptions
-): Record<string, HostDisplayMap> {
-  return hostDisplayByRefIdFromIndex(buildQueryIndex(data), statusOptions);
-}
-
-/**
- * Hosts por refId a partir dos labels da Query (não exige último valor numérico).
- * Usado na contagem de hosts do submapa / host group.
- */
-export function extractQueryHostsByRefId(data?: PanelData): Record<string, string[]> {
-  return queryHostsByRefIdFromIndex(buildQueryIndex(data));
-}
-
-/** RefIds de query reservados a submapas (não desenham hosts no mapa pai). */
+/** RefIds de grupo reservados a submapas (não desenham hosts no mapa pai). */
 export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
   const refs = new Set<string>();
   for (const node of map.nodes ?? []) {
@@ -158,7 +82,7 @@ export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
   return refs;
 }
 
-/** RefIds das queries que importam hosts ao mapa (opt-in). */
+/** Grupos (refIds virtuais) que importam hosts ao mapa (opt-in). */
 export function resolveDisplayQueryRefIds(
   options: Pick<TopologyPanelOptions, 'displayQueryRefIds'>
 ): string[] {
@@ -239,14 +163,4 @@ export function lookupHostDisplay(
     }
   }
   return best;
-}
-
-/** Hosts da Query Zabbix crua (labels.host de cada série). */
-export function extractQueryHosts(data: QuerySource): string[] {
-  return buildQueryIndex(data).hosts;
-}
-
-/** Nome dos hosts a partir dos labels da Query (IP vem da API Zabbix). */
-export function extractHostMetadataFromData(data: QuerySource): HostMetadataMap {
-  return buildQueryIndex(data).metadata;
 }

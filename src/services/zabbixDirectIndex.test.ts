@@ -144,7 +144,7 @@ describe('directRefInfosFromGroups', () => {
 describe('resolvePanelQueryRefInfos', () => {
   it('prioriza refInfos sincronizados pelo painel', () => {
     const synced = [{ refId: 'A', hint: 'Query A' }];
-    expect(resolvePanelQueryRefInfos({ dataMode: 'zabbix', zabbixHostGroups: ['X'] }, synced)).toBe(
+    expect(resolvePanelQueryRefInfos({ zabbixHostGroups: ['X'] }, synced)).toBe(
       synced
     );
   });
@@ -152,7 +152,6 @@ describe('resolvePanelQueryRefInfos', () => {
   it('cai nos grupos Zabbix quando não há sync', () => {
     expect(
       resolvePanelQueryRefInfos({
-        dataMode: 'zabbix',
         zabbixHostGroups: ['Backbone'],
       })
     ).toEqual([{ refId: 'BACKBONE', hint: 'Grupo Zabbix: Backbone' }]);

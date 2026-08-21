@@ -1,5 +1,4 @@
 import React from 'react';
-import { PanelData } from '@grafana/data';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../../types';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { LegendItem } from '../../utils/legendItems';
@@ -28,7 +27,7 @@ interface Props {
   showLegend: boolean;
   legendItems: LegendItem[];
   refreshIntervalSec?: number | null;
-  refreshResetKey?: PanelData;
+  refreshResetKey?: unknown;
   contextMenu: ContextAnchor | null;
   onCloseContextMenu: () => void;
   canvasMenuItems: () => ContextMenuItem[];

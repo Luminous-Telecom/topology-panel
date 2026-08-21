@@ -1,11 +1,5 @@
-import { PanelData } from '@grafana/data';
 import { useEffect, useMemo, useState } from 'react';
-import { HostMetadataMap, TopologyNetworkInterface } from '../types';
-import {
-  buildQueryIndex,
-  interfacesByHostKeysFromIndex,
-  queryIndexHasInterfaceItems,
-} from '../services/queryIndex';
+import { TopologyNetworkInterface } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
 import { InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
@@ -34,10 +28,9 @@ const interfacesCache = createAsyncCache<InterfacesByHost>({
   isCacheable: (result) => Object.keys(result).length > 0,
 });
 
-const NO_QUERY_ITEMS_ERROR =
-  'Inclua métricas de interface na aba Query (RX/TX, operstatus ou equivalente).';
 const NO_API_ITEMS_ERROR =
   'Nenhuma métrica de interface encontrada no Zabbix para este host (RX/TX, operstatus ou equivalente).';
+const NO_DATASOURCE_ERROR = 'Configure o datasource Zabbix em Fonte de dados.';
 
 function interfaceSearchKeys(keywords?: ZabbixInterfaceKeywordOptions): string[] {
   return [keywords?.rxKeyword, keywords?.txKeyword].map((key) => key?.trim()).filter(Boolean) as string[];
@@ -53,15 +46,10 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces monitoradas.
- *
- * A aba Query continua sendo a fonte preferida — quando ela traz itens de interface, nada vai à
- * rede. No modo "Zabbix direto" não existe Query para ler, então o inventário vem da API.
+ * Inventário de interfaces monitoradas — sempre via API Zabbix (`item.get`).
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
-  queryData?: PanelData,
-  hostMetadata?: HostMetadataMap,
   datasourceUid?: string,
   interfaceKeywords?: ZabbixInterfaceKeywordOptions
 ): UseZabbixHostInterfacesResult {
@@ -80,19 +68,11 @@ export function useZabbixHostInterfaces(
   ]);
   const configKey = `${extraSearchKeys.join('\u0001')}\u0000${interfaceKeywords?.rxKeyword ?? ''}\u0000${interfaceKeywords?.txKeyword ?? ''}`;
 
-  const queryIndex = useMemo(() => buildQueryIndex(queryData), [queryData]);
-  const hasQueryItems = queryIndexHasInterfaceItems(queryIndex);
-
-  const queryInterfaces = useMemo(
-    () => (hasQueryItems ? interfacesByHostKeysFromIndex(queryIndex, keys, hostMetadata) : EMPTY_INTERFACES),
-    [queryIndex, hasQueryItems, hostKey, hostMetadata]
-  );
-
   const [apiInterfaces, setApiInterfaces] = useState<InterfacesByHost>(EMPTY_INTERFACES);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | undefined>(undefined);
 
-  const shouldFetch = !hasQueryItems && Boolean(hostKey) && Boolean(datasourceUid);
+  const shouldFetch = Boolean(hostKey) && Boolean(datasourceUid);
 
   useEffect(() => {
     if (!shouldFetch || !datasourceUid) {
@@ -136,20 +116,18 @@ export function useZabbixHostInterfaces(
     };
   }, [shouldFetch, datasourceUid, hostKey, configKey, extraSearchKeys, keyParseOptions]);
 
-  const interfacesByHost = hasQueryItems ? queryInterfaces : apiInterfaces;
-
   const loadError = useMemo(() => {
-    if (!hostKey || hasQueryItems) {
+    if (!hostKey) {
       return undefined;
     }
     if (!datasourceUid) {
-      return NO_QUERY_ITEMS_ERROR;
+      return NO_DATASOURCE_ERROR;
     }
     if (apiError) {
       return apiError;
     }
     return loading || Object.keys(apiInterfaces).length > 0 ? undefined : NO_API_ITEMS_ERROR;
-  }, [hostKey, hasQueryItems, datasourceUid, apiError, loading, apiInterfaces]);
+  }, [hostKey, datasourceUid, apiError, loading, apiInterfaces]);
 
-  return { interfacesByHost, loading, loadError };
+  return { interfacesByHost: apiInterfaces, loading, loadError };
 }

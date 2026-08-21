@@ -1,10 +1,27 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventBus, FieldConfigSource, LoadingState, PanelData, TimeRange, getDefaultTimeRange } from '@grafana/data';
 import { Observable, Subject } from 'rxjs';
 import { TopologyPanel, Props as TopologyPanelProps } from './TopologyPanel';
 import { defaultOptions, TopologyMap, TopologyPanelOptions } from '../types';
+
+const directIndexMock = vi.hoisted(() => ({
+  error: undefined as string | undefined,
+}));
+
+vi.mock('../hooks/useZabbixDirectIndex', async () => {
+  const { buildQueryIndex } = await import('../services/queryIndex');
+  const empty = buildQueryIndex(undefined);
+  return {
+    useZabbixDirectIndex: () => ({
+      index: empty,
+      ready: !directIndexMock.error,
+      loading: false,
+      error: directIndexMock.error,
+    }),
+  };
+});
 
 /** EventBus mínimo (sem dependências do runtime real do Grafana) só para satisfazer PanelProps. */
 function createTestEventBus(): EventBus {
@@ -51,6 +68,10 @@ function renderTopologyPanel(
 }
 
 describe('TopologyPanel — inicialização de mapas', () => {
+  beforeEach(() => {
+    directIndexMock.error = undefined;
+  });
+
   it('mapa em branco (sem nós) renderiza o canvas sem lançar exceção', () => {
     const options = defaultOptions();
     options.map = { width: 1200, height: 800, nodes: [], links: [] };
@@ -80,10 +101,11 @@ describe('TopologyPanel — inicialização de mapas', () => {
     expect(screen.queryByText(/mapa de topologia inválido/i)).not.toBeInTheDocument();
   });
 
-  it('query com LoadingState.Error após dado bom não deixa a UI num estado sem indicação', () => {
+  it('erro do Zabbix não deixa a UI sem indicação', () => {
+    directIndexMock.error = 'Falha ao consultar o Zabbix.';
     const options = defaultOptions();
     options.map = { width: 1200, height: 800, nodes: [], links: [] };
-    renderTopologyPanel(options, { data: emptyPanelData(LoadingState.Error) });
+    renderTopologyPanel(options);
     expect(screen.getByText(/falha na fonte de dados/i)).toBeInTheDocument();
   });
 

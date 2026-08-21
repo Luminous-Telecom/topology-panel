@@ -164,9 +164,8 @@ export function HostHoverPopover({
     [node.zabbixHost, node.subtitle, node.label, node.zabbixHostId]
   );
 
-  const { series, loading: seriesLoading, directMode } = useHostHoverSeries({
+  const { series, loading: seriesLoading } = useHostHoverSeries({
     enabled: true,
-    dataMode: options.dataMode,
     queryData,
     lookupRef,
     hostMetadata,
@@ -261,7 +260,7 @@ export function HostHoverPopover({
 
       {!queryReady || seriesLoading ? (
         <div className={emptyStyle}>
-          {directMode ? 'Carregando histórico do Zabbix…' : 'Aguardando dados da Query…'}
+          Carregando histórico do Zabbix…
         </div>
       ) : series ? (
         <>
@@ -288,9 +287,7 @@ export function HostHoverPopover({
         </>
       ) : (
         <div className={emptyStyle}>
-          {directMode
-            ? 'Sem histórico ICMP no período (icmppingsec / icmppingloss)'
-            : 'Sem série ICMP da Query para este host (icmppingsec / icmppingloss)'}
+          Sem histórico ICMP no período (icmppingsec / icmppingloss)
         </div>
       )}
     </div>,

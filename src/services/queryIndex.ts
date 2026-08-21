@@ -17,15 +17,11 @@ import {
 } from '../utils/zabbixAdapter/parseInterfaceItems';
 
 /**
- * Leitura única da aba Query do painel.
+ * Formato do índice de status do mapa (`QueryIndex`).
  *
- * Antes cada helper de `utils.ts` percorria `data.series` por conta própria e o `TopologyPanel`
- * disparava de 6 a 7 varreduras completas por refresh. Aqui os frames são lidos **uma vez** e todo
- * o resto (status, hosts por refId, metadata, refIds) é derivado do resultado em memória.
- *
- * O índice guarda só fatos crus da Query — nada que dependa das opções do painel. Cores e textos de
- * status são aplicados depois, em `hostDisplayByRefIdFromIndex`, que custa O(hosts) em vez de
- * O(hosts × pontos).
+ * A origem de produção é `buildZabbixDirectIndex`. `buildQueryIndex` ainda parseia `PanelData`
+ * (índice vazio e testes). O índice guarda só fatos crus — nada que dependa das opções do painel.
+ * Cores e textos de status são aplicados depois, em `hostDisplayByRefIdFromIndex`.
  */
 
 export type QuerySource = PanelData | DataFrame[] | undefined;

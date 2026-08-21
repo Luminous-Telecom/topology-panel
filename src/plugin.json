@@ -2,6 +2,7 @@
   "type": "panel",
   "name": "Topology Panel",
   "id": "luminous-topology-panel",
+  "skipDataQuery": true,
   "info": {
     "description": "Manual network topology maps with Zabbix host status, links between nodes, and submap navigation",
     "author": {

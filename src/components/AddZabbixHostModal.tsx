@@ -86,9 +86,9 @@ export function ZabbixHostPickerModal({
   const title = mode === 'edit' ? 'Editar host Zabbix' : 'Adicionar host Zabbix';
   const confirmLabel = mode === 'edit' ? 'Salvar' : 'Adicionar';
   const loadError = !queryHostOptions.length
-    ? 'Nenhum host na Query do painel. Configure a aba Query e aguarde os dados.'
+    ? 'Nenhum host nos grupos configurados. Escolha o datasource e os grupos em Fonte de dados.'
     : !hostOptions.length
-      ? 'Todos os hosts da Query já estão no mapa.'
+      ? 'Todos os hosts dos grupos já estão no mapa.'
       : null;
   const needsManualIp = Boolean(hostKey && !autoIp && !zabbixMetadataLoading);
   const waitingForZabbixIp = Boolean(hostKey && !autoIp && zabbixMetadataLoading);
@@ -99,7 +99,7 @@ export function ZabbixHostPickerModal({
         label="Host"
         description={
           loadError ??
-          'Hosts retornados pela Query do painel. O IP vem da interface principal no Zabbix.'
+          'Hosts dos grupos Zabbix configurados no painel. O IP vem da interface principal no Zabbix.'
         }
       >
         <Select
@@ -109,7 +109,7 @@ export function ZabbixHostPickerModal({
           disabled={!queryHostOptions.length}
           onChange={(v) => setHostKey(v.value)}
           placeholder={
-            hostOptions.length ? 'Selecione o host' : 'Nenhum host disponível na Query'
+            hostOptions.length ? 'Selecione o host' : 'Nenhum host disponível nos grupos'
           }
         />
       </Field>

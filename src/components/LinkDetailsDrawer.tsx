@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import {
   LinkRuntimeMetrics,
@@ -22,6 +22,8 @@ interface Props {
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
   runtimeMetrics?: LinkRuntimeMetrics;
+  /** Última busca boa de tráfego — o lastclock do item pode ficar parado no Zabbix. */
+  fetchedAtMs?: number;
   onClose: () => void;
   onEdit?: () => void;
 }
@@ -31,7 +33,16 @@ function nodeLabel(nodes: TopologyMap['nodes'], id: string): string {
   return node?.label?.trim() || node?.id || id;
 }
 
-function MetricRow({ label, value }: { label: string; value: string }) {
+function RelativeUpdate({ ms }: { ms: number }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <>{formatRelativeUpdate(ms) ?? 'N/A'}</>;
+}
+
+function MetricRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, lineHeight: 1.5 }}>
       <span style={{ opacity: 0.75 }}>{label}</span>
@@ -88,6 +99,7 @@ export function LinkDetailsDrawer({
   storedMap,
   options,
   runtimeMetrics,
+  fetchedAtMs,
   onClose,
   onEdit,
 }: Props) {
@@ -98,14 +110,6 @@ export function LinkDetailsDrawer({
     link.fromInterface?.name && link.toInterface?.name
       ? `${link.fromInterface.name} ↔ ${link.toInterface.name}`
       : 'Não associadas';
-  const lastUpdateMs = useMemo(() => {
-    const fromMs = runtimeMetrics?.from.lastUpdateMs;
-    const toMs = runtimeMetrics?.to.lastUpdateMs;
-    if (fromMs === undefined && toMs === undefined) {
-      return undefined;
-    }
-    return Math.max(fromMs ?? 0, toMs ?? 0);
-  }, [runtimeMetrics?.from.lastUpdateMs, runtimeMetrics?.to.lastUpdateMs]);
   const statusColor = resolvePanelColor(
     theme,
     runtimeMetrics?.status === 'down'
@@ -194,8 +198,8 @@ export function LinkDetailsDrawer({
         <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} />
         <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} />
 
-        {lastUpdateMs !== undefined ? (
-          <MetricRow label="Atualizado" value={formatRelativeUpdate(lastUpdateMs) ?? 'N/A'} />
+        {fetchedAtMs !== undefined ? (
+          <MetricRow label="Atualizado" value={<RelativeUpdate ms={fetchedAtMs} />} />
         ) : null}
       </div>
 

@@ -56,8 +56,8 @@ export function SubmapFields({ uid, values, set, queryRefInfos, childMapIds = []
         />
       </Field>
       <Field
-        label="Consulta Zabbix"
-        description="Consulta deste painel cujo host group define os hosts monitorados deste submapa"
+        label="Grupo Zabbix"
+        description="Grupo cujo status define os hosts monitorados deste submapa"
       >
         <QueryRefSelect
           inputId={`${uid}-submap-query`}

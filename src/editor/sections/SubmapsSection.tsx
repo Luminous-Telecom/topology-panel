@@ -91,8 +91,8 @@ export function SubmapsSection({
                 />
               </Field>
               <Field
-                label="Consulta Zabbix"
-                description="Host group desta consulta alimenta a contagem de hosts do submapa"
+                label="Grupo Zabbix"
+                description="Este grupo alimenta a contagem de hosts do submapa"
               >
                 <QueryRefSelect
                   inputId={`${uid}-submap-${idx}-query`}

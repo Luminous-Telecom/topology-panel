@@ -4,27 +4,20 @@ import { css } from '@emotion/css';
 import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
 import { resolvePanelQueryRefInfos } from '../services/zabbixDirectIndex';
-import { collectQueryRefInfosFromPanelData, collectSubmapQueryRefIds } from '../utils/queryHosts';
+import { collectSubmapQueryRefIds } from '../utils/queryHosts';
 import { queryRefBadgeLabel, queryRefRowTitle } from '../utils/queryRefLabel';
 
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 
 function resolveAvailableQueryRefs(context: Props['context']): TopologyQueryRefInfo[] {
-  const synced = context.options.queryRefInfosAvailable ?? [];
-  if (synced.length) {
-    return synced;
-  }
-  if (context.options.dataMode === 'zabbix') {
-    return resolvePanelQueryRefInfos(context.options);
-  }
-  return collectQueryRefInfosFromPanelData(context.data);
+  return resolvePanelQueryRefInfos(context.options);
 }
 
 function normalizeRefId(refId: string): string {
   return refId.trim().toUpperCase();
 }
 
-/** Escolhe quais queries (refId) importam hosts ao mapa — opt-in por query. */
+/** Escolhe quais grupos (refId virtual) importam hosts ao mapa — opt-in por grupo. */
 export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   const theme = useTheme2();
   const selected = useMemo(
@@ -88,12 +81,9 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   };
 
   if (!queryRefs.length) {
-    const directMode = context.options.dataMode === 'zabbix';
     return (
       <span style={{ fontSize: 12, opacity: 0.75 }}>
-        {directMode
-          ? 'Escolha o datasource Zabbix e ao menos um grupo de host em Fonte de dados.'
-          : 'Nenhuma query detectada ainda — salve ou aguarde a visualização do painel.'}
+        Escolha o datasource Zabbix e ao menos um grupo de host em Fonte de dados.
       </span>
     );
   }
@@ -125,21 +115,21 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
               <div style={{ fontSize: 11, color: theme.colors.text.secondary, lineHeight: 1.35 }}>
                 {reservedForSubmap
                   ? 'Reservada a submapa — não importa hosts no mapa pai'
-                  : hint || 'Mostrar hosts desta query no mapa'}
+                  : hint || 'Mostrar hosts deste grupo no mapa'}
               </div>
             </div>
             {reservedForSubmap ? (
               <span
                 className={lockedStyle}
                 title="Reservada a submapa"
-                aria-label={`Consulta ${refId} reservada a submapa`}
+                aria-label={`Grupo ${refId} reservado a submapa`}
               >
                 <Icon name="lock" />
               </span>
             ) : (
               <Checkbox
                 value={checked}
-                aria-label={`Consulta ${refId} — mostrar hosts no mapa`}
+                aria-label={`Grupo ${refId} — mostrar hosts no mapa`}
                 onChange={(e) => {
                   const next = new Set(selected);
                   if (e.currentTarget.checked) {

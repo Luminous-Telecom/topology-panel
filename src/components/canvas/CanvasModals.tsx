@@ -174,7 +174,6 @@ export function CanvasModals({
         <LinkEditModal
           link={editLink}
           storedMap={storedMap}
-          queryData={queryData}
           hostMetadata={hostMetadata}
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}
@@ -188,7 +187,6 @@ export function CanvasModals({
         <LinkInterfaceSelectModal
           pending={pendingLink}
           hostMetadata={hostMetadata}
-          queryData={queryData}
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}
           zabbixTxItemKeyword={options.zabbixTxItemKeyword}

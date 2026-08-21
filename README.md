@@ -23,7 +23,7 @@ Repositório: [github.com/Luminous-Telecom/topology-panel](https://github.com/Lu
 
 - Node.js **18+**
 - Grafana **9+** (testado em Grafana 11/13)
-- Datasource Zabbix (opcional, para cores de status)
+- Datasource Zabbix (obrigatório, para status e tráfego)
 - Windows + Winbox (para abrir Winbox a partir do navegador)
 
 ## Instalação do plugin (Grafana)
@@ -143,7 +143,7 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
 ## Uso no Grafana
 
 1. Crie um dashboard → adicione painel **Topology Panel**
-2. **Opções → Zabbix**: UID do datasource (status ICMP via API)
+2. **Opções → Fonte de dados**: datasource Zabbix, grupos de host e intervalo de atualização
 3. **Opções → Topologia**: edite o mapa (hosts, links, redes)
 4. **Opções → Acesso remoto**: usuário/senha padrão das Tools (opcional)
 5. Modo edição do dashboard (lápis) para mover hosts; **Save dashboard** para gravar

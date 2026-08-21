@@ -1,9 +1,8 @@
-import { PanelData } from '@grafana/data';
 import { HostMetadataMap, TopologyMap, TopologySuggestedLink } from '../../types';
-import { buildQueryIndex, interfacesByHostKeysFromIndex } from '../../services/queryIndex';
 import { resolveHostLookupKey } from '../hostLookup';
 import { isHostNode } from '../topologyNodes';
-import { fetchZabbixNeighborItems } from '../zabbixApi';
+import { fetchZabbixHostInterfaceItems, fetchZabbixNeighborItems } from '../zabbixApi';
+import { groupInterfacesByHost } from '../zabbixAdapter/parseInterfaceItems';
 import { groupNeighborsByHost } from '../zabbixAdapter/parseNeighborItems';
 import { correlateNeighborsToSuggestions } from './correlateNeighbors';
 
@@ -31,13 +30,12 @@ function hostKeysFromMap(map: TopologyMap, hostMetadata?: HostMetadataMap): stri
 
 /**
  * Descobre vizinhos LLDP/CDP via itens Zabbix dos templates dos hosts.
- * Interfaces locais vêm da Query; vizinhança continua via API Zabbix.
+ * Interfaces locais e vizinhança vêm da API Zabbix.
  */
 export async function discoverTopologyNeighbors(
   datasourceUid: string,
   map: TopologyMap,
-  hostMetadata?: HostMetadataMap,
-  queryData?: PanelData
+  hostMetadata?: HostMetadataMap
 ): Promise<NeighborDiscoveryResult> {
   const hostKeys = hostKeysFromMap(map, hostMetadata);
   if (!datasourceUid || !hostKeys.length) {
@@ -50,9 +48,11 @@ export async function discoverTopologyNeighbors(
     };
   }
 
-  const neighborEntries = await fetchZabbixNeighborItems(datasourceUid, hostKeys);
-  const queryIndex = buildQueryIndex(queryData);
-  const interfacesByHost = interfacesByHostKeysFromIndex(queryIndex, hostKeys, hostMetadata);
+  const [neighborEntries, interfaceEntries] = await Promise.all([
+    fetchZabbixNeighborItems(datasourceUid, hostKeys),
+    fetchZabbixHostInterfaceItems(datasourceUid, hostKeys),
+  ]);
+  const interfacesByHost = groupInterfacesByHost(interfaceEntries);
   const neighbors = groupNeighborsByHost(
     neighborEntries.map((e) => ({ hostKey: e.hostKey, hostid: e.hostid, items: e.items }))
   );

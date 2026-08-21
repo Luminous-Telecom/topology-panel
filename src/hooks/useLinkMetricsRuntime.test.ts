@@ -28,14 +28,13 @@ function mapWithTraffic() {
 
 let uidSeq = 0;
 
-function renderMetrics(runtime: { refreshSec?: number | null; queryRefreshKey?: unknown }) {
+function renderMetrics(runtime: { refreshSec?: number | null }) {
   uidSeq += 1;
   const uid = `ds-link-metrics-${uidSeq}`;
   const utils = renderHook(
-    ({ refreshSec, queryRefreshKey }: { refreshSec?: number | null; queryRefreshKey?: unknown }) =>
+    ({ refreshSec }: { refreshSec?: number | null }) =>
       useLinkMetricsRuntime(uid, mapWithTraffic(), defaultOptions(), true, {
         refreshSec,
-        queryRefreshKey,
       }),
     { initialProps: runtime }
   );
@@ -75,9 +74,10 @@ describe('useLinkMetricsRuntime', () => {
   });
 
   it('trocar zabbixRefreshSec de 10s para 30s muda o intervalo sem remontar o painel', async () => {
-    const { rerender } = renderMetrics({ refreshSec: 10 });
+    const { rerender, result } = renderMetrics({ refreshSec: 10 });
     await flush();
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(result.current.fetchedAtMs).toEqual(expect.any(Number));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
@@ -98,8 +98,8 @@ describe('useLinkMetricsRuntime', () => {
     expect(fetchLastValues).toHaveBeenCalledTimes(3);
   });
 
-  it('sem refreshSec (modo query) não arma setInterval — só reage a queryRefreshKey', async () => {
-    const { rerender } = renderMetrics({ refreshSec: null, queryRefreshKey: { n: 1 } });
+  it('sem refreshSec não arma setInterval', async () => {
+    renderMetrics({ refreshSec: null });
     await flush();
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
 
@@ -107,10 +107,6 @@ describe('useLinkMetricsRuntime', () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
-
-    rerender({ refreshSec: null, queryRefreshKey: { n: 2 } });
-    await flush();
-    expect(fetchLastValues).toHaveBeenCalledTimes(2);
   });
 
   it('aba oculta pausa o fetch de tráfego até voltar a ficar visível', async () => {

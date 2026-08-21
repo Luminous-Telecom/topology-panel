@@ -1,5 +1,4 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { PanelData } from '@grafana/data';
 import { Button, Field, Modal, Select, Spinner } from '@grafana/ui';
 import {
   HostMetadataMap,
@@ -23,9 +22,8 @@ import { FieldReadout } from './FieldReadout';
 interface Props {
   link: TopologyLink;
   storedMap: { nodes: TopologyNode[] };
-  queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
-  /** Fonte do inventário de interfaces quando o painel não usa a aba Query. */
+  /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
   zabbixRxItemKeyword?: string;
   zabbixTxItemKeyword?: string;
@@ -96,7 +94,6 @@ function InterfaceSelectField({
 export function LinkEditModal({
   link,
   storedMap,
-  queryData,
   hostMetadata,
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
@@ -120,8 +117,6 @@ export function LinkEditModal({
 
   const { interfacesByHost, loading: ifacesLoading, loadError } = useZabbixHostInterfaces(
     hostKeys,
-    queryData,
-    hostMetadata,
     zabbixDatasourceUid,
     {
       rxKeyword: zabbixRxItemKeyword,

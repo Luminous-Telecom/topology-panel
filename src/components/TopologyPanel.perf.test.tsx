@@ -89,8 +89,28 @@ vi.mock('./TopologyCanvas', async (importOriginal) => {
   return { ...mod, TopologyCanvas: Spy };
 });
 
+const directIndexState = vi.hoisted(() => ({
+  index: undefined as import('../services/queryIndex').QueryIndex | undefined,
+  ready: true,
+  error: undefined as string | undefined,
+}));
+
+vi.mock('../hooks/useZabbixDirectIndex', async () => {
+  const { buildQueryIndex } = await import('../services/queryIndex');
+  const empty = buildQueryIndex(undefined);
+  return {
+    useZabbixDirectIndex: () => ({
+      index: directIndexState.index ?? empty,
+      ready: directIndexState.ready,
+      loading: false,
+      error: directIndexState.error,
+    }),
+  };
+});
+
 // Importado depois dos mocks para que o canvas resolva as formas já instrumentadas.
 import { TopologyPanel, Props as TopologyPanelProps } from './TopologyPanel';
+import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 
 /** Props cuja identidade mudou entre o último render antes do poll e o primeiro depois. */
 function propsThatChangedIdentity(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
@@ -210,11 +230,31 @@ function panelProps(options: TopologyPanelOptions, data: PanelData): TopologyPan
   };
 }
 
-function perfOptions(map: TopologyMap): TopologyPanelOptions {
-  const options = defaultOptions();
-  options.map = map;
-  options.displayQueryRefIds = ['A'];
-  return options;
+function buildDirectIndex(hostCount: number, downHosts: ReadonlySet<number> = new Set()) {
+  const hosts = [];
+  const statusItems = [];
+  for (let i = 0; i < hostCount; i += 1) {
+    const ip = hostIp(i);
+    hosts.push({
+      hostid: String(i),
+      host: ip,
+      name: `RB-${i}`,
+      ip,
+      groups: ['A'],
+    });
+    statusItems.push({
+      hostid: String(i),
+      key_: 'icmpping',
+      lastvalue: downHosts.has(i) ? '0' : '1',
+    });
+  }
+  return buildZabbixDirectIndex({
+    datasourceUid: 'ds-perf',
+    groupNames: ['A'],
+    statusItemKey: 'icmpping',
+    hosts,
+    statusItems,
+  });
 }
 
 /**
@@ -249,7 +289,21 @@ function resetCounts(): void {
   layerPropsLog.length = 0;
 }
 
-beforeEach(() => resetCounts());
+beforeEach(() => {
+  resetCounts();
+  directIndexState.index = buildDirectIndex(HOST_COUNT);
+  directIndexState.ready = true;
+  directIndexState.error = undefined;
+});
+
+function perfOptions(map: TopologyMap): TopologyPanelOptions {
+  const options = defaultOptions();
+  options.map = map;
+  options.zabbixDatasourceUid = 'ds-perf';
+  options.zabbixHostGroups = ['A'];
+  options.displayQueryRefIds = ['A'];
+  return options;
+}
 
 describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
   it('poll sem nenhuma mudança de status não deve redesenhar nó nem cabo', () => {
@@ -261,7 +315,7 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     expect(mounted.host).toBeGreaterThan(0);
 
     resetCounts();
-    // Refresh do dashboard: PanelData novo, mesmos valores.
+    // Poll do Zabbix: mesmo índice, PanelData novo (timeRange do dashboard).
     rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     // eslint-disable-next-line no-console
@@ -302,7 +356,7 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     );
 
     /**
-     * `queryData` é o `PanelData` novo do refresh e os `on*` são callbacks do painel — os dois
+     * `queryData` é o `PanelData` novo (timeRange) e os `on*` são callbacks do painel — os dois
      * fazem o canvas renderizar de novo, o que é barato. O que não pode mudar é o dado que desce
      * para as camadas, porque aí o custo é por nó.
      */
@@ -318,7 +372,8 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     const { rerender } = render(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     resetCounts();
-    rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT, new Set([7])))} />);
+    directIndexState.index = buildDirectIndex(HOST_COUNT, new Set([7]));
+    rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     // eslint-disable-next-line no-console
     console.log(

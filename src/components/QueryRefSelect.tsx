@@ -22,7 +22,7 @@ function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
   };
 }
 
-/** Select de consulta Grafana (A, B, C…) para vincular submapas ao status ICMP. */
+/** Select de grupo Zabbix (refId virtual) para vincular submapas ao status ICMP. */
 export function QueryRefSelect({
   value,
   onChange,
@@ -41,8 +41,8 @@ export function QueryRefSelect({
     if (normalized && !queryRefs.some((info) => info.refId === normalized)) {
       items.push({
         value: normalized,
-        label: `Consulta ${normalized}`,
-        description: 'Não detectada na aba Query',
+        label: normalized,
+        description: 'Não está entre os grupos configurados',
       });
     }
     return items;
@@ -51,7 +51,7 @@ export function QueryRefSelect({
   if (!queryRefs.length && !normalized) {
     return (
       <span id={inputId} style={{ fontSize: 12, opacity: 0.75 }}>
-        Nenhuma consulta detectada — configure na aba Query e aguarde o painel carregar.
+        Nenhum grupo detectado — configure os grupos de host em Fonte de dados.
       </span>
     );
   }
@@ -63,8 +63,8 @@ export function QueryRefSelect({
       value={normalized || null}
       disabled={disabled}
       menuShouldPortal={menuShouldPortal}
-      placeholder="Selecionar consulta…"
-      noOptionsMessage="Nenhuma consulta disponível"
+      placeholder="Selecionar grupo…"
+      noOptionsMessage="Nenhum grupo disponível"
       onChange={(v) => onChange(v?.value ?? '')}
     />
   );

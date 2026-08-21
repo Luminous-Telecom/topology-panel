@@ -27,7 +27,7 @@ Qualquer arquivo em `src/`.
 | Modal de propriedades do nó | `components/NodeEditModal.tsx` + campos por tipo em `components/nodeEdit/*` |
 | Opções do painel e wiring do Grafana | `components/TopologyPanel.tsx`, `module.ts` |
 | Editor de JSON, nós e links | `editor/TopologyEditor.tsx` + seções em `editor/sections/*` |
-| Leitura única da aba Query | `services/queryIndex.ts` |
+| Leitura única do índice de status (`QueryIndex`) | `services/queryIndex.ts` + `services/zabbixDirectIndex.ts` |
 | Mutações do `TopologyMap` | `utils/mapEdits.ts` (nós e travas), `utils/mapLinkEdits.ts` (cabos), `utils/mapBulkEdits.ts` (lote) |
 | Lógica pura, sem estado | `utils/*` (um módulo por tema) |
 | Lógica com estado ou efeito | `hooks/*` |

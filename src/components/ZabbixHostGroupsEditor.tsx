@@ -7,10 +7,9 @@ import { useZabbixHostGroups } from '../hooks/useZabbixHostGroups';
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 
 /**
- * Grupos do Zabbix que alimentam o mapa no modo direto.
+ * Grupos do Zabbix que alimentam o mapa.
  *
- * Cada grupo ocupa o lugar de uma consulta da aba Query: aparece em "Mostrar hosts da query no
- * mapa" e no campo "Consulta" dos submapas.
+ * Cada grupo aparece em "Mostrar hosts do grupo no mapa" e no campo de grupo dos submapas.
  */
 export function ZabbixHostGroupsEditor({ value, onChange, context }: Props) {
   const uid = useId();

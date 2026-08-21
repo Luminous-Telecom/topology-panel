@@ -30,8 +30,8 @@ export function ZabbixHostFields({
         label="Host Zabbix"
         description={
           hasQueryHosts
-            ? 'Hosts retornados pela Query do painel. Vinculado pelo IP nos labels da série.'
-            : 'Nenhum host na Query do painel. Configure a aba Query e aguarde os dados.'
+            ? 'Hosts dos grupos Zabbix configurados no painel.'
+            : 'Nenhum host nos grupos configurados. Escolha o datasource e os grupos em Fonte de dados.'
         }
       >
         <Select
@@ -40,7 +40,7 @@ export function ZabbixHostFields({
           value={selectedHostKey}
           disabled={!hasQueryHosts}
           onChange={(v) => onSelect(v.value)}
-          placeholder={options.length ? 'Selecione o host' : 'Nenhum host disponível na Query'}
+          placeholder={options.length ? 'Selecione o host' : 'Nenhum host disponível nos grupos'}
         />
       </Field>
       {displayIp ? (

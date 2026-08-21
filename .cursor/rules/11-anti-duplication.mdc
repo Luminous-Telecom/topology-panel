@@ -20,25 +20,25 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
   novo branch) em vez de criar equivalente em outro arquivo.
 - Notou 2+ blocos quase idênticos enquanto edita? Extraia na mesma tarefa: lógica pura para
   `utils/`, lógica com estado para `hooks/`.
-- Não duplique leitura da Query: tudo deriva de `services/queryIndex.ts`.
+- Não duplique o `QueryIndex`: status e hosts vêm de `buildZabbixDirectIndex`.
 
-## Dados da Query e status
+## Dados de status
 
 | Necessidade | Já existe em |
 |---|---|
-| Ler a aba Query uma única vez (com cache por identidade) | `buildQueryIndex` em `services/queryIndex.ts` |
-| Montar o mesmo índice a partir do Zabbix (`dataMode: 'zabbix'`) | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (único polling do plugin) |
+| Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
+| Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling de status) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
-| Série temporal do gráfico de hover | `extractHostHoverSeries` em `utils/hostTimeSeries.ts` |
+| Série temporal do gráfico de hover | `fetchHostHoverSeriesFromZabbix` em `utils/zabbixApi.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
-| Casar hosts do mapa com hosts da Query | `mergeMapWithQueryHosts` em `utils/mapSync.ts` |
+| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` em `utils/mapSync.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` |
-| Hosts e refIds vindos da aba Query | `utils/queryHosts.ts` |
+| Hosts e refIds do índice | `utils/queryHosts.ts` |
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
 | Medida de texto e caixa do nó | `utils/nodeLayout.ts` |
@@ -86,7 +86,6 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Opções de `Select`/`MultiSelect` de dashboard, filtro por tag | `utils/grafanaDashboards.ts` |
 | Detectar modo de edição do dashboard | `hooks/useDashboardEditMode.ts` |
 | Detectar lista de reprodução / kiosk | `hooks/useGrafanaPlaylistPlayback.ts` + `utils/grafanaPlaylist.ts` |
-| Ler intervalo de refresh do dashboard | `utils/dashboardRefresh.ts` |
 | Navegar por variável de dashboard | `hooks/useDashboardVariableNav.ts` |
 | Resolver cor de opção do painel (hex/rgb/nome de tema) | `resolvePanelColor` em `utils/panelColors.ts` |
 | Contraste de texto sobre fundo colorido | `utils/colorContrast.ts` |

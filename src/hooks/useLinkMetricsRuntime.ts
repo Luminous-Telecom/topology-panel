@@ -29,14 +29,14 @@ export interface UseLinkMetricsRuntimeResult {
   metricsByLink: LinkRuntimeMetricsMap;
   loading: boolean;
   stale: boolean;
+  /** Relógio da última busca boa — o lastclock do item Zabbix pode ser bem mais velho. */
+  fetchedAtMs?: number;
 }
 
 export interface UseLinkMetricsRuntimeOptions {
-  /** Intervalo periódico em segundos; `null` = só manual / refresh do dashboard. */
+  /** Intervalo periódico em segundos; `null` = só manual / RefreshEvent. */
   refreshSec?: number | null;
   eventBus?: EventBus;
-  /** Muda a cada refresh da Query — dispara nova busca. */
-  queryRefreshKey?: unknown;
 }
 
 /**
@@ -50,7 +50,7 @@ export function useLinkMetricsRuntime(
   enabled = true,
   runtimeOptions: UseLinkMetricsRuntimeOptions = {}
 ): UseLinkMetricsRuntimeResult {
-  const { refreshSec = null, eventBus, queryRefreshKey } = runtimeOptions;
+  const { refreshSec = null, eventBus } = runtimeOptions;
   const itemIds = useMemo(() => collectLinkMetricItemIds(map.links), [map.links]);
   const itemKey = useMemo(() => [...itemIds].sort().join('\0'), [itemIds]);
   const thresholds = useMemo(() => utilizationThresholdsFromOptions(options), [
@@ -61,6 +61,7 @@ export function useLinkMetricsRuntime(
   const [metricsByLink, setMetricsByLink] = useState<LinkRuntimeMetricsMap>({});
   const [loading, setLoading] = useState(false);
   const [stale, setStale] = useState(false);
+  const [fetchedAtMs, setFetchedAtMs] = useState<number | undefined>();
   const lastGoodRef = useRef<LinkRuntimeMetricsMap>({});
 
   const mapRef = useRef(map);
@@ -74,11 +75,12 @@ export function useLinkMetricsRuntime(
 
   useEffect(() => {
     if (!enabled || !datasourceUid || !itemKey) {
-      // `queryRefreshKey` está nas deps, então este efeito roda a cada refresh: um `{}` novo aqui
-      // invalidava `useNodeLayouts` e os badges de todos os nós sem nada ter mudado.
+      // Sem isto, um `{}` novo a cada run invalidava `useNodeLayouts` e os badges
+      // de todos os nós sem nada ter mudado.
       setMetricsByLink((prev) => (Object.keys(prev).length === 0 ? prev : EMPTY_LINK_METRICS));
       setLoading(false);
       setStale(false);
+      setFetchedAtMs(undefined);
       return;
     }
 
@@ -96,6 +98,7 @@ export function useLinkMetricsRuntime(
       const shared = structuralShare(next, lastGoodRef.current);
       lastGoodRef.current = shared;
       setMetricsByLink(shared);
+      setFetchedAtMs(Date.now());
       setLoading(false);
       setStale(false);
     };
@@ -148,9 +151,7 @@ export function useLinkMetricsRuntime(
       }
     };
 
-    // Modo query: cada run deste efeito *é* o refresh do dashboard — não serve cache.
-    // Modo Zabbix: o efeito vive no setInterval; o tick abaixo passa bypassCache.
-    void fetchMetrics(refreshSec == null);
+    void fetchMetrics(false);
 
     const intervalSec =
       refreshSec != null && refreshSec > 0
@@ -175,7 +176,7 @@ export function useLinkMetricsRuntime(
       document.removeEventListener('visibilitychange', handleVisibility);
       refreshSub?.unsubscribe();
     };
-  }, [enabled, datasourceUid, itemKey, cacheKey, refreshSec, eventBus, queryRefreshKey]);
+  }, [enabled, datasourceUid, itemKey, cacheKey, refreshSec, eventBus]);
 
-  return { metricsByLink, loading, stale };
+  return { metricsByLink, loading, stale, fetchedAtMs };
 }

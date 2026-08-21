@@ -1,5 +1,4 @@
 import React, { useId, useMemo, useState } from 'react';
-import { PanelData } from '@grafana/data';
 import { Button, Field, Input, Modal, Spinner, Stack } from '@grafana/ui';
 import {
   TopologyInterfaceReference,
@@ -23,8 +22,7 @@ export interface PendingLinkEndpoints {
 interface Props {
   pending: PendingLinkEndpoints;
   hostMetadata?: HostMetadataMap;
-  queryData?: PanelData;
-  /** Fonte do inventário de interfaces quando o painel não usa a aba Query. */
+  /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
   zabbixRxItemKeyword?: string;
   zabbixTxItemKeyword?: string;
@@ -151,7 +149,6 @@ function InterfaceList({
 export function LinkInterfaceSelectModal({
   pending,
   hostMetadata,
-  queryData,
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
   zabbixTxItemKeyword,
@@ -172,8 +169,6 @@ export function LinkInterfaceSelectModal({
 
   const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(
     hostKeys,
-    queryData,
-    hostMetadata,
     zabbixDatasourceUid,
     {
       rxKeyword: zabbixRxItemKeyword,

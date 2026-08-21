@@ -4,15 +4,13 @@ import { isIpv4 } from '../utils/ipv4';
 import { ZabbixDirectHost, ZabbixInterfaceItem } from '../utils/zabbixApi';
 
 /**
- * Modo "Zabbix direto": monta o mesmo `QueryIndex` que `buildQueryIndex` produz a partir da aba
- * Query, só que com dados vindos da API Zabbix (`host.get` + `item.get`).
+ * Modo Zabbix: monta o mesmo `QueryIndex` que o restante do painel consome, com dados
+ * da API Zabbix (`host.get` + `item.get`).
  *
  * Todo o painel — cor, legenda, lista de alertas, contagem de submapa, pickers de host — já deriva
- * do `QueryIndex`. Respeitando esse contrato, trocar a fonte não exige mudar nada rio abaixo.
- *
- * O papel do refId (A, B, C…) fica com o **grupo de host**: cada grupo configurado vira um refId
- * virtual, então "mostrar hosts desta query no mapa" e o vínculo de submapa continuam funcionando
- * sem UI nova.
+ * do `QueryIndex`. O papel do refId (A, B, C…) fica com o **grupo de host**: cada grupo
+ * configurado vira um refId virtual, então "mostrar hosts deste grupo no mapa" e o vínculo de
+ * submapa continuam funcionando.
  */
 
 /** Grupo do Zabbix como refId virtual — normalizado igual aos refIds da Query (maiúsculas). */
@@ -39,18 +37,15 @@ export function directRefInfosFromGroups(groupNames: string[]): TopologyQueryRef
   return infos.sort((a, b) => a.refId.localeCompare(b.refId));
 }
 
-/** RefIds disponíveis no editor — Query ou grupos Zabbix, conforme o modo do painel. */
+/** RefIds disponíveis no editor — grupos Zabbix configurados no painel. */
 export function resolvePanelQueryRefInfos(
-  options: Pick<TopologyPanelOptions, 'dataMode' | 'zabbixHostGroups' | 'queryRefInfosAvailable'>,
+  options: Pick<TopologyPanelOptions, 'zabbixHostGroups' | 'queryRefInfosAvailable'>,
   syncedFromRuntime: TopologyQueryRefInfo[] = options.queryRefInfosAvailable ?? []
 ): TopologyQueryRefInfo[] {
   if (syncedFromRuntime.length) {
     return syncedFromRuntime;
   }
-  if (options.dataMode === 'zabbix') {
-    return directRefInfosFromGroups(options.zabbixHostGroups ?? []);
-  }
-  return [];
+  return directRefInfosFromGroups(options.zabbixHostGroups ?? []);
 }
 
 /**
