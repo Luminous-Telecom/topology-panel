@@ -15,6 +15,10 @@ export const EDGE_PAN_THRESHOLD = 64;
 export const EDGE_PAN_MAX_SPEED = 720;
 /** Movimento mínimo em px de tela antes de arrastar nó (clique vs drag). */
 export const NODE_DRAG_THRESHOLD_PX = 8;
+/** Toque sustentado no host antes de abrir o menu de contexto (Tools). */
+export const HOST_LONG_PRESS_MS = 450;
+/** Cancela o long-press se o dedo se mover além disso (px de tela). */
+export const HOST_LONG_PRESS_MOVE_CANCEL_PX = 10;
 
 export type DragGroupMember = {
   id: string;
@@ -35,6 +39,9 @@ export type DragState =
       moved: boolean;
       tapNode?: TopologyNode;
       tapLink?: TopologyLink;
+      pointerId: number;
+      /** No toque sobre nó, só captura o ponteiro após o limiar de arraste — libera o long-press. */
+      deferCapture: boolean;
     }
   | {
       kind: 'node';

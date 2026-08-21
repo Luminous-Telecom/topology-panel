@@ -295,7 +295,7 @@ export function TopologyCanvas({
     selectedSubmapNodes,
     selectedNodes,
   } = useTopologySelection(map.nodes);
-  const { contextMenu, closeContextMenu, handleContextMenu, handleNodeContextMenu } =
+  const { contextMenu, closeContextMenu, handleContextMenu, handleNodeContextMenu, openContextMenuAt } =
     useCanvasContextMenu({
       wrapRef,
       map,
@@ -350,6 +350,9 @@ export function TopologyCanvas({
   } = modals;
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
   const { hostHover, beginHostHover, moveHostHover, endHostHover, clearHostHover } = useHostHoverTarget();
+  const hostHoverEnabledRef = useRef(
+    typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  );
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
   const [dragPreview, setDragPreview] = useState<{
     nodeId?: string;
@@ -867,6 +870,22 @@ export function TopologyCanvas({
     }
   }, [hostMetadata, persist, queryData, storedMap, zabbixDatasourceUid]);
 
+  const handleNodeContextMenuWithClear = useCallback(
+    (e: React.MouseEvent, node: TopologyNode) => {
+      clearHostHover();
+      handleNodeContextMenu(e, node);
+    },
+    [clearHostHover, handleNodeContextMenu]
+  );
+
+  const handleNodeLongPress = useCallback(
+    (clientX: number, clientY: number, node: TopologyNode) => {
+      clearHostHover();
+      openContextMenuAt(clientX, clientY, { node });
+    },
+    [clearHostHover, openContextMenuAt]
+  );
+
   const {
     dragRef,
     onWrapPointerDown,
@@ -911,6 +930,7 @@ export function TopologyCanvas({
     onLinkSelect,
     clearHostHover,
     closeContextMenu,
+    onNodeLongPress: handleNodeLongPress,
     persist,
     dragPreview,
     setDragPreview,
@@ -1021,20 +1041,26 @@ export function TopologyCanvas({
   const handleNodeMouseEnter = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
       setLinkHoverId(node.id);
+      if (!hostHoverEnabledRef.current || contextMenu) {
+        return;
+      }
       if (isHostNode(node) && node.zabbixHost?.trim()) {
         beginHostHover({ node, screenX: e.clientX, screenY: e.clientY });
       }
     },
-    [beginHostHover]
+    [beginHostHover, contextMenu]
   );
 
   const handleNodeMouseMove = useCallback(
     (e: React.MouseEvent, node: TopologyNode) => {
+      if (!hostHoverEnabledRef.current || contextMenu) {
+        return;
+      }
       if (isHostNode(node) && node.zabbixHost?.trim()) {
         moveHostHover({ node, screenX: e.clientX, screenY: e.clientY });
       }
     },
-    [moveHostHover]
+    [contextMenu, moveHostHover]
   );
 
   const handleNodeMouseLeave = useCallback(
@@ -1312,7 +1338,7 @@ export function TopologyCanvas({
             networksLocked={networksLocked}
             onPointerDown={onNetworkPointerDown}
             onDoubleClick={onNodeDoubleClick}
-            onContextMenu={handleNodeContextMenu}
+            onContextMenu={handleNodeContextMenuWithClear}
             onResizePointerDown={onResizePointerDown}
             onResizePointerUp={onPointerUp}
           />
@@ -1369,7 +1395,7 @@ export function TopologyCanvas({
             onPointerDown={onNodePointerDown}
             onClick={onNodeClick}
             onDoubleClick={onNodeDoubleClick}
-            onContextMenu={handleNodeContextMenu}
+            onContextMenu={handleNodeContextMenuWithClear}
             onMouseEnter={handleNodeMouseEnter}
             onMouseMove={handleNodeMouseMove}
             onMouseLeave={handleNodeMouseLeave}
@@ -1419,6 +1445,7 @@ export function TopologyCanvas({
         pingTarget={pingTarget}
         setPingTarget={setPingTarget}
         hostHover={hostHover}
+        contextMenuOpen={Boolean(contextMenu)}
         searchOpen={searchOpen}
         pendingLink={pendingLink}
         onPendingLinkClose={() => setPendingLink(null)}

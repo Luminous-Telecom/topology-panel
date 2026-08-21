@@ -63,13 +63,14 @@ export function useCanvasContextMenu({
   const viewRef = useRef(view);
   viewRef.current = view;
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, target?: { node?: TopologyNode; link?: TopologyLink }) => {
-      e.preventDefault();
-      e.stopPropagation();
-
+  const openContextMenuAt = useCallback(
+    (
+      screenX: number,
+      screenY: number,
+      target?: { node?: TopologyNode; link?: TopologyLink },
+      modifiers?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }
+    ) => {
       const rawNode = target?.node;
-      // Rede travada não é alvo: o menu cai no canvas, como se o clique fosse no fundo.
       const node = rawNode?.type === 'network' && areNetworksLocked(storedMap) ? undefined : rawNode;
       const isCanvas = !node && !target?.link;
       const hasTools = Boolean(node && isHostNode(node) && resolveHostIp(node, hostMetadata));
@@ -92,7 +93,8 @@ export function useCanvasContextMenu({
       }
 
       if (node && !selectedNodeIds.includes(node.id)) {
-        if (selectedNodeIds.length === 0 || !(e.shiftKey || e.ctrlKey || e.metaKey)) {
+        const additive = modifiers?.shiftKey || modifiers?.ctrlKey || modifiers?.metaKey;
+        if (selectedNodeIds.length === 0 || !additive) {
           setSelectedNodeIds([node.id]);
         } else {
           setSelectedNodeIds((prev) => (prev.includes(node.id) ? prev : [...prev, node.id]));
@@ -104,10 +106,10 @@ export function useCanvasContextMenu({
         return;
       }
       const rect = el.getBoundingClientRect();
-      const { x: mapX, y: mapY } = clientToMapCoords(e.clientX, e.clientY, rect, viewRef.current);
+      const { x: mapX, y: mapY } = clientToMapCoords(screenX, screenY, rect, viewRef.current);
       setContextMenu({
-        screenX: e.clientX,
-        screenY: e.clientY,
+        screenX,
+        screenY,
         mapX,
         mapY,
         node,
@@ -127,6 +129,19 @@ export function useCanvasContextMenu({
     ]
   );
 
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, target?: { node?: TopologyNode; link?: TopologyLink }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openContextMenuAt(e.clientX, e.clientY, target, {
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+      });
+    },
+    [openContextMenuAt]
+  );
+
   /**
    * Handlers por nó ficam aqui e recebem o nó como argumento: se fossem criados dentro do `.map()`
    * do render, cada nó ganharia uma função nova a cada render e a memoização das formas cairia.
@@ -136,5 +151,5 @@ export function useCanvasContextMenu({
     [handleContextMenu]
   );
 
-  return { contextMenu, closeContextMenu, handleContextMenu, handleNodeContextMenu };
+  return { contextMenu, closeContextMenu, handleContextMenu, handleNodeContextMenu, openContextMenuAt };
 }

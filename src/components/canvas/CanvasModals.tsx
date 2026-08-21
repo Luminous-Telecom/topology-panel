@@ -53,6 +53,7 @@ interface CanvasModalsProps {
   pingTarget: PingTarget | null;
   setPingTarget: (target: PingTarget | null) => void;
   hostHover: HostHoverTarget | null;
+  contextMenuOpen?: boolean;
   searchOpen: boolean;
   pendingLink: PendingLinkEndpoints | null;
   onPendingLinkClose: () => void;
@@ -86,6 +87,7 @@ export function CanvasModals({
   pingTarget,
   setPingTarget,
   hostHover,
+  contextMenuOpen = false,
   searchOpen,
   pendingLink,
   onPendingLinkClose,
@@ -153,7 +155,7 @@ export function CanvasModals({
         />
       )}
 
-      {hostHover && !editNode && !searchOpen ? (
+      {hostHover && !editNode && !searchOpen && !contextMenuOpen ? (
         <HostHoverPopover
           node={hostHover.node}
           screenX={hostHover.screenX}

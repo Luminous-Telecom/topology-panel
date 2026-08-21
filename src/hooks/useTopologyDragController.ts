@@ -13,7 +13,7 @@ import { areNetworksLocked, moveStoredNodesBulk, updateStoredNode } from '../uti
 import { clientToMapCoords } from '../utils/mapCoords';
 import { snapNodeCenterToGrid } from '../utils/mapCoords';
 import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, NodeLayout } from '../utils/nodeLayout';
-import { findNodeById } from '../utils/topologyNodes';
+import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { LinkPoint } from '../utils/linkGeometry';
 import {
@@ -23,6 +23,8 @@ import {
   DragGroupMember,
   DragPreview,
   DragState,
+  HOST_LONG_PRESS_MOVE_CANCEL_PX,
+  HOST_LONG_PRESS_MS,
   NODE_DRAG_THRESHOLD_PX,
 } from '../utils/dragState';
 import { computeGroupPositions, computeGuideBounds, guideReferenceNodes } from '../utils/dragMove';
@@ -59,6 +61,8 @@ interface UseTopologyDragControllerParams {
   onLinkSelect: (link: TopologyLink) => void;
   clearHostHover: () => void;
   closeContextMenu: () => void;
+  /** Toque sustentado no host — abre o menu de contexto (Tools) no mobile. */
+  onNodeLongPress: (clientX: number, clientY: number, node: TopologyNode) => void;
   persist: (next: TopologyMap) => void;
   /** Preview de posição/tamanho durante o arraste — estado do componente pai (alimenta `nodeLayouts`). */
   dragPreview: DragPreview;
@@ -128,6 +132,7 @@ export function useTopologyDragController({
   onLinkSelect,
   clearHostHover,
   closeContextMenu,
+  onNodeLongPress,
   persist,
   dragPreview,
   setDragPreview,
@@ -142,6 +147,13 @@ export function useTopologyDragController({
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   /** Tamanho do resize — mesma razão que `dragPositionsRef` (state de preview pode atrasar no pointerup). */
   const resizePreviewRef = useRef<{ width: number; height: number } | null>(null);
+  const longPressRef = useRef<{
+    timer: number;
+    node: TopologyNode;
+    ox: number;
+    oy: number;
+    pointerId: number;
+  } | null>(null);
   const applyNodeDragMoveRef = useRef<(clientX: number, clientY: number) => void>(() => {});
 
   const edgePan = useEdgePanLoop({
@@ -153,6 +165,66 @@ export function useTopologyDragController({
     dragRef,
     applyMoveRef: applyNodeDragMoveRef,
   });
+
+  const cancelHostLongPress = useCallback(() => {
+    const pending = longPressRef.current;
+    if (!pending) {
+      return;
+    }
+    window.clearTimeout(pending.timer);
+    longPressRef.current = null;
+  }, []);
+
+  const commitHostLongPress = useCallback(
+    (clientX: number, clientY: number) => {
+      const pending = longPressRef.current;
+      if (!pending) {
+        return;
+      }
+      longPressRef.current = null;
+      const d = dragRef.current;
+      if ((d?.kind === 'pan' || d?.kind === 'node') && d.moved) {
+        return;
+      }
+      dragRef.current = null;
+      edgePan.stop();
+      edgePan.pointerRef.current = null;
+      if (panRafRef.current != null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
+      panPendingRef.current = null;
+      try {
+        wrapRef.current?.releasePointerCapture(pending.pointerId);
+      } catch {
+        /* already released */
+      }
+      clearHostHover();
+      closeContextMenu();
+      onNodeLongPress(clientX, clientY, pending.node);
+    },
+    [clearHostHover, closeContextMenu, edgePan, onNodeLongPress, wrapRef]
+  );
+
+  const scheduleHostLongPress = useCallback(
+    (e: React.PointerEvent, node: TopologyNode) => {
+      if (e.pointerType !== 'touch' || !isHostNode(node)) {
+        return;
+      }
+      cancelHostLongPress();
+      const pointerId = e.pointerId;
+      const ox = e.clientX;
+      const oy = e.clientY;
+      const timer = window.setTimeout(() => {
+        if (longPressRef.current?.pointerId !== pointerId) {
+          return;
+        }
+        commitHostLongPress(ox, oy);
+      }, HOST_LONG_PRESS_MS);
+      longPressRef.current = { timer, node, ox, oy, pointerId };
+    },
+    [cancelHostLongPress, commitHostLongPress]
+  );
 
   /** Coordenada do mapa sob o ponteiro, na view atual. */
   const clientToMap = useCallback(
@@ -193,6 +265,7 @@ export function useTopologyDragController({
       }
       // Não chamar preventDefault no pointerdown — isso cancela click/dblclick (abrir submapa).
       e.stopPropagation();
+      const deferCapture = e.pointerType === 'touch' && Boolean(tapNode);
       dragRef.current = {
         kind: 'pan',
         ox: e.clientX,
@@ -202,8 +275,12 @@ export function useTopologyDragController({
         moved: false,
         tapNode,
         tapLink,
+        pointerId: e.pointerId,
+        deferCapture,
       };
-      wrapRef.current?.setPointerCapture(e.pointerId);
+      if (!deferCapture) {
+        wrapRef.current?.setPointerCapture(e.pointerId);
+      }
     },
     [enablePan, pinchActiveRef, view.x, view.y, wrapRef]
   );
@@ -456,6 +533,7 @@ export function useTopologyDragController({
   const onNodePointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
       e.stopPropagation();
+      scheduleHostLongPress(e, node);
       if (toolRef.current === 'pan') {
         if (e.button === 0) {
           beginPan(e, node);
@@ -470,7 +548,7 @@ export function useTopologyDragController({
       const startY = layout?.y ?? node.y;
       beginNodeDrag(e, node, startX, startY, layout?.w ?? node.width ?? 48, layout?.h ?? node.height ?? 28);
     },
-    [beginNodeDrag, beginPan, editable, nodeLayouts, toolRef]
+    [beginNodeDrag, beginPan, editable, nodeLayouts, scheduleHostLongPress, toolRef]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -543,6 +621,10 @@ export function useTopologyDragController({
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
+      const lp = longPressRef.current;
+      if (lp && Math.hypot(e.clientX - lp.ox, e.clientY - lp.oy) > HOST_LONG_PRESS_MOVE_CANCEL_PX) {
+        cancelHostLongPress();
+      }
       if (pinchActiveRef.current) {
         return;
       }
@@ -555,6 +637,10 @@ export function useTopologyDragController({
         const dist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
         if (dist > 4) {
           d.moved = true;
+          if (d.deferCapture) {
+            d.deferCapture = false;
+            wrapRef.current?.setPointerCapture(d.pointerId);
+          }
         }
         if (d.moved) {
           e.preventDefault();
@@ -601,12 +687,14 @@ export function useTopologyDragController({
     [
       applyNodeDragMove,
       applyResizeMove,
+      cancelHostLongPress,
       clientToMap,
       commitView,
       edgePan,
       moveLinkWaypoint,
       pinchActiveRef,
       setMarqueeRect,
+      wrapRef,
     ]
   );
 
@@ -624,6 +712,7 @@ export function useTopologyDragController({
   /** Encerra o gesto: solta refs, para o pan de borda e aplica o pan pendente. */
   const endGestureBookkeeping = useCallback(
     (drag: DragState, e: React.PointerEvent) => {
+      cancelHostLongPress();
       dragRef.current = null;
       edgePan.pointerRef.current = null;
       edgePan.stop();
@@ -642,7 +731,7 @@ export function useTopologyDragController({
         /* already released */
       }
     },
-    [commitView, edgePan, wrapRef]
+    [cancelHostLongPress, commitView, edgePan, wrapRef]
   );
 
   /**
@@ -800,6 +889,7 @@ export function useTopologyDragController({
   );
 
   const cancelActiveDrag = useCallback(() => {
+    cancelHostLongPress();
     dragRef.current = null;
     edgePan.stop();
     edgePan.pointerRef.current = null;
@@ -808,7 +898,7 @@ export function useTopologyDragController({
       panRafRef.current = null;
     }
     panPendingRef.current = null;
-  }, [edgePan]);
+  }, [cancelHostLongPress, edgePan]);
 
   return {
     dragRef,
