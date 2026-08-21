@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
-import { HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
+import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
   collectAlertHostEntriesFromMaps,
@@ -58,6 +58,8 @@ import { openDashboardUrl } from './DashboardPickerModal';
 import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
+import { useStableCallback } from '../hooks/useStableCallback';
+import { structuralShareMap } from '../utils/structuralIdentity';
 import { useTopologySelection } from '../hooks/useTopologySelection';
 import { useBulkEditModals } from '../hooks/useBulkEditModals';
 import { nodeSupportsProperties, NODE_DOUBLE_TAP_MS, useNodePropertiesModals } from '../hooks/useNodePropertiesModals';
@@ -132,21 +134,30 @@ interface Props {
   onNavigateToMapId?: (mapId: string, label: string, currentView: TopologyView) => void;
 }
 
+/**
+ * Defaults compartilhados: `= {}` / `= []` no parâmetro cria um objeto novo a **cada** render, o que
+ * invalidava `useNodeLayouts`, `filterContext` e os badges mesmo sem nada ter mudado.
+ */
+const NO_QUERY_HOST_OPTIONS: QueryHostOption[] = [];
+const NO_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
+const NO_SUBMAP_HOSTS: Record<string, string[] | null | undefined> = {};
+const NO_LINK_METRICS: LinkRuntimeMetricsMap = {};
+
 export function TopologyCanvas({
   map: liveMap,
   storedMap,
   options,
-  queryHostOptions = [],
+  queryHostOptions = NO_QUERY_HOST_OPTIONS,
   hostDisplay: liveHostDisplay,
-  hostDisplayByRefId: liveHostDisplayByRefId = {},
+  hostDisplayByRefId: liveHostDisplayByRefId = NO_HOST_DISPLAY_BY_REF_ID,
   queryReady: liveQueryReady = false,
   queryError: liveQueryError = false,
   hostMetadata: liveHostMetadata,
-  submapHosts: liveSubmapHosts = {},
+  submapHosts: liveSubmapHosts = NO_SUBMAP_HOSTS,
   refreshIntervalSec = null,
   queryData: liveQueryData,
   zabbixDatasourceUid,
-  linkMetricsByLink = {},
+  linkMetricsByLink = NO_LINK_METRICS,
   hostProblems,
   onNocModeChange,
   zabbixMetadataLoading = false,
@@ -365,6 +376,9 @@ export function TopologyCanvas({
     zabbixHost?: string;
   } | null>(null);
 
+  /** `activeChildMaps` monta um objeto novo a cada chamada — memoize antes de virar dependência. */
+  const childMapsById = useMemo(() => activeChildMaps(options.childMaps), [options.childMaps]);
+
   const layoutOpts = useMemo(
     () => ({
       nodeFontSize: options.nodeFontSize,
@@ -401,17 +415,24 @@ export function TopologyCanvas({
     [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, filterOptions]
   );
 
+  const previousBadgesRef = useRef<ReadonlyMap<string, HostNodeBadge[]>>();
+
   const hostBadgesByNode = useMemo(() => {
     if (options.showHostBadges === false) {
       return undefined;
     }
-    return buildHostNodeBadgeMap({
+    const built = buildHostNodeBadgeMap({
       map,
       hostDisplay,
       hostMetadata,
       hostProblems,
       linkMetrics: linkMetricsByLink,
     });
+    // Um host mudando remonta a lista de badges de todos os nós; sem reaproveitar as iguais, a
+    // prop `badges` invalidaria o `React.memo` de cada forma.
+    const shared = structuralShareMap(built, previousBadgesRef.current as Map<string, HostNodeBadge[]> | undefined);
+    previousBadgesRef.current = shared;
+    return shared;
   }, [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options.showHostBadges]);
 
   const nocMapScopes = useMemo(() => {
@@ -423,11 +444,11 @@ export function TopologyCanvas({
       }
     }
     const scopes = [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: options.map }];
-    for (const [id, childMap] of Object.entries(activeChildMaps(options.childMaps))) {
+    for (const [id, childMap] of Object.entries(childMapsById)) {
       scopes.push({ mapId: id, mapLabel: childLabels[id] ?? id, map: childMap });
     }
     return scopes;
-  }, [options.map, options.childMaps]);
+  }, [options.map, childMapsById]);
 
   const nocHostDisplayBase = useMemo(
     () => flattenHostDisplayByRefId(hostDisplayByRefId),
@@ -507,7 +528,7 @@ export function TopologyCanvas({
     hostDisplayByRefId,
     hostMetadata,
     submapHosts,
-    childMaps: activeChildMaps(options.childMaps),
+    childMaps: childMapsById,
     queryReady,
     linkMetricsByLink,
   });
@@ -1177,6 +1198,24 @@ export function TopologyCanvas({
     resolveColor,
   });
 
+  /**
+   * Handlers de identidade fixa para as camadas de nó.
+   *
+   * Cada um deles depende de seleção, modo de edição, layouts ou do estado do arraste, então troca
+   * de identidade a quase todo render do canvas. Como descem como prop para cada forma memoizada,
+   * essa troca sozinha invalidava o `React.memo` de todos os nós a cada refresh da Query.
+   */
+  const stableNodePointerDown = useStableCallback(onNodePointerDown);
+  const stableNetworkPointerDown = useStableCallback(onNetworkPointerDown);
+  const stableNodeClick = useStableCallback(onNodeClick);
+  const stableNodeDoubleClick = useStableCallback(onNodeDoubleClick);
+  const stableNodeContextMenu = useStableCallback(handleNodeContextMenuWithClear);
+  const stableNodeMouseEnter = useStableCallback(handleNodeMouseEnter);
+  const stableNodeMouseMove = useStableCallback(handleNodeMouseMove);
+  const stableNodeMouseLeave = useStableCallback(handleNodeMouseLeave);
+  const stableResizePointerDown = useStableCallback(onResizePointerDown);
+  const stableResizePointerUp = useStableCallback(onPointerUp);
+
   return (
     <div
       ref={wrapRef}
@@ -1330,11 +1369,11 @@ export function TopologyCanvas({
             panTool={panTool}
             editable={viewEditable}
             networksLocked={networksLocked}
-            onPointerDown={onNetworkPointerDown}
-            onDoubleClick={onNodeDoubleClick}
-            onContextMenu={handleNodeContextMenuWithClear}
-            onResizePointerDown={onResizePointerDown}
-            onResizePointerUp={onPointerUp}
+            onPointerDown={stableNetworkPointerDown}
+            onDoubleClick={stableNodeDoubleClick}
+            onContextMenu={stableNodeContextMenu}
+            onResizePointerDown={stableResizePointerDown}
+            onResizePointerUp={stableResizePointerUp}
           />
 
           {pendingSuggestions.map((suggestion) => (
@@ -1386,15 +1425,15 @@ export function TopologyCanvas({
             linkHoverId={linkHoverId}
             panTool={panTool}
             editable={viewEditable}
-            onPointerDown={onNodePointerDown}
-            onClick={onNodeClick}
-            onDoubleClick={onNodeDoubleClick}
-            onContextMenu={handleNodeContextMenuWithClear}
-            onMouseEnter={handleNodeMouseEnter}
-            onMouseMove={handleNodeMouseMove}
-            onMouseLeave={handleNodeMouseLeave}
-            onResizePointerDown={onResizePointerDown}
-            onResizePointerUp={onPointerUp}
+            onPointerDown={stableNodePointerDown}
+            onClick={stableNodeClick}
+            onDoubleClick={stableNodeDoubleClick}
+            onContextMenu={stableNodeContextMenu}
+            onMouseEnter={stableNodeMouseEnter}
+            onMouseMove={stableNodeMouseMove}
+            onMouseLeave={stableNodeMouseLeave}
+            onResizePointerDown={stableResizePointerDown}
+            onResizePointerUp={stableResizePointerUp}
           />
         </g>
       </svg>

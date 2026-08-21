@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
 import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats } from '../utils/networkStats';
+import { structuralShareMap } from '../utils/structuralIdentity';
 import {
   NodeLayout,
   computeNetworkLayout,
@@ -110,6 +111,9 @@ export function useNodeLayouts({
     return counts;
   }, [map.links]);
 
+  const previousLayoutsRef = useRef<Map<string, NodeLayout & TopologyNode>>();
+  const previousStatsRef = useRef<Map<string, RegionHostStats>>();
+
   const baseResult = useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
@@ -162,7 +166,15 @@ export function useNodeLayouts({
       layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
     }
 
-    return { nodeLayouts: layouts, regionStats: stats };
+    // Um host mudando de status remede **todos** os nós. Reaproveitar a caixa anterior de cada nó
+    // que não mudou é o que mantém o `React.memo` das formas valendo: sem isto, um único host
+    // offline redesenhava o mapa inteiro.
+    const sharedLayouts = structuralShareMap(layouts, previousLayoutsRef.current);
+    const sharedStats = structuralShareMap(stats, previousStatsRef.current);
+    previousLayoutsRef.current = sharedLayouts;
+    previousStatsRef.current = sharedStats;
+
+    return { nodeLayouts: sharedLayouts, regionStats: sharedStats };
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o
     // objeto inteiro nas deps, qualquer opção do painel (cor, toggle de minimapa) remedia o layout
     // de todos os nós sem necessidade.

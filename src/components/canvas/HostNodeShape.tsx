@@ -17,6 +17,8 @@ import {
 import { ColorResolver, resolveNodeFill } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { isHostNode } from '../../utils/topologyNodes';
+import { lookupHostDisplay } from '../../utils/queryHosts';
+import { sameStructure } from '../../utils/structuralIdentity';
 import { HostNodeBadge } from '../../utils/noc/types';
 import { canvasStyles } from './canvasStyles';
 import { HostNodeBadgeLayer } from './HostNodeBadgeLayer';
@@ -259,9 +261,51 @@ function HostNodeShapeComponent({
 }
 
 /**
+ * `hostDisplay` é o mapa de status do mapa **inteiro**, então ele troca de identidade sempre que
+ * qualquer host muda de valor. Comparar por identidade fazia um único host offline redesenhar os
+ * quinhentos nós; o que este nó realmente lê do mapa é uma entrada só.
+ */
+function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapeProps): boolean {
+  if (prev.hostDisplay === next.hostDisplay) {
+    return true;
+  }
+  // Submapa, texto e seletor de dashboard não leem status de host.
+  if (!isHostNode(next.node)) {
+    return true;
+  }
+  const lookupRef = {
+    zabbixHost: next.node.zabbixHost,
+    subtitle: next.node.subtitle,
+    label: next.node.label,
+  };
+  return sameStructure(
+    lookupHostDisplay(next.hostDisplay, lookupRef, next.hostMetadata),
+    lookupHostDisplay(prev.hostDisplay, lookupRef, prev.hostMetadata)
+  );
+}
+
+/**
  * Só redesenha quando alguma prop do próprio nó muda.
  *
  * Sem isso, cada frame de pan/zoom e cada hover redesenhava a caixa, o ícone e os textos de todos
- * os nós do mapa. Depende de `badges` ter identidade estável — ver `buildHostNodeBadgeMap`.
+ * os nós do mapa. Depende de `layout` e `badges` terem identidade estável — ver
+ * `useNodeLayouts` e `buildHostNodeBadgeMap`.
+ *
+ * Toda prop é comparada por identidade (prop nova entra na conta sozinha); só `hostDisplay`, que é
+ * do mapa inteiro, é comparada pelo recorte que este nó usa.
  */
-export const HostNodeShape = React.memo(HostNodeShapeComponent);
+export const HostNodeShape = React.memo(HostNodeShapeComponent, (prev, next) => {
+  const keys = Object.keys(next) as Array<keyof HostNodeShapeProps>;
+  if (keys.length !== Object.keys(prev).length) {
+    return false;
+  }
+  for (const key of keys) {
+    if (key === 'hostDisplay') {
+      continue;
+    }
+    if (!Object.is(prev[key], next[key])) {
+      return false;
+    }
+  }
+  return sameResolvedHostDisplay(prev, next);
+});

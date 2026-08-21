@@ -61,6 +61,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Geometria do link: path, waypoint mais próximo, âncora do rótulo | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
 | Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
+| Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` em `utils/structuralIdentity.ts` |
+| Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |
+| Identidade fixa de handler | `useStableCallback` em `hooks/useStableCallback.ts` |
+| Recorte de nós/cabos pela viewport | `visibleWorldRect` em `utils/viewportCulling.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts`, `useTopologyDragController.ts`, `useTopologyViewport.ts` |

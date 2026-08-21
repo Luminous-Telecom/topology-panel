@@ -14,7 +14,6 @@ import {
   defaultOptions,
 } from '../types';
 import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
-import { subscribeHostDisplayOverlay } from '../utils/hostDisplayOverlay';
 import { mergeMapWithQueryHosts, syncMapWithQueryMeta } from '../utils/mapSync';
 import { applyTemplateRulesToMap } from '../utils/topologyTemplates/resolveTemplates';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
@@ -28,6 +27,7 @@ import {
   queryHostsByRefIdFromIndex,
 } from '../services/queryIndex';
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
+import { useStableIdentity } from '../hooks/useStableIdentity';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
@@ -62,7 +62,6 @@ export function TopologyPanel({
   const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number | null>(() => readDashboardRefreshSeconds());
-  const [, setHostDisplayOverlayTick] = useState(0);
 
   const latestOptionsRef = useRef(options);
   latestOptionsRef.current = options;
@@ -191,10 +190,17 @@ export function TopologyPanel({
     metadataHostNames
   );
 
-  const dataMeta = useMemo(
+  const dataMetaRaw = useMemo(
     () => enrichHostMetadataFromMap({ ...queryMeta, ...apiHostMetadata }, activeStoredMap),
     [queryMeta, apiHostMetadata, activeStoredMap]
   );
+
+  /**
+   * Raiz da estabilidade de identidade do painel: quase tudo que desce para o canvas (mapa
+   * mesclado, opções de host, hosts de submapa) deriva da metadata. Sem reaproveitar a identidade
+   * anterior, um refresh sem mudança nenhuma remedia todos os nós.
+   */
+  const dataMeta = useStableIdentity(dataMetaRaw);
 
   /**
    * Fonte de dados em erro (datasource fora do ar, script quebrado, etc.) — não reaproveita o
@@ -228,7 +234,7 @@ export function TopologyPanel({
     return enriched;
   }, [queryIndex, statusColorOptions, activeStoredMap, dataMeta]);
 
-  const hostDisplayByRefId = useMemo(() => {
+  const hostDisplayByRefIdRaw = useMemo(() => {
     if (queryError) {
       return {};
     }
@@ -237,6 +243,13 @@ export function TopologyPanel({
     }
     return mergeHostDisplayByRefId(liveHostDisplayByRefId, lastGoodHostDisplayByRefIdRef.current);
   }, [liveHostDisplayByRefId, queryError, directMode, direct.ready]);
+
+  /**
+   * O refresh entrega objetos novos mesmo para host que não mudou de valor. Sem reaproveitar a
+   * identidade anterior, `useNodeLayouts` remedia todos os nós e o `React.memo` de cada forma
+   * falha — um poll sem mudança nenhuma redesenhava o mapa inteiro.
+   */
+  const hostDisplayByRefId = useStableIdentity(hostDisplayByRefIdRaw);
 
   useEffect(() => {
     if (queryError) {
@@ -248,9 +261,7 @@ export function TopologyPanel({
     }
   }, [hostDisplayByRefId, queryError]);
 
-  useEffect(() => subscribeHostDisplayOverlay(() => setHostDisplayOverlayTick((tick) => tick + 1)), []);
-
-  const hostDisplay = useMemo(
+  const hostDisplayRaw = useMemo(
     () =>
       enrichHostDisplayFromMap(
         flattenHostDisplayByRefId(hostDisplayByRefId),
@@ -259,6 +270,8 @@ export function TopologyPanel({
       ),
     [hostDisplayByRefId, activeStoredMap, dataMeta]
   );
+
+  const hostDisplay = useStableIdentity(hostDisplayRaw);
 
   const queryRefIdsAvailable = queryIndex.refIds;
   const queryRefInfosAvailable = queryIndex.refInfos;
@@ -292,10 +305,12 @@ export function TopologyPanel({
     [resolvedOptions.displayQueryRefIds]
   );
 
-  const displayQueryHosts = useMemo(
+  const displayQueryHostsRaw = useMemo(
     () => extractDisplayQueryHosts(queryIndex, submapQueryRefIds, displayQueryRefIds),
     [queryIndex, submapQueryRefIds, displayQueryRefIds]
   );
+
+  const displayQueryHosts = useStableIdentity(displayQueryHostsRaw);
 
   const hostMetadata = dataMeta;
 
@@ -310,13 +325,15 @@ export function TopologyPanel({
     [activeStoredMap, displayQueryHosts, hostMetadata]
   );
 
-  const queryHostOptions = useMemo(() => {
+  const queryHostOptionsRaw = useMemo(() => {
     const enriched = enrichQueryHostOptionsFromMap(
       extractQueryHostOptions(queryIndex, hostMetadata),
       activeStoredMap
     );
     return filterQueryHostOptionsByDisplayHosts(enriched, displayQueryHosts, hostMetadata);
   }, [queryIndex, displayQueryHosts, hostMetadata, activeStoredMap]);
+
+  const queryHostOptions = useStableIdentity(queryHostOptionsRaw);
 
   const submapNodes = useMemo(() => {
     return activeStoredMap.nodes.filter(
@@ -328,11 +345,13 @@ export function TopologyPanel({
 
   const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
-  const queryHostsByRefId = useMemo(
+  const queryHostsByRefIdRaw = useMemo(
     () =>
       queryError ? {} : mergeQueryHostsByRefId(liveQueryHostsByRefId, lastGoodQueryHostsByRefIdRef.current),
     [liveQueryHostsByRefId, queryError]
   );
+
+  const queryHostsByRefId = useStableIdentity(queryHostsByRefIdRaw);
 
   useEffect(() => {
     if (queryError) {
@@ -443,10 +462,12 @@ export function TopologyPanel({
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
 
-  const { problems: hostProblems } = useZabbixHostProblems(
+  const { problems: hostProblemsRaw } = useZabbixHostProblems(
     queryReady ? zabbixDatasourceUid : undefined,
     problemsHostMetadata
   );
+
+  const hostProblems = useStableIdentity(hostProblemsRaw);
 
   const handleNocModeChange = useCallback(
     (enabled: boolean) => {

@@ -9,9 +9,13 @@ import {
   utilizationThresholdsFromOptions,
 } from '../utils/linkMetricsRuntime';
 import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
+import { structuralShare } from '../utils/structuralIdentity';
 
 const LINK_METRICS_TTL_MS = 5_000;
 const MIN_FETCH_GAP_MS = 2_000;
+
+/** Identidade única para "sem métrica" — ver comentário no efeito abaixo. */
+const EMPTY_LINK_METRICS: LinkRuntimeMetricsMap = {};
 
 const metricsCache = createAsyncCache<LinkRuntimeMetricsMap>({
   ttlMs: LINK_METRICS_TTL_MS,
@@ -66,7 +70,9 @@ export function useLinkMetricsRuntime(
 
   useEffect(() => {
     if (!enabled || !datasourceUid || !itemKey) {
-      setMetricsByLink({});
+      // `queryRefreshKey` está nas deps, então este efeito roda a cada refresh: um `{}` novo aqui
+      // invalidava `useNodeLayouts` e os badges de todos os nós sem nada ter mudado.
+      setMetricsByLink((prev) => (Object.keys(prev).length === 0 ? prev : EMPTY_LINK_METRICS));
       setLoading(false);
       setStale(false);
       return;
@@ -80,8 +86,11 @@ export function useLinkMetricsRuntime(
       if (cancelled) {
         return;
       }
-      lastGoodRef.current = next;
-      setMetricsByLink(next);
+      // Cada busca monta objetos novos; sem reaproveitar os iguais, todo link e todo nó
+      // redesenhavam a cada ciclo de métricas mesmo com RX/TX parados.
+      const shared = structuralShare(next, lastGoodRef.current);
+      lastGoodRef.current = shared;
+      setMetricsByLink(shared);
       setLoading(false);
       setStale(false);
     };
