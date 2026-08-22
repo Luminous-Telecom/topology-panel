@@ -98,7 +98,7 @@ interface Props {
    * do painel para não forçar um re-render do mapa inteiro a cada segundo.
    */
   refreshIntervalSec?: number | null;
-  /** `PanelData` do Grafana — só o timeRange do dashboard, para o hover ICMP. */
+  /** `PanelData` com o timeRange do seletor do dashboard, para o hover ICMP. */
   queryData?: PanelData;
   /** UID do datasource Zabbix — ping, interfaces e histórico. */
   zabbixDatasourceUid?: string;

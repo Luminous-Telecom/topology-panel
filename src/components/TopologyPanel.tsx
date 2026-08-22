@@ -40,6 +40,7 @@ import {
   resolveTopologyMapById,
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
+import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
 
 const NO_METADATA_HOSTS: string[] = [];
 
@@ -48,6 +49,7 @@ export interface Props extends PanelProps<TopologyPanelOptions> {}
 export function TopologyPanel({
   options,
   data,
+  timeRange,
   width,
   height,
   eventBus,
@@ -88,6 +90,12 @@ export function TopologyPanel({
       ...colored,
     };
   }, [options, theme, mapValidationErrors]);
+
+  /** Relógio do dashboard — `data.timeRange` com skipDataQuery fica preso em now-6h. */
+  const queryData = useMemo(
+    () => panelDataWithDashboardTimeRange(data, timeRange),
+    [data, timeRange]
+  );
 
   const handlePersistNavView = useCallback(
     (mapId: string, view: TopologyView) => {
@@ -498,7 +506,7 @@ export function TopologyPanel({
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
-        queryData={data}
+        queryData={queryData}
         zabbixDatasourceUid={zabbixDatasourceUid}
         zabbixMetadataLoading={zabbixMetadataLoading}
         linkMetricsByLink={linkMetricsByLink}

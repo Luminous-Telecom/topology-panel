@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { dateTime, LoadingState, TimeRange, getDefaultTimeRange } from '@grafana/data';
 import {
   buildHostHoverSeriesFromZabbixHistory,
   compactHoverPoints,
+  hostHoverPeriodLabel,
   hoverMetricFromItemKey,
+  panelDataWithDashboardTimeRange,
 } from './hostTimeSeries';
 
 describe('hoverMetricFromItemKey', () => {
@@ -77,5 +80,35 @@ describe('compactHoverPoints', () => {
     const compacted = compactHoverPoints(points, 10);
     expect(compacted.some((point) => point.status === 'offline')).toBe(true);
     expect(compacted[compacted.length - 1].t).toBe(points[points.length - 1].t);
+  });
+});
+
+describe('panelDataWithDashboardTimeRange', () => {
+  it('troca o default now-6h pelo timeRange do seletor do dashboard', () => {
+    const data = { state: LoadingState.Done, series: [], timeRange: getDefaultTimeRange() };
+    const to = dateTime();
+    const from = dateTime(to.valueOf() - 30 * 60 * 1000);
+    const dashboard: TimeRange = { from, to, raw: { from: 'now-30m', to: 'now' } };
+    const next = panelDataWithDashboardTimeRange(data, dashboard);
+    expect(next.timeRange.raw.from).toBe('now-30m');
+    expect(next).not.toBe(data);
+  });
+
+  it('reusa o PanelData quando o timeRange já é o mesmo objeto', () => {
+    const data = { state: LoadingState.Done, series: [], timeRange: getDefaultTimeRange() };
+    expect(panelDataWithDashboardTimeRange(data, data.timeRange)).toBe(data);
+  });
+});
+
+describe('hostHoverPeriodLabel', () => {
+  it('mostra now-6h quando o timeRange é o default do Grafana', () => {
+    expect(hostHoverPeriodLabel(undefined, getDefaultTimeRange())).toMatch(/^now-6h → now/);
+  });
+
+  it('mostra now-30m quando o relógio do dashboard é 30 minutos', () => {
+    const to = dateTime();
+    const from = dateTime(to.valueOf() - 30 * 60 * 1000);
+    const range: TimeRange = { from, to, raw: { from: 'now-30m', to: 'now' } };
+    expect(hostHoverPeriodLabel(undefined, range)).toMatch(/^now-30m → now/);
   });
 });

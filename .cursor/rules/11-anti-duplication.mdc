@@ -35,6 +35,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
 | Série temporal do gráfico de hover | `fetchHostHoverSeriesFromZabbix` em `utils/zabbixApi.ts` |
+| Relógio do dashboard no hover (`skipDataQuery` ignora `data.timeRange`) | `panelDataWithDashboardTimeRange` em `utils/hostTimeSeries.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` em `utils/mapSync.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |

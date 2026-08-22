@@ -334,6 +334,14 @@ function formatHoverClock(ts: number, spanMs: number): string {
   return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Com `skipDataQuery`, `data.timeRange` é o default do Grafana (`now-6h`), não o relógio do
+ * dashboard. O intervalo do seletor está em `PanelProps.timeRange`.
+ */
+export function panelDataWithDashboardTimeRange(data: PanelData, timeRange: TimeRange): PanelData {
+  return data.timeRange === timeRange ? data : { ...data, timeRange };
+}
+
 function dashboardTimeRangeLabel(timeRange: TimeRange): string {
   const fromRaw = timeRange.raw.from;
   const toRaw = timeRange.raw.to;

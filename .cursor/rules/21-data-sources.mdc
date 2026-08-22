@@ -72,8 +72,9 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
 
 - Toda leitura de dado do Grafana passa por `getBackendSrv()` (`@grafana/runtime`) — nunca `fetch`
   ou `XMLHttpRequest` direto, que perdem header de auth e roteamento do proxy.
-- Tempo vem de `PanelData` / `DateTime` / `getDefaultTimeRange()` (`@grafana/data`). Nunca crie um
-  `TimeRange` com números crus.
+- Tempo do hover vem de `PanelProps.timeRange` (seletor do dashboard), via
+  `panelDataWithDashboardTimeRange`. Com `skipDataQuery`, `data.timeRange` é o default `now-6h` —
+  não use. Nunca crie um `TimeRange` com números crus.
 - Navegação entre dashboards só por `openDashboardUrl` (`DashboardPickerModal.tsx`), que valida uid e
   encoda slug. Não implemente outro caminho com `window.location.href`.
 - Proibido percorrer o DOM fora do próprio painel (`document.querySelector` no chrome do Grafana ou
