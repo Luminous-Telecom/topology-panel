@@ -297,6 +297,26 @@ export function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap):
   return undefined;
 }
 
+/** Descrição do host no Zabbix — omitida quando vazia ou igual ao nome visível. */
+export function resolveHostDescription(
+  node: TopologyNode,
+  metadata?: HostMetadataMap
+): string | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  const meta = findQueryMetaForNode(node, metadata);
+  const description = meta?.description?.trim();
+  if (!description) {
+    return undefined;
+  }
+  const name = meta?.name?.trim() || node.label?.trim();
+  if (name && description.toLowerCase() === name.toLowerCase()) {
+    return undefined;
+  }
+  return description;
+}
+
 /** Persiste nome/IP da Query no mapa salvo (migrate + rename). Preferência: IP. */
 export function syncMapWithQueryMeta(map: TopologyMap, meta: HostMetadataMap): TopologyMap | null {
   let changed = false;

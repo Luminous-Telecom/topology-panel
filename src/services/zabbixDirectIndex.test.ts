@@ -58,7 +58,14 @@ describe('statusValuesByHostId', () => {
 describe('buildZabbixDirectIndex', () => {
   const hosts = [
     host({ hostid: '10', name: 'RB-CORE', host: 'rb-core', ip: '10.0.0.1', groups: ['Backbone'] }),
-    host({ hostid: '11', name: 'RB-BORDA', host: 'rb-borda', ip: '10.0.0.2', groups: ['Backbone', 'Borda'] }),
+    host({
+      hostid: '11',
+      name: 'RB-BORDA',
+      host: 'rb-borda',
+      ip: '10.0.0.2',
+      description: 'Borda POP Norte',
+      groups: ['Backbone', 'Borda'],
+    }),
   ];
   const statusItems = [item('10', 'icmpping', '1'), item('11', 'icmpping', '0')];
 
@@ -90,6 +97,12 @@ describe('buildZabbixDirectIndex', () => {
       expect(index.metadata[key]?.ip).toBe('10.0.0.1');
       expect(index.metadata[key]?.hostid).toBe('10');
     }
+  });
+
+  it('propaga a descrição do host Zabbix no metadata', () => {
+    expect(index.metadata['RB-BORDA']?.description).toBe('Borda POP Norte');
+    expect(index.metadata['10.0.0.2']?.description).toBe('Borda POP Norte');
+    expect(index.metadata['RB-CORE']?.description).toBeUndefined();
   });
 
   it('expõe os grupos do host para as regras de template', () => {

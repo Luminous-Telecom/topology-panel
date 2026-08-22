@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyMap } from '../../types';
 import { applyTopologyBlueprint } from '../mapTemplateEdits';
+import { resolveHostDescription } from '../mapSync';
 import { BUILTIN_TOPOLOGY_BLUEPRINTS } from '../topologyTemplates/defaults';
 import {
   applyTemplateRulesToMap,
@@ -72,6 +73,81 @@ describe('buildNodeTemplateDisplay', () => {
     expect(display.label).toBe('OLT-POP');
     expect(display.subtitle).toBe('10.0.0.5');
     expect(display.detailLines.some((l) => l.includes('Uplinks: 2'))).toBe(true);
+  });
+
+  it('mostra a descrição do Zabbix como linha extra e omite quando igual ao nome', () => {
+    const node = {
+      id: 'olt-1',
+      type: 'host' as const,
+      label: 'OLT-POP',
+      subtitle: '10.0.0.5',
+      zabbixHost: '10.0.0.5',
+      x: 0,
+      y: 0,
+    };
+    const withDescription = buildNodeTemplateDisplay(
+      node,
+      BUILTIN_NODE_TEMPLATES.find((t) => t.id === 'generic'),
+      {
+        showSubtitle: true,
+        hostMetadata: {
+          '10.0.0.5': { name: 'OLT-POP', ip: '10.0.0.5', description: 'OLT Huawei do POP Norte' },
+        },
+      }
+    );
+    expect(withDescription.detailLines[0]).toBe('OLT Huawei do POP Norte');
+
+    const sameAsName = buildNodeTemplateDisplay(node, undefined, {
+      showSubtitle: true,
+      hostMetadata: {
+        '10.0.0.5': { name: 'OLT-POP', ip: '10.0.0.5', description: 'olt-pop' },
+      },
+    });
+    expect(sameAsName.detailLines).toEqual([]);
+  });
+
+  it('trunca descrição longa no card do host', () => {
+    const long = 'A'.repeat(50);
+    const display = buildNodeTemplateDisplay(
+      {
+        id: 'h1',
+        type: 'host',
+        label: 'host-a',
+        subtitle: '10.0.0.1',
+        zabbixHost: '10.0.0.1',
+        x: 0,
+        y: 0,
+      },
+      undefined,
+      {
+        showSubtitle: true,
+        hostMetadata: {
+          '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', description: long },
+        },
+      }
+    );
+    expect(display.detailLines[0]?.endsWith('…')).toBe(true);
+    expect(display.detailLines[0]?.length).toBeLessThanOrEqual(42);
+  });
+});
+
+describe('resolveHostDescription', () => {
+  it('devolve a descrição do metadata pelo IP do nó', () => {
+    expect(
+      resolveHostDescription(
+        { id: 'h1', type: 'host', zabbixHost: '10.0.0.1', subtitle: '10.0.0.1', x: 0, y: 0 },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', description: 'Core POP' } }
+      )
+    ).toBe('Core POP');
+  });
+
+  it('não devolve descrição vazia', () => {
+    expect(
+      resolveHostDescription(
+        { id: 'h1', type: 'host', zabbixHost: '10.0.0.1', subtitle: '10.0.0.1', x: 0, y: 0 },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', description: '   ' } }
+      )
+    ).toBeUndefined();
   });
 });
 

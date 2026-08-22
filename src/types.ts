@@ -169,6 +169,18 @@ export interface TopologyLinkDiscovery {
   confirmed?: boolean;
 }
 
+/**
+ * Host real de um extremo do cabo quando o nó visual é um submapa.
+ * O cabo continua desenhado até a caixa do submapa; interface e tráfego vêm deste host interno.
+ */
+export interface TopologyLinkPeerHost {
+  /** Id do nó host no mapa interno (`childMaps`). */
+  nodeId: string;
+  /** Chave do host (IP / zabbixHost) para lookup de interface. */
+  zabbixHost?: string;
+  label?: string;
+}
+
 export interface TopologyLink {
   /** Source node id */
   from: string;
@@ -178,6 +190,10 @@ export interface TopologyLink {
   fromInterface?: TopologyInterfaceReference;
   /** Interface no host de destino */
   toInterface?: TopologyInterfaceReference;
+  /** Host interno quando `from` é um submapa. */
+  fromPeerHost?: TopologyLinkPeerHost;
+  /** Host interno quando `to` é um submapa. */
+  toPeerHost?: TopologyLinkPeerHost;
   /** fiber = linha contínua; radio = linha tracejada */
   medium?: TopologyLinkMedium;
   /** Capacidade em Mbps (ex.: 100, 1000, 10000) — define rótulo e espessura */
@@ -256,6 +272,8 @@ export interface HostMetadata {
   name: string;
   ip?: string;
   hostid?: string;
+  /** Campo Descrição do host no Zabbix (`host.get` description). */
+  description?: string;
   /** Grupos do host no Zabbix (para regras de template). */
   hostGroups?: string[];
   /** Tags do host no Zabbix. */

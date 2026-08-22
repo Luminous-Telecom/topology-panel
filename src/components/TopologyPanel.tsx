@@ -164,8 +164,8 @@ export function TopologyPanel({
   const zabbixDatasourceUid = resolvedOptions.zabbixDatasourceUid;
 
   /**
-   * O `host.get` do snapshot já traz nome, IP, grupos e tags — buscar metadata de novo seria
-   * uma segunda volta na API pelo mesmo dado.
+   * O `host.get` do snapshot já traz nome, IP, descrição, grupos e tags — buscar metadata de novo
+   * seria uma segunda volta na API pelo mesmo dado.
    */
   const metadataHostNames = NO_METADATA_HOSTS;
 

@@ -9,10 +9,11 @@ const ipReadoutStyle: React.CSSProperties = {
 
 interface Props {
   uid: string;
-  options: Array<{ label: string; value: string }>;
+  options: Array<{ label: string; value: string; description?: string }>;
   hasQueryHosts: boolean;
   selectedHostKey?: string;
   displayIp?: string;
+  displayDescription?: string;
   onSelect: (value?: string) => void;
 }
 
@@ -22,6 +23,7 @@ export function ZabbixHostFields({
   hasQueryHosts,
   selectedHostKey,
   displayIp,
+  displayDescription,
   onSelect,
 }: Props) {
   return (
@@ -46,6 +48,11 @@ export function ZabbixHostFields({
       {displayIp ? (
         <FieldReadout label="IP">
           <div style={ipReadoutStyle}>{displayIp}</div>
+        </FieldReadout>
+      ) : null}
+      {displayDescription ? (
+        <FieldReadout label="Descrição">
+          <div style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{displayDescription}</div>
         </FieldReadout>
       ) : null}
     </>

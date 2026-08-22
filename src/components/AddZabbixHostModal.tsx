@@ -136,6 +136,11 @@ export function ZabbixHostPickerModal({
           />
         </Field>
       ) : null}
+      {selectedHost?.description ? (
+        <FieldReadout label="Descrição">
+          <div style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{selectedHost.description}</div>
+        </FieldReadout>
+      ) : null}
       {needsManualIp && manualIpTrimmed && !isIpv4(manualIpTrimmed) ? (
         <FieldReadout label="IP">
           <div style={{ color: theme.colors.error.text, fontSize: 13 }}>Informe um IPv4 válido.</div>

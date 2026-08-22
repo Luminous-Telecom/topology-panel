@@ -21,9 +21,18 @@ interface ZabbixHost {
   hostid?: string;
   host: string;
   name: string;
+  description?: string;
   interfaces?: Array<{ ip: string; main?: string; type?: string }>;
   groups?: Array<{ name?: string }>;
   tags?: Array<{ tag?: string; value?: string }>;
+}
+
+/** Campos de identidade + descrição do host — usado no snapshot e no metadata. */
+const ZABBIX_HOST_OUTPUT = ['hostid', 'host', 'name', 'description'];
+
+function normalizeZabbixHostDescription(raw?: string): string | undefined {
+  const text = raw?.replace(/\s+/g, ' ').trim();
+  return text || undefined;
 }
 
 const BATCH_SIZE = 50;
@@ -226,6 +235,7 @@ function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): voi
     name: visibleName || technicalName || '',
     ip,
     hostid,
+    description: normalizeZabbixHostDescription(host.description),
     hostGroups: host.groups?.map((g) => g.name?.trim()).filter((n): n is string => Boolean(n)),
     tags: host.tags?.map((t) => ({ tag: t.tag?.trim() ?? '', value: t.value?.trim() ?? '' })),
   };
@@ -241,6 +251,7 @@ function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): voi
           name: entry.name || prev.name,
           ip: prev.ip && isIpv4(prev.ip) ? prev.ip : entry.ip,
           hostid: prev.hostid || entry.hostid,
+          description: entry.description || prev.description,
           hostGroups: entry.hostGroups?.length ? entry.hostGroups : prev.hostGroups,
           tags: entry.tags?.length ? entry.tags : prev.tags,
         }
@@ -272,14 +283,14 @@ export async function fetchZabbixHostMetadata(
       const [byName, byHost] = await Promise.all([
         zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
           filter: { name: batch },
-          output: ['hostid', 'host', 'name'],
+          output: ZABBIX_HOST_OUTPUT,
           selectInterfaces: ['ip', 'main', 'type'],
           selectHostGroups: ['name'],
           selectTags: ['tag', 'value'],
         }),
         zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
           filter: { host: batch },
-          output: ['hostid', 'host', 'name'],
+          output: ZABBIX_HOST_OUTPUT,
           selectInterfaces: ['ip', 'main', 'type'],
           selectHostGroups: ['name'],
           selectTags: ['tag', 'value'],
@@ -600,6 +611,8 @@ export interface ZabbixDirectHost {
   /** Nome visível (`name`). */
   name: string;
   ip?: string;
+  /** Campo Descrição do host no Zabbix. */
+  description?: string;
   /** Grupos do host, restritos aos configurados no painel. */
   groups: string[];
   tags?: Array<{ tag: string; value: string }>;
@@ -662,7 +675,7 @@ async function fetchMonitoredHostsInGroups(
     Array<ZabbixHost & { groups?: Array<{ name?: string }>; hostgroups?: Array<{ name?: string }> }>
   >(datasourceUid, 'host.get', {
     groupids: groupIds,
-    output: ['hostid', 'host', 'name'],
+    output: ZABBIX_HOST_OUTPUT,
     selectInterfaces: ['ip', 'main', 'type'],
     selectHostGroups: ['name'],
     selectTags: ['tag', 'value'],
@@ -687,6 +700,7 @@ async function fetchMonitoredHostsInGroups(
       host: technical,
       name: visible,
       ip: pickMainInterfaceIp(row.interfaces),
+      description: normalizeZabbixHostDescription(row.description),
       groups,
       tags: row.tags
         ?.map((tag) => ({ tag: tag.tag?.trim() ?? '', value: tag.value?.trim() ?? '' }))
@@ -896,15 +910,7 @@ export async function fetchZabbixHostInterfaceItems(
 
   const hostIdByKey = new Map<string, string>();
   for (const key of keys) {
-    const fromMeta = resolveHostIdFromLookup(
-      {
-        zabbixHost: key,
-        subtitle: isIpv4(key) ? key : undefined,
-        label: isIpv4(key) ? undefined : key,
-      },
-      metadata
-    );
-    const hostId = fromMeta ?? (await resolveZabbixHostId(datasourceUid, key));
+    const hostId = metadata?.[key]?.hostid?.trim() || (await resolveZabbixHostId(datasourceUid, key));
     if (hostId) {
       hostIdByKey.set(key, hostId);
     }

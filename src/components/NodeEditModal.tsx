@@ -117,6 +117,7 @@ export function NodeEditModal({
           hasQueryHosts={queryHostOptions.length > 0}
           selectedHostKey={selectedHostKey}
           displayIp={selectedQueryHost?.ip ?? nodeIp}
+          displayDescription={selectedQueryHost?.description}
           onSelect={setSelectedHostKey}
         />
       )}

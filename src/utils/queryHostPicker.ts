@@ -10,6 +10,7 @@ export interface QueryHostOption {
   visibleName: string;
   technicalName: string;
   ip?: string;
+  description?: string;
 }
 
 export interface QueryHostNodeRef {
@@ -159,6 +160,7 @@ export function extractQueryHostOptions(
       visibleName,
       technicalName,
       ip,
+      description: meta?.description?.trim() || undefined,
     });
   }
 
@@ -230,7 +232,7 @@ export function queryHostPickerOptions(
   list: QueryHostOption[],
   onMap: { ips: Set<string>; names: Set<string> },
   boundHost?: QueryHostOption
-): Array<{ label: string; value: string }> {
+): Array<{ label: string; value: string; description?: string }> {
   return list
     .filter((host) => {
       if (boundHost?.ip && host.ip === boundHost.ip) {
@@ -244,6 +246,7 @@ export function queryHostPickerOptions(
     .map((host) => ({
       label: formatQueryHostOptionLabel(host),
       value: host.ip ?? host.visibleName,
+      description: host.description,
     }));
 }
 

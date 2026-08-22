@@ -6,7 +6,7 @@ import {
   TopologyPanelOptions,
 } from '../../types';
 import { lookupHostDisplay } from '../queryHosts';
-import { findQueryMetaForNode } from '../mapSync';
+import { findQueryMetaForNode, resolveHostDescription } from '../mapSync';
 import { resolveHostIp } from '../hostLookup';
 import { NODE_TEMPLATE_FIELD_LABELS, NodeTemplateFieldKind, TopologyNodeTemplate } from './types';
 import { resolvePanelTemplates, resolveTemplateForNode } from './resolveTemplates';
@@ -99,6 +99,15 @@ function fieldLine(
   }
 }
 
+const NODE_DESCRIPTION_MAX_CHARS = 42;
+
+function truncateHostDescription(text: string): string {
+  if (text.length <= NODE_DESCRIPTION_MAX_CHARS) {
+    return text;
+  }
+  return `${text.slice(0, NODE_DESCRIPTION_MAX_CHARS - 1).trimEnd()}…`;
+}
+
 export function buildNodeTemplateDisplay(
   node: TopologyNode,
   template: TopologyNodeTemplate | undefined,
@@ -130,6 +139,14 @@ export function buildNodeTemplateDisplay(
     const ip = resolveHostIp(node, ctx.hostMetadata) ?? node.subtitle?.trim();
     if (ip) {
       subtitle = ip;
+    }
+  }
+
+  const description = resolveHostDescription(node, ctx.hostMetadata);
+  if (description) {
+    const line = truncateHostDescription(description);
+    if (line !== label && line !== subtitle && !detailLines.includes(line)) {
+      detailLines.unshift(line);
     }
   }
 

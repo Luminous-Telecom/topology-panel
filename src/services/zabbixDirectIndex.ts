@@ -168,6 +168,7 @@ function indexDirectHostMetadata(metadata: HostMetadataMap, host: ZabbixDirectHo
     name: host.name,
     ip: host.ip && isIpv4(host.ip) ? host.ip : undefined,
     hostid: host.hostid,
+    description: host.description,
     hostGroups: host.groups.length ? host.groups : undefined,
     tags: host.tags?.length ? host.tags : undefined,
   };
