@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Button, Field, Input, Modal } from '@grafana/ui';
+import { Button, Field, Input } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
 import { NodeEditSavePayload, TopologyMap, TopologyNode, TopologyQueryRefInfo } from '../types';
 import { HostIconPicker } from './HostIconPicker';
 import { FieldReadout } from './FieldReadout';
@@ -108,7 +109,7 @@ export function NodeEditModal({
     !nodeIp;
 
   return (
-    <Modal title={TITLES[type] ?? TITLES.host} isOpen onDismiss={onClose}>
+    <TopologyModal title={TITLES[type] ?? TITLES.host} onClose={onClose}>
       {isZabbixHost && (
         <ZabbixHostFields
           uid={uid}
@@ -155,14 +156,14 @@ export function NodeEditModal({
       {type === 'dashboard_picker' && <DashboardPickerFields uid={uid} values={values} set={set} />}
       {type === 'static' && <StaticFields uid={uid} values={values} set={set} />}
       {type === 'network' && <NetworkFields uid={uid} node={node} values={values} set={set} />}
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
         <Button disabled={saveDisabled} onClick={handleSave}>
           Salvar
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

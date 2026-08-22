@@ -3,6 +3,7 @@ import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import { CANVAS_EDGE_GAP, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
 import { resolvePanelColor } from '../../utils/panelColors';
+import { overlayCardBodyStyle, overlayCardHeaderStyle, overlayCardStyle, overlayMutedStyle } from '../overlayChrome';
 
 const legendStyle = css`
   position: absolute;
@@ -10,16 +11,8 @@ const legendStyle = css`
   right: 10px;
   transform: translateY(-50%);
   z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   pointer-events: none;
-  min-width: 132px;
+  min-width: 148px;
   max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
 
   ${MEDIA_MEDIUM} {
@@ -35,19 +28,19 @@ const legendStyle = css`
     top: 96px;
     bottom: auto;
     right: ${CANVAS_EDGE_GAP}px;
-    padding: 8px 10px;
-    gap: 5px;
     max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
   }
 `;
 
-const legendTitleStyle = css`
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
-  margin-bottom: 2px;
+const legendBodyStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  ${MEDIA_COMPACT} {
+    gap: 5px;
+    padding: 8px 10px;
+  }
 `;
 
 const legendItemStyle = css`
@@ -78,12 +71,9 @@ const legendSwatchStyle = css`
 type TopologyLegendItem = { label: string; color: string };
 
 const legendCountdownStyle = css`
-  margin-top: 6px;
+  margin-top: 4px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.3;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   white-space: nowrap;
 
   ${MEDIA_COMPACT} {
@@ -129,23 +119,27 @@ export function TopologyColorLegend({
   if (visible.length === 0) {
     // Ainda mostra o contador mesmo sem itens de legenda
     return (
-      <div className={legendStyle} aria-label="Atualização do mapa">
-        <div className={legendCountdownStyle} style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
-          {countdownLabel}
+      <div className={`${overlayCardStyle} ${legendStyle}`} aria-label="Atualização do mapa">
+        <div className={`${overlayCardBodyStyle} ${legendBodyStyle}`}>
+          <div className={`${overlayMutedStyle} ${legendCountdownStyle}`} style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+            {countdownLabel}
+          </div>
         </div>
       </div>
     );
   }
   return (
-    <div className={legendStyle} aria-label="Legenda de cores">
-      <div className={legendTitleStyle}>Legenda</div>
-      {visible.map((item) => (
-        <div key={item.label} className={legendItemStyle}>
-          <span className={legendSwatchStyle} style={{ background: item.color }} />
-          <span>{item.label}</span>
-        </div>
-      ))}
-      <div className={legendCountdownStyle}>{countdownLabel}</div>
+    <div className={`${overlayCardStyle} ${legendStyle}`} aria-label="Legenda de cores">
+      <div className={overlayCardHeaderStyle}>Legenda</div>
+      <div className={`${overlayCardBodyStyle} ${legendBodyStyle}`}>
+        {visible.map((item) => (
+          <div key={item.label} className={legendItemStyle}>
+            <span className={legendSwatchStyle} style={{ background: item.color }} />
+            <span>{item.label}</span>
+          </div>
+        ))}
+        <div className={`${overlayMutedStyle} ${legendCountdownStyle}`}>{countdownLabel}</div>
+      </div>
     </div>
   );
 }

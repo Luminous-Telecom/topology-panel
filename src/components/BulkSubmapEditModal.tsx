@@ -1,5 +1,6 @@
 import React, { useId, useState } from 'react';
-import { Button, Field, Input, Modal } from '@grafana/ui';
+import { Button, Field, Input } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
 import { TopologyNode } from '../types';
 import { BulkSubmapLayoutSize, seedBulkSubmapFormValues } from '../utils/mapBulkEdits';
 
@@ -32,7 +33,7 @@ export function BulkSubmapEditModal({ count, targets, nodeLayouts, onSave, onClo
     : 'Vazio = manter a altura atual de cada submapa';
 
   return (
-    <Modal title={`Editar submapas (${count})`} isOpen onDismiss={onClose}>
+    <TopologyModal title={`Editar submapas (${count})`} onClose={onClose}>
       <Field label="Largura (px)" description={widthDescription}>
         <Input
           id={`${uid}-width`}
@@ -51,7 +52,7 @@ export function BulkSubmapEditModal({ count, targets, nodeLayouts, onSave, onClo
           placeholder={seed.heightMixed ? 'Tamanhos mistos' : 'Não alterar'}
         />
       </Field>
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -70,7 +71,7 @@ export function BulkSubmapEditModal({ count, targets, nodeLayouts, onSave, onClo
         >
           Aplicar a {count} submapas
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

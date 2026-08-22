@@ -9,6 +9,7 @@ import {
   overlayNocTopClearance,
   overlayPanelNocCompactWidth,
 } from './canvasOverlayStyles';
+import { overlayCardHeaderStyle, overlayCardStyle, overlayListButtonStyle, overlayListStyle, overlayMutedStyle } from '../overlayChrome';
 
 const panelStyle = (bottomOffset: number) => css`
   position: absolute;
@@ -17,21 +18,7 @@ const panelStyle = (bottomOffset: number) => css`
   z-index: 5;
   display: flex;
   flex-direction: column;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
-  overflow: hidden;
-`;
-
-const headerStyle = css`
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
 `;
 
 const filtersStyle = css`
@@ -42,34 +29,16 @@ const filtersStyle = css`
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const listStyle = css`
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  overflow-y: auto;
+const nocListStyle = css`
   flex: 1 1 auto;
   min-height: 0;
-  -webkit-overflow-scrolling: touch;
 `;
 
 const itemButtonStyle = css`
-  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 3px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  background: transparent;
-  color: #fff;
   font-size: 11px;
-  line-height: 1.3;
-  text-align: left;
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
 `;
 
 const rowStyle = css`
@@ -112,10 +81,7 @@ const tagStyle = css`
 `;
 
 const emptyStyle = css`
-  padding: 12px 10px;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 11px;
-  line-height: 1.4;
+  padding: 12px;
 `;
 
 const filterChipBaseStyle = css`
@@ -150,13 +116,13 @@ function TopologyNocPanelComponent({
 
   return (
     <div
-      className={`${panelStyle(bottomOffset)} ${overlayPanelNocCompactWidth} ${overlayNocTopClearance}`}
+      className={`${overlayCardStyle} ${panelStyle(bottomOffset)} ${overlayPanelNocCompactWidth} ${overlayNocTopClearance}`}
       data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className={headerStyle}>Modo NOC — equipamentos ({entries.length})</div>
+      <div className={overlayCardHeaderStyle}>Modo NOC — equipamentos ({entries.length})</div>
       <div className={filtersStyle}>
         {filters.map((id) => {
           const active = activeFilters.has(id);
@@ -178,20 +144,20 @@ function TopologyNocPanelComponent({
         })}
       </div>
       {!queryReady ? (
-        <div className={emptyStyle}>Carregando status da Query…</div>
+        <div className={`${overlayMutedStyle} ${emptyStyle}`}>Carregando status da Query…</div>
       ) : entries.length === 0 ? (
-        <div className={emptyStyle}>
+        <div className={`${overlayMutedStyle} ${emptyStyle}`}>
           {activeFilters.size > 0
             ? 'Nenhum equipamento corresponde aos filtros selecionados.'
             : 'Nenhum host encontrado nos mapas do painel.'}
         </div>
       ) : (
-        <ul className={listStyle}>
+        <ul className={`${overlayListStyle} ${nocListStyle}`}>
           {entries.map((entry) => (
             <li key={`${entry.mapId}:${entry.nodeId}`}>
               <button
                 type="button"
-                className={`${itemButtonStyle} ${overlayListItemButtonStyle}`}
+                className={`${overlayListButtonStyle} ${itemButtonStyle} ${overlayListItemButtonStyle}`}
                 title={`Ir para ${entry.label}`}
                 aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel}`}
                 onClick={(e) => {

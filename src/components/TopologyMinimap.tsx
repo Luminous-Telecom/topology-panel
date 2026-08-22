@@ -3,6 +3,7 @@ import { css } from '@emotion/css';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { NodeLayout } from '../utils/nodeLayout';
 import { computeTopologyContentBounds, isNetworkNode } from '../utils/mapBounds';
+import { overlayCardStyle } from './overlayChrome';
 
 const MINI_WIDTH = 196;
 const MINI_HEIGHT = 148;
@@ -15,10 +16,6 @@ const wrapStyle = css`
   z-index: 4;
   width: ${MINI_WIDTH}px;
   height: ${MINI_HEIGHT}px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(8, 8, 10, 0.88);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   touch-action: none;
   user-select: none;
@@ -168,7 +165,7 @@ export function TopologyMinimap({
   return (
     <div
       ref={wrapRef}
-      className={wrapStyle}
+      className={`${overlayCardStyle} ${wrapStyle}`}
       title="Visão geral — arraste para mover o mapa"
       aria-label="Visão geral do mapa"
       onPointerDown={onPointerDown}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { wheelTargetsScrollableDescendant } from './domScroll';
+import { eventTargetsMapOverlay, wheelTargetsScrollableDescendant } from './domScroll';
 
 describe('wheelTargetsScrollableDescendant', () => {
   it('detecta lista rolável entre o alvo e o boundary', () => {
@@ -76,5 +76,36 @@ describe('wheelTargetsScrollableDescendant', () => {
     expect(wheelTargetsScrollableDescendant(wheel, boundary)).toBe(true);
 
     boundary.remove();
+  });
+});
+
+describe('eventTargetsMapOverlay', () => {
+  it('detecta overlay marcado entre o alvo e o boundary', () => {
+    const boundary = document.createElement('div');
+    const panel = document.createElement('div');
+    panel.setAttribute('data-map-wheel-overlay', '');
+    const item = document.createElement('button');
+    panel.append(item);
+    boundary.append(panel);
+
+    const touch = new Event('touchmove');
+    Object.defineProperty(touch, 'composedPath', {
+      value: () => [item, panel, boundary, document.body],
+    });
+
+    expect(eventTargetsMapOverlay(touch, boundary)).toBe(true);
+  });
+
+  it('ignora descendente sem o atributo de overlay', () => {
+    const boundary = document.createElement('div');
+    const item = document.createElement('rect');
+    boundary.append(item);
+
+    const touch = new Event('touchmove');
+    Object.defineProperty(touch, 'composedPath', {
+      value: () => [item, boundary, document.body],
+    });
+
+    expect(eventTargetsMapOverlay(touch, boundary)).toBe(false);
   });
 });

@@ -39,8 +39,8 @@ Qualquer arquivo em `src/`.
   `mapBulkEdits`). Componente não monta objeto de mapa na mão nem faz spread de `nodes`/`links`
   para inserir item.
 - Modal (`*Modal.tsx`) é só UI e validação de formulário. A mutação real delega para `mapEdits.ts`.
-- Modal novo segue o esqueleto já usado: `Modal` + `Field`/`Input` controlados + `Modal.ButtonRow`
-  com "Cancelar" e a ação primária. Não invente outro layout.
+- Modal novo usa `TopologyModal` (`overlayChrome.ts`) + `Field`/`Input` controlados +
+  `TopologyModal.ButtonRow` com "Cancelar" e a ação primária. Não invente outro layout.
 - Lógica com estado vira hook em `hooks/`, não bloco novo dentro de `TopologyCanvas.tsx`. JSX novo
   no canvas vira camada em `components/canvas/`, recebendo por prop só o que desenha.
 - O projeto não usa arquivos barrel (`index.ts`) — importe direto do arquivo de origem e não crie

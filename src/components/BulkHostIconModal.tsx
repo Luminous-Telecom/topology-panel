@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Button, Modal } from '@grafana/ui';
+import { Button } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
 import { TopologyHostIcon } from '../types';
 import { HOST_ICON_LABELS } from '../utils/hostIcons';
 import { HostIconPicker } from './HostIconPicker';
@@ -15,11 +16,11 @@ export function BulkHostIconModal({ count, onSave, onClose }: Props) {
   const [icon, setIcon] = useState<TopologyHostIcon>('network');
 
   return (
-    <Modal title={`Alterar tipo (${count} hosts)`} isOpen onDismiss={onClose}>
+    <TopologyModal title={`Alterar tipo (${count} hosts)`} onClose={onClose}>
       <FieldReadout label="Tipo / ícone" description={`Aplicar ${HOST_ICON_LABELS[icon]} a ${count} hosts selecionados`}>
         <HostIconPicker value={icon} onChange={setIcon} />
       </FieldReadout>
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -31,7 +32,7 @@ export function BulkHostIconModal({ count, onSave, onClose }: Props) {
         >
           Aplicar
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

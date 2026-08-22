@@ -1,6 +1,11 @@
 import { MutableRefObject, RefObject, useEffect } from 'react';
 import { TopologyView } from '../types';
-import { eventTargetsElement, findScrollParents, wheelTargetsScrollableDescendant } from '../utils/domScroll';
+import {
+  eventTargetsElement,
+  eventTargetsMapOverlay,
+  findScrollParents,
+  wheelTargetsScrollableDescendant,
+} from '../utils/domScroll';
 import { pinchZoom, PinchStart, wheelZoom } from '../utils/zoomMath';
 
 interface UseCanvasZoomGesturesParams {
@@ -19,10 +24,12 @@ interface UseCanvasZoomGesturesParams {
 }
 
 /**
- * Zoom por roda do mouse e pinch de dois dedos.
+ * Zoom por roda do mouse e pinch de dois dedos, e bloqueio do scroll nativo no toque de 1 dedo.
  *
  * Os listeners são nativos e não passivos porque precisam de `preventDefault`: sem isso o
- * navegador rola a página do dashboard em vez de dar zoom no mapa.
+ * navegador (e o dashboard do Grafana) rola a página no lugar do pan/zoom do mapa. O
+ * `onPointerMove` do React não basta — em mobile esse listener costuma ser passivo, e o
+ * primeiro `touchmove` sem `preventDefault` cancela o ponteiro (`pointercancel`).
  */
 export function useCanvasZoomGestures({
   wrapRef,
@@ -36,7 +43,7 @@ export function useCanvasZoomGestures({
 }: UseCanvasZoomGesturesParams) {
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || !enableZoom) {
+    if (!el) {
       return;
     }
 
@@ -161,25 +168,48 @@ export function useCanvasZoomGestures({
       requestAnimationFrame(() => restoreScroll?.());
     };
 
+    /** 1 dedo no mapa: impede o dashboard de rolar e o browser de cancelar o pointer do pan. */
+    const onOneFingerTouchMove = (evt: Event) => {
+      if (!(evt instanceof TouchEvent) || evt.touches.length !== 1) {
+        return;
+      }
+      if (!eventTargetsElement(evt, el) || eventTargetsMapOverlay(evt, el)) {
+        return;
+      }
+      evt.preventDefault();
+    };
+
+    const captureTouchOpts: AddEventListenerOptions = { passive: false, capture: true };
+    const touchGuardTargets = [document, el, ...scrollParents];
+    for (const target of touchGuardTargets) {
+      target.addEventListener('touchmove', onOneFingerTouchMove, captureTouchOpts);
+    }
+
     const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
     const wheelTargets = [document, el, ...scrollParents];
-
-    for (const target of wheelTargets) {
-      target.addEventListener('wheel', onWheel, wheelOpts);
+    if (enableZoom) {
+      for (const target of wheelTargets) {
+        target.addEventListener('wheel', onWheel, wheelOpts);
+      }
+      el.addEventListener('touchstart', onTouchStart, { passive: false });
+      el.addEventListener('touchmove', onTouchMove, { passive: false });
+      el.addEventListener('touchend', onTouchEnd);
+      el.addEventListener('touchcancel', onTouchEnd);
     }
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    el.addEventListener('touchcancel', onTouchEnd);
 
     return () => {
-      for (const target of wheelTargets) {
-        target.removeEventListener('wheel', onWheel, wheelOpts);
+      for (const target of touchGuardTargets) {
+        target.removeEventListener('touchmove', onOneFingerTouchMove, captureTouchOpts);
       }
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
+      if (enableZoom) {
+        for (const target of wheelTargets) {
+          target.removeEventListener('wheel', onWheel, wheelOpts);
+        }
+        el.removeEventListener('touchstart', onTouchStart);
+        el.removeEventListener('touchmove', onTouchMove);
+        el.removeEventListener('touchend', onTouchEnd);
+        el.removeEventListener('touchcancel', onTouchEnd);
+      }
       endPinch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

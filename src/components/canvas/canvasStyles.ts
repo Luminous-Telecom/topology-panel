@@ -30,6 +30,7 @@ export const canvasStyles = {
     scrollbar-gutter: stable;
     z-index: 0;
     overscroll-behavior: contain;
+    touch-action: none;
     /* O SVG (z-index 1) recebe os gestos do mapa; este container precisa aceitar eventos
      * para que o navegador permita arrastar as barras nativas. */
     pointer-events: auto;

@@ -1,5 +1,7 @@
 import React, { useId, useMemo, useState } from 'react';
-import { Button, Field, Input, Modal, Spinner, Stack } from '@grafana/ui';
+import { Button, Field, Input, Spinner, Stack } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
+import { modalErrorStyle, modalHintStyle } from './overlayChrome';
 import {
   TopologyInterfaceReference,
   TopologyNetworkInterface,
@@ -100,7 +102,7 @@ function InterfaceList({
         <div
           role="listbox"
           aria-label={`Interfaces de ${hostLabel}`}
-          style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border-weak)', borderRadius: 4 }}
+          style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border-weak)', borderRadius: 4 }}
         >
           {filtered.map((iface) => {
             const active = selected?.name === iface.name && selected?.snmpIndex === iface.snmpIndex;
@@ -119,7 +121,7 @@ function InterfaceList({
                   display: 'block',
                   width: '100%',
                   textAlign: 'left',
-                  padding: '8px 10px',
+                  padding: '5px 8px',
                   border: 'none',
                   borderBottom: '1px solid var(--border-weak)',
                   background: active ? 'var(--background-secondary)' : 'transparent',
@@ -193,11 +195,9 @@ export function LinkInterfaceSelectModal({
   };
 
   return (
-    <Modal title="Novo link" isOpen onDismiss={onClose}>
-      {loadError && (
-        <div style={{ color: 'var(--error-text)', marginBottom: 8, fontSize: 12 }}>{loadError}</div>
-      )}
-      <p style={{ margin: '0 0 12px', fontSize: 12, lineHeight: 1.45, opacity: 0.85 }}>
+    <TopologyModal title="Novo link" onClose={onClose}>
+      {loadError && <div className={modalErrorStyle}>{loadError}</div>}
+      <p className={modalHintStyle}>
         Interfaces opcionais. Sem seleção, o link aparece no mapa mas não monitora tráfego RX/TX.
       </p>
       <Field label="Buscar interface (opcional)">
@@ -209,7 +209,7 @@ export function LinkInterfaceSelectModal({
         />
       </Field>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <InterfaceList
           uid={`${uid}-from`}
           title="Origem"
@@ -232,36 +232,38 @@ export function LinkInterfaceSelectModal({
         />
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 8 }}>
         <FieldReadout label="Pré-visualização">
-          <div style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6 }}>
-            <div>{pending.fromNode.label ?? pending.fromNode.id}</div>
-            <div style={{ paddingLeft: 8, opacity: fromIface ? 1 : 0.55 }}>
-              {fromIface?.name ?? '— sem interface —'}
+          <div style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.45 }}>
+            <div>
+              {pending.fromNode.label ?? pending.fromNode.id}
+              <span style={{ opacity: fromIface ? 1 : 0.55 }}>
+                {' · '}
+                {fromIface?.name ?? 'sem interface'}
+              </span>
+              <span style={{ opacity: 0.6 }}> ↕ </span>
+              {pending.toNode.label ?? pending.toNode.id}
+              <span style={{ opacity: toIface ? 1 : 0.55 }}>
+                {' · '}
+                {toIface?.name ?? 'sem interface'}
+              </span>
             </div>
-            <div style={{ textAlign: 'center', opacity: 0.6 }}>↕</div>
-            <div>{pending.toNode.label ?? pending.toNode.id}</div>
-            <div style={{ paddingLeft: 8, opacity: toIface ? 1 : 0.55 }}>
-              {toIface?.name ?? '— sem interface —'}
-            </div>
-            {previewCapacity ? (
-              <div style={{ marginTop: 4 }}>{formatLinkBandwidth(previewCapacity)}</div>
-            ) : null}
-            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.85 }}>
+            <div style={{ marginTop: 2, fontSize: 11, opacity: 0.85 }}>
+              {previewCapacity ? `${formatLinkBandwidth(previewCapacity)} · ` : ''}
               {monitorsTraffic
-                ? 'Monitoramento de tráfego ativo nas interfaces selecionadas.'
-                : 'Sem monitoramento de tráfego — edite depois para vincular interfaces.'}
+                ? 'Monitoramento de tráfego ativo.'
+                : 'Sem monitoramento de tráfego — edite depois para vincular.'}
             </div>
           </div>
         </FieldReadout>
       </div>
 
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
         <Button onClick={commitLink}>Criar link</Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

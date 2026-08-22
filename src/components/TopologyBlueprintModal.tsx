@@ -1,5 +1,7 @@
 import React, { useId, useMemo, useState } from 'react';
-import { Button, Modal, Select, Stack } from '@grafana/ui';
+import { Button, Select, Stack } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
+import { modalHintStyle } from './overlayChrome';
 import { TopologyBlueprint } from '../types';
 import { resolvePanelTemplates } from '../utils/topologyTemplates/resolveTemplates';
 import { TopologyPanelOptions } from '../types';
@@ -18,12 +20,12 @@ export function TopologyBlueprintModal({ options, onApply, onClose }: Props) {
   const selected = blueprints.find((b) => b.id === selectedId) ?? blueprints[0];
 
   return (
-    <Modal title="Modelo de topologia" isOpen onDismiss={onClose}>
+    <TopologyModal title="Modelo de topologia" onClose={onClose}>
       <Stack gap={2}>
-        <div style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.9 }}>
+        <p className={modalHintStyle}>
           Insere nós e links de um modelo (POP, backbone, FTTH). Os hosts podem ser vinculados ao
           Zabbix depois.
-        </div>
+        </p>
 
         <div>
           <label htmlFor={`${uid}-blueprint`} style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
@@ -53,15 +55,15 @@ export function TopologyBlueprintModal({ options, onApply, onClose }: Props) {
           </div>
         ) : null}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+        <TopologyModal.ButtonRow>
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
           <Button variant="primary" disabled={!selected} onClick={() => selected && onApply(selected)}>
             Inserir modelo
           </Button>
-        </div>
+        </TopologyModal.ButtonRow>
       </Stack>
-    </Modal>
+    </TopologyModal>
   );
 }

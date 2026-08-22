@@ -51,8 +51,21 @@ function canScrollInDirection(el: HTMLElement, deltaX: number, deltaY: number): 
   return false;
 }
 
-/** Wheel sobre overlay do mapa (lista de alertas, painel NOC): nunca dar zoom. */
+/** Overlay do mapa (lista de alertas, painel NOC, busca): zoom/pan do canvas não rouba o gesto. */
 const MAP_WHEEL_OVERLAY_ATTR = 'data-map-wheel-overlay';
+
+/** Toque/roda sobre overlay marcado: o overlay (não o mapa) fica com o gesto. */
+export function eventTargetsMapOverlay(e: Event, boundary: HTMLElement): boolean {
+  for (const node of e.composedPath()) {
+    if (node === boundary) {
+      break;
+    }
+    if (node instanceof HTMLElement && node.hasAttribute(MAP_WHEEL_OVERLAY_ATTR)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Wheel sobre lista ou outro overlay rolável: deixa o navegador rolar em vez de dar zoom no mapa. */
 export function wheelTargetsScrollableDescendant(e: WheelEvent, boundary: HTMLElement): boolean {

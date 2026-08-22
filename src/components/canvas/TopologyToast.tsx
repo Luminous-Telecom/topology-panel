@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
+import { overlayCardStyle } from '../overlayChrome';
 
 const toastStyle = css`
   position: fixed;
@@ -9,9 +10,6 @@ const toastStyle = css`
   transform: translateX(-50%);
   z-index: 10050;
   padding: 8px 14px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.82);
-  color: #fff;
   font-size: 12px;
   pointer-events: none;
   max-width: 90%;
@@ -22,7 +20,7 @@ export function TopologyToast({ message }: { message: string | null }) {
   if (!message) {
     return null;
   }
-  const toast = <div className={toastStyle}>{message}</div>;
+  const toast = <div className={`${overlayCardStyle} ${toastStyle}`}>{message}</div>;
   if (typeof document === 'undefined') {
     return toast;
   }

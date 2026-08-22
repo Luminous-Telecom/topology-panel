@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/css';
 import { TopologyNode, TopologyNodeType } from '../../types';
 import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
+import { OVERLAY_DIVIDER, OVERLAY_HOVER, overlayCardStyle } from '../overlayChrome';
 
 function nodeTypeLabel(type?: TopologyNodeType): string {
   switch (type) {
@@ -39,11 +40,6 @@ const searchPanelStyle = css`
   right: 0;
   width: min(280px, 70vw);
   z-index: 5;
-  background: rgba(0, 0, 0, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 4px;
-  overflow: hidden;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 
   ${MEDIA_COMPACT} {
     width: min(280px, calc(100vw - ${CANVAS_EDGE_GAP * 2}px));
@@ -68,7 +64,7 @@ const searchInputStyle = css`
 const searchResultsStyle = css`
   max-height: 220px;
   overflow-y: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: ${OVERLAY_DIVIDER};
   -webkit-overflow-scrolling: touch;
 
   ${MEDIA_COMPACT} {
@@ -90,7 +86,7 @@ const searchResultBtnStyle = css`
   font-size: 12px;
   &:hover,
   &[data-active='true'] {
-    background: rgba(79, 195, 247, 0.28);
+    background: ${OVERLAY_HOVER};
   }
 `;
 
@@ -156,7 +152,11 @@ export function TopologySearch({
   }
 
   return (
-    <div className={searchPanelStyle} onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      className={`${overlayCardStyle} ${searchPanelStyle}`}
+      data-map-wheel-overlay
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <input
         ref={inputRef}
         className={searchInputStyle}

@@ -39,9 +39,9 @@ interface UseTopologyViewportResult {
 
 /**
  * View do canvas (x/y/scale), compondo `useViewportSize` (medida do painel), `useFullscreen` e
- * `useCanvasZoomGestures` (roda e pinch). Não inclui o fit de entrada no mapa (fica em
- * `TopologyCanvas.tsx`, pelo bounding box da topologia desenhada), nem o pan de 1 dedo, nem a
- * máquina de estado de arraste de nó/rede/marquee, que ficam em `useTopologyDragController`
+ * `useCanvasZoomGestures` (roda, pinch e bloqueio do scroll nativo no toque de 1 dedo). Não
+ * inclui o fit de entrada no mapa (fica em `TopologyCanvas.tsx`, pelo bounding box da topologia
+ * desenhada), nem a máquina de estado do pan/arraste, que fica em `useTopologyDragController`
  * (acionado a partir de `onPointerMove`/`onPointerDown` do React).
  */
 export function useTopologyViewport({

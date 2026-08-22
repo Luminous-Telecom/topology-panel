@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Modal, Spinner } from '@grafana/ui';
+import { Button, Spinner } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
+import { modalErrorStyle } from './overlayChrome';
 import { css } from '@emotion/css';
 import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi';
 import { copyPingCommand } from '../utils/hostTools';
@@ -186,7 +188,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
   const summary = icmpSummary(icmpStatus);
 
   return (
-    <Modal title="Ping" isOpen onDismiss={onClose}>
+    <TopologyModal title="Ping" onClose={onClose}>
       <FieldReadout label="Host">
         <div style={{ fontSize: 14 }}>{label}</div>
       </FieldReadout>
@@ -224,9 +226,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
           <pre ref={outputRef} className={terminalStyle}>
             {pingOutput || (pingError ? '' : 'Aguardando…')}
           </pre>
-          {pingError ? (
-            <div style={{ marginTop: 8, color: '#ef5350', fontSize: 12 }}>{pingError}</div>
-          ) : null}
+          {pingError ? <div className={modalErrorStyle} style={{ marginTop: 8 }}>{pingError}</div> : null}
           {summary ? (
             <div style={{ marginTop: 8, fontSize: 12, color: '#8ab4f8' }}>{summary}</div>
           ) : null}
@@ -256,14 +256,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         </div>
       </FieldReadout>
 
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={() => void runPingBurst()} disabled={running}>
           Ping agora
         </Button>
         <Button variant="primary" onClick={onClose}>
           Fechar
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

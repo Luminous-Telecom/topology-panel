@@ -2,7 +2,6 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { PanelData } from '@grafana/data';
-import { useTheme2 } from '@grafana/ui';
 import {
   HostDisplayMap,
   HostMetadataMap,
@@ -20,6 +19,7 @@ import {
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
 import { resolveMappingLabel } from '../utils/statusMapping';
+import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle } from './overlayChrome';
 
 interface Props {
   node: TopologyNode;
@@ -150,7 +150,6 @@ export function HostHoverPopover({
   queryReady,
   zabbixDatasourceUid,
 }: Props) {
-  const theme = useTheme2();
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
 
@@ -212,39 +211,13 @@ export function HostHoverPopover({
     top: ${position.top}px;
     z-index: 10000;
     width: ${CHART_W + 24}px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid ${theme.colors.border.medium};
-    background: ${theme.colors.background.primary};
-    box-shadow: ${theme.shadows.z3};
     pointer-events: none;
     font-size: 12px;
-    color: ${theme.colors.text.primary};
-  `;
-
-  const subtitleStyle = css`
-    color: ${theme.colors.text.secondary};
-    font-size: 11px;
-    margin-top: 2px;
-  `;
-
-  const statRowStyle = css`
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 8px;
-    font-size: 11px;
   `;
 
   const failureStyle = css`
     margin-top: 6px;
-    color: ${theme.colors.error.text};
-    font-size: 11px;
-  `;
-
-  const emptyStyle = css`
-    margin-top: 8px;
-    color: ${theme.colors.text.secondary};
+    color: #ef9a9a;
     font-size: 11px;
   `;
 
@@ -253,18 +226,18 @@ export function HostHoverPopover({
   }
 
   return createPortal(
-    <div ref={popoverRef} className={panelStyle} role="tooltip">
+    <div ref={popoverRef} className={`${overlayCardStyle} ${overlayCardBodyStyle} ${panelStyle}`} role="tooltip">
       <strong>{hostTitle(node)}</strong>
-      {ip ? <div className={subtitleStyle}>{ip}</div> : null}
-      <div className={subtitleStyle}>{periodLabel}</div>
+      {ip ? <div className={overlayMutedStyle}>{ip}</div> : null}
+      <div className={overlayMutedStyle}>{periodLabel}</div>
 
       {!queryReady || seriesLoading ? (
-        <div className={emptyStyle}>
+        <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
           Carregando histórico do Zabbix…
         </div>
       ) : series ? (
         <>
-          <div className={statRowStyle}>
+          <div className={overlayMetricRowStyle} style={{ marginTop: 8 }}>
             <span>{series.fieldLabel || metricLabel}</span>
             {lastPoint ? (
               <span>
@@ -280,13 +253,13 @@ export function HostHoverPopover({
               {series.lastFailureAt ? ` · última ${formatClock(series.lastFailureAt)}` : ''}
             </div>
           ) : (
-            <div className={subtitleStyle} style={{ marginTop: 6 }}>
+            <div className={overlayMutedStyle} style={{ marginTop: 6 }}>
               Sem falhas ICMP no período
             </div>
           )}
         </>
       ) : (
-        <div className={emptyStyle}>
+        <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
           Sem histórico ICMP no período (icmppingsec / icmppingloss)
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Button, Field, Input, Modal, Select, useTheme2 } from '@grafana/ui';
+import { Button, Field, Input, Select, useTheme2 } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
 import { TopologyHostIcon, TopologyMap } from '../types';
 import { HostIconPicker } from './HostIconPicker';
 import { FieldReadout } from './FieldReadout';
@@ -94,7 +95,7 @@ export function ZabbixHostPickerModal({
   const waitingForZabbixIp = Boolean(hostKey && !autoIp && zabbixMetadataLoading);
 
   return (
-    <Modal title={title} isOpen onDismiss={onClose}>
+    <TopologyModal title={title} onClose={onClose}>
       <Field
         label="Host"
         description={
@@ -143,7 +144,7 @@ export function ZabbixHostPickerModal({
       <FieldReadout label="Tipo / ícone">
         <HostIconPicker value={icon} onChange={setIcon} />
       </FieldReadout>
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -161,7 +162,7 @@ export function ZabbixHostPickerModal({
         >
           {confirmLabel}
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }

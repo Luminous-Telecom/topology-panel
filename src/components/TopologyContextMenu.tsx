@@ -30,12 +30,13 @@ const styles = {
     position: fixed;
     z-index: 10000;
     min-width: 180px;
-    background: #fff;
-    border: 1px solid #c7c7c7;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    background: rgba(13, 17, 23, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    border-radius: 8px;
     padding: 4px 0;
     font-size: 13px;
-    color: #222;
+    color: #f2f4f7;
   `,
   item: css`
     display: flex;
@@ -46,7 +47,7 @@ const styles = {
     user-select: none;
     position: relative;
     &:hover {
-      background: #e8f4fc;
+      background: rgba(79, 195, 247, 0.18);
     }
   `,
   itemDisabled: css`
@@ -58,25 +59,25 @@ const styles = {
   `,
   itemDelete: css`
     &:hover {
-      background: #fdecea;
+      background: rgba(229, 57, 53, 0.22);
     }
   `,
   iconAdd: css`
-    color: #e53935;
+    color: #ef9a9a;
     font-weight: 700;
     width: 14px;
     text-align: center;
     flex-shrink: 0;
   `,
   iconDelete: css`
-    color: #c62828;
+    color: #ef9a9a;
     font-weight: 700;
     width: 14px;
     text-align: center;
     flex-shrink: 0;
   `,
   iconTool: css`
-    color: #546e7a;
+    color: rgba(255, 255, 255, 0.68);
     width: 14px;
     text-align: center;
     flex-shrink: 0;
@@ -84,22 +85,23 @@ const styles = {
   `,
   submenuArrow: css`
     margin-left: auto;
-    color: #666;
+    color: rgba(255, 255, 255, 0.55);
     font-size: 10px;
   `,
   separator: css`
     height: 1px;
     margin: 4px 0;
-    background: #e0e0e0;
+    background: rgba(255, 255, 255, 0.12);
   `,
   submenu: css`
     position: absolute;
     left: 100%;
     top: -4px;
     min-width: 140px;
-    background: #fff;
-    border: 1px solid #c7c7c7;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    background: rgba(13, 17, 23, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    border-radius: 8px;
     padding: 4px 0;
     z-index: 10001;
     /* Ponte anti-gap: evita fechar o submenu ao mover o mouse para a direita */

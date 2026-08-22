@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import {
   LinkRuntimeMetrics,
@@ -16,6 +17,84 @@ import {
   operStatusLabel,
 } from '../utils/zabbixAdapter/formatTraffic';
 import { resolvePanelColor } from '../utils/panelColors';
+import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../utils/canvasOverlayLayout';
+import {
+  overlayCardBodyStyle,
+  overlayCardFooterStyle,
+  overlayCardBarStyle,
+  overlayCardStyle,
+  overlayMetricLabelStyle,
+  overlayMetricRowStyle,
+  overlayMetricValueStyle,
+  overlayMutedStyle,
+} from './overlayChrome';
+
+const drawerStyle = css`
+  position: absolute;
+  top: 52px;
+  right: ${CANVAS_EDGE_GAP}px;
+  z-index: 30;
+  width: 280px;
+  max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+
+  ${MEDIA_COMPACT} {
+    top: 96px;
+    max-height: calc(100% - 104px);
+  }
+`;
+
+const closeButtonStyle = css`
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+`;
+
+const titleBlockStyle = css`
+  padding-right: 28px;
+`;
+
+const editButtonStyle = css`
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f2f4f7;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+
+  &:hover {
+    background: rgba(79, 195, 247, 0.18);
+  }
+`;
+
+const sectionTitleStyle = css`
+  font-weight: 600;
+  font-size: 11px;
+  margin: 10px 0 4px;
+`;
+
+const dividerStyle = css`
+  margin: 10px 0 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+`;
 
 interface Props {
   link: TopologyLink;
@@ -44,9 +123,9 @@ function RelativeUpdate({ ms }: { ms: number }) {
 
 function MetricRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, lineHeight: 1.5 }}>
-      <span style={{ opacity: 0.75 }}>{label}</span>
-      <span style={{ fontWeight: 500, textAlign: 'right' }}>{value}</span>
+    <div className={overlayMetricRowStyle}>
+      <span className={overlayMetricLabelStyle}>{label}</span>
+      <span className={overlayMetricValueStyle}>{value}</span>
     </div>
   );
 }
@@ -81,10 +160,10 @@ function EndpointBlock({
   const drops = metrics?.drops !== undefined ? String(Math.round(metrics.drops)) : 'N/A';
 
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>
+    <div>
+      <div className={sectionTitleStyle}>
         {title}
-        {ifaceName ? <span style={{ fontWeight: 400, opacity: 0.75 }}> · {ifaceName}</span> : null}
+        {ifaceName ? <span className={overlayMutedStyle}> · {ifaceName}</span> : null}
       </div>
       <MetricRow label="RX / TX" value={`${rx ?? 'N/A'} / ${tx ?? 'N/A'}`} />
       <MetricRow label="Util. RX / TX" value={`${rxUtil} / ${txUtil}`} />
@@ -122,78 +201,33 @@ export function LinkDetailsDrawer({
   );
 
   return (
-    <div
-      role="dialog"
-      aria-label="Detalhes do link"
-      style={{
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 272,
-        maxWidth: '92vw',
-        background: theme.colors.background.primary,
-        borderLeft: `1px solid ${theme.colors.border.weak}`,
-        boxShadow: theme.shadows.z3,
-        zIndex: 30,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div
-        style={{
-          padding: '10px 12px',
-          paddingRight: 76,
-          borderBottom: `1px solid ${theme.colors.border.weak}`,
-          position: 'relative',
-        }}
-      >
-        <button
-          type="button"
-          aria-label="Fechar detalhes do link"
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 4,
-            right: 48,
-            border: 'none',
-            background: 'transparent',
-            color: theme.colors.text.secondary,
-            cursor: 'pointer',
-            fontSize: 18,
-            lineHeight: 1,
-            padding: '4px 6px',
-            borderRadius: 4,
-            zIndex: 1,
-          }}
-        >
+    <div role="dialog" aria-label="Detalhes do link" className={`${overlayCardStyle} ${drawerStyle}`}>
+      <div className={overlayCardBarStyle} style={{ position: 'relative' }}>
+        <button type="button" aria-label="Fechar detalhes do link" onClick={onClose} className={closeButtonStyle}>
           ×
         </button>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{fromLabel}</div>
-        <div style={{ fontSize: 10, opacity: 0.7, margin: '1px 0' }}>↕</div>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{toLabel}</div>
-        <div style={{ fontSize: 10, marginTop: 4, color: statusColor }}>
-          {linkStatusLabel(runtimeMetrics?.status)}
+        <div className={titleBlockStyle}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{fromLabel}</div>
+          <div className={overlayMutedStyle} style={{ margin: '1px 0' }}>
+            ↕
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{toLabel}</div>
+          <div style={{ fontSize: 10, marginTop: 4, color: statusColor }}>{linkStatusLabel(runtimeMetrics?.status)}</div>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+      <div className={overlayCardBodyStyle} style={{ flex: 1, overflowY: 'auto' }}>
         <MetricRow label="Capacidade" value={formatLinkBandwidth(link.bandwidthMbps) ?? 'N/A'} />
         <MetricRow label="Interfaces" value={ifaceSummary} />
         <MetricRow label="Utilização máx." value={maxUtilizationPct(runtimeMetrics)} />
 
         {!link.fromInterface && !link.toInterface ? (
-          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8 }}>
+          <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
             Este link ainda não possui interfaces associadas. Use &quot;Editar link&quot; para vincular.
           </div>
         ) : null}
 
-        <div
-          style={{
-            margin: '10px 0 8px',
-            borderTop: `1px solid ${theme.colors.border.weak}`,
-          }}
-        />
+        <div className={dividerStyle} />
 
         <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} />
         <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} />
@@ -204,21 +238,8 @@ export function LinkDetailsDrawer({
       </div>
 
       {onEdit ? (
-        <div style={{ padding: '8px 12px', borderTop: `1px solid ${theme.colors.border.weak}` }}>
-          <button
-            type="button"
-            onClick={onEdit}
-            style={{
-              width: '100%',
-              border: `1px solid ${theme.colors.border.weak}`,
-              borderRadius: 4,
-              padding: '7px 10px',
-              background: theme.colors.action.hover,
-              color: theme.colors.text.primary,
-              cursor: 'pointer',
-              fontSize: 11,
-            }}
-          >
+        <div className={overlayCardFooterStyle}>
+          <button type="button" onClick={onEdit} className={editButtonStyle}>
             Editar link…
           </button>
         </div>

@@ -66,10 +66,11 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |
 | Identidade fixa de handler | `useStableCallback` em `hooks/useStableCallback.ts` |
 | Recorte de nós/cabos pela viewport | `visibleWorldRect` em `utils/viewportCulling.ts` |
+| Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts`, `useTopologyDragController.ts`, `useTopologyViewport.ts` |
-| Medida do painel, tela cheia e gestos de zoom | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useCanvasZoomGestures.ts` |
+| Medida do painel, tela cheia e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
 | Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
@@ -93,6 +94,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Abrir Winbox/SSH/Telnet e validar IPv4 | `utils/hostTools.ts`, `utils/ipv4.ts` |
 | Fechar overlay com Esc | `hooks/useEscapeKey.ts` |
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
+| Chrome visual de modal e overlay do mapa | `components/overlayChrome.ts` + `components/TopologyModal.tsx` |
 
 ## Exceções
 

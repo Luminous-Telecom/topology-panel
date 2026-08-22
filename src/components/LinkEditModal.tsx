@@ -1,5 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Button, Field, Modal, Select, Spinner } from '@grafana/ui';
+import { Button, Field, Select, Spinner } from '@grafana/ui';
+import { TopologyModal } from './TopologyModal';
+import { modalErrorStyle } from './overlayChrome';
 import {
   HostMetadataMap,
   TopologyInterfaceReference,
@@ -160,10 +162,8 @@ export function LinkEditModal({
       : '';
 
   return (
-    <Modal title="Editar link" isOpen onDismiss={onClose}>
-      {loadError && (
-        <div style={{ color: 'var(--error-text)', marginBottom: 8, fontSize: 12 }}>{loadError}</div>
-      )}
+    <TopologyModal title="Editar link" onClose={onClose}>
+      {loadError && <div className={modalErrorStyle}>{loadError}</div>}
       {fromNode && toNode ? (
         <>
           <InterfaceSelectField
@@ -204,7 +204,7 @@ export function LinkEditModal({
       >
         <div style={{ fontFamily: 'monospace', fontSize: 14 }}>{capacityLabel}</div>
       </FieldReadout>
-      <Modal.ButtonRow>
+      <TopologyModal.ButtonRow>
         <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
@@ -232,7 +232,7 @@ export function LinkEditModal({
         >
           Salvar
         </Button>
-      </Modal.ButtonRow>
-    </Modal>
+      </TopologyModal.ButtonRow>
+    </TopologyModal>
   );
 }
