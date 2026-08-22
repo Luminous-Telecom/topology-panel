@@ -4,6 +4,8 @@ import {
   computeMapScrollMetrics,
   computeTopologyContentBounds,
   computeTopologyFitBounds,
+  MAP_NATIVE_SCROLLBAR_PX,
+  mapCanvasClientSize,
   shouldApplyNavigationFit,
   viewPanDeltaFromScroll,
 } from './mapBounds';
@@ -161,5 +163,19 @@ describe('viewPanDeltaFromScroll', () => {
     const back = viewPanDeltaFromScroll(25, 10, 0, 0);
     expect(start.x + out.dx + back.dx).toBe(100);
     expect(start.y + out.dy + back.dy).toBe(40);
+  });
+});
+
+describe('mapCanvasClientSize', () => {
+  it('reserva a faixa das barras nativas para o hit-test do Chrome', () => {
+    expect(mapCanvasClientSize(800, 600)).toEqual({
+      w: 800 - MAP_NATIVE_SCROLLBAR_PX,
+      h: 600 - MAP_NATIVE_SCROLLBAR_PX,
+    });
+  });
+
+  it('não devolve tamanho negativo quando o wrap ainda não mediu', () => {
+    expect(mapCanvasClientSize(0, 0)).toEqual({ w: 0, h: 0 });
+    expect(mapCanvasClientSize(10, 10)).toEqual({ w: 0, h: 0 });
   });
 });

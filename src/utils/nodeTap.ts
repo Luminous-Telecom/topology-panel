@@ -1,0 +1,21 @@
+/** Intervalo máximo entre dois toques no mesmo nó (pointer capture bloqueia o dblclick nativo). */
+export const NODE_DOUBLE_TAP_MS = 400;
+
+export type NodeTapStamp = { nodeId: string; time: number };
+
+export type HostTouchTapKind = 'peek' | 'tools';
+
+/**
+ * Toque no host (mobile): 1 toque = popover ICMP/falhas; 2 toques no mesmo nó = Tools.
+ */
+export function resolveHostTouchTap(
+  last: NodeTapStamp | null,
+  nodeId: string,
+  now: number,
+  windowMs = NODE_DOUBLE_TAP_MS
+): { kind: HostTouchTapKind; next: NodeTapStamp | null } {
+  if (last && last.nodeId === nodeId && now - last.time <= windowMs) {
+    return { kind: 'tools', next: null };
+  }
+  return { kind: 'peek', next: { nodeId, time: now } };
+}

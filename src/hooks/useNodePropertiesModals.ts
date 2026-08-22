@@ -1,10 +1,10 @@
 import { Dispatch, SetStateAction, useCallback, useRef, useState } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
+import { NODE_DOUBLE_TAP_MS } from '../utils/nodeTap';
 import { openDashboardUrl } from '../components/DashboardPickerModal';
 
-/** Intervalo máximo entre dois cliques para abrir propriedades (pointer capture bloqueia dblclick nativo). */
-export const NODE_DOUBLE_TAP_MS = 400;
+export { NODE_DOUBLE_TAP_MS } from '../utils/nodeTap';
 
 export function nodeSupportsProperties(node: TopologyNode): boolean {
   return (

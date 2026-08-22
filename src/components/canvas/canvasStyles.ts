@@ -1,4 +1,5 @@
 import { css } from '@emotion/css';
+import { MAP_NATIVE_SCROLLBAR_PX } from '../../utils/mapBounds';
 
 /** Estilos do canvas: container, área de scroll, SVG e o piscar de host offline. */
 export const canvasStyles = {
@@ -30,13 +31,15 @@ export const canvasStyles = {
     scrollbar-gutter: stable;
     z-index: 0;
     overscroll-behavior: contain;
-    touch-action: none;
+    /* Só a faixa da barra recebe eventos neste elemento (o SVG cobre o restante).
+     * touch-action none impede o Chrome de arrastar o thumb nativo. */
+    touch-action: auto;
     /* O SVG (z-index 1) recebe os gestos do mapa; este container precisa aceitar eventos
      * para que o navegador permita arrastar as barras nativas. */
     pointer-events: auto;
     &::-webkit-scrollbar {
-      width: 22px;
-      height: 22px;
+      width: ${MAP_NATIVE_SCROLLBAR_PX}px;
+      height: ${MAP_NATIVE_SCROLLBAR_PX}px;
     }
     &::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.28);
@@ -71,6 +74,9 @@ export const canvasStyles = {
     position: absolute;
     left: 0;
     top: 0;
+    /* Irmão do scrollPane: se cobrir a gutter, o Chrome não entrega o clique à barra. */
+    width: calc(100% - ${MAP_NATIVE_SCROLLBAR_PX}px);
+    height: calc(100% - ${MAP_NATIVE_SCROLLBAR_PX}px);
     z-index: 1;
   `,
   empty: css`

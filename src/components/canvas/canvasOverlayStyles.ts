@@ -5,6 +5,7 @@ import {
   MEDIA_COMPACT,
   MEDIA_MEDIUM,
 } from '../../utils/canvasOverlayLayout';
+import { MAP_NATIVE_SCROLLBAR_PX } from '../../utils/mapBounds';
 
 /** Oculta rótulos longos dos botões da toolbar em telas compactas (mantém ícones). */
 export const toolbarLabelStyle = css`
@@ -47,11 +48,11 @@ export const overlayFilterChipStyle = css`
 `;
 
 export const overlayPanelCompactWidth = css`
-  width: min(300px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+  width: min(300px, calc(100% - ${CANVAS_EDGE_GAP * 2 + MAP_NATIVE_SCROLLBAR_PX}px));
 
   ${MEDIA_COMPACT} {
-    width: min(340px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
-    max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+    width: min(340px, calc(100% - ${CANVAS_EDGE_GAP * 2 + MAP_NATIVE_SCROLLBAR_PX}px));
+    max-width: calc(100% - ${CANVAS_EDGE_GAP * 2 + MAP_NATIVE_SCROLLBAR_PX}px);
   }
 `;
 

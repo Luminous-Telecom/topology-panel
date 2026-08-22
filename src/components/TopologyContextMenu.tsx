@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { overlayPortalRoot } from '../utils/overlayPortal';
 
 export interface ContextMenuItem {
   id: string;
@@ -291,5 +292,5 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
     return menu;
   }
 
-  return createPortal(menu, document.body);
+  return createPortal(menu, overlayPortalRoot());
 }

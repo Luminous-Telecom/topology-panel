@@ -22,6 +22,8 @@ import { resolveMappingLabel } from '../utils/statusMapping';
 import { resolveHostProblemSummary } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
 import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle } from './overlayChrome';
+import { overlayPortalRoot } from '../utils/overlayPortal';
+import { resolveHostDescription } from '../utils/mapSync';
 
 const HOVER_PROBLEM_NAME_LIMIT = 5;
 
@@ -192,6 +194,7 @@ export function HostHoverPopover({
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
   const ip = resolveHostIp(node, hostMetadata);
+  const description = resolveHostDescription(node, hostMetadata);
   const sparklineLineColor = options.colorOnline;
   const offlineColor = options.colorOffline;
 
@@ -222,7 +225,7 @@ export function HostHoverPopover({
     left = Math.max(margin, left);
     top = Math.max(margin, top);
     setPosition({ left, top });
-  }, [screenX, screenY, series, display?.text, problems.visible.length, problems.hidden]);
+  }, [screenX, screenY, series, display?.text, description, problems.visible.length, problems.hidden]);
 
   const panelStyle = css`
     position: fixed;
@@ -259,6 +262,11 @@ export function HostHoverPopover({
   return createPortal(
     <div ref={popoverRef} className={`${overlayCardStyle} ${overlayCardBodyStyle} ${panelStyle}`} role="tooltip">
       <strong>{hostTitle(node)}</strong>
+      {description ? (
+        <div className={overlayMutedStyle} style={{ overflowWrap: 'anywhere' }}>
+          {description}
+        </div>
+      ) : null}
       {ip ? <div className={overlayMutedStyle}>{ip}</div> : null}
       <div className={overlayMutedStyle}>{periodLabel}</div>
 
@@ -312,6 +320,6 @@ export function HostHoverPopover({
         </div>
       ) : null}
     </div>,
-    document.body
+    overlayPortalRoot()
   );
 }

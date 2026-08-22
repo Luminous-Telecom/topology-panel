@@ -11,6 +11,21 @@ export interface MapContentBounds {
   height: number;
 }
 
+/**
+ * Espessura das barras nativas do mapa. Precisa bater com `::-webkit-scrollbar` em
+ * `canvasStyles` — o SVG é irmão do `scrollPane` e, no Chrome, cobre a faixa da barra se
+ * ocupar o wrap inteiro (o Firefox ainda entrega o arraste à scrollbar nativa).
+ */
+export const MAP_NATIVE_SCROLLBAR_PX = 22;
+
+/** Área do SVG / hit-test do mapa, excluindo a faixa das barras nativas. */
+export function mapCanvasClientSize(wrapWidth: number, wrapHeight: number): { w: number; h: number } {
+  return {
+    w: Math.max(0, wrapWidth - MAP_NATIVE_SCROLLBAR_PX),
+    h: Math.max(0, wrapHeight - MAP_NATIVE_SCROLLBAR_PX),
+  };
+}
+
 interface LayoutBox {
   x: number;
   y: number;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CanvasTool, TopologyMap } from '../../types';
+import { CanvasTool, HostMetadataMap, TopologyMap } from '../../types';
 import { TopologyBreadcrumbItem } from '../../utils/topologyMapNavigation';
 import { MapNavigationControls } from './MapNavigationControls';
 import { TopologyQueryErrorBadge } from './TopologyQueryErrorBadge';
@@ -35,6 +35,7 @@ interface Props {
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
+  hostMetadata?: HostMetadataMap;
   queryError: boolean;
   onInsertBlueprint?: () => void;
   nocModeActive?: boolean;
@@ -78,6 +79,7 @@ export function CanvasControlsOverlay({
   searchOpen,
   setSearchOpen,
   onSearchFocusNode,
+  hostMetadata,
   queryError,
   onInsertBlueprint,
   nocModeActive = false,
@@ -129,6 +131,7 @@ export function CanvasControlsOverlay({
           onToggleHostAlertList={onToggleHostAlertList}
           showEditControls={canPersist && !nocModeActive}
           searchNodes={map.nodes}
+          hostMetadata={hostMetadata}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
           onSearchFocusNode={onSearchFocusNode}

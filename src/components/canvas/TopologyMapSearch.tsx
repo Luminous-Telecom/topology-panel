@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { TopologyNode, TopologyNodeType } from '../../types';
+import { TopologyNode, TopologyNodeType, HostMetadataMap } from '../../types';
 import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
 import { OVERLAY_DIVIDER, OVERLAY_HOVER, overlayCardStyle } from '../overlayChrome';
+import { resolveHostDescription } from '../../utils/mapSync';
 
 function nodeTypeLabel(type?: TopologyNodeType): string {
   switch (type) {
@@ -19,8 +20,12 @@ function nodeTypeLabel(type?: TopologyNodeType): string {
   }
 }
 
-function nodeSearchText(node: TopologyNode): string {
-  return [node.label, node.id, node.subtitle, node.zabbixHost].filter(Boolean).join(' ').toLowerCase();
+function nodeSearchText(node: TopologyNode, hostMetadata?: HostMetadataMap): string {
+  const description = resolveHostDescription(node, hostMetadata);
+  return [node.label, node.id, node.subtitle, node.zabbixHost, description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 }
 
 /** Envolve o botão da toolbar e o painel, que é posicionado em relação a ele. */
@@ -104,11 +109,13 @@ const searchEmptyStyle = css`
 /** Painel flutuante da pesquisa (o botão fica na toolbar). */
 export function TopologySearch({
   nodes,
+  hostMetadata,
   open,
   onOpenChange,
   onFocusNode,
 }: {
   nodes: TopologyNode[];
+  hostMetadata?: HostMetadataMap;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onFocusNode: (nodeId: string) => void;
@@ -122,8 +129,8 @@ export function TopologySearch({
     if (!q) {
       return [];
     }
-    return nodes.filter((n) => nodeSearchText(n).includes(q)).slice(0, 20);
-  }, [nodes, query]);
+    return nodes.filter((n) => nodeSearchText(n, hostMetadata).includes(q)).slice(0, 20);
+  }, [nodes, hostMetadata, query]);
 
   useEffect(() => {
     if (!open) {
@@ -206,7 +213,10 @@ export function TopologySearch({
             results.map((node, idx) => {
               const title = (node.label ?? node.id).trim() || node.id;
               const metaParts = [nodeTypeLabel(node.type)];
-              if (node.subtitle?.trim()) {
+              const description = resolveHostDescription(node, hostMetadata);
+              if (description) {
+                metaParts.push(description);
+              } else if (node.subtitle?.trim()) {
                 metaParts.push(node.subtitle.trim());
               } else if (node.zabbixHost?.trim() && node.zabbixHost !== title) {
                 metaParts.push(node.zabbixHost.trim());

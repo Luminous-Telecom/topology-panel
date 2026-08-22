@@ -40,8 +40,6 @@ export type DragState =
       tapNode?: TopologyNode;
       tapLink?: TopologyLink;
       pointerId: number;
-      /** No toque sobre nó, só captura o ponteiro após o limiar de arraste — libera o long-press. */
-      deferCapture: boolean;
     }
   | {
       kind: 'node';

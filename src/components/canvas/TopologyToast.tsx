@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
 import { overlayCardStyle } from '../overlayChrome';
+import { overlayPortalRoot } from '../../utils/overlayPortal';
 
 const toastStyle = css`
   position: fixed;
@@ -24,5 +25,5 @@ export function TopologyToast({ message }: { message: string | null }) {
   if (typeof document === 'undefined') {
     return toast;
   }
-  return createPortal(toast, document.body);
+  return createPortal(toast, overlayPortalRoot());
 }

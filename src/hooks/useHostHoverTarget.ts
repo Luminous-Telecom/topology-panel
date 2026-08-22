@@ -5,6 +5,8 @@ export interface HostHoverTarget {
   node: TopologyNode;
   screenX: number;
   screenY: number;
+  /** Toque no host: o mouseleave sintético do mobile não pode fechar o popover. */
+  pinned?: boolean;
 }
 
 interface HostHoverApi {
@@ -66,7 +68,12 @@ export function useHostHoverTarget(): HostHoverApi {
   const endHostHover = useCallback(
     (nodeId: string) => {
       cancelPending();
-      setHostHover((prev) => (prev?.node.id === nodeId ? null : prev));
+      setHostHover((prev) => {
+        if (!prev || prev.node.id !== nodeId) {
+          return prev;
+        }
+        return prev.pinned ? prev : null;
+      });
     },
     [cancelPending]
   );

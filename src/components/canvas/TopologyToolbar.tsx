@@ -2,7 +2,7 @@ import React from 'react';
 import { css } from '@emotion/css';
 import { Icon } from '@grafana/ui';
 import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
-import { CanvasTool, TopologyNode } from '../../types';
+import { CanvasTool, HostMetadataMap, TopologyNode } from '../../types';
 import { CANVAS_EDGE_GAP, GRAFANA_PANEL_MENU_RESERVE, MEDIA_COMPACT, MEDIA_MEDIUM } from '../../utils/canvasOverlayLayout';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle, toolbarToolGroupStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
@@ -55,6 +55,7 @@ export function TopologyToolbar({
   onToggleHostAlertList,
   showEditControls = true,
   searchNodes,
+  hostMetadata,
   searchOpen,
   onSearchOpenChange,
   onSearchFocusNode,
@@ -86,6 +87,7 @@ export function TopologyToolbar({
   onToggleHostAlertList?: () => void;
   showEditControls?: boolean;
   searchNodes: TopologyNode[];
+  hostMetadata?: HostMetadataMap;
   searchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
@@ -271,6 +273,7 @@ export function TopologyToolbar({
         </button>
         <TopologySearch
           nodes={searchNodes}
+          hostMetadata={hostMetadata}
           open={searchOpen}
           onOpenChange={onSearchOpenChange}
           onFocusNode={onSearchFocusNode}

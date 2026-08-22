@@ -13,6 +13,7 @@ import { areNetworksLocked, moveStoredNodesBulk, updateStoredNode } from '../uti
 import { clientToMapCoords } from '../utils/mapCoords';
 import { snapNodeCenterToGrid } from '../utils/mapCoords';
 import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, NodeLayout } from '../utils/nodeLayout';
+import { NodeTapStamp, resolveHostTouchTap } from '../utils/nodeTap';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { LinkPoint } from '../utils/linkGeometry';
@@ -61,8 +62,12 @@ interface UseTopologyDragControllerParams {
   onLinkSelect: (link: TopologyLink) => void;
   clearHostHover: () => void;
   closeContextMenu: () => void;
-  /** Toque sustentado no host — abre o menu de contexto (Tools) no mobile. */
+  /** Toque sustentado no host — abre o menu de contexto no mobile. */
   onNodeLongPress: (clientX: number, clientY: number, node: TopologyNode) => void;
+  /** Toque curto no host (mobile): popover ICMP / falhas. */
+  onHostPeek: (node: TopologyNode, clientX: number, clientY: number) => void;
+  /** Dois toques no host (mobile): menu Tools. */
+  onHostOpenTools: (node: TopologyNode, clientX: number, clientY: number) => void;
   persist: (next: TopologyMap) => void;
   /** Preview de posição/tamanho durante o arraste — estado do componente pai (alimenta `nodeLayouts`). */
   dragPreview: DragPreview;
@@ -133,6 +138,8 @@ export function useTopologyDragController({
   clearHostHover,
   closeContextMenu,
   onNodeLongPress,
+  onHostPeek,
+  onHostOpenTools,
   persist,
   dragPreview,
   setDragPreview,
@@ -155,6 +162,7 @@ export function useTopologyDragController({
     pointerId: number;
   } | null>(null);
   const applyNodeDragMoveRef = useRef<(clientX: number, clientY: number) => void>(() => {});
+  const lastHostTouchTapRef = useRef<NodeTapStamp | null>(null);
 
   const edgePan = useEdgePanLoop({
     wrapRef,
@@ -265,7 +273,6 @@ export function useTopologyDragController({
       }
       // Não chamar preventDefault no pointerdown — isso cancela click/dblclick (abrir submapa).
       e.stopPropagation();
-      const deferCapture = e.pointerType === 'touch' && Boolean(tapNode);
       dragRef.current = {
         kind: 'pan',
         ox: e.clientX,
@@ -276,11 +283,10 @@ export function useTopologyDragController({
         tapNode,
         tapLink,
         pointerId: e.pointerId,
-        deferCapture,
       };
-      if (!deferCapture) {
-        wrapRef.current?.setPointerCapture(e.pointerId);
-      }
+      // Sempre captura: no Chrome/Safari o toque sobre host/rede perde o pointermove
+      // ao sair do SVG do nó. O clique/duplo-toque vai pelo pointerup (`handlePanTap`).
+      wrapRef.current?.setPointerCapture(e.pointerId);
     },
     [enablePan, pinchActiveRef, view.x, view.y, wrapRef]
   );
@@ -535,7 +541,7 @@ export function useTopologyDragController({
       e.stopPropagation();
       scheduleHostLongPress(e, node);
       if (toolRef.current === 'pan') {
-        if (e.button === 0) {
+        if (e.button === 0 || e.pointerType === 'touch') {
           beginPan(e, node);
         }
         return;
@@ -554,7 +560,7 @@ export function useTopologyDragController({
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
   const onNetworkPointerDown = useCallback(
     (e: React.PointerEvent, node: TopologyNode) => {
-      if (e.button !== 0) {
+      if (e.button !== 0 && e.pointerType !== 'touch') {
         return;
       }
       e.stopPropagation();
@@ -594,7 +600,7 @@ export function useTopologyDragController({
 
   const onCanvasPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) {
+      if (e.button !== 0 && e.pointerType !== 'touch') {
         return;
       }
       setSelectedLink(null);
@@ -637,10 +643,7 @@ export function useTopologyDragController({
         const dist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
         if (dist > 4) {
           d.moved = true;
-          if (d.deferCapture) {
-            d.deferCapture = false;
-            wrapRef.current?.setPointerCapture(d.pointerId);
-          }
+          clearHostHover();
         }
         if (d.moved) {
           e.preventDefault();
@@ -688,13 +691,13 @@ export function useTopologyDragController({
       applyNodeDragMove,
       applyResizeMove,
       cancelHostLongPress,
+      clearHostHover,
       clientToMap,
       commitView,
       edgePan,
       moveLinkWaypoint,
       pinchActiveRef,
       setMarqueeRect,
-      wrapRef,
     ]
   );
 
@@ -734,13 +737,30 @@ export function useTopologyDragController({
     [cancelHostLongPress, commitView, edgePan, wrapRef]
   );
 
+  const applyHostTouchTap = useCallback(
+    (node: TopologyNode, e: React.PointerEvent): boolean => {
+      if (e.pointerType !== 'touch' || !isHostNode(node)) {
+        return false;
+      }
+      const resolved = resolveHostTouchTap(lastHostTouchTapRef.current, node.id, Date.now());
+      lastHostTouchTapRef.current = resolved.next;
+      if (resolved.kind === 'tools') {
+        onHostOpenTools(node, e.clientX, e.clientY);
+      } else {
+        onHostPeek(node, e.clientX, e.clientY);
+      }
+      return true;
+    },
+    [onHostOpenTools, onHostPeek]
+  );
+
   /**
    * Toque curto com a mão (sem arrastar). O pointer capture no wrap mata o `click` nativo, então
-   * abrir submapa, seletor, cabo e propriedades por duplo toque acontece aqui.
+   * abrir submapa, seletor, cabo, peek ICMP e Tools acontece aqui.
    * Devolve `true` quando o toque já foi tratado.
    */
   const handlePanTap = useCallback(
-    (drag: DragState, node?: TopologyNode): boolean => {
+    (drag: DragState, e: React.PointerEvent, node?: TopologyNode): boolean => {
       if (drag.kind !== 'pan' || drag.moved) {
         return false;
       }
@@ -757,12 +777,25 @@ export function useTopologyDragController({
         onLinkSelect(drag.tapLink);
         return true;
       }
+      if (tap && applyHostTouchTap(tap, e)) {
+        return true;
+      }
+      clearHostHover();
       if (editable && tap && tryDoubleTapEnterChildMap(tap)) {
         return true;
       }
       return Boolean(editable && tap && tryDoubleTapOpenProperties(tap));
     },
-    [editable, onLinkSelect, openDashboardPicker, openSubmap, tryDoubleTapEnterChildMap, tryDoubleTapOpenProperties]
+    [
+      applyHostTouchTap,
+      clearHostHover,
+      editable,
+      onLinkSelect,
+      openDashboardPicker,
+      openSubmap,
+      tryDoubleTapEnterChildMap,
+      tryDoubleTapOpenProperties,
+    ]
   );
 
   /** Fecha o laço de seleção: abaixo de 4px foi clique, não laço — não mexe na seleção. */
@@ -809,6 +842,17 @@ export function useTopologyDragController({
         completeLink(tapNode.id);
         return;
       }
+      if (applyHostTouchTap(tapNode, e)) {
+        if (e.ctrlKey || e.metaKey) {
+          setSelectedNodeIds((prev) =>
+            prev.includes(tapNode.id) ? prev.filter((id) => id !== tapNode.id) : [...prev, tapNode.id]
+          );
+        } else {
+          setSelectedNodeIds([tapNode.id]);
+        }
+        setSelectedLink(null);
+        return;
+      }
       if (tryDoubleTapEnterChildMap(tapNode)) {
         return;
       }
@@ -824,7 +868,15 @@ export function useTopologyDragController({
       }
       setSelectedLink(null);
     },
-    [completeLink, linkFromId, setSelectedLink, setSelectedNodeIds, tryDoubleTapEnterChildMap, tryDoubleTapOpenProperties]
+    [
+      applyHostTouchTap,
+      completeLink,
+      linkFromId,
+      setSelectedLink,
+      setSelectedNodeIds,
+      tryDoubleTapEnterChildMap,
+      tryDoubleTapOpenProperties,
+    ]
   );
 
   const onPointerUp = useCallback(
@@ -841,7 +893,7 @@ export function useTopologyDragController({
       }
       endGestureBookkeeping(d, e);
 
-      if (handlePanTap(d, node)) {
+      if (handlePanTap(d, e, node)) {
         return;
       }
 

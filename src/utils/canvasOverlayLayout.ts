@@ -1,3 +1,5 @@
+import { MAP_NATIVE_SCROLLBAR_PX } from './mapBounds';
+
 /** Espaçamento e medidas dos overlays fixos sobre o canvas (minimapa, listas, toolbar). */
 export const CANVAS_EDGE_GAP = 8;
 
@@ -17,5 +19,9 @@ export const COMPACT_TOUCH_MIN = 36;
 export const GRAFANA_PANEL_MENU_RESERVE = 44;
 
 export function minimapBottomOffset(showMinimap: boolean): number {
-  return showMinimap ? CANVAS_EDGE_GAP + MINIMAP_HEIGHT + CANVAS_EDGE_GAP : CANVAS_EDGE_GAP;
+  if (showMinimap) {
+    return CANVAS_EDGE_GAP + MINIMAP_HEIGHT + CANVAS_EDGE_GAP;
+  }
+  // Sem minimapa a lista senta na borda de baixo — precisa ficar acima da barra nativa.
+  return CANVAS_EDGE_GAP + MAP_NATIVE_SCROLLBAR_PX;
 }
