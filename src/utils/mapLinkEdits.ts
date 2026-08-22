@@ -1,5 +1,5 @@
 /** Criação, edição e remoção de cabos do mapa salvo. */
-import { TopologyInterfaceReference, TopologyLink, TopologyMap } from '../types';
+import { TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap } from '../types';
 import { inferLinkMedium } from './linkMedium';
 import { findNodeById } from './topologyNodes';
 
@@ -23,6 +23,8 @@ export function addLinkToMap(map: TopologyMap, from: string, to: string): Topolo
 export interface AddLinkWithInterfacesOptions {
   fromInterface?: TopologyInterfaceReference;
   toInterface?: TopologyInterfaceReference;
+  fromPeerHost?: TopologyLinkPeerHost;
+  toPeerHost?: TopologyLinkPeerHost;
   bandwidthMbps?: number;
   discovery?: TopologyLink['discovery'];
 }
@@ -54,6 +56,12 @@ export function addLinkWithInterfaces(
   if (options.toInterface) {
     link.toInterface = options.toInterface;
   }
+  if (options.fromPeerHost) {
+    link.fromPeerHost = options.fromPeerHost;
+  }
+  if (options.toPeerHost) {
+    link.toPeerHost = options.toPeerHost;
+  }
   if (options.bandwidthMbps && options.bandwidthMbps > 0) {
     link.bandwidthMbps = options.bandwidthMbps;
   }
@@ -70,7 +78,15 @@ export function updateLinkProps(
   patch: Partial<
     Pick<
       TopologyLink,
-      'medium' | 'bandwidthMbps' | 'waypoints' | 'fromInterface' | 'toInterface' | 'style' | 'discovery'
+      | 'medium'
+      | 'bandwidthMbps'
+      | 'waypoints'
+      | 'fromInterface'
+      | 'toInterface'
+      | 'fromPeerHost'
+      | 'toPeerHost'
+      | 'style'
+      | 'discovery'
     >
   >
 ): TopologyMap {
@@ -86,6 +102,12 @@ export function updateLinkProps(
       }
       if (patch.waypoints !== undefined && (!patch.waypoints || patch.waypoints.length === 0)) {
         delete next.waypoints;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'fromPeerHost') && !patch.fromPeerHost) {
+        delete next.fromPeerHost;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'toPeerHost') && !patch.toPeerHost) {
+        delete next.toPeerHost;
       }
       return next;
     }),

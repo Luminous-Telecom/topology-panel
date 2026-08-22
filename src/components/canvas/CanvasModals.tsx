@@ -8,6 +8,7 @@ import {
   HostMetadataMap,
   NodeEditSavePayload,
   TopologyInterfaceReference,
+  TopologyLinkPeerHost,
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
@@ -63,7 +64,9 @@ interface CanvasModalsProps {
   onPendingLinkSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
-    bandwidthMbps?: number
+    bandwidthMbps?: number,
+    fromPeerHost?: TopologyLinkPeerHost,
+    toPeerHost?: TopologyLinkPeerHost
   ) => void;
 }
 
@@ -178,6 +181,7 @@ export function CanvasModals({
         <LinkEditModal
           link={editLink}
           storedMap={storedMap}
+          childMaps={activeChildMaps(options.childMaps)}
           hostMetadata={hostMetadata}
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}
@@ -192,6 +196,7 @@ export function CanvasModals({
       {pendingLink && (
         <LinkInterfaceSelectModal
           pending={pendingLink}
+          childMaps={activeChildMaps(options.childMaps)}
           hostMetadata={hostMetadata}
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}

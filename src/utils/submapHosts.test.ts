@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayMap, TopologyMap, TopologyNode } from '../types';
-import { parentMapHostKeys, submapHostListForNode } from './submapHosts';
+import {
+  innerHostsForSubmapNode,
+  linkPeerHostFromNode,
+  parentMapHostKeys,
+  resolveInnerHost,
+  shouldOpenLinkInterfaceModal,
+  submapHostListForNode,
+} from './submapHosts';
 
 function map(nodes: TopologyNode[]): TopologyMap {
   return { width: 800, height: 600, nodes, links: [] };
@@ -57,5 +64,31 @@ describe('submapHostListForNode', () => {
   it('prefere a lista de labels da Query ao bucket de status', () => {
     const hosts = { B: ['10.0.0.9'] };
     expect(submapHostListForNode(submap('B'), display, hosts, true, new Set())).toEqual(['10.0.0.9']);
+  });
+});
+
+describe('innerHostsForSubmapNode / shouldOpenLinkInterfaceModal', () => {
+  const innerA = { id: 'ha', type: 'host' as const, x: 0, y: 0, zabbixHost: '10.0.0.1', label: 'host-a' };
+  const innerB = { id: 'hb', type: 'host' as const, x: 1, y: 0, zabbixHost: '10.0.0.2', label: 'host-b' };
+  const childMaps = { filial: map([innerA, innerB, { id: 'net', type: 'network' as const, x: 0, y: 0 }]) };
+  const box = { id: 'sm', type: 'submap' as const, x: 0, y: 0, submapChildMapId: 'filial', label: 'Filial' };
+  const parentHost = { id: 'sw', type: 'host' as const, x: 0, y: 0, zabbixHost: '10.0.0.9', label: 'host-sw' };
+
+  it('lista só hosts do mapa interno', () => {
+    expect(innerHostsForSubmapNode(box, childMaps).map((n) => n.id)).toEqual(['ha', 'hb']);
+  });
+
+  it('abre o modal ao ligar host do pai com submapa que tem host interno', () => {
+    expect(shouldOpenLinkInterfaceModal(parentHost, box, childMaps, false)).toBe(true);
+  });
+
+  it('host–host sem Zabbix não abre o modal', () => {
+    expect(shouldOpenLinkInterfaceModal(parentHost, innerA, {}, false)).toBe(false);
+    expect(shouldOpenLinkInterfaceModal(parentHost, innerA, {}, true)).toBe(true);
+  });
+
+  it('resolve o host interno pelo peer gravado no cabo', () => {
+    const peer = linkPeerHostFromNode(innerB);
+    expect(resolveInnerHost([innerA, innerB], peer)?.id).toBe('hb');
   });
 });

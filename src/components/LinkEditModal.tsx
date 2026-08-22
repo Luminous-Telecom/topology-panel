@@ -7,24 +7,32 @@ import {
   TopologyInterfaceReference,
   TopologyLink,
   TopologyLinkMedium,
+  TopologyLinkPeerHost,
+  TopologyMap,
   TopologyNetworkInterface,
   TopologyNode,
 } from '../types';
-import { useZabbixHostInterfaces } from '../hooks/useZabbixHostInterfaces';
+import { useLinkPeerInterfaces } from '../hooks/useLinkPeerInterfaces';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import {
   interfaceToReference,
   matchDiscoveredInterface,
   resolveLinkCapacityMbps,
 } from '../utils/zabbixAdapter/bindInterfaceMetrics';
-import { collectHostLookupCandidates } from '../utils/hostLookup';
-import { pickHostInterfaces } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { findNodeById } from '../utils/topologyNodes';
+import {
+  innerHostLabel,
+  innerHostsForSubmapNode,
+  linkPeerHostFromNode,
+  resolveInnerHost,
+} from '../utils/submapHosts';
+import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { FieldReadout } from './FieldReadout';
+import { LinkPeerHostField } from './LinkPeerHostField';
 
 interface Props {
   link: TopologyLink;
   storedMap: { nodes: TopologyNode[] };
+  childMaps?: Record<string, TopologyMap | undefined>;
   hostMetadata?: HostMetadataMap;
   /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
@@ -37,6 +45,8 @@ interface Props {
     bandwidthMbps?: number;
     fromInterface?: TopologyInterfaceReference;
     toInterface?: TopologyInterfaceReference;
+    fromPeerHost?: TopologyLinkPeerHost;
+    toPeerHost?: TopologyLinkPeerHost;
   }) => void;
   onClose: () => void;
 }
@@ -102,6 +112,7 @@ function InterfaceSelectField({
 export function LinkEditModal({
   link,
   storedMap,
+  childMaps,
   hostMetadata,
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
@@ -118,21 +129,29 @@ export function LinkEditModal({
 
   const fromNode = findNodeById(storedMap.nodes, link.from);
   const toNode = findNodeById(storedMap.nodes, link.to);
-  const fromCandidates = useMemo(
-    () => (fromNode ? collectHostLookupCandidates(fromNode, hostMetadata) : []),
-    [fromNode, hostMetadata]
+  const fromInnerHosts = useMemo(
+    () => (fromNode ? innerHostsForSubmapNode(fromNode, childMaps) : []),
+    [childMaps, fromNode]
   );
-  const toCandidates = useMemo(
-    () => (toNode ? collectHostLookupCandidates(toNode, hostMetadata) : []),
-    [toNode, hostMetadata]
+  const toInnerHosts = useMemo(
+    () => (toNode ? innerHostsForSubmapNode(toNode, childMaps) : []),
+    [childMaps, toNode]
   );
-  const hostKeys = useMemo(
-    () => [...new Set([...fromCandidates, ...toCandidates])],
-    [fromCandidates, toCandidates]
-  );
-
-  const { interfacesByHost, loading: ifacesLoading, loadError } = useZabbixHostInterfaces(
-    hostKeys,
+  const [fromPeer, setFromPeer] = useState<TopologyNode | undefined>(() => {
+    if (fromNode && isHostNode(fromNode)) {
+      return fromNode;
+    }
+    return resolveInnerHost(fromInnerHosts, link.fromPeerHost);
+  });
+  const [toPeer, setToPeer] = useState<TopologyNode | undefined>(() => {
+    if (toNode && isHostNode(toNode)) {
+      return toNode;
+    }
+    return resolveInnerHost(toInnerHosts, link.toPeerHost);
+  });
+  const { fromInterfaces, toInterfaces, loading: ifacesLoading, loadError } = useLinkPeerInterfaces(
+    fromPeer,
+    toPeer,
     zabbixDatasourceUid,
     {
       rxKeyword: zabbixRxItemKeyword,
@@ -142,8 +161,6 @@ export function LinkEditModal({
     },
     hostMetadata
   );
-  const fromInterfaces = pickHostInterfaces(interfacesByHost, fromCandidates);
-  const toInterfaces = pickHostInterfaces(interfacesByHost, toCandidates);
 
   useEffect(() => {
     if (!link.fromInterface || !fromInterfaces.length) {
@@ -183,19 +200,43 @@ export function LinkEditModal({
       {loadError && <div className={modalErrorStyle}>{loadError}</div>}
       {fromNode && toNode ? (
         <>
+          {fromInnerHosts.length > 0 ? (
+            <LinkPeerHostField
+              uid={`${uid}-from-host`}
+              submapLabel={fromNode.label?.trim() || fromNode.id}
+              hosts={fromInnerHosts}
+              selectedId={fromPeer?.id}
+              onSelect={(node) => {
+                setFromPeer(node);
+                setFromIface(undefined);
+              }}
+            />
+          ) : null}
           <InterfaceSelectField
             uid={`${uid}-from-iface`}
             label="Interface de origem"
-            hostLabel={fromNode.label ?? fromNode.id}
+            hostLabel={fromPeer ? innerHostLabel(fromPeer) : fromNode.label ?? fromNode.id}
             interfaces={fromInterfaces}
             loading={ifacesLoading}
             value={fromSelectValue}
             onChange={setFromIface}
           />
+          {toInnerHosts.length > 0 ? (
+            <LinkPeerHostField
+              uid={`${uid}-to-host`}
+              submapLabel={toNode.label?.trim() || toNode.id}
+              hosts={toInnerHosts}
+              selectedId={toPeer?.id}
+              onSelect={(node) => {
+                setToPeer(node);
+                setToIface(undefined);
+              }}
+            />
+          ) : null}
           <InterfaceSelectField
             uid={`${uid}-to-iface`}
             label="Interface de destino"
-            hostLabel={toNode.label ?? toNode.id}
+            hostLabel={toPeer ? innerHostLabel(toPeer) : toNode.label ?? toNode.id}
             interfaces={toInterfaces}
             loading={ifacesLoading}
             value={toSelectValue}
@@ -232,6 +273,8 @@ export function LinkEditModal({
               bandwidthMbps?: number;
               fromInterface?: TopologyInterfaceReference;
               toInterface?: TopologyInterfaceReference;
+              fromPeerHost?: TopologyLinkPeerHost;
+              toPeerHost?: TopologyLinkPeerHost;
             } = { medium };
             const mbps = resolveLinkCapacityMbps(fromIface, toIface);
             if (mbps && mbps > 0) {
@@ -242,6 +285,12 @@ export function LinkEditModal({
             }
             if (toIface) {
               patch.toInterface = interfaceToReference(toIface);
+            }
+            if (fromInnerHosts.length > 0) {
+              patch.fromPeerHost = fromPeer ? linkPeerHostFromNode(fromPeer) : undefined;
+            }
+            if (toInnerHosts.length > 0) {
+              patch.toPeerHost = toPeer ? linkPeerHostFromNode(toPeer) : undefined;
             }
             onSave(patch);
             onClose();

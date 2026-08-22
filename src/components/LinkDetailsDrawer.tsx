@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import {
@@ -12,7 +12,6 @@ import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import { linkKey } from '../utils/mapLinkEdits';
 import {
   formatBitsPerSecond,
-  formatRelativeUpdate,
   linkStatusLabel,
   operStatusLabel,
 } from '../utils/zabbixAdapter/formatTraffic';
@@ -101,8 +100,6 @@ interface Props {
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
   runtimeMetrics?: LinkRuntimeMetrics;
-  /** Última busca boa de tráfego — o lastclock do item pode ficar parado no Zabbix. */
-  fetchedAtMs?: number;
   onClose: () => void;
   onEdit?: () => void;
 }
@@ -110,15 +107,6 @@ interface Props {
 function nodeLabel(nodes: TopologyMap['nodes'], id: string): string {
   const node = findNodeById(nodes, id);
   return node?.label?.trim() || node?.id || id;
-}
-
-function RelativeUpdate({ ms }: { ms: number }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  return <>{formatRelativeUpdate(ms) ?? 'N/A'}</>;
 }
 
 function MetricRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -178,13 +166,20 @@ export function LinkDetailsDrawer({
   storedMap,
   options,
   runtimeMetrics,
-  fetchedAtMs,
   onClose,
   onEdit,
 }: Props) {
   const theme = useTheme2();
-  const fromLabel = useMemo(() => nodeLabel(storedMap.nodes, link.from), [storedMap.nodes, link.from]);
-  const toLabel = useMemo(() => nodeLabel(storedMap.nodes, link.to), [storedMap.nodes, link.to]);
+  const fromLabel = useMemo(() => {
+    const base = nodeLabel(storedMap.nodes, link.from);
+    const peer = link.fromPeerHost?.label?.trim() || link.fromPeerHost?.zabbixHost?.trim();
+    return peer ? `${base} · ${peer}` : base;
+  }, [link.from, link.fromPeerHost, storedMap.nodes]);
+  const toLabel = useMemo(() => {
+    const base = nodeLabel(storedMap.nodes, link.to);
+    const peer = link.toPeerHost?.label?.trim() || link.toPeerHost?.zabbixHost?.trim();
+    return peer ? `${base} · ${peer}` : base;
+  }, [link.to, link.toPeerHost, storedMap.nodes]);
   const ifaceSummary =
     link.fromInterface?.name && link.toInterface?.name
       ? `${link.fromInterface.name} ↔ ${link.toInterface.name}`
@@ -231,10 +226,6 @@ export function LinkDetailsDrawer({
 
         <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} />
         <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} />
-
-        {fetchedAtMs !== undefined ? (
-          <MetricRow label="Atualizado" value={<RelativeUpdate ms={fetchedAtMs} />} />
-        ) : null}
       </div>
 
       {onEdit ? (

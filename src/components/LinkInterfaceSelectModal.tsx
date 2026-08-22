@@ -3,17 +3,25 @@ import { Button, Field, Input, Spinner, Stack } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
 import { modalErrorStyle, modalHintStyle } from './overlayChrome';
 import {
+  HostMetadataMap,
   TopologyInterfaceReference,
+  TopologyLinkPeerHost,
+  TopologyMap,
   TopologyNetworkInterface,
   TopologyNode,
 } from '../types';
-import { useZabbixHostInterfaces } from '../hooks/useZabbixHostInterfaces';
+import { useLinkPeerInterfaces } from '../hooks/useLinkPeerInterfaces';
 import { interfaceToReference, resolveLinkCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
-import { collectHostLookupCandidates } from '../utils/hostLookup';
-import { pickHostInterfaces } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { HostMetadataMap } from '../types';
+import {
+  innerHostLabel,
+  innerHostsForSubmapNode,
+  linkPeerHostFromNode,
+  resolveInnerHost,
+} from '../utils/submapHosts';
+import { isHostNode } from '../utils/topologyNodes';
 import { FieldReadout } from './FieldReadout';
+import { LinkPeerHostField } from './LinkPeerHostField';
 
 export interface PendingLinkEndpoints {
   from: string;
@@ -24,6 +32,7 @@ export interface PendingLinkEndpoints {
 
 interface Props {
   pending: PendingLinkEndpoints;
+  childMaps?: Record<string, TopologyMap | undefined>;
   hostMetadata?: HostMetadataMap;
   /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
@@ -34,7 +43,9 @@ interface Props {
   onSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
-    bandwidthMbps?: number
+    bandwidthMbps?: number,
+    fromPeerHost?: TopologyLinkPeerHost,
+    toPeerHost?: TopologyLinkPeerHost
   ) => void;
   onClose: () => void;
 }
@@ -151,8 +162,16 @@ function InterfaceList({
   );
 }
 
+function sideEndpointLabel(visual: TopologyNode, peer?: TopologyNode): string {
+  if (peer) {
+    return innerHostLabel(peer);
+  }
+  return visual.label?.trim() || visual.id;
+}
+
 export function LinkInterfaceSelectModal({
   pending,
+  childMaps,
   hostMetadata,
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
@@ -167,21 +186,24 @@ export function LinkInterfaceSelectModal({
   const [fromIface, setFromIface] = useState<TopologyNetworkInterface | undefined>();
   const [toIface, setToIface] = useState<TopologyNetworkInterface | undefined>();
 
-  const fromCandidates = useMemo(
-    () => collectHostLookupCandidates(pending.fromNode, hostMetadata),
-    [hostMetadata, pending.fromNode]
+  const fromInnerHosts = useMemo(
+    () => innerHostsForSubmapNode(pending.fromNode, childMaps),
+    [childMaps, pending.fromNode]
   );
-  const toCandidates = useMemo(
-    () => collectHostLookupCandidates(pending.toNode, hostMetadata),
-    [hostMetadata, pending.toNode]
+  const toInnerHosts = useMemo(
+    () => innerHostsForSubmapNode(pending.toNode, childMaps),
+    [childMaps, pending.toNode]
   );
-  const hostKeys = useMemo(
-    () => [...new Set([...fromCandidates, ...toCandidates])],
-    [fromCandidates, toCandidates]
+  const [fromPeer, setFromPeer] = useState<TopologyNode | undefined>(() =>
+    isHostNode(pending.fromNode) ? pending.fromNode : resolveInnerHost(fromInnerHosts)
+  );
+  const [toPeer, setToPeer] = useState<TopologyNode | undefined>(() =>
+    isHostNode(pending.toNode) ? pending.toNode : resolveInnerHost(toInnerHosts)
   );
 
-  const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(
-    hostKeys,
+  const { fromInterfaces, toInterfaces, loading, loadError } = useLinkPeerInterfaces(
+    fromPeer,
+    toPeer,
     zabbixDatasourceUid,
     {
       rxKeyword: zabbixRxItemKeyword,
@@ -192,18 +214,20 @@ export function LinkInterfaceSelectModal({
     hostMetadata
   );
 
-  const fromInterfaces = pickHostInterfaces(interfacesByHost, fromCandidates);
-  const toInterfaces = pickHostInterfaces(interfacesByHost, toCandidates);
-
   const previewCapacity = resolveLinkCapacityMbps(fromIface, toIface);
   const monitorsTraffic = Boolean(fromIface?.metrics.rx?.itemId || fromIface?.metrics.tx?.itemId
     || toIface?.metrics.rx?.itemId || toIface?.metrics.tx?.itemId);
 
   const commitLink = () => {
+    const fromPeerHost =
+      fromInnerHosts.length > 0 && fromPeer ? linkPeerHostFromNode(fromPeer) : undefined;
+    const toPeerHost = toInnerHosts.length > 0 && toPeer ? linkPeerHostFromNode(toPeer) : undefined;
     onSave(
       fromIface ? interfaceToReference(fromIface) : undefined,
       toIface ? interfaceToReference(toIface) : undefined,
-      previewCapacity
+      previewCapacity,
+      fromPeerHost,
+      toPeerHost
     );
     onClose();
   };
@@ -212,7 +236,9 @@ export function LinkInterfaceSelectModal({
     <TopologyModal title="Novo link" onClose={onClose}>
       {loadError && <div className={modalErrorStyle}>{loadError}</div>}
       <p className={modalHintStyle}>
-        Interfaces opcionais. Sem seleção, o link aparece no mapa mas não monitora tráfego RX/TX.
+        {fromInnerHosts.length > 0 || toInnerHosts.length > 0
+          ? 'Em submapa, escolha o host interno e a interface. Sem interface, o cabo aparece no mapa mas não monitora tráfego.'
+          : 'Interfaces opcionais. Sem seleção, o link aparece no mapa mas não monitora tráfego RX/TX.'}
       </p>
       <Field label="Buscar interface (opcional)">
         <Input
@@ -224,39 +250,67 @@ export function LinkInterfaceSelectModal({
       </Field>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <InterfaceList
-          uid={`${uid}-from`}
-          title="Origem"
-          hostLabel={pending.fromNode.label ?? pending.fromNode.id}
-          interfaces={fromInterfaces}
-          selected={fromIface}
-          onSelect={setFromIface}
-          filter={filter}
-          loading={loading}
-        />
-        <InterfaceList
-          uid={`${uid}-to`}
-          title="Destino"
-          hostLabel={pending.toNode.label ?? pending.toNode.id}
-          interfaces={toInterfaces}
-          selected={toIface}
-          onSelect={setToIface}
-          filter={filter}
-          loading={loading}
-        />
+        <Stack direction="column" gap={1}>
+          {fromInnerHosts.length > 0 ? (
+            <LinkPeerHostField
+              uid={`${uid}-from-host`}
+              submapLabel={pending.fromNode.label?.trim() || pending.fromNode.id}
+              hosts={fromInnerHosts}
+              selectedId={fromPeer?.id}
+              onSelect={(node) => {
+                setFromPeer(node);
+                setFromIface(undefined);
+              }}
+            />
+          ) : null}
+          <InterfaceList
+            uid={`${uid}-from`}
+            title="Origem"
+            hostLabel={sideEndpointLabel(pending.fromNode, fromInnerHosts.length > 0 ? fromPeer : undefined)}
+            interfaces={fromInterfaces}
+            selected={fromIface}
+            onSelect={setFromIface}
+            filter={filter}
+            loading={loading}
+          />
+        </Stack>
+        <Stack direction="column" gap={1}>
+          {toInnerHosts.length > 0 ? (
+            <LinkPeerHostField
+              uid={`${uid}-to-host`}
+              submapLabel={pending.toNode.label?.trim() || pending.toNode.id}
+              hosts={toInnerHosts}
+              selectedId={toPeer?.id}
+              onSelect={(node) => {
+                setToPeer(node);
+                setToIface(undefined);
+              }}
+            />
+          ) : null}
+          <InterfaceList
+            uid={`${uid}-to`}
+            title="Destino"
+            hostLabel={sideEndpointLabel(pending.toNode, toInnerHosts.length > 0 ? toPeer : undefined)}
+            interfaces={toInterfaces}
+            selected={toIface}
+            onSelect={setToIface}
+            filter={filter}
+            loading={loading}
+          />
+        </Stack>
       </div>
 
       <div style={{ marginTop: 8 }}>
         <FieldReadout label="Pré-visualização">
           <div style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.45 }}>
             <div>
-              {pending.fromNode.label ?? pending.fromNode.id}
+              {sideEndpointLabel(pending.fromNode, fromInnerHosts.length > 0 ? fromPeer : undefined)}
               <span style={{ opacity: fromIface ? 1 : 0.55 }}>
                 {' · '}
                 {fromIface?.name ?? 'sem interface'}
               </span>
               <span style={{ opacity: 0.6 }}> ↕ </span>
-              {pending.toNode.label ?? pending.toNode.id}
+              {sideEndpointLabel(pending.toNode, toInnerHosts.length > 0 ? toPeer : undefined)}
               <span style={{ opacity: toIface ? 1 : 0.55 }}>
                 {' · '}
                 {toIface?.name ?? 'sem interface'}

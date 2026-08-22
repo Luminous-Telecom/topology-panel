@@ -46,4 +46,16 @@ describe('addLinkToMap', () => {
     expect(next.links[0]?.fromInterface).toBeUndefined();
     expect(next.links[0]?.toInterface).toBeUndefined();
   });
+
+  it('grava o host interno quando o extremo visual é um submapa', () => {
+    const map = emptyMap({ nodes: [hostNode(), hostNode({ id: 'sm', type: 'submap' })] });
+    const next = addLinkWithInterfaces(map, 'a', 'sm', {
+      toPeerHost: { nodeId: 'ha', zabbixHost: '10.0.0.1', label: 'host-a' },
+    });
+    expect(next.links[0]?.toPeerHost).toEqual({
+      nodeId: 'ha',
+      zabbixHost: '10.0.0.1',
+      label: 'host-a',
+    });
+  });
 });
