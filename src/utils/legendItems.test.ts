@@ -7,8 +7,9 @@ function options(overrides?: Partial<TopologyPanelOptions>): TopologyPanelOption
 }
 
 describe('buildLegendItems', () => {
-  it('legenda desligada não devolve item nenhum', () => {
-    expect(buildLegendItems(options({ showLegend: false }))).toEqual([]);
+  it('monta os itens mesmo com showLegend desligado — a caixa é quem decide mostrar', () => {
+    const labels = buildLegendItems(options({ showLegend: false })).map((i) => i.label);
+    expect(labels.slice(0, 4)).toEqual(['Sem dados', 'Online', 'Offline', 'Alerta']);
   });
 
   it('abre pelos quatro status, na ordem', () => {

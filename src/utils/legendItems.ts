@@ -9,13 +9,13 @@ export interface LegendItem {
 /**
  * Itens da legenda, na ordem em que aparecem no mapa.
  *
+ * Visibilidade da caixa fica em `showLegend` / toggle da toolbar — não misture aqui,
+ * senão fora do modo edição a legenda abre só com o contador e sem cores.
+ *
  * Status (sem dados, online, offline, alerta) entram por padrão — `!== false` — porque são o que
  * qualquer mapa mostra; os demais só entram se o usuário ligar.
  */
 export function buildLegendItems(options: TopologyPanelOptions): LegendItem[] {
-  if (options.showLegend === false) {
-    return [];
-  }
   const items: LegendItem[] = [];
   if (options.legendUnknown !== false) {
     items.push({ label: 'Sem dados', color: options.colorUnknown });

@@ -55,7 +55,7 @@ describe('resolveTemplateForNode', () => {
 });
 
 describe('buildNodeTemplateDisplay', () => {
-  it('monta linhas do template OLT com uplinks', () => {
+  it('não mostra status nem uplinks no card — a cor do host já indica o estado', () => {
     const node = {
       id: 'olt-1',
       type: 'host' as const,
@@ -67,12 +67,19 @@ describe('buildNodeTemplateDisplay', () => {
     };
     const display = buildNodeTemplateDisplay(
       node,
-      BUILTIN_NODE_TEMPLATES.find((t) => t.id === 'olt'),
-      { uplinkCount: 2, showSubtitle: true }
+      {
+        id: 'olt',
+        name: 'OLT',
+        fields: ['name', 'ip', 'status', 'uplinks', 'onuCount'],
+      },
+      {
+        uplinkCount: 2,
+        showSubtitle: true,
+        hostDisplay: { '10.0.0.5': { status: 'online', value: 1 } },
+      }
     );
-    expect(display.label).toBe('OLT-POP');
-    expect(display.subtitle).toBe('10.0.0.5');
-    expect(display.detailLines.some((l) => l.includes('Uplinks: 2'))).toBe(true);
+    expect(display.detailLines.some((l) => l.includes('Status:'))).toBe(false);
+    expect(display.detailLines.some((l) => l.includes('Uplinks:'))).toBe(false);
   });
 
   it('mostra a descrição do Zabbix como linha extra e omite quando igual ao nome', () => {

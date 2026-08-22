@@ -101,6 +101,9 @@ function fieldLine(
 
 const NODE_DESCRIPTION_MAX_CHARS = 42;
 
+/** Status e uplinks não entram no card — a cor de fundo já indica o estado. */
+const HOST_CARD_HIDDEN_FIELDS = new Set<NodeTemplateFieldKind>(['status', 'uplinks']);
+
 function truncateHostDescription(text: string): string {
   if (text.length <= NODE_DESCRIPTION_MAX_CHARS) {
     return text;
@@ -119,7 +122,7 @@ export function buildNodeTemplateDisplay(
   const detailLines: string[] = [];
 
   for (const field of fields) {
-    if (field === 'name') {
+    if (field === 'name' || HOST_CARD_HIDDEN_FIELDS.has(field)) {
       continue;
     }
     const line = fieldLine(field, node, ctx);
