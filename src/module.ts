@@ -335,28 +335,43 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       })
       .addNumberInput({
         path: 'linkUtilThresholdAttention',
-        name: 'Utilização — atenção (%)',
-        description: 'Acima deste valor a animação do link acelera',
+        name: 'Degradação — atenção (%)',
+        description: 'Acima deste valor o cabo usa a cor de atenção',
         defaultValue: 50,
+        category: ['Links'],
+      })
+      .addColorPicker({
+        path: 'colorLinkAttention',
+        name: 'Cor — atenção',
+        description: 'Destaque visual quando a utilização supera o limiar de atenção',
+        defaultValue: '#FADE2A',
         category: ['Links'],
       })
       .addNumberInput({
         path: 'linkUtilThresholdHigh',
-        name: 'Utilização — alto (%)',
+        name: 'Degradação — alto (%)',
+        description: 'Acima deste valor o cabo usa a cor de degradado',
         defaultValue: 75,
+        category: ['Links'],
+      })
+      .addColorPicker({
+        path: 'colorLinkHigh',
+        name: 'Cor — degradado',
+        description: 'Destaque visual quando a utilização supera o limiar alto',
+        defaultValue: '#FF9830',
         category: ['Links'],
       })
       .addNumberInput({
         path: 'linkUtilThresholdCritical',
-        name: 'Utilização — crítico (%)',
-        description: 'Acima deste valor o link é marcado como congestionado',
+        name: 'Degradação — crítico (%)',
+        description: 'Acima deste valor o cabo usa a cor crítica (congestionamento)',
         defaultValue: 90,
         category: ['Links'],
       })
       .addColorPicker({
         path: 'colorLinkCongestion',
-        name: 'Cor de congestionamento',
-        description: 'Destaque visual quando a utilização ultrapassa o limiar crítico',
+        name: 'Cor — crítico',
+        description: 'Destaque visual quando a utilização supera o limiar crítico',
         defaultValue: '#ff7300',
         category: ['Links'],
       })

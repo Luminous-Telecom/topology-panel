@@ -40,6 +40,8 @@ export type TopologyHostIcon =
   | 'bridge'
   | 'power'
   | 'server'
+  | 'cloud'
+  /** Legado — mesmo desenho de `cloud`; mapas antigos. Não aparece no picker. */
   | 'network'
   /** Legado — mapas antigos; não aparece no picker */
   | 'load_balancer'
@@ -364,7 +366,11 @@ export interface TopologyPanelOptions {
   linkUtilThresholdHigh: number;
   /** Limiar de utilização (%) — crítico / congestionamento */
   linkUtilThresholdCritical: number;
-  /** Cor da animação em congestionamento */
+  /** Cor do cabo acima do limiar de atenção */
+  colorLinkAttention: string;
+  /** Cor do cabo acima do limiar degradado (alto) */
+  colorLinkHigh: string;
+  /** Cor do cabo acima do limiar crítico (congestionamento) */
   colorLinkCongestion: string;
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
@@ -495,6 +501,7 @@ export const defaultStatusValueMappings = (): TopologyStatusValueMapping[] => [
 export const defaultHostTypeColors = (): NonNullable<TopologyPanelOptions['hostTypeColors']> => ({
   camera: '#84078b',
   firewall: '#5b4bc9',
+  cloud: '#ffffff',
   network: '#ffffff',
   power: '#ffe300',
   router: '#0009bc',
@@ -520,6 +527,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   linkUtilThresholdAttention: 50,
   linkUtilThresholdHigh: 75,
   linkUtilThresholdCritical: 90,
+  colorLinkAttention: '#FADE2A',
+  colorLinkHigh: '#FF9830',
   colorLinkCongestion: '#ff7300',
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',

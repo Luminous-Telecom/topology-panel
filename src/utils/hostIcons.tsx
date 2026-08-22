@@ -30,6 +30,7 @@ const HOST_ICON_SIZE_SCALE: Partial<Record<TopologyHostIcon, number>> = {
   vpn: 1.2,
   vpn_server: 1.2,
   network: 1.15,
+  cloud: 1.15,
   access_point: 1.2,
 };
 
@@ -71,7 +72,8 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
   server: 'Servidor',
   rack: 'Rack',
   dns: 'DNS',
-  network: 'Cloud / links externos',
+  cloud: 'Nuvem / link externo',
+  network: 'Nuvem / link externo',
   web: 'Web',
   proxmox: 'Proxmox',
   vmware: 'VMware',
@@ -93,7 +95,7 @@ export const HOST_ICON_ORDER: TopologyHostIcon[] = [
   'bridge',
   'power',
   'server',
-  'network',
+  'cloud',
 ];
 
 /** Ícones react-icons só para tipos legados (mapas antigos). */

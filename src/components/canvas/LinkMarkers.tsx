@@ -1,7 +1,19 @@
 import React from 'react';
 
-/** `<defs>` com as pontas dos links: origem (bolinha) e destino (seta), nos estados normal/ativo/hover. */
-export function LinkMarkers({ colorLink }: { colorLink: string }) {
+interface Props {
+  colorLink: string;
+  colorLinkAttention: string;
+  colorLinkHigh: string;
+  colorLinkCongestion: string;
+}
+
+/** `<defs>` com as pontas dos links: origem (bolinha) e destino (seta), nos estados normal/ativo/hover/degradação. */
+export function LinkMarkers({
+  colorLink,
+  colorLinkAttention,
+  colorLinkHigh,
+  colorLinkCongestion,
+}: Props) {
   const arrow = (stroke: string, sw = 1.2) => (
     <path
       d="M1,1 L7,4 L1,7"
@@ -18,6 +30,36 @@ export function LinkMarkers({ colorLink }: { colorLink: string }) {
     ) : (
       <circle cx="3" cy="3" r="1.5" fill="none" stroke={stroke} strokeWidth={sw} />
     );
+
+  const degradationMarkers = (
+    level: 'attention' | 'high' | 'congested',
+    color: string
+  ) => (
+    <>
+      <marker
+        id={`link-dot-start-${level}`}
+        viewBox="0 0 6 6"
+        refX="3"
+        refY="3"
+        markerWidth="3.5"
+        markerHeight="3.5"
+        orient="auto"
+      >
+        {origin(color, true)}
+      </marker>
+      <marker
+        id={`link-arrow-end-${level}`}
+        viewBox="0 0 8 8"
+        refX="6.5"
+        refY="4"
+        markerWidth="4"
+        markerHeight="4"
+        orient="auto"
+      >
+        {arrow(color, 1.3)}
+      </marker>
+    </>
+  );
 
   return (
     <defs>
@@ -55,6 +97,9 @@ export function LinkMarkers({ colorLink }: { colorLink: string }) {
       <marker id="link-arrow-end-hover" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
         {arrow('#81D4FA', 1.3)}
       </marker>
+      {degradationMarkers('attention', colorLinkAttention)}
+      {degradationMarkers('high', colorLinkHigh)}
+      {degradationMarkers('congested', colorLinkCongestion)}
     </defs>
   );
 }

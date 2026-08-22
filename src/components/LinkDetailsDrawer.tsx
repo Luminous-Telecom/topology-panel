@@ -16,6 +16,8 @@ import {
   operStatusLabel,
 } from '../utils/zabbixAdapter/formatTraffic';
 import { resolvePanelColor } from '../utils/panelColors';
+import { resolveLinkUtilizationLevel } from '../utils/linkFlowSpeed';
+import { linkDegradationColor, utilizationThresholdsFromOptions } from '../utils/linkMetricsRuntime';
 import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../utils/canvasOverlayLayout';
 import {
   overlayCardBodyStyle,
@@ -188,11 +190,10 @@ export function LinkDetailsDrawer({
     theme,
     runtimeMetrics?.status === 'down'
       ? options.colorOffline
-      : runtimeMetrics?.status === 'highUtilization'
-        ? options.colorLinkCongestion
-        : runtimeMetrics?.status === 'degraded'
-          ? options.colorAlert
-          : options.colorOnline
+      : linkDegradationColor(
+          options,
+          resolveLinkUtilizationLevel(runtimeMetrics, utilizationThresholdsFromOptions(options))
+        )
   );
 
   return (

@@ -28,6 +28,7 @@ export const CUSTOM_ICON_SVGS: Partial<Record<TopologyHostIcon, string>> = {
   bridge: bridgeSvg,
   power: powerSvg,
   server: serverSvg,
+  cloud: cloudSvg,
   network: cloudSvg,
   host: laptopSvg,
 };

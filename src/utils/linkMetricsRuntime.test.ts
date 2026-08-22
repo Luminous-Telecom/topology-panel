@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLinkRuntimeMetricsMap } from './linkMetricsRuntime';
+import { buildLinkRuntimeMetricsMap, resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { emptyMap } from './testMapFixtures';
 
 describe('buildLinkRuntimeMetricsMap', () => {
@@ -33,5 +33,32 @@ describe('buildLinkRuntimeMetricsMap', () => {
     expect(linkMetrics?.from.rxUtilizationPct).toBe(50);
     expect(linkMetrics?.from.txUtilizationPct).toBe(10);
     expect(linkMetrics?.status).toBe('up');
+  });
+
+  it('usa métricas do destino quando a origem não tem RX/TX (nuvem / link externo)', () => {
+    const map = {
+      ...emptyMap(),
+      links: [
+        {
+          from: 'cloud',
+          to: 'sw',
+          toInterface: {
+            name: 'eth0',
+            metrics: {
+              rx: { itemId: '20' },
+              tx: { itemId: '21' },
+            },
+          },
+        },
+      ],
+    };
+    const metrics = buildLinkRuntimeMetricsMap(map, {
+      '20': { itemid: '20', lastvalue: '800000000' },
+      '21': { itemid: '21', lastvalue: '200000000' },
+    });
+    const runtime = metrics['cloud-sw'];
+    const display = resolveLinkMapTrafficMetrics(map.links[0]!, runtime);
+    expect(display.txBps).toBe(800000000);
+    expect(display.rxBps).toBe(200000000);
   });
 });

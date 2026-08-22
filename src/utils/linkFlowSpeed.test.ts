@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeFlowSpeed, isLinkCongested, maxLinkUtilization } from './linkFlowSpeed';
+import { computeFlowSpeed, isLinkCongested, maxLinkUtilization, resolveLinkUtilizationLevel } from './linkFlowSpeed';
 import { DEFAULT_UTILIZATION_THRESHOLDS } from './zabbixAdapter/formatTraffic';
 import { LinkRuntimeMetrics } from '../types';
 
@@ -24,7 +24,12 @@ describe('linkFlowSpeed', () => {
 
   it('detecta congestionamento acima do threshold crítico', () => {
     expect(isLinkCongested(metrics(91), DEFAULT_UTILIZATION_THRESHOLDS)).toBe(true);
-    expect(isLinkCongested(metrics(50), DEFAULT_UTILIZATION_THRESHOLDS)).toBe(false);
+    expect(isLinkCongested(metrics(80), DEFAULT_UTILIZATION_THRESHOLDS)).toBe(false);
+  });
+
+  it('classifica níveis de degradação', () => {
+    expect(resolveLinkUtilizationLevel(metrics(55), DEFAULT_UTILIZATION_THRESHOLDS)).toBe('attention');
+    expect(resolveLinkUtilizationLevel(metrics(80), DEFAULT_UTILIZATION_THRESHOLDS)).toBe('high');
   });
 
   it('maxLinkUtilization pega o maior valor', () => {

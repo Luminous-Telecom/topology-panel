@@ -13,6 +13,7 @@ import {
   parseOperStatus,
   parseTrafficLastValue,
   speedBpsToMbps,
+  UtilizationLevel,
   UtilizationThresholds,
   DEFAULT_UTILIZATION_THRESHOLDS,
 } from './zabbixAdapter/formatTraffic';
@@ -57,6 +58,37 @@ export function collectLinkMetricItemIds(links: TopologyLink[]): string[] {
     }
   }
   return [...ids];
+}
+
+function interfaceHasTrafficItems(ref?: TopologyInterfaceReference): boolean {
+  return Boolean(ref?.metrics?.rx?.itemId || ref?.metrics?.tx?.itemId);
+}
+
+/**
+ * RX/TX na orientação do mapa: ↑ origem→destino (TX), ↓ destino→origem (RX).
+ * Com só o destino monitorado (nuvem / link externo), inverte a leitura do switch.
+ */
+export function resolveLinkMapTrafficMetrics(
+  link: TopologyLink,
+  metrics?: LinkRuntimeMetrics
+): LinkEndpointRuntimeMetrics {
+  if (!metrics) {
+    return {};
+  }
+  if (interfaceHasTrafficItems(link.fromInterface)) {
+    return metrics.from;
+  }
+  if (interfaceHasTrafficItems(link.toInterface)) {
+    const to = metrics.to;
+    return {
+      ...to,
+      txBps: to.rxBps,
+      rxBps: to.txBps,
+      txUtilizationPct: to.rxUtilizationPct,
+      rxUtilizationPct: to.txUtilizationPct,
+    };
+  }
+  return {};
 }
 
 function readItemValue(items: Record<string, ZabbixItemLastValue>, itemId?: string): number | undefined {
@@ -166,4 +198,24 @@ export function utilizationThresholdsFromOptions(options: TopologyPanelOptions):
     high: options.linkUtilThresholdHigh ?? DEFAULT_UTILIZATION_THRESHOLDS.high,
     critical: options.linkUtilThresholdCritical ?? DEFAULT_UTILIZATION_THRESHOLDS.critical,
   };
+}
+
+/** Cor do cabo conforme o nível de degradação configurado na aba Links. */
+export function linkDegradationColor(
+  options: Pick<
+    TopologyPanelOptions,
+    'colorLink' | 'colorLinkAttention' | 'colorLinkHigh' | 'colorLinkCongestion'
+  >,
+  level: UtilizationLevel
+): string {
+  switch (level) {
+    case 'attention':
+      return options.colorLinkAttention;
+    case 'high':
+      return options.colorLinkHigh;
+    case 'critical':
+      return options.colorLinkCongestion;
+    default:
+      return options.colorLink;
+  }
 }

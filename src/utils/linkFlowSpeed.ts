@@ -1,5 +1,9 @@
 import { LinkRuntimeMetrics, TopologyLink } from '../types';
-import { UtilizationThresholds } from './zabbixAdapter/formatTraffic';
+import {
+  classifyUtilization,
+  UtilizationLevel,
+  UtilizationThresholds,
+} from './zabbixAdapter/formatTraffic';
 
 const BASE_FLOW_SPEED = 0.55;
 const IDLE_FLOW_SPEED = 0.06;
@@ -19,6 +23,14 @@ export function maxLinkUtilization(metrics?: LinkRuntimeMetrics): number | undef
     return undefined;
   }
   return Math.max(...values);
+}
+
+/** Nível de degradação visual a partir da maior utilização RX/TX do link. */
+export function resolveLinkUtilizationLevel(
+  metrics: LinkRuntimeMetrics | undefined,
+  thresholds: UtilizationThresholds
+): UtilizationLevel {
+  return classifyUtilization(maxLinkUtilization(metrics), thresholds) ?? 'normal';
 }
 
 /** Velocidade da animação de fluxo (px/frame) conforme tráfego e status. */
@@ -64,8 +76,7 @@ export function isLinkCongested(
   metrics: LinkRuntimeMetrics | undefined,
   thresholds: UtilizationThresholds
 ): boolean {
-  const util = maxLinkUtilization(metrics);
-  return util !== undefined && util >= thresholds.critical;
+  return resolveLinkUtilizationLevel(metrics, thresholds) === 'critical';
 }
 
 export function resolveFlowLaneSpeed(

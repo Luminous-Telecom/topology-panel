@@ -62,6 +62,11 @@ describe('hostTypeFillColor', () => {
     expect(hostTypeFillColor('switch_managed', { switch_managed: '#ABCDEF', router: '  ' })).toBe('#ABCDEF');
     expect(hostTypeFillColor('router', { switch_managed: '#ABCDEF', router: '  ' })).toBeUndefined();
   });
+
+  it('nuvem nova usa a cor de network quando cloud ainda não tem cor própria', () => {
+    expect(hostTypeFillColor('cloud', { network: '#ffffff' })).toBe('#ffffff');
+    expect(hostTypeFillColor('cloud', { cloud: '#eeeeee', network: '#ffffff' })).toBe('#eeeeee');
+  });
 });
 
 describe('normalizeStoredPanelColors', () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Button, Field, Select, Spinner } from '@grafana/ui';
+import { Button, Field, Select } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
 import { modalErrorStyle } from './overlayChrome';
 import {
@@ -27,6 +27,7 @@ import {
 } from '../utils/submapHosts';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { FieldReadout } from './FieldReadout';
+import { interfaceOptionValue, LinkInterfaceSelectField } from './LinkInterfaceSelectField';
 import { LinkPeerHostField } from './LinkPeerHostField';
 
 interface Props {
@@ -55,59 +56,6 @@ const mediumOptions = [
   { label: 'Fibra (linha contínua)', value: 'fiber' },
   { label: 'Rádio (linha tracejada)', value: 'radio' },
 ];
-
-function InterfaceSelectField({
-  uid,
-  label,
-  hostLabel,
-  interfaces,
-  loading,
-  value,
-  onChange,
-}: {
-  uid: string;
-  label: string;
-  hostLabel: string;
-  interfaces: TopologyNetworkInterface[];
-  loading: boolean;
-  value?: string;
-  onChange: (iface: TopologyNetworkInterface | undefined) => void;
-}) {
-  const options = interfaces.map((iface) => ({
-    label: `${iface.name}${iface.speedMbps ? ` (${formatLinkBandwidth(iface.speedMbps)})` : ''}`,
-    value: `${iface.name}\u0000${iface.snmpIndex ?? ''}`,
-  }));
-  const selected = options.find((option) => option.value === value) ?? null;
-
-  return (
-    <FieldReadout label={label} description={hostLabel}>
-      {loading ? (
-        <Spinner inline />
-      ) : (
-        <Select
-          inputId={uid}
-          options={options}
-          value={selected}
-          onChange={(v) => {
-            const raw = v?.value ?? '';
-            if (!raw) {
-              onChange(undefined);
-              return;
-            }
-            const [name, snmpIndex] = raw.split('\u0000');
-            const found = interfaces.find(
-              (i) => i.name === name && (i.snmpIndex ?? '') === (snmpIndex || '')
-            );
-            onChange(found);
-          }}
-          placeholder="— Nenhuma —"
-          noOptionsMessage="Nenhuma interface encontrada"
-          isClearable
-        />
-      )}
-    </FieldReadout>
-  );
-}
 
 export function LinkEditModal({
   link,
@@ -185,14 +133,14 @@ export function LinkEditModal({
     : formatLinkBandwidth(autoCapacityMbps) ?? 'Selecione as interfaces monitoradas';
 
   const fromSelectValue = fromIface
-    ? `${fromIface.name}\u0000${fromIface.snmpIndex ?? ''}`
+    ? interfaceOptionValue(fromIface)
     : link.fromInterface
-      ? `${link.fromInterface.name}\u0000${link.fromInterface.snmpIndex ?? ''}`
+      ? interfaceOptionValue(link.fromInterface)
       : '';
   const toSelectValue = toIface
-    ? `${toIface.name}\u0000${toIface.snmpIndex ?? ''}`
+    ? interfaceOptionValue(toIface)
     : link.toInterface
-      ? `${link.toInterface.name}\u0000${link.toInterface.snmpIndex ?? ''}`
+      ? interfaceOptionValue(link.toInterface)
       : '';
 
   return (
@@ -212,7 +160,7 @@ export function LinkEditModal({
               }}
             />
           ) : null}
-          <InterfaceSelectField
+          <LinkInterfaceSelectField
             uid={`${uid}-from-iface`}
             label="Interface de origem"
             hostLabel={fromPeer ? innerHostLabel(fromPeer) : fromNode.label ?? fromNode.id}
@@ -233,7 +181,7 @@ export function LinkEditModal({
               }}
             />
           ) : null}
-          <InterfaceSelectField
+          <LinkInterfaceSelectField
             uid={`${uid}-to-iface`}
             label="Interface de destino"
             hostLabel={toPeer ? innerHostLabel(toPeer) : toNode.label ?? toNode.id}

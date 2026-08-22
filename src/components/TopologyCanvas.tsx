@@ -1376,7 +1376,12 @@ export function TopologyCanvas({
         onContextMenu={(e) => handleContextMenu(e)}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
-          <LinkMarkers colorLink={options.colorLink} />
+          <LinkMarkers
+            colorLink={resolveColor(options.colorLink)}
+            colorLinkAttention={resolveColor(options.colorLinkAttention)}
+            colorLinkHigh={resolveColor(options.colorLinkHigh)}
+            colorLinkCongestion={resolveColor(options.colorLinkCongestion)}
+          />
           <CanvasGridLayer
             bounds={gridBounds}
             verticalLines={gridVerticalLines}

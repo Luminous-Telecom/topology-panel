@@ -1,6 +1,7 @@
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyHostStatus, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from './hostLookup';
 import { linkKey } from './mapLinkEdits';
+import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { NodeLayout } from './nodeLayout';
 import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
 import { isHostNode } from './topologyNodes';
@@ -380,13 +381,11 @@ export function resolveHostNodeStatus(
   return display.status;
 }
 
-function trafficFromLinkMetrics(metrics?: LinkRuntimeMetrics): { rxBps?: number; txBps?: number } {
-  if (!metrics) {
-    return {};
-  }
+function trafficFromLinkMetrics(link: TopologyLink, metrics?: LinkRuntimeMetrics): { rxBps?: number; txBps?: number } {
+  const display = resolveLinkMapTrafficMetrics(link, metrics);
   return {
-    rxBps: metrics.from.rxBps,
-    txBps: metrics.from.txBps,
+    rxBps: display.rxBps,
+    txBps: display.txBps,
   };
 }
 
@@ -447,7 +446,7 @@ export function mergeRegionTrafficStats(
       if (!regionNodeIdsForLink(link, nodeIds)) {
         continue;
       }
-      const totals = trafficFromLinkMetrics(linkMetricsByLink[linkKey(link)]);
+      const totals = trafficFromLinkMetrics(link, linkMetricsByLink[linkKey(link)]);
       const prev = trafficByRegion.get(node.id) ?? {};
       trafficByRegion.set(node.id, addTrafficTotals(prev, totals));
     }

@@ -185,7 +185,15 @@ export function hostTypeFillColor(
     return undefined;
   }
   const color = hostTypeColors[icon]?.trim();
-  return color || undefined;
+  if (color) {
+    return color;
+  }
+  // Mapas e opções antigas pintam a nuvem em `network`; o picker novo grava `cloud`.
+  if (icon === 'cloud') {
+    const legacy = hostTypeColors.network?.trim();
+    return legacy || undefined;
+  }
+  return undefined;
 }
 
 /** Resolve cores das opções antes de renderizar SVG. */

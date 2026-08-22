@@ -39,7 +39,9 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |
-| Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` |
+| Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`) |
+| RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
+| Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `resolveLinkUtilizationLevel` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
@@ -99,6 +101,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Abrir Winbox/SSH/Telnet e validar IPv4 | `utils/hostTools.ts`, `utils/ipv4.ts` |
 | Fechar overlay com Esc | `hooks/useEscapeKey.ts` |
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
+| Select de interface do cabo (Novo link / Editar link) | `components/LinkInterfaceSelectField.tsx` (`interfaceOptionValue`) |
 | Chrome visual de modal e overlay do mapa | `components/overlayChrome.ts` + `components/TopologyModal.tsx` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |

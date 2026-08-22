@@ -30,11 +30,11 @@ const interfacesCache = createAsyncCache<InterfacesByHost>({
   isCacheable: (result) => Object.values(result).some((list) => list.length > 0),
 });
 
-const NO_API_ITEMS_ERROR =
-  'Nenhuma métrica de interface encontrada no Zabbix para as chaves RX/TX/status/capacidade configuradas.';
-const NO_KEYWORDS_ERROR =
+export const NO_DATASOURCE_ERROR = 'Configure o datasource Zabbix em Fonte de dados.';
+export const NO_KEYWORDS_ERROR =
   'Configure as palavras-chave RX, TX, status e capacidade da interface em Fonte de dados.';
-const NO_DATASOURCE_ERROR = 'Configure o datasource Zabbix em Fonte de dados.';
+export const NO_API_ITEMS_ERROR =
+  'Nenhuma métrica de interface encontrada no Zabbix para as chaves RX/TX/status/capacidade configuradas.';
 
 function interfaceSearchKeys(keywords?: ZabbixInterfaceKeywordOptions): string[] {
   return [keywords?.rxKeyword, keywords?.txKeyword, keywords?.operStatusKeyword, keywords?.speedKeyword]
@@ -147,9 +147,8 @@ export function useZabbixHostInterfaces(
     if (apiError) {
       return apiError;
     }
-    const hasInterfaces = Object.values(apiInterfaces).some((list) => list.length > 0);
-    return loading || hasInterfaces ? undefined : NO_API_ITEMS_ERROR;
-  }, [hostKey, datasourceUid, searchKeys, apiError, loading, apiInterfaces]);
+    return undefined;
+  }, [hostKey, datasourceUid, searchKeys, apiError]);
 
   return { interfacesByHost: apiInterfaces, loading, loadError };
 }

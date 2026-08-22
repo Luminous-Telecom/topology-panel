@@ -5,10 +5,14 @@ import { formatLinkBandwidth, linkStrokeWidth } from '../../utils/linkBandwidth'
 import { LINK_FLOW_DASH } from '../../utils/linkFlow';
 import {
   computeFlowSpeed,
-  isLinkCongested,
   resolveFlowLaneSpeed,
+  resolveLinkUtilizationLevel,
 } from '../../utils/linkFlowSpeed';
-import { utilizationThresholdsFromOptions } from '../../utils/linkMetricsRuntime';
+import {
+  linkDegradationColor,
+  utilizationThresholdsFromOptions,
+  resolveLinkMapTrafficMetrics,
+} from '../../utils/linkMetricsRuntime';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { resolvePanelColor } from '../../utils/panelColors';
 import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from '../../utils/linkGeometry';
@@ -31,6 +35,19 @@ interface LinkLineProps {
   onContextMenu: (e: React.MouseEvent) => void;
   onPathPointerDown: (e: React.PointerEvent) => void;
   onPathDoubleClick: (e: React.MouseEvent) => void;
+}
+
+function linkMarkerSuffix(level: ReturnType<typeof resolveLinkUtilizationLevel>): string | undefined {
+  switch (level) {
+    case 'attention':
+      return 'attention';
+    case 'high':
+      return 'high';
+    case 'critical':
+      return 'congested';
+    default:
+      return undefined;
+  }
 }
 
 function LinkLineComponent({
@@ -67,12 +84,13 @@ function LinkLineComponent({
   const laneOffset = Math.max(2, strokeWidth * 0.75);
   const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
   const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
-  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? runtimeMetrics?.from.capacityMbps);
+  const displayTraffic = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
+  const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? displayTraffic.capacityMbps);
   const fromName = link.fromInterface?.name;
   const toName = link.toInterface?.name;
-  const txLabel = formatBitsPerSecond(runtimeMetrics?.from.txBps);
-  const rxLabel = formatBitsPerSecond(runtimeMetrics?.from.rxBps);
-  const labelText = formatLinkMapTrafficLabel(runtimeMetrics?.from.txBps, runtimeMetrics?.from.rxBps);
+  const txLabel = formatBitsPerSecond(displayTraffic.txBps);
+  const rxLabel = formatBitsPerSecond(displayTraffic.rxBps);
+  const labelText = formatLinkMapTrafficLabel(displayTraffic.txBps, displayTraffic.rxBps);
   const mid = linkLabelAnchor(pathPoints, from, to);
   const labelWidth = labelText ? labelText.length * 5.2 + 10 : 0;
   const labelRad = (mid.angle * Math.PI) / 180;
@@ -84,43 +102,51 @@ function LinkLineComponent({
     bandwidthLabel ? `Capacidade: ${bandwidthLabel}` : undefined,
     txLabel ? `Upload (TX): ${txLabel}` : undefined,
     rxLabel ? `Download (RX): ${rxLabel}` : undefined,
-    runtimeMetrics?.from.txUtilizationPct !== undefined
-      ? `Util. TX: ${runtimeMetrics.from.txUtilizationPct}%`
+    displayTraffic.txUtilizationPct !== undefined
+      ? `Util. TX: ${displayTraffic.txUtilizationPct}%`
       : undefined,
-    runtimeMetrics?.from.rxUtilizationPct !== undefined
-      ? `Util. RX: ${runtimeMetrics.from.rxUtilizationPct}%`
+    displayTraffic.rxUtilizationPct !== undefined
+      ? `Util. RX: ${displayTraffic.rxUtilizationPct}%`
       : undefined,
     runtimeMetrics?.status ? `Status: ${runtimeMetrics.status}` : undefined,
   ].filter((p): p is string => Boolean(p));
   const titleAttr = tooltipParts.length ? tooltipParts.join('\n') : undefined;
-  const strokeColor = selected ? '#4FC3F7' : hovered ? '#81D4FA' : options.colorLink;
+  const thresholds = utilizationThresholdsFromOptions(options);
+  const utilLevel = resolveLinkUtilizationLevel(runtimeMetrics, thresholds);
+  const degradationColor = resolvePanelColor(theme, linkDegradationColor(options, utilLevel));
+  const markerLevel = linkMarkerSuffix(utilLevel);
+  const strokeColor = selected
+    ? '#4FC3F7'
+    : hovered
+      ? '#81D4FA'
+      : utilLevel !== 'normal'
+        ? degradationColor
+        : options.colorLink;
   const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const markerStart = selected
     ? 'url(#link-dot-start-active)'
     : hovered
       ? 'url(#link-dot-start-hover)'
-      : 'url(#link-dot-start)';
+      : markerLevel
+        ? `url(#link-dot-start-${markerLevel})`
+        : 'url(#link-dot-start)';
   const markerEnd = selected
     ? 'url(#link-arrow-end-active)'
     : hovered
       ? 'url(#link-arrow-end-hover)'
-      : 'url(#link-arrow-end)';
-  const thresholds = utilizationThresholdsFromOptions(options);
-  const congested = isLinkCongested(runtimeMetrics, thresholds);
-  const downloadColor = resolvePanelColor(
-    theme,
-    congested ? options.colorLinkCongestion : options.colorLinkDownload
-  );
-  const uploadColor = resolvePanelColor(
-    theme,
-    congested ? options.colorLinkCongestion : options.colorLinkUpload
-  );
+      : markerLevel
+        ? `url(#link-arrow-end-${markerLevel})`
+        : 'url(#link-arrow-end)';
+  const downloadColor =
+    utilLevel !== 'normal' ? degradationColor : resolvePanelColor(theme, options.colorLinkDownload);
+  const uploadColor =
+    utilLevel !== 'normal' ? degradationColor : resolvePanelColor(theme, options.colorLinkUpload);
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
   const flowStroke = Math.max(1.5, strokeWidth - 1);
   const flowActive = runtimeMetrics?.status !== 'down';
-  const downloadSpeed = resolveFlowLaneSpeed(runtimeMetrics?.from.rxBps, runtimeMetrics, thresholds);
-  const uploadSpeed = resolveFlowLaneSpeed(runtimeMetrics?.from.txBps, runtimeMetrics, thresholds);
+  const downloadSpeed = resolveFlowLaneSpeed(displayTraffic.rxBps, runtimeMetrics, thresholds);
+  const uploadSpeed = resolveFlowLaneSpeed(displayTraffic.txBps, runtimeMetrics, thresholds);
   const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
   const lk = linkKey(link);
 
@@ -310,6 +336,10 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     prev.options.colorLinkWidth === next.options.colorLinkWidth &&
     prev.options.gridSize === next.options.gridSize &&
     prev.options.colorLinkCongestion === next.options.colorLinkCongestion &&
+    prev.options.colorLinkAttention === next.options.colorLinkAttention &&
+    prev.options.colorLinkHigh === next.options.colorLinkHigh &&
+    prev.options.linkUtilThresholdAttention === next.options.linkUtilThresholdAttention &&
+    prev.options.linkUtilThresholdHigh === next.options.linkUtilThresholdHigh &&
     prev.options.linkUtilThresholdCritical === next.options.linkUtilThresholdCritical
   );
 });
