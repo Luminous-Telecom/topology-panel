@@ -6,7 +6,6 @@ import {
   TopologyPanelOptions,
 } from '../../types';
 import { textOnBackground } from '../../utils/colorContrast';
-import { resolveHostIp } from '../../utils/hostLookup';
 import { HostIconGlyph, hostIconRenderSize } from '../../utils/hostIcons';
 import {
   RegionHostStats,
@@ -141,14 +140,12 @@ function HostNodeShapeComponent({
           ? options.enablePan
             ? 'grab'
             : 'default'
-          : editable
-            ? linkMode
-              ? 'crosshair'
-              : 'move'
-            : isHostNode(node) && resolveHostIp(node, hostMetadata)
-              ? 'context-menu'
-              : node.type === 'submap' || node.type === 'dashboard_picker'
-                ? 'pointer'
+          : linkMode
+            ? 'crosshair'
+            : isHostNode(node) || node.type === 'submap' || node.type === 'dashboard_picker'
+              ? 'pointer'
+              : editable
+                ? 'move'
                 : 'default',
       }}
     >
