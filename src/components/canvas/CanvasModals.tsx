@@ -178,6 +178,8 @@ export function CanvasModals({
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}
           zabbixTxItemKeyword={options.zabbixTxItemKeyword}
+          zabbixOperStatusItemKeyword={options.zabbixOperStatusItemKeyword}
+          zabbixSpeedItemKeyword={options.zabbixSpeedItemKeyword}
           onClose={() => setEditLink(null)}
           onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
         />
@@ -190,6 +192,8 @@ export function CanvasModals({
           zabbixDatasourceUid={zabbixDatasourceUid}
           zabbixRxItemKeyword={options.zabbixRxItemKeyword}
           zabbixTxItemKeyword={options.zabbixTxItemKeyword}
+          zabbixOperStatusItemKeyword={options.zabbixOperStatusItemKeyword}
+          zabbixSpeedItemKeyword={options.zabbixSpeedItemKeyword}
           onClose={onPendingLinkClose}
           onSave={onPendingLinkSave}
         />

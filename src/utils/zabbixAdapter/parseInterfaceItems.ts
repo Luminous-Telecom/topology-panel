@@ -37,9 +37,6 @@ function readTag(tags: RawZabbixInterfaceItem['tags'], tagName: string): string 
   return found?.value?.trim() || undefined;
 }
 
-const INTERFACE_NAME_TOKEN =
-  /\b((?:[A-Za-z]*(?:Ethernet|Eth|GE|\d+GE|XGigabit|TenGig|Port-channel|vlan|bond|eth|Gi)[A-Za-z0-9._/:-]+))\b/i;
-
 function isNumericOnlyLabel(value: string): boolean {
   return /^\d+$/.test(value.trim());
 }
@@ -52,59 +49,26 @@ function preferInterfaceName(current: string, candidate: string): string {
   if (isNumericOnlyLabel(current) && !isNumericOnlyLabel(next)) {
     return next;
   }
-  if (!isNumericOnlyLabel(next) && next.length > current.length) {
+  if (isNumericOnlyLabel(next)) {
+    return current;
+  }
+  if (next.length > current.length) {
     return next;
   }
   return current;
 }
 
-function interfaceNameFromItemNameLabel(itemName?: string): string | undefined {
-  if (!itemName?.trim()) {
-    return undefined;
+/** Nome do item no Zabbix, sem recorte. Token da key só se o item não tiver name. */
+function interfaceDisplayName(itemName: string | undefined, token: string): string {
+  const fromZabbix = itemName?.trim();
+  if (fromZabbix) {
+    return fromZabbix;
   }
-  const name = itemName.trim();
-  const fromMacro = name.match(/\{?#?IF(?:NAME|ALIAS|DESCR)\}?:?\s*(.+)$/i);
-  if (fromMacro?.[1]?.trim()) {
-    return fromMacro[1].trim();
+  const t = token.trim();
+  if (t && !isNumericOnlyLabel(t) && !/^ifHC/i.test(t)) {
+    return t;
   }
-  const quoted = name.match(/"([^"]+)"/);
-  if (quoted?.[1]?.trim()) {
-    return quoted[1].trim();
-  }
-  const afterColon = name.match(/:\s*(.+)$/);
-  if (afterColon?.[1]?.trim()) {
-    return afterColon[1].trim();
-  }
-  const afterMetricSlash = name.match(/^[^/]+\/\s*(.+)$/);
-  if (afterMetricSlash?.[1]?.trim() && !isNumericOnlyLabel(afterMetricSlash[1])) {
-    return afterMetricSlash[1].trim();
-  }
-  const ifLike = name.match(INTERFACE_NAME_TOKEN);
-  if (ifLike?.[1]?.trim()) {
-    return ifLike[1].trim();
-  }
-  return undefined;
-}
-
-/** Tag `interface` / `ifname` / `ifdescr`, inclusive nome inline no rótulo da tag. */
-function readInterfaceLabel(tags: RawZabbixInterfaceItem['tags']): string | undefined {
-  const direct =
-    readTag(tags, 'interface') || readTag(tags, 'ifname') || readTag(tags, 'ifdescr');
-  if (direct) {
-    return direct;
-  }
-  for (const entry of tags ?? []) {
-    const tag = entry.tag?.trim() ?? '';
-    const value = entry.value?.trim() ?? '';
-    if (/^interface$/i.test(tag) && value) {
-      return value;
-    }
-    const inline = tag.match(/^interface\s+(.+)$/i);
-    if (inline?.[1]?.trim()) {
-      return inline[1].trim();
-    }
-  }
-  return undefined;
+  return t || 'interface';
 }
 
 function parseNumber(value?: string): number | undefined {
@@ -113,28 +77,6 @@ function parseNumber(value?: string): number | undefined {
   }
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
-}
-
-function interfaceNameFromToken(token: string, itemName?: string): string {
-  const t = token.trim();
-  if (t && !/^\d+$/.test(t) && !/^ifHC/i.test(t)) {
-    return t;
-  }
-  const fromName = itemName?.match(/\{?#?IF(?:NAME|ALIAS|DESCR)\}?:?\s*(.+)$/i);
-  if (fromName?.[1]?.trim()) {
-    return fromName[1].trim();
-  }
-  if (itemName) {
-    const quoted = itemName.match(/"([^"]+)"/);
-    if (quoted?.[1]?.trim()) {
-      return quoted[1].trim();
-    }
-  }
-  const fromMetricName = interfaceNameFromItemNameLabel(itemName);
-  if (fromMetricName) {
-    return fromMetricName;
-  }
-  return t || itemName?.trim() || 'interface';
 }
 
 function interfaceGroupKey(hostKey: string, name: string, snmpIndex?: string): string {
@@ -266,10 +208,7 @@ export function parseZabbixInterfaceItems(
       continue;
     }
 
-    const ifName =
-      readInterfaceLabel(item.tags) ||
-      interfaceNameFromItemNameLabel(item.name) ||
-      interfaceNameFromToken(parsed.interfaceToken, item.name);
+    const ifName = interfaceDisplayName(item.name, parsed.interfaceToken);
     const snmpIndex = parsed.snmpIndex ?? snmpIndexFromToken(parsed.interfaceToken);
     const groupKey = interfaceGroupKey(hostKey, ifName, snmpIndex);
 
@@ -298,6 +237,20 @@ export function parseZabbixInterfaceItems(
   return [...groups.values()]
     .map(finalizeInterface)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
+/** Primeira lista não vazia entre as chaves (IP, nome visível, host técnico). */
+export function pickHostInterfaces(
+  byHost: Record<string, TopologyNetworkInterface[]>,
+  candidates: string[]
+): TopologyNetworkInterface[] {
+  for (const key of candidates) {
+    const found = byHost[key];
+    if (found?.length) {
+      return found;
+    }
+  }
+  return [];
 }
 
 /** Mapa hostKey → interfaces descobertas. */

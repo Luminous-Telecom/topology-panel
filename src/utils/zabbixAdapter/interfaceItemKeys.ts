@@ -18,6 +18,8 @@ export interface ParsedInterfaceKey {
 export interface InterfaceKeyParseOptions {
   rxKeyword?: string;
   txKeyword?: string;
+  operStatusKeyword?: string;
+  speedKeyword?: string;
 }
 
 const RX_PATTERNS = [
@@ -66,11 +68,19 @@ function classifyByCustomKeywords(
   const lower = key.toLowerCase();
   const rx = opts?.rxKeyword?.trim().toLowerCase();
   const tx = opts?.txKeyword?.trim().toLowerCase();
+  const operStatus = opts?.operStatusKeyword?.trim().toLowerCase();
+  const speed = opts?.speedKeyword?.trim().toLowerCase();
   if (rx && lower.includes(rx)) {
     return 'rx';
   }
   if (tx && lower.includes(tx)) {
     return 'tx';
+  }
+  if (operStatus && lower.includes(operStatus)) {
+    return 'operStatus';
+  }
+  if (speed && lower.includes(speed)) {
+    return 'speed';
   }
   return undefined;
 }
@@ -139,7 +149,7 @@ function classifyGenericBaseKey(baseKey: string): InterfaceMetricKind | undefine
   if (k.includes('ifadminstatus')) {
     return 'adminStatus';
   }
-  if (k.includes('ifspeed')) {
+  if (k.includes('ifspeed') || k.includes('ifhighspeed')) {
     return 'speed';
   }
   if (k.includes('inerrors') || k.includes('ifinerrors')) {
@@ -200,11 +210,27 @@ export function snmpIndexFromToken(token: string): string | undefined {
   if (/^\d+$/.test(t)) {
     return t;
   }
-  const prefixed = t.match(/^(?:ifHCInOctets|ifHCOutOctets|ifInOctets|ifOutOctets|ifOperStatus|ifAdminStatus|ifSpeed)\.(\d+)$/i);
+  const prefixed = t.match(/^(?:ifHCInOctets|ifHCOutOctets|ifInOctets|ifOutOctets|ifOperStatus|ifAdminStatus|ifSpeed|ifHighSpeed)\.(\d+)$/i);
   if (prefixed) {
     return prefixed[1];
   }
   return undefined;
+}
+
+const DOTTED_SNMP_KEY =
+  /^(ifHCInOctets|ifHCOutOctets|ifInOctets|ifOutOctets|ifOperStatus|ifAdminStatus|ifSpeed|ifHighSpeed|ifInErrors|ifOutErrors|ifInDiscards|ifOutDiscards)\.(\d+)$/i;
+
+/** Keys SNMP clássicas sem colchetes (`ifHCInOctets.14`). */
+function parseDottedSnmpKey(key: string): ParsedInterfaceKey | undefined {
+  const match = key.match(DOTTED_SNMP_KEY);
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+  const kind = classifyGenericBaseKey(match[1]);
+  if (!kind) {
+    return undefined;
+  }
+  return { kind, interfaceToken: match[2], snmpIndex: match[2] };
 }
 
 /** Classifica uma key Zabbix e extrai identificador da interface. */
@@ -213,6 +239,10 @@ export function parseInterfaceItemKey(
   opts?: InterfaceKeyParseOptions
 ): ParsedInterfaceKey | undefined {
   const trimmed = key.trim();
+  const dotted = parseDottedSnmpKey(trimmed);
+  if (dotted) {
+    return dotted;
+  }
   const interfaceToken = extractInterfaceTokenFromKey(trimmed);
   if (!interfaceToken || isDiscoveryPrototype(interfaceToken)) {
     return undefined;

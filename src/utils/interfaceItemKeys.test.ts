@@ -3,9 +3,9 @@ import { parseInterfaceItemKey, extractInterfaceTokenFromKey } from './zabbixAda
 
 describe('interfaceItemKeys', () => {
   it('classifica net.if.in com nome de interface', () => {
-    const parsed = parseInterfaceItemKey('net.if.in[ether1]');
+    const parsed = parseInterfaceItemKey('net.if.in[port-a]');
     expect(parsed?.kind).toBe('rx');
-    expect(parsed?.interfaceToken).toBe('ether1');
+    expect(parsed?.interfaceToken).toBe('port-a');
   });
 
   it('classifica ifHCInOctets com SNMP index', () => {
@@ -21,7 +21,7 @@ describe('interfaceItemKeys', () => {
   });
 
   it('extrai token entre colchetes', () => {
-    expect(extractInterfaceTokenFromKey('net.if.out[GigabitEthernet0/0/1]')).toBe('GigabitEthernet0/0/1');
+    expect(extractInterfaceTokenFromKey('net.if.out[port-a]')).toBe('port-a');
   });
 
   it('classifica item de modulação/velocidade', () => {
@@ -50,9 +50,28 @@ describe('interfaceItemKeys', () => {
     expect(parseInterfaceItemKey('vendor.traffic.out[eth0]')?.kind).toBe('tx');
   });
 
+  it('classifica keys SNMP pontuadas sem colchetes', () => {
+    expect(parseInterfaceItemKey('ifHCInOctets.14')).toEqual({
+      kind: 'rx',
+      interfaceToken: '14',
+      snmpIndex: '14',
+    });
+    expect(parseInterfaceItemKey('ifHCOutOctets.14')?.kind).toBe('tx');
+    expect(parseInterfaceItemKey('ifOperStatus.14')?.kind).toBe('operStatus');
+    expect(parseInterfaceItemKey('ifSpeed.14')?.kind).toBe('speed');
+    expect(parseInterfaceItemKey('ifHighSpeed.14')?.kind).toBe('speed');
+  });
+
   it('usa palavras-chave configuradas quando os padrões não reconhecem a key', () => {
-    const opts = { rxKeyword: 'customrx', txKeyword: 'customtx' };
+    const opts = {
+      rxKeyword: 'customrx',
+      txKeyword: 'customtx',
+      operStatusKeyword: 'customoper',
+      speedKeyword: 'customspeed',
+    };
     expect(parseInterfaceItemKey('vendor.customrx.uplink[eth0]', opts)?.kind).toBe('rx');
     expect(parseInterfaceItemKey('vendor.customtx.uplink[eth0]', opts)?.kind).toBe('tx');
+    expect(parseInterfaceItemKey('vendor.customoper.uplink[eth0]', opts)?.kind).toBe('operStatus');
+    expect(parseInterfaceItemKey('vendor.customspeed.uplink[eth0]', opts)?.kind).toBe('speed');
   });
 });

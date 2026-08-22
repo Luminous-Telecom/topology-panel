@@ -142,13 +142,13 @@ describe('buildQueryIndex', () => {
         frame('A', [
           numberField('host-a', [500000000], {
             item_key: 'vendor.metric.rx[10]',
-            item_name: 'RX / GigabitEthernet0/0/1 / peer-z',
+            item_name: 'item-name-rx-a',
             itemid: '90001',
             hostid: '10001',
           }),
           numberField('host-a', [500000000], {
             item_key: 'vendor.metric.tx[10]',
-            item_name: 'TX / GigabitEthernet0/0/1 / peer-z',
+            item_name: 'item-name-tx-a',
             itemid: '90002',
             hostid: '10001',
           }),
@@ -164,7 +164,7 @@ describe('buildQueryIndex', () => {
     expect(queryIndexHasInterfaceItems(index)).toBe(true);
     const byHost = interfacesByHostKeysFromIndex(index, ['host-a'], index.metadata);
     expect(byHost['host-a']).toHaveLength(1);
-    expect(byHost['host-a'][0].name).toContain('GigabitEthernet0/0/1');
+    expect(byHost['host-a'][0].name).toBe('item-name-rx-a');
     expect(byHost['host-a'][0].metrics.rx?.itemId).toBe('90001');
     expect(byHost['host-a'][0].metrics.tx?.itemId).toBe('90002');
   });
@@ -174,13 +174,13 @@ describe('buildQueryIndex', () => {
       panelData([
         frame('A', [
           numberField('192.0.2.10', [1000], {
-            item_key: 'net.if.in[ether1]',
+            item_key: 'net.if.in[port-a]',
             itemid: '1',
             __zbx_host_visible_name: 'host-visible-a',
             hostid: '10001',
           }),
           numberField('192.0.2.10', [1000], {
-            item_key: 'net.if.out[ether1]',
+            item_key: 'net.if.out[port-a]',
             itemid: '2',
             hostid: '10001',
           }),
@@ -190,7 +190,7 @@ describe('buildQueryIndex', () => {
 
     const byName = interfacesByHostKeysFromIndex(index, ['host-visible-a'], index.metadata);
     expect(byName['host-visible-a']).toHaveLength(1);
-    expect(byName['host-visible-a'][0].name).toBe('ether1');
+    expect(byName['host-visible-a'][0].name).toBe('port-a');
   });
 });
 

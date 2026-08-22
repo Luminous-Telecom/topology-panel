@@ -10,7 +10,8 @@ import {
 import { useZabbixHostInterfaces } from '../hooks/useZabbixHostInterfaces';
 import { interfaceToReference, resolveLinkCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
-import { resolveHostLookupKey } from '../utils/hostLookup';
+import { collectHostLookupCandidates } from '../utils/hostLookup';
+import { pickHostInterfaces } from '../utils/zabbixAdapter/parseInterfaceItems';
 import { HostMetadataMap } from '../types';
 import { FieldReadout } from './FieldReadout';
 
@@ -28,6 +29,8 @@ interface Props {
   zabbixDatasourceUid?: string;
   zabbixRxItemKeyword?: string;
   zabbixTxItemKeyword?: string;
+  zabbixOperStatusItemKeyword?: string;
+  zabbixSpeedItemKeyword?: string;
   onSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
@@ -154,6 +157,8 @@ export function LinkInterfaceSelectModal({
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
   zabbixTxItemKeyword,
+  zabbixOperStatusItemKeyword,
+  zabbixSpeedItemKeyword,
   onSave,
   onClose,
 }: Props) {
@@ -162,11 +167,17 @@ export function LinkInterfaceSelectModal({
   const [fromIface, setFromIface] = useState<TopologyNetworkInterface | undefined>();
   const [toIface, setToIface] = useState<TopologyNetworkInterface | undefined>();
 
-  const fromHostKey = resolveHostLookupKey(pending.fromNode, hostMetadata);
-  const toHostKey = resolveHostLookupKey(pending.toNode, hostMetadata);
+  const fromCandidates = useMemo(
+    () => collectHostLookupCandidates(pending.fromNode, hostMetadata),
+    [hostMetadata, pending.fromNode]
+  );
+  const toCandidates = useMemo(
+    () => collectHostLookupCandidates(pending.toNode, hostMetadata),
+    [hostMetadata, pending.toNode]
+  );
   const hostKeys = useMemo(
-    () => [fromHostKey, toHostKey].filter((k): k is string => Boolean(k)),
-    [fromHostKey, toHostKey]
+    () => [...new Set([...fromCandidates, ...toCandidates])],
+    [fromCandidates, toCandidates]
   );
 
   const { interfacesByHost, loading, loadError } = useZabbixHostInterfaces(
@@ -175,11 +186,14 @@ export function LinkInterfaceSelectModal({
     {
       rxKeyword: zabbixRxItemKeyword,
       txKeyword: zabbixTxItemKeyword,
-    }
+      operStatusKeyword: zabbixOperStatusItemKeyword,
+      speedKeyword: zabbixSpeedItemKeyword,
+    },
+    hostMetadata
   );
 
-  const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
-  const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];
+  const fromInterfaces = pickHostInterfaces(interfacesByHost, fromCandidates);
+  const toInterfaces = pickHostInterfaces(interfacesByHost, toCandidates);
 
   const previewCapacity = resolveLinkCapacityMbps(fromIface, toIface);
   const monitorsTraffic = Boolean(fromIface?.metrics.rx?.itemId || fromIface?.metrics.tx?.itemId

@@ -61,6 +61,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Pan automático ao arrastar na borda | `utils/edgePan.ts` |
 | Geometria do link: path, waypoint mais próximo, âncora do rótulo | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
+| Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts` |
 | Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
 | Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` em `utils/structuralIdentity.ts` |
 | Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |

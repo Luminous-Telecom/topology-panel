@@ -366,15 +366,25 @@ export interface TopologyPanelOptions {
   /** Chave do item lido em cada host para resolver o status. */
   zabbixStatusItemKey?: string;
   /**
-   * Palavra-chave extra para localizar itens RX de interface no Zabbix.
-   * Complementa os padrões automáticos em `interfaceItemKeys.ts`.
+   * Trecho da key Zabbix usado na busca de itens RX de interface.
+   * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
    */
   zabbixRxItemKeyword?: string;
   /**
-   * Palavra-chave extra para localizar itens TX de interface no Zabbix.
-   * Complementa os padrões automáticos em `interfaceItemKeys.ts`.
+   * Trecho da key Zabbix usado na busca de itens TX de interface.
+   * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
    */
   zabbixTxItemKeyword?: string;
+  /**
+   * Trecho da key Zabbix usado na busca do status operacional da interface.
+   * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
+   */
+  zabbixOperStatusItemKeyword?: string;
+  /**
+   * Trecho da key Zabbix usado na busca da capacidade/velocidade da interface.
+   * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
+   */
+  zabbixSpeedItemKeyword?: string;
   /** Frequência de busca de status e tráfego, em segundos. */
   zabbixRefreshSec?: number;
   /**

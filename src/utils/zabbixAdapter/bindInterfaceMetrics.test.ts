@@ -21,7 +21,7 @@ describe('bindInterfaceMetrics — capacidade', () => {
   });
 
   it('infere capacidade de rótulo com padrão GE', () => {
-    expect(resolveInterfaceCapacityMbps(iface({ name: '100GE0/5/0.1010 / peer-z' }))).toBe(100000);
+    expect(resolveInterfaceCapacityMbps(iface({ name: '100GE port-a' }))).toBe(100000);
   });
 
   it('usa o menor valor entre origem e destino', () => {

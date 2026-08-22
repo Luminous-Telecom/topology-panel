@@ -109,25 +109,44 @@ async function fetchHostsByInterfaceIp(
     return [];
   }
   const hosts: ZabbixHost[] = [];
-  for (const batch of chunk(missing, BATCH_SIZE)) {
+  const seen = new Set<string>();
+  const addHosts = (batchHosts: ZabbixHost[] | undefined) => {
+    for (const host of batchHosts ?? []) {
+      const hostid = asZabbixId(host.hostid);
+      if (hostid && seen.has(hostid)) {
+        continue;
+      }
+      if (hostid) {
+        seen.add(hostid);
+      }
+      hosts.push(host);
+    }
+  };
+  const output = ['hostid', 'host', 'name'];
+  const selectInterfaces = withInterfaces ? ['ip', 'main', 'type'] : undefined;
+
+  for (const ip of missing) {
     try {
-      const params: {
-        filter: { ip: string[]; status: number };
-        output: string[];
-        selectInterfaces?: string[];
-      } = {
-        filter: { ip: batch, status: ZABBIX_HOST_MONITORED },
-        output: ['hostid', 'host', 'name'],
-      };
-      if (withInterfaces) {
-        params.selectInterfaces = ['ip', 'main', 'type'];
-      }
-      const batchHosts = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', params);
-      for (const h of batchHosts ?? []) {
-        hosts.push(h);
-      }
+      addHosts(
+        await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+          searchInterfaces: { ip },
+          filter: { status: ZABBIX_HOST_MONITORED },
+          output,
+          ...(selectInterfaces ? { selectInterfaces } : {}),
+        })
+      );
     } catch {
-      /* lote sem resposta */
+      try {
+        addHosts(
+          await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+            filter: { ip: [ip], status: ZABBIX_HOST_MONITORED },
+            output,
+            ...(selectInterfaces ? { selectInterfaces } : {}),
+          })
+        );
+      } catch {
+        /* lote sem resposta */
+      }
     }
   }
   return hosts;
@@ -137,6 +156,20 @@ async function resolveZabbixHostId(datasourceUid: string, hostName: string): Pro
   const name = hostName.trim();
   if (!name) {
     return undefined;
+  }
+  if (/^\d+$/.test(name)) {
+    try {
+      const byId = await zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
+        hostids: [name],
+        output: ['hostid'],
+      });
+      const id = asZabbixId(byId?.[0]?.hostid);
+      if (id) {
+        return id;
+      }
+    } catch {
+      /* id numérico sem host — tenta IP/nome */
+    }
   }
   if (isIpv4(name)) {
     const byIp = await fetchHostsByInterfaceIp(datasourceUid, [name], false);
@@ -804,25 +837,47 @@ export async function fetchZabbixDirectSnapshot(
   return { hosts, statusItems, resolvedGroups };
 }
 
-/**
- * Prefixos de key que cobrem as métricas de interface reconhecidas por `parseInterfaceItemKey`.
- * A classificação final continua sendo dela — aqui a lista só evita puxar o inventário inteiro do
- * host, que em roteador grande passa de milhares de itens.
- */
-const INTERFACE_ITEM_SEARCH_KEYS = [
-  'net.if.',
-  'ifHCInOctets',
-  'ifHCOutOctets',
-  'ifInOctets',
-  'ifOutOctets',
-  'ifOperStatus',
-  'ifAdminStatus',
-  'ifSpeed',
-  'ifInErrors',
-  'ifOutErrors',
-  'ifInDiscards',
-  'ifOutDiscards',
-];
+async function fetchInterfaceItemsByKeySearch(
+  datasourceUid: string,
+  hostIds: string[],
+  searchTerms: string[]
+): Promise<Map<string, ZabbixInterfaceItem[]>> {
+  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
+  const seenItemIds = new Set<string>();
+  const terms = [...new Set(searchTerms.map((term) => term.trim()).filter(Boolean))];
+  if (!hostIds.length || !terms.length) {
+    return itemsByHostId;
+  }
+
+  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+    for (const term of terms) {
+      try {
+        const items = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
+          hostids: batch,
+          output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
+          search: { key_: term },
+          monitored: true,
+        });
+        for (const item of items ?? []) {
+          const itemid = asZabbixId(item.itemid);
+          const hostid = asZabbixId(item.hostid);
+          if (!hostid || (itemid && seenItemIds.has(itemid))) {
+            continue;
+          }
+          if (itemid) {
+            seenItemIds.add(itemid);
+          }
+          const list = itemsByHostId.get(hostid) ?? [];
+          list.push(item);
+          itemsByHostId.set(hostid, list);
+        }
+      } catch {
+        /* termo sem resposta */
+      }
+    }
+  }
+  return itemsByHostId;
+}
 
 /**
  * Itens de interface monitorados por host — inventário do seletor de interface do link.
@@ -830,49 +885,33 @@ const INTERFACE_ITEM_SEARCH_KEYS = [
 export async function fetchZabbixHostInterfaceItems(
   datasourceUid: string,
   hostKeys: string[],
-  extraSearchKeys: string[] = []
+  searchKeys: string[] = [],
+  metadata?: HostMetadataMap
 ): Promise<ZabbixHostInterfaceItems[]> {
   const keys = [...new Set(hostKeys.map((key) => key.trim()).filter(Boolean))];
-  if (!datasourceUid || !keys.length) {
+  const terms = [...new Set(searchKeys.map((key) => key.trim()).filter(Boolean))];
+  if (!datasourceUid || !keys.length || !terms.length) {
     return [];
   }
 
   const hostIdByKey = new Map<string, string>();
   for (const key of keys) {
-    const hostId = await resolveZabbixHostId(datasourceUid, key);
+    const fromMeta = resolveHostIdFromLookup(
+      {
+        zabbixHost: key,
+        subtitle: isIpv4(key) ? key : undefined,
+        label: isIpv4(key) ? undefined : key,
+      },
+      metadata
+    );
+    const hostId = fromMeta ?? (await resolveZabbixHostId(datasourceUid, key));
     if (hostId) {
       hostIdByKey.set(key, hostId);
     }
   }
 
   const hostIds = [...new Set(hostIdByKey.values())];
-  const searchKeys = [
-    ...INTERFACE_ITEM_SEARCH_KEYS,
-    ...extraSearchKeys.map((key) => key.trim()).filter(Boolean),
-  ];
-  const itemsByHostId = new Map<string, ZabbixInterfaceItem[]>();
-  for (const batch of chunk(hostIds, BATCH_SIZE)) {
-    try {
-      const items = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
-        hostids: batch,
-        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid'],
-        search: { key_: searchKeys },
-        searchByAny: true,
-        monitored: true,
-      });
-      for (const item of items ?? []) {
-        const hostid = asZabbixId(item.hostid);
-        if (!hostid) {
-          continue;
-        }
-        const list = itemsByHostId.get(hostid) ?? [];
-        list.push(item);
-        itemsByHostId.set(hostid, list);
-      }
-    } catch {
-      /* lote sem resposta */
-    }
-  }
+  const itemsByHostId = await fetchInterfaceItemsByKeySearch(datasourceUid, hostIds, terms);
 
   const result: ZabbixHostInterfaceItems[] = [];
   for (const [hostKey, hostid] of hostIdByKey) {

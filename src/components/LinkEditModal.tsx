@@ -17,7 +17,8 @@ import {
   matchDiscoveredInterface,
   resolveLinkCapacityMbps,
 } from '../utils/zabbixAdapter/bindInterfaceMetrics';
-import { resolveHostLookupKey } from '../utils/hostLookup';
+import { collectHostLookupCandidates } from '../utils/hostLookup';
+import { pickHostInterfaces } from '../utils/zabbixAdapter/parseInterfaceItems';
 import { findNodeById } from '../utils/topologyNodes';
 import { FieldReadout } from './FieldReadout';
 
@@ -29,6 +30,8 @@ interface Props {
   zabbixDatasourceUid?: string;
   zabbixRxItemKeyword?: string;
   zabbixTxItemKeyword?: string;
+  zabbixOperStatusItemKeyword?: string;
+  zabbixSpeedItemKeyword?: string;
   onSave: (patch: {
     medium?: TopologyLinkMedium;
     bandwidthMbps?: number;
@@ -64,6 +67,7 @@ function InterfaceSelectField({
     label: `${iface.name}${iface.speedMbps ? ` (${formatLinkBandwidth(iface.speedMbps)})` : ''}`,
     value: `${iface.name}\u0000${iface.snmpIndex ?? ''}`,
   }));
+  const selected = options.find((option) => option.value === value) ?? null;
 
   return (
     <FieldReadout label={label} description={hostLabel}>
@@ -72,10 +76,10 @@ function InterfaceSelectField({
       ) : (
         <Select
           inputId={uid}
-          options={[{ label: '— Nenhuma —', value: '' }, ...options]}
-          value={value ?? ''}
+          options={options}
+          value={selected}
           onChange={(v) => {
-            const raw = v.value ?? '';
+            const raw = v?.value ?? '';
             if (!raw) {
               onChange(undefined);
               return;
@@ -86,6 +90,8 @@ function InterfaceSelectField({
             );
             onChange(found);
           }}
+          placeholder="— Nenhuma —"
+          noOptionsMessage="Nenhuma interface encontrada"
           isClearable
         />
       )}
@@ -100,6 +106,8 @@ export function LinkEditModal({
   zabbixDatasourceUid,
   zabbixRxItemKeyword,
   zabbixTxItemKeyword,
+  zabbixOperStatusItemKeyword,
+  zabbixSpeedItemKeyword,
   onSave,
   onClose,
 }: Props) {
@@ -110,11 +118,17 @@ export function LinkEditModal({
 
   const fromNode = findNodeById(storedMap.nodes, link.from);
   const toNode = findNodeById(storedMap.nodes, link.to);
-  const fromHostKey = fromNode ? resolveHostLookupKey(fromNode, hostMetadata) : undefined;
-  const toHostKey = toNode ? resolveHostLookupKey(toNode, hostMetadata) : undefined;
+  const fromCandidates = useMemo(
+    () => (fromNode ? collectHostLookupCandidates(fromNode, hostMetadata) : []),
+    [fromNode, hostMetadata]
+  );
+  const toCandidates = useMemo(
+    () => (toNode ? collectHostLookupCandidates(toNode, hostMetadata) : []),
+    [toNode, hostMetadata]
+  );
   const hostKeys = useMemo(
-    () => [fromHostKey, toHostKey].filter((k): k is string => Boolean(k)),
-    [fromHostKey, toHostKey]
+    () => [...new Set([...fromCandidates, ...toCandidates])],
+    [fromCandidates, toCandidates]
   );
 
   const { interfacesByHost, loading: ifacesLoading, loadError } = useZabbixHostInterfaces(
@@ -123,10 +137,13 @@ export function LinkEditModal({
     {
       rxKeyword: zabbixRxItemKeyword,
       txKeyword: zabbixTxItemKeyword,
-    }
+      operStatusKeyword: zabbixOperStatusItemKeyword,
+      speedKeyword: zabbixSpeedItemKeyword,
+    },
+    hostMetadata
   );
-  const fromInterfaces = fromHostKey ? interfacesByHost[fromHostKey] ?? [] : [];
-  const toInterfaces = toHostKey ? interfacesByHost[toHostKey] ?? [] : [];
+  const fromInterfaces = pickHostInterfaces(interfacesByHost, fromCandidates);
+  const toInterfaces = pickHostInterfaces(interfacesByHost, toCandidates);
 
   useEffect(() => {
     if (!link.fromInterface || !fromInterfaces.length) {
@@ -200,7 +217,7 @@ export function LinkEditModal({
       </Field>
       <FieldReadout
         label="Capacidade"
-        description="Definida automaticamente pelos itens de velocidade das interfaces no Zabbix (ex.: ifSpeed, modulação)."
+        description="Definida automaticamente pelo item de capacidade das interfaces no Zabbix (palavra-chave configurada em Fonte de dados)."
       >
         <div style={{ fontFamily: 'monospace', fontSize: 14 }}>{capacityLabel}</div>
       </FieldReadout>

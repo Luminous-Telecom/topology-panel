@@ -57,7 +57,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'zabbixRxItemKeyword',
         name: 'Palavra-chave RX (interface)',
         description:
-          'Termo extra para localizar itens de download/tráfego de entrada no inventário de interfaces (ex.: ifHCInOctets ou trecho da key customizada).',
+          'Trecho da key Zabbix dos itens de download/entrada. Só esse termo entra na busca.',
         defaultValue: '',
         category: ['Fonte de dados'],
       })
@@ -65,7 +65,23 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'zabbixTxItemKeyword',
         name: 'Palavra-chave TX (interface)',
         description:
-          'Termo extra para localizar itens de upload/tráfego de saída no inventário de interfaces (ex.: ifHCOutOctets ou trecho da key customizada).',
+          'Trecho da key Zabbix dos itens de upload/saída. Só esse termo entra na busca.',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+      })
+      .addTextInput({
+        path: 'zabbixOperStatusItemKeyword',
+        name: 'Palavra-chave status (interface)',
+        description:
+          'Trecho da key Zabbix do status operacional da porta. Só esse termo entra na busca.',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+      })
+      .addTextInput({
+        path: 'zabbixSpeedItemKeyword',
+        name: 'Palavra-chave capacidade (interface)',
+        description:
+          'Trecho da key Zabbix da velocidade/capacidade da porta. Só esse termo entra na busca.',
         defaultValue: '',
         category: ['Fonte de dados'],
       })

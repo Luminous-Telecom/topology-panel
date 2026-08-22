@@ -27,6 +27,9 @@ de topologia de rede com status vindo do Zabbix.
 ## Regras obrigatórias
 
 - Escreva toda a UI (labels, menus, hints, mensagens de erro) em **português**.
+- Inventário do ambiente (key Zabbix de RX/TX/status/capacidade, nome de host, interface,
+  equipamento, hostid, IP) **não entra no código**, rule, teste nem commit — só opções do painel e
+  API. Ver `20-security.mdc`.
 - Faça o **menor diff possível**: não refatore, renomeie nem reformate fora do escopo pedido.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).
