@@ -100,6 +100,7 @@ export function TopologyToolbar({
     alignItems: 'center',
     gap: 6,
     padding: '4px 10px',
+    lineHeight: 1,
     borderRadius: 4,
     border: '1px solid rgba(255,255,255,0.25)',
     background: warn ? 'rgba(0,0,0,0.55)' : active ? 'rgba(46,125,50,0.85)' : 'rgba(0,0,0,0.45)',

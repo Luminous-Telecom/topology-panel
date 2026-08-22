@@ -17,6 +17,7 @@ import { NodeTapStamp, resolveHostTouchTap } from '../utils/nodeTap';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
 import { LinkPoint } from '../utils/linkGeometry';
+import { nextSelectedNodeIds, nextSelectedNodeIdsOnPointerDown } from './useTopologySelection';
 import {
   buildDragGroupMembers,
   canMoveSelectedNode,
@@ -546,6 +547,13 @@ export function useTopologyDragController({
         }
         return;
       }
+      // Seta marca o host no clique também fora do editor — a mão já faz isso no pointerup.
+      if (linkFromId === null && (e.button === 0 || e.pointerType === 'touch')) {
+        setSelectedNodeIds((prev) =>
+          nextSelectedNodeIdsOnPointerDown(prev, node.id, e.ctrlKey || e.metaKey)
+        );
+        setSelectedLink(null);
+      }
       if (!editable || node.type === 'network') {
         return;
       }
@@ -554,7 +562,17 @@ export function useTopologyDragController({
       const startY = layout?.y ?? node.y;
       beginNodeDrag(e, node, startX, startY, layout?.w ?? node.width ?? 48, layout?.h ?? node.height ?? 28);
     },
-    [beginNodeDrag, beginPan, editable, nodeLayouts, scheduleHostLongPress, toolRef]
+    [
+      beginNodeDrag,
+      beginPan,
+      editable,
+      linkFromId,
+      nodeLayouts,
+      scheduleHostLongPress,
+      setSelectedLink,
+      setSelectedNodeIds,
+      toolRef,
+    ]
   );
 
   /** Redes travadas por padrão — destrave na toolbar para arrastar a caixa. */
@@ -754,6 +772,14 @@ export function useTopologyDragController({
     [onHostOpenTools, onHostPeek]
   );
 
+  const selectTappedNode = useCallback(
+    (tapNode: TopologyNode, e: React.PointerEvent) => {
+      setSelectedNodeIds((prev) => nextSelectedNodeIds(prev, tapNode.id, e.ctrlKey || e.metaKey));
+      setSelectedLink(null);
+    },
+    [setSelectedLink, setSelectedNodeIds]
+  );
+
   /**
    * Toque curto com a mão (sem arrastar). O pointer capture no wrap mata o `click` nativo, então
    * abrir submapa, seletor, cabo, peek ICMP e Tools acontece aqui.
@@ -777,6 +803,9 @@ export function useTopologyDragController({
         onLinkSelect(drag.tapLink);
         return true;
       }
+      if (tap && isHostNode(tap)) {
+        selectTappedNode(tap, e);
+      }
       if (tap && applyHostTouchTap(tap, e)) {
         return true;
       }
@@ -784,7 +813,10 @@ export function useTopologyDragController({
       if (editable && tap && tryDoubleTapEnterChildMap(tap)) {
         return true;
       }
-      return Boolean(editable && tap && tryDoubleTapOpenProperties(tap));
+      if (tap && tryDoubleTapOpenProperties(tap)) {
+        return true;
+      }
+      return Boolean(tap && isHostNode(tap));
     },
     [
       applyHostTouchTap,
@@ -793,6 +825,7 @@ export function useTopologyDragController({
       onLinkSelect,
       openDashboardPicker,
       openSubmap,
+      selectTappedNode,
       tryDoubleTapEnterChildMap,
       tryDoubleTapOpenProperties,
     ]
@@ -835,7 +868,7 @@ export function useTopologyDragController({
     [clearDragUi, map.nodes, persist, setDragPreview, storedMap]
   );
 
-  /** Clique em nó sem arraste: fecha o link em andamento ou atualiza a seleção. */
+  /** Clique em nó sem arraste: fecha o link em andamento, peek/Tools no toque ou duplo-clique. */
   const handleNodeTap = useCallback(
     (tapNode: TopologyNode, e: React.PointerEvent) => {
       if (linkFromId !== null) {
@@ -843,37 +876,17 @@ export function useTopologyDragController({
         return;
       }
       if (applyHostTouchTap(tapNode, e)) {
-        if (e.ctrlKey || e.metaKey) {
-          setSelectedNodeIds((prev) =>
-            prev.includes(tapNode.id) ? prev.filter((id) => id !== tapNode.id) : [...prev, tapNode.id]
-          );
-        } else {
-          setSelectedNodeIds([tapNode.id]);
-        }
-        setSelectedLink(null);
         return;
       }
       if (tryDoubleTapEnterChildMap(tapNode)) {
         return;
       }
-      if (tryDoubleTapOpenProperties(tapNode)) {
-        return;
-      }
-      if (e.ctrlKey || e.metaKey) {
-        setSelectedNodeIds((prev) =>
-          prev.includes(tapNode.id) ? prev.filter((id) => id !== tapNode.id) : [...prev, tapNode.id]
-        );
-      } else {
-        setSelectedNodeIds([tapNode.id]);
-      }
-      setSelectedLink(null);
+      tryDoubleTapOpenProperties(tapNode);
     },
     [
       applyHostTouchTap,
       completeLink,
       linkFromId,
-      setSelectedLink,
-      setSelectedNodeIds,
       tryDoubleTapEnterChildMap,
       tryDoubleTapOpenProperties,
     ]

@@ -23,6 +23,7 @@ import { HostProblemsMap } from '../../utils/noc/types';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
 import { HostHoverPopover } from '../HostHoverPopover';
 import {
+  HostInfoModal,
   LinkEditModal,
   LinkInterfaceSelectModal,
   NodeEditModal,
@@ -100,8 +101,18 @@ export function CanvasModals({
   onPendingLinkClose,
   onPendingLinkSave,
 }: CanvasModalsProps) {
-  const { editNode, setEditNode, pickerNode, setPickerNode, editLink, setEditLink, addHostAt, setAddHostAt } =
-    modals;
+  const {
+    editNode,
+    setEditNode,
+    viewHost,
+    setViewHost,
+    pickerNode,
+    setPickerNode,
+    editLink,
+    setEditLink,
+    addHostAt,
+    setAddHostAt,
+  } = modals;
 
   return (
     <>
@@ -117,6 +128,14 @@ export function CanvasModals({
           onSave={(payload: NodeEditSavePayload) =>
             persist(applyNodeEditSave(storedMap, editNode, payload))
           }
+        />
+      )}
+
+      {viewHost && (
+        <HostInfoModal
+          node={viewHost}
+          hostMetadata={hostMetadata}
+          onClose={() => setViewHost(null)}
         />
       )}
 
@@ -162,7 +181,7 @@ export function CanvasModals({
         />
       )}
 
-      {hostHover && !editNode && !searchOpen && !contextMenuOpen ? (
+      {hostHover && !editNode && !viewHost && !searchOpen && !contextMenuOpen ? (
         <HostHoverPopover
           node={hostHover.node}
           screenX={hostHover.screenX}

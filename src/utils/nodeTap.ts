@@ -1,5 +1,19 @@
+import { TopologyNode } from '../types';
+import { isHostNode } from './topologyNodes';
+
 /** Intervalo máximo entre dois toques no mesmo nó (pointer capture bloqueia o dblclick nativo). */
 export const NODE_DOUBLE_TAP_MS = 400;
+
+/** Duplo clique no host: propriedades no editor; ficha só leitura fora dele. */
+export function resolveHostDoubleClickAction(
+  node: TopologyNode,
+  editable: boolean
+): 'properties' | 'info' | undefined {
+  if (!isHostNode(node)) {
+    return undefined;
+  }
+  return editable ? 'properties' : 'info';
+}
 
 export type NodeTapStamp = { nodeId: string; time: number };
 

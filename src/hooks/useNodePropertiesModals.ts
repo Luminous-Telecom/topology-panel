@@ -1,7 +1,7 @@
 import { Dispatch, SetStateAction, useCallback, useRef, useState } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
-import { NODE_DOUBLE_TAP_MS } from '../utils/nodeTap';
+import { NODE_DOUBLE_TAP_MS, resolveHostDoubleClickAction } from '../utils/nodeTap';
 import { openDashboardUrl } from '../components/DashboardPickerModal';
 
 export { NODE_DOUBLE_TAP_MS } from '../utils/nodeTap';
@@ -25,6 +25,8 @@ interface UseNodePropertiesModalsParams {
 export interface NodePropertiesModalsState {
   editNode: TopologyNode | null;
   setEditNode: Dispatch<SetStateAction<TopologyNode | null>>;
+  viewHost: TopologyNode | null;
+  setViewHost: Dispatch<SetStateAction<TopologyNode | null>>;
   pickerNode: TopologyNode | null;
   setPickerNode: Dispatch<SetStateAction<TopologyNode | null>>;
   editLink: TopologyLink | null;
@@ -32,18 +34,20 @@ export interface NodePropertiesModalsState {
   addHostAt: { mapX: number; mapY: number } | null;
   setAddHostAt: Dispatch<SetStateAction<{ mapX: number; mapY: number } | null>>;
   openNodeProperties: (node: TopologyNode) => void;
+  openHostInfo: (node: TopologyNode) => void;
   openDashboardPicker: (node: TopologyNode) => void;
   tryDoubleTapOpenProperties: (tapNode: TopologyNode) => boolean;
   resetDoubleTapState: () => void;
 }
 
-/** Estado dos modais de propriedades de nó/link (editNode, pickerNode, editLink, addHostAt) e abertura via clique/duplo-tap. */
+/** Estado dos modais de propriedades, ficha do host, picker, cabo e adicionar host. */
 export function useNodePropertiesModals({
   storedMap,
   editable,
   linkFromId,
 }: UseNodePropertiesModalsParams): NodePropertiesModalsState {
   const [editNode, setEditNode] = useState<TopologyNode | null>(null);
+  const [viewHost, setViewHost] = useState<TopologyNode | null>(null);
   const [pickerNode, setPickerNode] = useState<TopologyNode | null>(null);
   const [editLink, setEditLink] = useState<TopologyLink | null>(null);
   const [addHostAt, setAddHostAt] = useState<{ mapX: number; mapY: number } | null>(null);
@@ -52,7 +56,20 @@ export function useNodePropertiesModals({
   const openNodeProperties = useCallback(
     (node: TopologyNode) => {
       const stored = findNodeById(storedMap.nodes, node.id);
+      setViewHost(null);
       setEditNode(stored ?? node);
+    },
+    [storedMap]
+  );
+
+  const openHostInfo = useCallback(
+    (node: TopologyNode) => {
+      if (!isHostNode(node)) {
+        return;
+      }
+      const stored = findNodeById(storedMap.nodes, node.id);
+      setEditNode(null);
+      setViewHost(stored ?? node);
     },
     [storedMap]
   );
@@ -75,25 +92,44 @@ export function useNodePropertiesModals({
 
   const tryDoubleTapOpenProperties = useCallback(
     (tapNode: TopologyNode): boolean => {
-      if (!editable || linkFromId !== null || !nodeSupportsProperties(tapNode)) {
+      if (linkFromId !== null) {
+        return false;
+      }
+      if (editable) {
+        if (!nodeSupportsProperties(tapNode)) {
+          return false;
+        }
+        const now = Date.now();
+        const last = lastNodeTapRef.current;
+        if (last && last.nodeId === tapNode.id && now - last.time <= NODE_DOUBLE_TAP_MS) {
+          lastNodeTapRef.current = null;
+          openNodeProperties(tapNode);
+          return true;
+        }
+        lastNodeTapRef.current = { nodeId: tapNode.id, time: now };
+        return false;
+      }
+      if (resolveHostDoubleClickAction(tapNode, false) !== 'info') {
         return false;
       }
       const now = Date.now();
       const last = lastNodeTapRef.current;
       if (last && last.nodeId === tapNode.id && now - last.time <= NODE_DOUBLE_TAP_MS) {
         lastNodeTapRef.current = null;
-        openNodeProperties(tapNode);
+        openHostInfo(tapNode);
         return true;
       }
       lastNodeTapRef.current = { nodeId: tapNode.id, time: now };
       return false;
     },
-    [editable, linkFromId, openNodeProperties]
+    [editable, linkFromId, openHostInfo, openNodeProperties]
   );
 
   return {
     editNode,
     setEditNode,
+    viewHost,
+    setViewHost,
     pickerNode,
     setPickerNode,
     editLink,
@@ -101,6 +137,7 @@ export function useNodePropertiesModals({
     addHostAt,
     setAddHostAt,
     openNodeProperties,
+    openHostInfo,
     openDashboardPicker,
     tryDoubleTapOpenProperties,
     resetDoubleTapState,

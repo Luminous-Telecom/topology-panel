@@ -20,6 +20,7 @@ import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
+import { resolveHostDoubleClickAction } from '../utils/nodeTap';
 import { shouldOpenLinkInterfaceModal } from '../utils/submapHosts';
 import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
@@ -348,6 +349,7 @@ export function TopologyCanvas({
   const {
     editNode,
     openNodeProperties,
+    openHostInfo,
     openDashboardPicker,
     tryDoubleTapOpenProperties,
     resetDoubleTapState,
@@ -1022,6 +1024,11 @@ export function TopologyCanvas({
         }
         return;
       }
+      if (resolveHostDoubleClickAction(node, false) === 'info') {
+        resetDoubleTapState();
+        openHostInfo(node);
+        return;
+      }
       if (node.type === 'submap') {
         openSubmap(node);
       }
@@ -1029,7 +1036,7 @@ export function TopologyCanvas({
         openDashboardPicker(node);
       }
     },
-    [editable, openDashboardPicker, openNodeProperties, openSubmap, resetDoubleTapState]
+    [editable, openDashboardPicker, openHostInfo, openNodeProperties, openSubmap, resetDoubleTapState]
   );
 
   const handleNodeMouseEnter = useCallback(

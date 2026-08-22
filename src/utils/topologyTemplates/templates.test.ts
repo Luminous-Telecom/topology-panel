@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyMap } from '../../types';
 import { applyTopologyBlueprint } from '../mapTemplateEdits';
-import { resolveHostDescription } from '../mapSync';
+import { resolveHostDescription, resolveHostVisibleName } from '../mapSync';
 import { BUILTIN_TOPOLOGY_BLUEPRINTS } from '../topologyTemplates/defaults';
 import {
   applyTemplateRulesToMap,
@@ -128,6 +128,29 @@ describe('buildNodeTemplateDisplay', () => {
     );
     expect(display.detailLines[0]?.endsWith('…')).toBe(true);
     expect(display.detailLines[0]?.length).toBeLessThanOrEqual(42);
+  });
+});
+
+describe('resolveHostVisibleName', () => {
+  it('prefere o nome do metadata ao rótulo do mapa', () => {
+    expect(
+      resolveHostVisibleName(
+        { id: 'h1', type: 'host', label: 'rótulo', zabbixHost: '10.0.0.1', subtitle: '10.0.0.1', x: 0, y: 0 },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1' } }
+      )
+    ).toBe('host-a');
+  });
+
+  it('usa o rótulo quando não há nome no metadata', () => {
+    expect(
+      resolveHostVisibleName({ id: 'h1', type: 'host', label: 'host-a', zabbixHost: '10.0.0.1', x: 0, y: 0 })
+    ).toBe('host-a');
+  });
+
+  it('não usa o id do nó nem IP como nome', () => {
+    expect(
+      resolveHostVisibleName({ id: 'h1', type: 'host', zabbixHost: '10.0.0.1', subtitle: '10.0.0.1', x: 0, y: 0 })
+    ).toBeUndefined();
   });
 });
 

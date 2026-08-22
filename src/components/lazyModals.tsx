@@ -28,6 +28,9 @@ const LazyZabbixHostPickerModal = lazy(() =>
   import('./AddZabbixHostModal').then((m) => ({ default: m.ZabbixHostPickerModal }))
 );
 const LazyPingModal = lazy(() => import('./PingModal').then((m) => ({ default: m.PingModal })));
+const LazyHostInfoModal = lazy(() =>
+  import('./HostInfoModal').then((m) => ({ default: m.HostInfoModal }))
+);
 const LazyLinkEditModal = lazy(() =>
   import('./LinkEditModal').then((m) => ({ default: m.LinkEditModal }))
 );
@@ -86,6 +89,14 @@ export function PingModal(props: ComponentProps<typeof LazyPingModal>): JSX.Elem
   return (
     <Suspense fallback={null}>
       <LazyPingModal {...props} />
+    </Suspense>
+  );
+}
+
+export function HostInfoModal(props: ComponentProps<typeof LazyHostInfoModal>): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyHostInfoModal {...props} />
     </Suspense>
   );
 }

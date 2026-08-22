@@ -297,6 +297,27 @@ export function findQueryMetaForNode(node: TopologyNode, meta: HostMetadataMap):
   return undefined;
 }
 
+/** Nome visível do host (Zabbix, depois rótulo do mapa). Sem fallback para id. */
+export function resolveHostVisibleName(
+  node: TopologyNode,
+  metadata?: HostMetadataMap
+): string | undefined {
+  const meta = metadata ? findQueryMetaForNode(node, metadata) : undefined;
+  const fromMeta = meta?.name?.trim();
+  if (fromMeta) {
+    return fromMeta;
+  }
+  const label = node.label?.trim();
+  if (label) {
+    return label;
+  }
+  const host = node.zabbixHost?.trim();
+  if (host && !isIpv4(host)) {
+    return host;
+  }
+  return undefined;
+}
+
 /** Descrição do host no Zabbix — omitida quando vazia ou igual ao nome visível. */
 export function resolveHostDescription(
   node: TopologyNode,

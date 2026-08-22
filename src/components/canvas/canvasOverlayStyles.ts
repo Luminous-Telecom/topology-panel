@@ -9,6 +9,8 @@ import { MAP_NATIVE_SCROLLBAR_PX } from '../../utils/mapBounds';
 
 /** Oculta rótulos longos dos botões da toolbar em telas compactas (mantém ícones). */
 export const toolbarLabelStyle = css`
+  line-height: 1;
+
   ${MEDIA_COMPACT} {
     display: none;
   }
@@ -16,6 +18,14 @@ export const toolbarLabelStyle = css`
 
 export const toolbarOverlayButtonStyle = css`
   pointer-events: auto;
+  box-sizing: border-box;
+  line-height: 1;
+  min-height: 26px;
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+  }
 
   ${MEDIA_COMPACT} {
     min-height: ${COMPACT_TOUCH_MIN}px;
