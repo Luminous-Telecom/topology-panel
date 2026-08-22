@@ -118,7 +118,7 @@ interface Props {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
-  /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). */
+  /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). Legenda e lista de alertas continuam. */
   hideOverlayControls?: boolean;
   /** View salva do mapa ativo (raiz ou filho na navegação hierárquica). */
   savedView?: TopologyView;
@@ -334,15 +334,14 @@ export function TopologyCanvas({
   useEffect(() => {
     setNocModeLocalOverride(undefined);
   }, [options.nocMode]);
-  const effectiveNocMode =
-    Boolean(hideOverlayControls) || (nocModeLocalOverride ?? Boolean(options.nocMode));
+  const effectiveNocMode = nocModeLocalOverride ?? Boolean(options.nocMode);
   const handleToggleNocMode = useCallback(() => {
     const current = nocModeLocalOverride ?? Boolean(options.nocMode);
     const next = !current;
     setNocModeLocalOverride(next);
     onNocModeChange?.(next);
   }, [nocModeLocalOverride, onNocModeChange, options.nocMode]);
-  const viewEditable = editable && !effectiveNocMode;
+  const viewEditable = editable && !effectiveNocMode && !hideOverlayControls;
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const {
     editNode,
@@ -1303,7 +1302,7 @@ export function TopologyCanvas({
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 
-      {!hideOverlayControls && !effectiveNocMode && showHostAlertList ? (
+      {!effectiveNocMode && showHostAlertList ? (
         <TopologyHostAlertList
           entries={alertHostEntries}
           colorOffline={resolveColor(options.colorOffline)}

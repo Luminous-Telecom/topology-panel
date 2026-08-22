@@ -47,10 +47,10 @@ export const overlayFilterChipStyle = css`
 `;
 
 export const overlayPanelCompactWidth = css`
-  width: min(190px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+  width: min(300px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
 
   ${MEDIA_COMPACT} {
-    width: min(220px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
+    width: min(340px, calc(100% - ${CANVAS_EDGE_GAP * 2}px));
     max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
   }
 `;

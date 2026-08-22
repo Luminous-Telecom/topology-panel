@@ -226,3 +226,30 @@ describe('TopologyCanvas — modo NOC', () => {
     expect(container.querySelector('g[data-node-id="c3"] rect')?.getAttribute('stroke')).toBe('#4FC3F7');
   });
 });
+
+describe('TopologyCanvas — quiosque / playlist', () => {
+  it('mostra a lista de hosts com alerta mesmo com a toolbar oculta', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1', zabbixHost: 'host-a' })],
+    });
+    const options = { ...defaultOptions(), map, showHostAlertList: true };
+    const hostDisplayByRefId: Record<string, HostDisplayMap> = {
+      A: { 'host-a': { value: 0, status: 'offline' } },
+    };
+
+    const { getByText, queryByTitle } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={hostDisplayByRefId}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+      />
+    );
+
+    expect(getByText('Hosts com alerta (1)')).toBeInTheDocument();
+    expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
+  });
+});
