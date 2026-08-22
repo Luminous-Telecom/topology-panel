@@ -19,7 +19,8 @@ import { NodeLayout } from '../../utils/nodeLayout';
 import { isHostNode } from '../../utils/topologyNodes';
 import { lookupHostDisplay } from '../../utils/queryHosts';
 import { sameStructure } from '../../utils/structuralIdentity';
-import { HostNodeBadge } from '../../utils/noc/types';
+import { resolveHostProblemSummary } from '../../utils/noc/topologyFilters';
+import { HostNodeBadge, HostProblemsMap } from '../../utils/noc/types';
 import { canvasStyles } from './canvasStyles';
 import { HostNodeBadgeLayer } from './HostNodeBadgeLayer';
 
@@ -32,6 +33,7 @@ interface HostNodeShapeProps {
   queryReady?: boolean;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
+  hostProblems?: HostProblemsMap;
   resolveColor: ColorResolver;
   badges?: HostNodeBadge[];
   dimmed?: boolean;
@@ -63,6 +65,7 @@ function HostNodeShapeComponent({
   queryReady,
   hostDisplay,
   hostMetadata,
+  hostProblems,
   resolveColor,
   badges,
   dimmed = false,
@@ -91,7 +94,8 @@ function HostNodeShapeComponent({
     queryReady,
     hostMetadata,
     hostDisplay,
-    resolveColor
+    resolveColor,
+    hostProblems
   );
   const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
   const labelColor =
@@ -284,6 +288,19 @@ function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapePr
   );
 }
 
+function sameResolvedHostProblems(prev: HostNodeShapeProps, next: HostNodeShapeProps): boolean {
+  if (prev.hostProblems === next.hostProblems) {
+    return true;
+  }
+  if (!isHostNode(next.node)) {
+    return true;
+  }
+  return sameStructure(
+    resolveHostProblemSummary(next.node, next.hostMetadata, next.hostProblems),
+    resolveHostProblemSummary(prev.node, prev.hostMetadata, prev.hostProblems)
+  );
+}
+
 /**
  * Só redesenha quando alguma prop do próprio nó muda.
  *
@@ -291,8 +308,8 @@ function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapePr
  * os nós do mapa. Depende de `layout` e `badges` terem identidade estável — ver
  * `useNodeLayouts` e `buildHostNodeBadgeMap`.
  *
- * Toda prop é comparada por identidade (prop nova entra na conta sozinha); só `hostDisplay`, que é
- * do mapa inteiro, é comparada pelo recorte que este nó usa.
+ * Toda prop é comparada por identidade (prop nova entra na conta sozinha); só `hostDisplay` e
+ * `hostProblems`, que são do mapa inteiro, são comparados pelo recorte que este nó usa.
  */
 export const HostNodeShape = React.memo(HostNodeShapeComponent, (prev, next) => {
   const keys = Object.keys(next) as Array<keyof HostNodeShapeProps>;
@@ -300,12 +317,12 @@ export const HostNodeShape = React.memo(HostNodeShapeComponent, (prev, next) => 
     return false;
   }
   for (const key of keys) {
-    if (key === 'hostDisplay') {
+    if (key === 'hostDisplay' || key === 'hostProblems') {
       continue;
     }
     if (!Object.is(prev[key], next[key])) {
       return false;
     }
   }
-  return sameResolvedHostDisplay(prev, next);
+  return sameResolvedHostDisplay(prev, next) && sameResolvedHostProblems(prev, next);
 });

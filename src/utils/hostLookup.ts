@@ -70,6 +70,26 @@ export function resolveHostLookupKey(
   return name || label || undefined;
 }
 
+/** Metadata só dos hosts desenhados nos mapas (raiz + filhos) — busca de problemas Zabbix. */
+export function collectHostMetadataForMaps(
+  maps: readonly TopologyMap[],
+  hostMetadata: HostMetadataMap
+): HostMetadataMap {
+  const subset: HostMetadataMap = {};
+  for (const map of maps) {
+    for (const node of map.nodes ?? []) {
+      if (!isHostNode(node)) {
+        continue;
+      }
+      const key = resolveHostLookupKey(node, hostMetadata);
+      if (key && hostMetadata[key]) {
+        subset[key] = hostMetadata[key];
+      }
+    }
+  }
+  return subset;
+}
+
 export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostMetadataMap): string[] {
   const zabbixHost = ref.zabbixHost?.trim();
   const label = ref.label?.trim();

@@ -80,7 +80,7 @@ interface Props {
   onFocusHost: (entry: HostAlertListEntry) => void;
 }
 
-/** Lista de hosts offline ou em alerta no canto inferior esquerdo do mapa. */
+/** Lista de hosts offline, em alerta da Query ou com problema Zabbix no canto inferior esquerdo. */
 function TopologyHostAlertListComponent({
   entries,
   colorOffline,

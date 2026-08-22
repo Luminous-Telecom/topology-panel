@@ -69,7 +69,7 @@ describe('topologyFilters', () => {
     expect(summary.problemCount).toBe(2);
   });
 
-  it('lista hosts offline ou em alerta (status da Query)', () => {
+  it('lista hosts offline, em alerta da Query ou com problema Zabbix', () => {
     const extendedMap: TopologyMap = {
       ...map,
       nodes: [
@@ -95,18 +95,34 @@ describe('topologyFilters', () => {
       options: { linkUtilThresholdHigh: 75 },
     };
     const entries = collectAlertHostEntries(ctx);
-    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'core']);
+    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'core', 'sw']);
     expect(entries[0]?.reason).toBe('offline');
     expect(entries[1]?.reason).toBe('alert');
+    expect(entries[2]?.reason).toBe('alert');
   });
 
-  it('não lista host online só por problemas Zabbix na lista de alertas', () => {
+  it('lista host online com problemas Zabbix na lista de alertas', () => {
     const ctx = {
       map,
       hostDisplay: {
         '10.0.0.2': { value: 1, status: 'online' as const },
       },
       hostProblems: { hostid2: { count: 3, maxSeverity: 4 } },
+      hostMetadata: { '10.0.0.2': { name: 'Core', hostid: 'hostid2' } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntries(ctx);
+    expect(entries.map((entry) => entry.nodeId)).toEqual(['core']);
+    expect(entries[0]?.reason).toBe('alert');
+  });
+
+  it('não lista problema Zabbix abaixo de Warning', () => {
+    const ctx = {
+      map,
+      hostDisplay: {
+        '10.0.0.2': { value: 1, status: 'online' as const },
+      },
+      hostProblems: { hostid2: { count: 1, maxSeverity: 1 } },
       hostMetadata: { '10.0.0.2': { name: 'Core', hostid: 'hostid2' } },
       options: { linkUtilThresholdHigh: 75 },
     };
@@ -135,6 +151,30 @@ describe('topologyFilters', () => {
     );
     expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
     expect(entries[0]?.reason).toBe('offline');
+  });
+
+  it('lista de alertas agrega problema Zabbix de mapa filho fora do mapa aberto', () => {
+    const child: TopologyMap = {
+      width: 800,
+      height: 600,
+      nodes: [{ id: 'sw1', type: 'host', icon: 'switch_managed', zabbixHost: '10.0.0.9', x: 0, y: 0 }],
+      links: [],
+    };
+    const ctx = {
+      hostDisplay: { '10.0.0.9': { value: 1, status: 'online' as const } },
+      hostMetadata: { '10.0.0.9': { name: 'SW-01', hostid: 'hostid9' } },
+      hostProblems: { hostid9: { count: 1, maxSeverity: 2, names: ['Interface down'] } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntriesFromMaps(
+      [
+        { mapId: ROOT_MAP_ID, mapLabel: 'Início', map },
+        { mapId: 'apodi', mapLabel: 'Apodi', map: child },
+      ],
+      ctx
+    );
+    expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
+    expect(entries[0]?.reason).toBe('alert');
   });
 
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {

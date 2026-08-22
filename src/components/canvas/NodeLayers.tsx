@@ -169,6 +169,7 @@ function HostNodesLayerComponent({
             queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
+            hostProblems={filterContext?.hostProblems}
             resolveColor={resolveColor}
             badges={badges}
             dimmed={dimmed}

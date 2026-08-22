@@ -18,6 +18,7 @@ import { updateLinkProps } from '../../utils/mapLinkEdits';
 import { BulkSubmapLayoutSize } from '../../utils/mapBulkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
+import { HostProblemsMap } from '../../utils/noc/types';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
 import { HostHoverPopover } from '../HostHoverPopover';
 import {
@@ -50,6 +51,7 @@ interface CanvasModalsProps {
   queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
+  hostProblems?: HostProblemsMap;
   queryReady?: boolean;
   pingTarget: PingTarget | null;
   setPingTarget: (target: PingTarget | null) => void;
@@ -84,6 +86,7 @@ export function CanvasModals({
   queryData,
   hostMetadata,
   hostDisplay,
+  hostProblems,
   queryReady,
   pingTarget,
   setPingTarget,
@@ -164,6 +167,7 @@ export function CanvasModals({
           queryData={queryData}
           hostMetadata={hostMetadata}
           hostDisplay={hostDisplay}
+          hostProblems={hostProblems}
           options={options}
           queryReady={queryReady}
           zabbixDatasourceUid={zabbixDatasourceUid}

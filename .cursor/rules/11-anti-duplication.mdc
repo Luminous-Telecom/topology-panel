@@ -37,7 +37,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Série temporal do gráfico de hover | `fetchHostHoverSeriesFromZabbix` em `utils/zabbixApi.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` em `utils/mapSync.ts` |
-| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` |
+| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostMetadataForMaps` para problemas) |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |

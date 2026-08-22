@@ -4,7 +4,6 @@ import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
-  HostMetadataMap,
   TopologyMap,
   TopologyPanelOptions,
   TopologyView,
@@ -12,11 +11,10 @@ import {
   ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   defaultOptions,
 } from '../types';
-import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { collectHostMetadataForMaps, enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
-import { isHostNode } from '../utils/topologyNodes';
-import { resolveHostLookupKey } from '../utils/hostLookup';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
 import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
 import {
@@ -356,18 +354,9 @@ export function TopologyPanel({
     if (!queryReady) {
       return {};
     }
-    const subset: HostMetadataMap = {};
-    for (const node of activeStoredMap.nodes) {
-      if (!isHostNode(node)) {
-        continue;
-      }
-      const key = resolveHostLookupKey(node, hostMetadata);
-      if (key && hostMetadata[key]) {
-        subset[key] = hostMetadata[key];
-      }
-    }
-    return subset;
-  }, [queryReady, activeStoredMap.nodes, hostMetadata]);
+    const maps = [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))];
+    return collectHostMetadataForMaps(maps, hostMetadata);
+  }, [queryReady, resolvedOptions.map, resolvedOptions.childMaps, hostMetadata]);
 
   const applyActiveMap = useCallback(
     (map: TopologyMap) => {

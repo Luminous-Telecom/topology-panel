@@ -33,7 +33,10 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
 - A cor/status do mapa vem do último ponto da chave de status: `item.get` e, se houver ponto mais
   novo, `history.get` curto em `fetchZabbixDirectSnapshot` — o `lastvalue` do icmppingsec pode
   ficar no último RTT com sucesso enquanto o histórico já mostra Down/Up.
-- Fora do caminho do `QueryIndex`, nunca colora o mapa nem calcule status a partir de chamada de API.
+- Problemas Zabbix (Warning+, via `useZabbixHostProblems`) pintam o host com `colorAlert` e entram
+  na lista de alertas. Offline da Query continua vencendo. Não recalcule isso com outra chamada.
+- Fora do caminho do `QueryIndex` e de `hostProblems`, nunca colora o mapa nem calcule status a
+  partir de chamada de API.
 - O painel declara `skipDataQuery` em `plugin.json`: não há aba Query.
 
 ## API Zabbix — só nas exceções autorizadas
@@ -44,7 +47,7 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*` + `history.get` do último ponto), para o ping interativo |
 | `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote com grupos/tags), IP e regras de template |
-| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` em lote), badges NOC — não altera cor/status do mapa |
+| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` + `name`), badges, lista de todos os mapas, cor e hover |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` de interfaces), inventário para seletor de link |
 | `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get` + `history.get` do último ponto), métricas voláteis de links (RX/TX/status) |
 | `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectSnapshot` (`hostgroup.get` + `host.get` + `item.get` da chave de status + `history.get` só do último ponto), fonte do mapa |

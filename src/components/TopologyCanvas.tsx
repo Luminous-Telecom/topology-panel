@@ -118,7 +118,7 @@ interface Props {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
-  /** Esconde toolbar/nav do mapa (lista de reprodução / kiosk). Legenda e lista de alertas continuam. */
+  /** Esconde a toolbar (lista de reprodução / kiosk). Legenda, alertas e navegação de submapa continuam. */
   hideOverlayControls?: boolean;
   /** View salva do mapa ativo (raiz ou filho na navegação hierárquica). */
   savedView?: TopologyView;
@@ -1157,6 +1157,7 @@ export function TopologyCanvas({
     queryReady,
     hostMetadata,
     hostDisplay,
+    hostProblems,
     resolveColor,
   });
 
@@ -1460,6 +1461,7 @@ export function TopologyCanvas({
         queryData={queryData}
         hostMetadata={hostMetadata}
         hostDisplay={hostDisplay}
+        hostProblems={hostProblems}
         queryReady={queryReady}
         pingTarget={pingTarget}
         setPingTarget={setPingTarget}

@@ -11,7 +11,7 @@ import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
-import { HostProblemsMap, TopologyMapFilterId, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
+import { HostProblemSummary, HostProblemsMap, TopologyMapFilterId, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
 
 export interface TopologyFilterContext {
   map: TopologyMap;
@@ -36,7 +36,7 @@ export function resolveHostProblemSummary(
   node: TopologyNode,
   hostMetadata?: HostMetadataMap,
   hostProblems?: HostProblemsMap
-): { count: number; maxSeverity: number } | undefined {
+): HostProblemSummary | undefined {
   if (!hostProblems) {
     return undefined;
   }
@@ -240,7 +240,7 @@ function hostDisplayLabel(node: TopologyNode): string {
   return node.id;
 }
 
-/** Hosts offline ou em alerta (status da Query) — lista do canto inferior. */
+/** Hosts offline, em alerta da Query ou com problema Zabbix (Warning+) — lista do canto inferior. */
 function collectAlertHostEntriesForMap(
   mapId: string,
   mapLabel: string,
@@ -254,11 +254,12 @@ function collectAlertHostEntriesForMap(
     }
 
     const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
+    const hasZabbixProblem = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
 
     let reason: HostAlertListReason | null = null;
     if (status === 'offline') {
       reason = 'offline';
-    } else if (status === 'alert') {
+    } else if (status === 'alert' || hasZabbixProblem) {
       reason = 'alert';
     }
 
@@ -290,7 +291,7 @@ export function collectAlertHostEntries(ctx: TopologyFilterContext): HostAlertLi
 }
 
 /**
- * Hosts offline ou em alerta em todos os mapas do painel (raiz + filhos) — só status da Query.
+ * Hosts offline, em alerta da Query ou com problema Zabbix em todos os mapas do painel.
  */
 export function collectAlertHostEntriesFromMaps(
   maps: readonly NocTopologyMapScope[],

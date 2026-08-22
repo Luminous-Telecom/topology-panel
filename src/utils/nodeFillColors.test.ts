@@ -47,14 +47,26 @@ describe('hostNodeFill', () => {
     ).toBe(options.hostTypeColors?.camera);
   });
 
-  it('problemas Zabbix não pintam host online com colorAlert', () => {
+  it('problemas Zabbix pintam host online com colorAlert', () => {
     const display: HostDisplayMap = {
       'rb-01': { status: 'online', color: options.colorOnline, value: 1 },
     };
     const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
-    expect(hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity)).toBe(
-      options.colorOnline
-    );
+    const problems = { hid1: { count: 2, maxSeverity: 4 } };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
+    ).toBe(options.colorAlert);
+  });
+
+  it('offline vence problema Zabbix na cor do host', () => {
+    const display: HostDisplayMap = {
+      'rb-01': { status: 'offline', color: '#ff0000', value: 0 },
+    };
+    const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
+    const problems = { hid1: { count: 2, maxSeverity: 4 } };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
+    ).toBe(options.colorOffline);
   });
 
   it('prefere a cor manual do nó estático', () => {

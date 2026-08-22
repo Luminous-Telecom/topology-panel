@@ -20,6 +20,8 @@ export const TOPOLOGY_FILTER_LABELS: Record<TopologyMapFilterId, string> = {
 export interface HostProblemSummary {
   count: number;
   maxSeverity: number;
+  /** Nomes dos problemas ativos (Warning+), o mais grave primeiro. */
+  names?: string[];
 }
 
 export type HostProblemsMap = Record<string, HostProblemSummary>;

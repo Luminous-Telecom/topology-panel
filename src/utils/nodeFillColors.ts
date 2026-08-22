@@ -8,6 +8,8 @@ import {
 import { RegionHostStats, regionFillColor } from './networkStats';
 import { hostTypeFillColor } from './panelColors';
 import { lookupHostDisplay } from './queryHosts';
+import { resolveHostProblemSummary } from './noc/topologyFilters';
+import { HostProblemsMap } from './noc/types';
 
 /** Converte cor de opção do painel (hex, rgb ou nome de tema) em cor final. */
 export type ColorResolver = (color?: unknown) => string;
@@ -26,16 +28,17 @@ function resolveEffectiveHostStatus(
 }
 
 /**
- * Cor de preenchimento de um host a partir do status vindo da Query.
+ * Cor de preenchimento de um host: status da Query e problemas Zabbix (Warning+).
  *
- * Problemas Zabbix ficam em badges/NOC. Offline usa `colorOffline`; alerta só via Query.
+ * Offline (`colorOffline`) vence alerta. Alerta da Query ou problema Zabbix usam `colorAlert`.
  */
 export function hostNodeFill(
   node: TopologyNode,
   options: TopologyPanelOptions,
   hostMetadata?: HostMetadataMap,
   hostDisplay?: HostDisplayMap,
-  resolveMappedColor?: (color?: unknown) => string | undefined
+  resolveMappedColor?: (color?: unknown) => string | undefined,
+  hostProblems?: HostProblemsMap
 ): string {
   if (node.type === 'submap') {
     return options.colorSubmap;
@@ -55,21 +58,22 @@ export function hostNodeFill(
     label: node.label,
   };
   const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  if (!mapped?.color) {
-    return options.colorUnknown;
-  }
-  const status = resolveEffectiveHostStatus(node, mapped.status);
+  const status = resolveEffectiveHostStatus(node, mapped?.status);
+  const hasZabbixProblem = resolveHostProblemSummary(node, hostMetadata, hostProblems) !== undefined;
   const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
-  if (status === 'online' && typeFill) {
-    return typeFill;
-  }
-  if (status === 'alert') {
-    const alertColor = resolveMappedColor?.(options.colorAlert);
-    return alertColor ?? options.colorAlert;
-  }
   if (status === 'offline') {
     const offlineColor = resolveMappedColor?.(options.colorOffline);
     return offlineColor ?? options.colorOffline;
+  }
+  if (status === 'alert' || hasZabbixProblem) {
+    const alertColor = resolveMappedColor?.(options.colorAlert);
+    return alertColor ?? options.colorAlert;
+  }
+  if (!mapped?.color) {
+    return options.colorUnknown;
+  }
+  if (status === 'online' && typeFill) {
+    return typeFill;
   }
   const color = resolveMappedColor?.(mapped.color);
   if (!color) {
@@ -106,13 +110,14 @@ export function resolveNodeFill(
   queryReady: boolean | undefined,
   hostMetadata: HostMetadataMap | undefined,
   hostDisplay: HostDisplayMap | undefined,
-  resolveColor: ColorResolver
+  resolveColor: ColorResolver,
+  hostProblems?: HostProblemsMap
 ): string {
   const fillOverride =
     node.type === 'submap' ? regionFillColor(region, options, 'submap', queryReady) : undefined;
   const fillRaw =
     fillOverride ??
     (node.fillColor ? node.fillColor : undefined) ??
-    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor);
+    hostNodeFill(node, options, hostMetadata, hostDisplay, resolveColor, hostProblems);
   return resolveColor(fillRaw);
 }

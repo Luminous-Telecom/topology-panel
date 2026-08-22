@@ -923,6 +923,7 @@ export async function fetchZabbixHostInterfaceItems(
 interface ZabbixProblemRow {
   eventid?: string;
   severity?: string;
+  name?: string;
 }
 
 interface ZabbixProblemEventRow {
@@ -930,8 +931,37 @@ interface ZabbixProblemEventRow {
   hosts?: Array<{ hostid?: string }>;
 }
 
+function rememberProblemName(
+  byHost: Map<string, Map<string, number>>,
+  hostid: string,
+  name: string | undefined,
+  severity: number
+): void {
+  if (!name) {
+    return;
+  }
+  let byName = byHost.get(hostid);
+  if (!byName) {
+    byName = new Map();
+    byHost.set(hostid, byName);
+  }
+  const prev = byName.get(name) ?? 0;
+  if (severity > prev) {
+    byName.set(name, severity);
+  }
+}
+
+function sortedProblemNames(byName: Map<string, number> | undefined): string[] | undefined {
+  if (!byName?.size) {
+    return undefined;
+  }
+  return [...byName.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'))
+    .map(([name]) => name);
+}
+
 /**
- * Problemas ativos no Zabbix por host — badges e filtro NOC (não altera lista ALERTA nem cor do mapa).
+ * Problemas ativos no Zabbix por host — badges, lista de alertas, cor do mapa e hover (Warning+).
  */
 export async function fetchZabbixHostProblems(
   datasourceUid: string,
@@ -943,12 +973,13 @@ export async function fetchZabbixHostProblems(
   }
 
   const summary: HostProblemsMap = {};
+  const nameSeverityByHost = new Map<string, Map<string, number>>();
 
   for (const batch of chunk(ids, BATCH_SIZE)) {
     try {
       const problems = await zabbixCall<ZabbixProblemRow[]>(datasourceUid, 'problem.get', {
         hostids: batch,
-        output: ['eventid', 'severity'],
+        output: ['eventid', 'severity', 'name'],
         suppressed: false,
       });
 
@@ -960,6 +991,7 @@ export async function fetchZabbixHostProblems(
       }
 
       const severityByEvent = new Map<string, number>();
+      const nameByEvent = new Map<string, string>();
       for (const problem of problems ?? []) {
         const eventid = asZabbixId(problem.eventid);
         if (!eventid) {
@@ -967,6 +999,10 @@ export async function fetchZabbixHostProblems(
         }
         const severity = Number(problem.severity);
         severityByEvent.set(eventid, Number.isFinite(severity) ? severity : 0);
+        const name = problem.name?.trim();
+        if (name) {
+          nameByEvent.set(eventid, name);
+        }
       }
 
       const events = await zabbixCall<ZabbixProblemEventRow[]>(datasourceUid, 'event.get', {
@@ -984,6 +1020,7 @@ export async function fetchZabbixHostProblems(
         if (sev < ZABBIX_PROBLEM_MIN_SEVERITY) {
           continue;
         }
+        const problemName = nameByEvent.get(eventid);
         for (const host of event.hosts ?? []) {
           const hostid = asZabbixId(host.hostid);
           if (!hostid) {
@@ -994,10 +1031,18 @@ export async function fetchZabbixHostProblems(
             count: (prev?.count ?? 0) + 1,
             maxSeverity: Math.max(prev?.maxSeverity ?? 0, sev),
           };
+          rememberProblemName(nameSeverityByHost, hostid, problemName, sev);
         }
       }
     } catch {
       /* lote sem resposta */
+    }
+  }
+
+  for (const [hostid, current] of Object.entries(summary)) {
+    const names = sortedProblemNames(nameSeverityByHost.get(hostid));
+    if (names) {
+      current.names = names;
     }
   }
 

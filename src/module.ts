@@ -217,7 +217,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'showHostAlertList',
         name: 'Lista de hosts com alerta',
-        description: 'Hosts offline ou em alerta no canto inferior esquerdo do mapa',
+        description: 'Hosts offline, em alerta da Query ou com problema Zabbix no canto inferior esquerdo',
         defaultValue: true,
         category: ['Interação'],
       })
@@ -264,7 +264,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addColorPicker({
         path: 'colorAlert',
         name: 'Cor alerta',
-        description: 'Hosts com valor mapeado como alerta',
+        description: 'Hosts com valor mapeado como alerta ou com problema Zabbix (Warning+)',
         defaultValue: '#ff7300',
         category: ['Aparência'],
       })

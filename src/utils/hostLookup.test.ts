@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { enrichHostDisplayFromMap, preferHostDisplayInfo } from './hostLookup';
+import { collectHostMetadataForMaps, enrichHostDisplayFromMap, preferHostDisplayInfo } from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
+import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('preferHostDisplayInfo', () => {
   const offline: HostDisplayInfo = { value: 0, status: 'offline', color: '#f00' };
@@ -113,5 +114,25 @@ describe('enrichHostDisplayFromMap', () => {
       map
     );
     expect(enriched['100.126.32.6']?.status).toBe('offline');
+  });
+});
+
+describe('collectHostMetadataForMaps', () => {
+  it('junta metadata dos hosts do mapa raiz e dos filhos', () => {
+    const root = emptyMap({
+      nodes: [hostNode({ id: 'h1', zabbixHost: 'host-a' })],
+    });
+    const child = emptyMap({
+      nodes: [hostNode({ id: 'h2', zabbixHost: 'host-b' })],
+    });
+    const metadata = {
+      'host-a': { name: 'host-a', hostid: '1001' },
+      'host-b': { name: 'host-b', hostid: '1002' },
+      'host-c': { name: 'host-c', hostid: '1003' },
+    };
+    const subset = collectHostMetadataForMaps([root, child], metadata);
+    expect(Object.keys(subset).sort()).toEqual(['host-a', 'host-b']);
+    expect(subset['host-a']?.hostid).toBe('1001');
+    expect(subset['host-b']?.hostid).toBe('1002');
   });
 });

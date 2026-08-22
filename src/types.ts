@@ -318,7 +318,7 @@ export interface TopologyPanelOptions {
   colorOnline: string;
   /** Host offline (mapeamento de valor) */
   colorOffline: string;
-  /** Host em alerta (mapeamento de valor) */
+  /** Host em alerta (mapeamento de valor ou problema Zabbix) */
   colorAlert: string;
   /** Host sem cor de status */
   colorUnknown: string;
@@ -412,7 +412,7 @@ export interface TopologyPanelOptions {
   toolPassword?: string;
   /** Exibir legenda de cores no mapa */
   showLegend?: boolean;
-  /** Lista de hosts offline ou em alerta no canto inferior esquerdo */
+  /** Lista de hosts offline, em alerta da Query ou com problema Zabbix */
   showHostAlertList?: boolean;
   /** Mini mapa de visão geral (arrastar para navegar) */
   showMinimap?: boolean;

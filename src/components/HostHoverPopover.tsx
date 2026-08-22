@@ -19,7 +19,22 @@ import {
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
 import { resolveMappingLabel } from '../utils/statusMapping';
+import { resolveHostProblemSummary } from '../utils/noc/topologyFilters';
+import { HostProblemsMap } from '../utils/noc/types';
 import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle } from './overlayChrome';
+
+const HOVER_PROBLEM_NAME_LIMIT = 5;
+
+function hoverProblemNames(names: string[] | undefined): { visible: string[]; hidden: number } {
+  const cleaned = (names ?? []).map((name) => name.trim()).filter(Boolean);
+  if (cleaned.length <= HOVER_PROBLEM_NAME_LIMIT) {
+    return { visible: cleaned, hidden: 0 };
+  }
+  return {
+    visible: cleaned.slice(0, HOVER_PROBLEM_NAME_LIMIT),
+    hidden: cleaned.length - HOVER_PROBLEM_NAME_LIMIT,
+  };
+}
 
 interface Props {
   node: TopologyNode;
@@ -28,6 +43,7 @@ interface Props {
   queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
+  hostProblems?: HostProblemsMap;
   options: TopologyPanelOptions;
   queryReady?: boolean;
   zabbixDatasourceUid?: string;
@@ -146,6 +162,7 @@ export function HostHoverPopover({
   queryData,
   hostMetadata,
   hostDisplay,
+  hostProblems,
   options,
   queryReady,
   zabbixDatasourceUid,
@@ -184,6 +201,8 @@ export function HostHoverPopover({
   const statusLabel = lastPoint
     ? resolveMappingLabel(lastPoint.value, options.statusValueMappings)
     : display?.text;
+  const problemSummary = resolveHostProblemSummary(node, hostMetadata, hostProblems);
+  const problems = hoverProblemNames(problemSummary?.names);
 
   useLayoutEffect(() => {
     const el = popoverRef.current;
@@ -203,7 +222,7 @@ export function HostHoverPopover({
     left = Math.max(margin, left);
     top = Math.max(margin, top);
     setPosition({ left, top });
-  }, [screenX, screenY, series, display?.text]);
+  }, [screenX, screenY, series, display?.text, problems.visible.length, problems.hidden]);
 
   const panelStyle = css`
     position: fixed;
@@ -219,6 +238,18 @@ export function HostHoverPopover({
     margin-top: 6px;
     color: #ef9a9a;
     font-size: 11px;
+  `;
+
+  const problemsWrapStyle = css`
+    margin-top: 8px;
+  `;
+
+  const problemNameStyle = css`
+    margin-top: 2px;
+    color: ${options.colorAlert};
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   `;
 
   function formatClock(ts: number): string {
@@ -263,6 +294,23 @@ export function HostHoverPopover({
           Sem histórico ICMP no período (icmppingsec / icmppingloss)
         </div>
       )}
+      {problems.visible.length > 0 ? (
+        <div className={problemsWrapStyle}>
+          <div className={overlayMutedStyle}>
+            {problems.visible.length + problems.hidden === 1
+              ? 'Problema ativo'
+              : `Problemas ativos (${problems.visible.length + problems.hidden})`}
+          </div>
+          {problems.visible.map((name, idx) => (
+            <div key={`${idx}:${name}`} className={problemNameStyle}>
+              {name}
+            </div>
+          ))}
+          {problems.hidden > 0 ? (
+            <div className={overlayMutedStyle}>e mais {problems.hidden}</div>
+          ) : null}
+        </div>
+      ) : null}
     </div>,
     document.body
   );
