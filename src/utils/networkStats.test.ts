@@ -137,7 +137,7 @@ describe('mergeRegionTrafficStats', () => {
 });
 
 describe('buildRegionStatsMap — submapa com mapa interno', () => {
-  it('agrega status dos hosts do childMaps (alerta só via Query)', () => {
+  it('agrega status dos hosts do childMaps', () => {
     const nodes: TopologyNode[] = [
       {
         id: 'sm1',
@@ -183,6 +183,59 @@ describe('buildRegionStatsMap — submapa com mapa interno', () => {
       online: 2,
       unknown: 0,
     });
+  });
+
+  it('conta problema Zabbix de host interno como alerta do submapa', () => {
+    const nodes: TopologyNode[] = [
+      {
+        id: 'sm1',
+        type: 'submap',
+        label: 'SEPS',
+        x: 0,
+        y: 0,
+        submapChildMapId: 'seps',
+      },
+    ];
+    const childMaps = {
+      seps: {
+        width: 800,
+        height: 600,
+        nodes: [
+          { id: 'h1', type: 'host' as const, zabbixHost: '10.0.0.1', x: 0, y: 0 },
+          { id: 'h2', type: 'host' as const, zabbixHost: '10.0.0.2', x: 0, y: 0 },
+        ],
+        links: [],
+      },
+    };
+    const hostDisplay = {
+      '10.0.0.1': { value: 1, status: 'online' as const },
+      '10.0.0.2': { value: 1, status: 'online' as const },
+    };
+    const hostMetadata = {
+      '10.0.0.1': { name: 'h1', hostid: 'hid1' },
+      '10.0.0.2': { name: 'h2', hostid: 'hid2' },
+    };
+    const hostProblems = { hid2: { count: 1, maxSeverity: 2, names: ['ICMP timeout'] } };
+    const stats = buildRegionStatsMap(
+      nodes,
+      new Map(),
+      hostDisplay,
+      {},
+      hostMetadata,
+      {},
+      childMaps,
+      hostProblems
+    );
+    expect(stats.get('sm1')).toEqual({
+      total: 2,
+      offline: 0,
+      alert: 1,
+      online: 1,
+      unknown: 0,
+    });
+    expect(
+      regionFillColor(stats.get('sm1'), defaultOptions(), 'submap', true)
+    ).toBe(defaultOptions().colorAlert);
   });
 });
 

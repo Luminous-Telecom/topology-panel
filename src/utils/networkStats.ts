@@ -6,6 +6,7 @@ import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 import { panelColorWithAlpha } from './panelColors';
 import { formatBitsPerSecond } from './zabbixAdapter/formatTraffic';
+import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 
 export interface RegionHostStats {
   total: number;
@@ -109,10 +110,34 @@ function resolveRegionHostStatus(
   return display.status;
 }
 
+function hostKeyHasZabbixProblem(
+  hostKey: string,
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
+): boolean {
+  if (!hostProblems) {
+    return false;
+  }
+  const meta = hostMetadata?.[hostKey];
+  const candidates = [meta?.hostid, hostKey, meta?.name, meta?.ip];
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const summary = hostProblems[trimmed];
+    if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function countRegionStats(
   hostNames: string[],
   hostDisplay: HostDisplayMap,
-  hostMetadata?: HostMetadataMap
+  hostMetadata?: HostMetadataMap,
+  hostProblems?: HostProblemsMap
 ): RegionHostStats {
   let offline = 0;
   let alert = 0;
@@ -128,9 +153,10 @@ function countRegionStats(
     seen.add(key.toLowerCase());
 
     const st = resolveRegionHostStatus(key, hostDisplay, hostMetadata);
+    const hasProblem = hostKeyHasZabbixProblem(key, hostMetadata, hostProblems);
     if (st === 'offline') {
       offline++;
-    } else if (st === 'alert') {
+    } else if (st === 'alert' || hasProblem) {
       alert++;
     } else if (st === 'online') {
       online++;
@@ -180,7 +206,8 @@ export function buildRegionStatsMap(
   hostMetadata: HostMetadataMap = {},
   /** Status por refId — submapa com queryRefId só olha a própria consulta (não o mapa pai). */
   hostDisplayByRefId: Record<string, HostDisplayMap> = {},
-  childMaps?: Record<string, TopologyMap | undefined>
+  childMaps?: Record<string, TopologyMap | undefined>,
+  hostProblems?: HostProblemsMap
 ): Map<string, RegionHostStats> {
   const result = new Map<string, RegionHostStats>();
   const hostNodes = nodes.filter((n) => isHostNode(n));
@@ -194,7 +221,7 @@ export function buildRegionStatsMap(
         const enriched = enrichHostDisplayFromMap(hostDisplay, childMap, hostMetadata);
         result.set(
           node.id,
-          countRegionStats(keys, enriched, hostMetadata)
+          countRegionStats(keys, enriched, hostMetadata, hostProblems)
         );
         continue;
       }
@@ -219,7 +246,7 @@ export function buildRegionStatsMap(
       const statusMap = refId
         ? findHostDisplayBucket(hostDisplayByRefId, refId) ?? {}
         : hostDisplay;
-      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata));
+      result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata, hostProblems));
       continue;
     }
 
@@ -234,7 +261,7 @@ export function buildRegionStatsMap(
 
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
     const names = inside.map((h) => hostStatusKey(h, hostMetadata)).filter(Boolean) as string[];
-    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata));
+    result.set(node.id, countRegionStats(names, hostDisplay, hostMetadata, hostProblems));
   }
 
   return result;

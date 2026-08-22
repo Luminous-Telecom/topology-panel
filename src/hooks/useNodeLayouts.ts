@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
+import { HostProblemsMap } from '../utils/noc/types';
 import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
@@ -24,6 +25,7 @@ export interface NodeLayoutsParams {
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
   childMaps?: Record<string, TopologyMap | undefined>;
+  hostProblems?: HostProblemsMap;
   queryReady?: boolean;
   linkMetricsByLink?: LinkRuntimeMetricsMap;
 }
@@ -99,6 +101,7 @@ export function useNodeLayouts({
   hostMetadata,
   submapHosts,
   childMaps,
+  hostProblems,
   queryReady,
   linkMetricsByLink,
 }: NodeLayoutsParams): NodeLayoutsResult {
@@ -140,7 +143,8 @@ export function useNodeLayouts({
         submapHosts,
         hostMetadata,
         hostDisplayByRefId,
-        childMaps
+        childMaps,
+        hostProblems
       ),
       map,
       layouts,
@@ -188,6 +192,7 @@ export function useNodeLayouts({
     submapHosts,
     hostMetadata,
     childMaps,
+    hostProblems,
     queryReady,
     uplinkCountByNode,
     linkMetricsByLink,

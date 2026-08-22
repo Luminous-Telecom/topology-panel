@@ -525,6 +525,7 @@ export function TopologyCanvas({
     hostMetadata,
     submapHosts,
     childMaps: childMapsById,
+    hostProblems,
     queryReady,
     linkMetricsByLink,
   });
