@@ -36,8 +36,9 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
 | Série temporal do gráfico de hover | `fetchHostHoverSeriesFromZabbix` em `utils/zabbixApi.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
-| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` em `utils/mapSync.ts` |
-| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostMetadataForMaps` para problemas) |
+| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` em `utils/mapSync.ts` |
+| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |
+| Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
@@ -61,6 +62,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Pan automático ao arrastar na borda | `utils/edgePan.ts` |
 | Geometria do link: path, waypoint mais próximo, âncora do rótulo | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
+| Formato de tráfego (bps, rótulo do cabo, intervalo) | `formatBitsPerSecond`, `formatLinkMapTrafficLabel`, `formatPluginRefreshInterval` em `utils/zabbixAdapter/formatTraffic.ts` |
 | Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts` |
 | Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
 | Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` em `utils/structuralIdentity.ts` |
@@ -70,13 +72,14 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` |
+| Toque no host (peek ICMP / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts`, `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Medida do painel, tela cheia e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
 | Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
 | Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
-| Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys` em `utils/submapHosts.ts` |
+| Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys`, `innerHostsForSubmapNode`, `shouldOpenLinkInterfaceModal` em `utils/submapHosts.ts` |
 | Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |
 | Itens da legenda a partir das opções do painel | `buildLegendItems` em `utils/legendItems.ts` |
 
@@ -96,6 +99,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Fechar overlay com Esc | `hooks/useEscapeKey.ts` |
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
 | Chrome visual de modal e overlay do mapa | `components/overlayChrome.ts` + `components/TopologyModal.tsx` |
+| Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
 
 ## Exceções
 

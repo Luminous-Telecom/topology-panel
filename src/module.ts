@@ -210,7 +210,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'showHostBadges',
         name: 'Badges nos hosts',
-        description: 'Problemas Zabbix e tráfego agregado nos links (canto do nó)',
+        description: 'Problemas Zabbix no canto do nó',
         defaultValue: true,
         category: ['Interação'],
       })

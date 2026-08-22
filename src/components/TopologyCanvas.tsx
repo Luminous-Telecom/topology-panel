@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
-import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
@@ -20,6 +20,7 @@ import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
+import { shouldOpenLinkInterfaceModal } from '../utils/submapHosts';
 import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
 import { buildLegendItems } from '../utils/legendItems';
@@ -28,6 +29,7 @@ import {
   computeFitToContentBoundsTransform,
   computeTopologyContentBounds,
   computeTopologyFitBounds,
+  mapCanvasClientSize,
   shouldApplyNavigationFit,
   TopologyFitViewportRecord,
 } from '../utils/mapBounds';
@@ -422,14 +424,13 @@ export function TopologyCanvas({
       hostDisplay,
       hostMetadata,
       hostProblems,
-      linkMetrics: linkMetricsByLink,
     });
     // Um host mudando remonta a lista de badges de todos os nós; sem reaproveitar as iguais, a
     // prop `badges` invalidaria o `React.memo` de cada forma.
     const shared = structuralShareMap(built, previousBadgesRef.current as Map<string, HostNodeBadge[]> | undefined);
     previousBadgesRef.current = shared;
     return shared;
-  }, [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, options.showHostBadges]);
+  }, [map, hostDisplay, hostMetadata, hostProblems, options.showHostBadges]);
 
   const nocMapScopes = useMemo(() => {
     const childLabels: Record<string, string> = {};
@@ -796,7 +797,11 @@ export function TopologyCanvas({
       }
       const fromNode = findNodeById(storedMap.nodes, linkFromId);
       const toNode = findNodeById(storedMap.nodes, targetId);
-      if (fromNode && toNode && isHostNode(fromNode) && isHostNode(toNode) && zabbixDatasourceUid) {
+      if (
+        fromNode &&
+        toNode &&
+        shouldOpenLinkInterfaceModal(fromNode, toNode, childMapsById, Boolean(zabbixDatasourceUid))
+      ) {
         setPendingLink({ from: linkFromId, to: targetId, fromNode, toNode });
         setLinkFromId(null);
         return;
@@ -804,14 +809,16 @@ export function TopologyCanvas({
       persist(addLinkToMap(storedMap, linkFromId, targetId));
       setLinkFromId(null);
     },
-    [linkFromId, persist, storedMap, zabbixDatasourceUid]
+    [childMapsById, linkFromId, persist, storedMap, zabbixDatasourceUid]
   );
 
   const handlePendingLinkSave = useCallback(
     (
       fromInterface: TopologyInterfaceReference | undefined,
       toInterface: TopologyInterfaceReference | undefined,
-      bandwidthMbps?: number
+      bandwidthMbps?: number,
+      fromPeerHost?: TopologyLinkPeerHost,
+      toPeerHost?: TopologyLinkPeerHost
     ) => {
       if (!pendingLink) {
         return;
@@ -820,6 +827,8 @@ export function TopologyCanvas({
         addLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
           fromInterface,
           toInterface,
+          fromPeerHost,
+          toPeerHost,
           bandwidthMbps,
         })
       );
@@ -909,6 +918,13 @@ export function TopologyCanvas({
     clearHostHover,
     closeContextMenu,
     onNodeLongPress: handleNodeLongPress,
+    onHostPeek: (node, clientX, clientY) => {
+      beginHostHover({ node, screenX: clientX, screenY: clientY, pinned: true });
+    },
+    onHostOpenTools: (node, clientX, clientY) => {
+      clearHostHover();
+      openContextMenuAt(clientX, clientY, { node });
+    },
     persist,
     dragPreview,
     setDragPreview,
@@ -1221,6 +1237,8 @@ export function TopologyCanvas({
   const stableResizePointerDown = useStableCallback(onResizePointerDown);
   const stableResizePointerUp = useStableCallback(onPointerUp);
 
+  const canvasClient = mapCanvasClientSize(viewport.w, viewport.h);
+
   return (
     <div
       ref={wrapRef}
@@ -1231,8 +1249,8 @@ export function TopologyCanvas({
         // até o pointerup/cancel, para um auto-refresh do dashboard não trocar cores/hosts/
         // posições no meio do arraste.
         isGestureActiveRef.current = true;
-        // Clique na faixa da barra de rolagem nativa (o `svg` cobre só a client area; o alvo aqui
-        // só é o próprio `scrollPane` quando o clique cai fora dele, na faixa da scrollbar). A
+        // Clique na faixa da barra de rolagem nativa (o SVG não cobre a gutter; o alvo aqui
+        // só é o próprio `scrollPane` quando o clique cai na faixa da scrollbar). A
         // `scrollLeft/scrollTop` já é a fonte de verdade durante esse arraste — suspende só o
         // "sync view -> scrollLeft" (efeito passivo em `useMapContentScroll`) pra não competir com
         // o drag nativo e causar o "pulo".
@@ -1300,6 +1318,7 @@ export function TopologyCanvas({
         searchOpen={searchOpen}
         setSearchOpen={setSearchOpen}
         onSearchFocusNode={focusNodeOnMap}
+        hostMetadata={hostMetadata}
         queryError={Boolean(queryError)}
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
@@ -1326,7 +1345,12 @@ export function TopologyCanvas({
         />
       ) : null}
 
-      <div ref={bindScrollRef} className={canvasStyles.scrollPane} onScroll={onScroll}>
+      <div
+        ref={bindScrollRef}
+        className={canvasStyles.scrollPane}
+        data-map-wheel-overlay
+        onScroll={onScroll}
+      >
         <div
           className={canvasStyles.scrollSizer}
           style={{
@@ -1340,8 +1364,8 @@ export function TopologyCanvas({
       <svg
         ref={svgRef}
         className={canvasStyles.svg}
-        width={viewport.w > 0 ? viewport.w : '100%'}
-        height={viewport.h > 0 ? viewport.h : '100%'}
+        width={canvasClient.w > 0 ? canvasClient.w : '100%'}
+        height={canvasClient.h > 0 ? canvasClient.h : '100%'}
         onContextMenu={(e) => handleContextMenu(e)}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
@@ -1482,7 +1506,6 @@ export function TopologyCanvas({
           storedMap={storedMap}
           options={options}
           runtimeMetrics={resolveLinkDetailsMetrics(detailsLink, linkMetricsByLink)}
-          fetchedAtMs={linkMetricsFetchedAtMs}
           onClose={() => setDetailsLink(null)}
           onEdit={
             editable

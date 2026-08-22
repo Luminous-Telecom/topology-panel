@@ -31,7 +31,7 @@ export const ZABBIX_PROBLEM_MIN_SEVERITY = 2;
 
 /** Badge opcional no canto do nó. */
 export interface HostNodeBadge {
-  kind: 'problems' | 'traffic' | 'alert';
+  kind: 'problems' | 'alert';
   label: string;
   color: string;
 }
