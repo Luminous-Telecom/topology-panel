@@ -21,7 +21,8 @@ function readPlaylistPlayback(): boolean {
 
 /**
  * True enquanto uma lista de reprodução Grafana está tocando (ou o dashboard
- * está em kiosk/autofit). Usado para esconder a toolbar do mapa na TV.
+ * está em kiosk/autofit). Usado para esconder a toolbar do mapa na TV;
+ * navegação de submapa, legenda e lista de alertas continuam.
  *
  * Detecta pelos query params oficiais (`locationService`) e, no modo Normal
  * da playlist (sem `kiosk` na URL), pelos botões nativos — o Grafana não

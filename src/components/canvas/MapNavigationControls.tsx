@@ -17,6 +17,8 @@ interface Props {
   onBack: () => void;
   onForward: () => void;
   onHomeClick?: () => void;
+  /** Desce a barra no compacto para não cobrir a toolbar. Quiosque (sem toolbar) fica no topo. */
+  compactBelowToolbar?: boolean;
 }
 
 const barStyle = css`
@@ -35,8 +37,13 @@ const barStyle = css`
   }
 
   ${MEDIA_COMPACT} {
-    top: 48px;
     max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
+  }
+`;
+
+const barBelowToolbarStyle = css`
+  ${MEDIA_COMPACT} {
+    top: 48px;
   }
 `;
 
@@ -129,6 +136,7 @@ export function MapNavigationControls({
   onBack,
   onForward,
   onHomeClick,
+  compactBelowToolbar = true,
 }: Props) {
   const visible = canGoBack || canGoForward || breadcrumb.length > 0;
 
@@ -140,7 +148,7 @@ export function MapNavigationControls({
 
   return (
     <div
-      className={barStyle}
+      className={compactBelowToolbar ? `${barStyle} ${barBelowToolbarStyle}` : barStyle}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >

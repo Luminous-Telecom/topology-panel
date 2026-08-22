@@ -91,7 +91,7 @@ export function CanvasControlsOverlay({
 }: Props) {
   return (
     <>
-      {!hidden && onMapNavigateBack && onMapNavigateForward ? (
+      {onMapNavigateBack && onMapNavigateForward ? (
         <MapNavigationControls
           breadcrumb={mapNavigationBreadcrumb}
           canGoBack={canMapNavigateBack}
@@ -99,6 +99,7 @@ export function CanvasControlsOverlay({
           onBack={onMapNavigateBack}
           onForward={onMapNavigateForward}
           onHomeClick={onMapNavigateHome}
+          compactBelowToolbar={!hidden}
         />
       ) : null}
 

@@ -252,4 +252,35 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(getByText('Hosts com alerta (1)')).toBeInTheDocument();
     expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
   });
+
+  it('mantém voltar, avançar e breadcrumb com a toolbar oculta', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1' })],
+    });
+    const options = { ...defaultOptions(), map };
+
+    const { getByLabelText, getByText, queryByTitle } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+        canMapNavigateBack
+        mapNavigationBreadcrumb={[
+          { mapId: 'root', label: 'Início' },
+          { mapId: 'swv', label: 'SWV' },
+        ]}
+        onMapNavigateBack={() => undefined}
+        onMapNavigateForward={() => undefined}
+      />
+    );
+
+    expect(getByLabelText('Voltar')).toBeInTheDocument();
+    expect(getByLabelText('Avançar')).toBeInTheDocument();
+    expect(getByText('Início')).toBeInTheDocument();
+    expect(getByText('SWV')).toBeInTheDocument();
+    expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
+  });
 });
