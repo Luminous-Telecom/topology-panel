@@ -13,7 +13,7 @@ import { linkKey } from '../../utils/mapLinkEdits';
 import { resolvePanelColor } from '../../utils/panelColors';
 import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from '../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../utils/linkMedium';
-import { formatBitsPerSecond } from '../../utils/zabbixAdapter/formatTraffic';
+import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../utils/zabbixAdapter/formatTraffic';
 import { NodeLayout } from '../../utils/nodeLayout';
 
 interface LinkLineProps {
@@ -72,29 +72,18 @@ function LinkLineComponent({
   const toName = link.toInterface?.name;
   const txLabel = formatBitsPerSecond(runtimeMetrics?.from.txBps);
   const rxLabel = formatBitsPerSecond(runtimeMetrics?.from.rxBps);
-  const trafficLines: string[] = [];
-  if (txLabel) {
-    trafficLines.push(`TX ${txLabel}`);
-  }
-  if (rxLabel) {
-    trafficLines.push(`RX ${rxLabel}`);
-  }
-  const labelLines = [
-    fromName && toName ? `${fromName} ↔ ${toName}` : undefined,
-    bandwidthLabel,
-    ...trafficLines,
-  ].filter((line): line is string => Boolean(line));
-  const labelText = labelLines[0] ?? bandwidthLabel;
-  const subLabelText = labelLines.length > 1 ? labelLines.slice(1).join(' · ') : undefined;
+  const labelText = formatLinkMapTrafficLabel(runtimeMetrics?.from.txBps, runtimeMetrics?.from.rxBps);
   const mid = linkLabelAnchor(pathPoints, from, to);
-  const labelWidth = Math.max(labelText?.length ?? 0, subLabelText?.length ?? 0) * 6;
+  const labelWidth = labelText ? labelText.length * 5.2 + 10 : 0;
+  const labelRad = (mid.angle * Math.PI) / 180;
+  const labelOffset = 9;
   const tooltipParts = [
     from?.label || link.from,
     to?.label || link.to,
     fromName && toName ? `Interfaces: ${fromName} ↔ ${toName}` : undefined,
     bandwidthLabel ? `Capacidade: ${bandwidthLabel}` : undefined,
-    txLabel ? `TX: ${txLabel}` : undefined,
-    rxLabel ? `RX: ${rxLabel}` : undefined,
+    txLabel ? `Upload (TX): ${txLabel}` : undefined,
+    rxLabel ? `Download (RX): ${rxLabel}` : undefined,
     runtimeMetrics?.from.txUtilizationPct !== undefined
       ? `Util. TX: ${runtimeMetrics.from.txUtilizationPct}%`
       : undefined,
@@ -126,6 +115,8 @@ function LinkLineComponent({
     theme,
     congested ? options.colorLinkCongestion : options.colorLinkUpload
   );
+  const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
+  const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
   const flowStroke = Math.max(1.5, strokeWidth - 1);
   const flowActive = runtimeMetrics?.status !== 'down';
   const downloadSpeed = resolveFlowLaneSpeed(runtimeMetrics?.from.rxBps, runtimeMetrics, thresholds);
@@ -217,47 +208,36 @@ function LinkLineComponent({
         opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
         {...lineCap}
       />
-      {(labelText || subLabelText) && (
-        <g transform={`translate(${mid.x}, ${mid.y}) rotate(${mid.angle})`} pointerEvents="none">
+      {labelText ? (
+        <g
+          transform={`translate(${mid.x - Math.sin(labelRad) * labelOffset}, ${mid.y + Math.cos(labelRad) * labelOffset})`}
+          pointerEvents="none"
+        >
           <rect
             x={-labelWidth / 2}
-            y={subLabelText ? -12 : -7}
+            y={-7}
             width={labelWidth}
-            height={subLabelText ? 26 : 14}
-            rx={3}
-            fill="rgba(18,18,20,0.82)"
-            stroke="rgba(255,255,255,0.2)"
+            height={14}
+            rx={7}
+            fill="rgba(18,18,20,0.88)"
+            stroke="rgba(255,255,255,0.16)"
             strokeWidth={0.5}
           />
-          {labelText ? (
-            <text
-              x={0}
-              y={subLabelText ? -3 : 0}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="#E3F2FD"
-              fontSize={9}
-              fontFamily="Inter, Helvetica, Arial, sans-serif"
-              fontWeight={500}
-            >
-              {labelText}
-            </text>
-          ) : null}
-          {subLabelText ? (
-            <text
-              x={0}
-              y={8}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="#B0BEC5"
-              fontSize={8}
-              fontFamily="Inter, Helvetica, Arial, sans-serif"
-            >
-              {subLabelText}
-            </text>
-          ) : null}
+          <text
+            x={0}
+            y={0}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={8}
+            fontFamily="Inter, Helvetica, Arial, sans-serif"
+            fontWeight={600}
+          >
+            {txLabel ? <tspan fill={uploadLabelColor}>↑{txLabel}</tspan> : null}
+            {txLabel && rxLabel ? <tspan fill="rgba(227,242,253,0.45)"> </tspan> : null}
+            {rxLabel ? <tspan fill={downloadLabelColor}>↓{rxLabel}</tspan> : null}
+          </text>
         </g>
-      )}
+      ) : null}
     </g>
   );
 }

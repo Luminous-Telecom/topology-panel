@@ -1,6 +1,6 @@
 /** Formatação de tráfego e utilização de interface. */
 
-import { LinkEndpointRuntimeMetrics } from '../../types';
+import { LinkEndpointRuntimeMetrics, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../../types';
 
 export function formatBitsPerSecond(bps: number | undefined): string | undefined {
   if (bps === undefined || !Number.isFinite(bps) || bps < 0) {
@@ -20,6 +20,22 @@ export function formatBitsPerSecond(bps: number | undefined): string | undefined
     return `${Math.round(kbps)} Kbps`;
   }
   return `${Math.round(bps)} bps`;
+}
+
+/** Uma linha no cabo: TX e RX com unidade real (Mbps/Gbps). */
+export function formatLinkMapTrafficLabel(
+  txBps: number | undefined,
+  rxBps: number | undefined
+): string | undefined {
+  const tx = formatBitsPerSecond(txBps);
+  const rx = formatBitsPerSecond(rxBps);
+  if (!tx && !rx) {
+    return undefined;
+  }
+  if (tx && rx) {
+    return `↑${tx} ↓${rx}`;
+  }
+  return tx ? `↑${tx}` : `↓${rx}`;
 }
 
 export function computeUtilizationPct(trafficBps: number | undefined, capacityMbps: number | undefined): number | undefined {
@@ -100,6 +116,17 @@ export function parseOperStatus(value: number | undefined): 'up' | 'down' | 'adm
     return 'adminDown';
   }
   return 'unknown';
+}
+
+/** Rótulo do intervalo de busca do plugin — o mesmo ciclo do status e do tráfego. */
+export function formatPluginRefreshInterval(
+  refreshIntervalSec?: number | null,
+  minSec = ZABBIX_DIRECT_MIN_REFRESH_SEC
+): string {
+  if (refreshIntervalSec == null || refreshIntervalSec <= 0) {
+    return 'manual';
+  }
+  return `a cada ${Math.max(minSec, Math.floor(refreshIntervalSec))}s`;
 }
 
 export function formatRelativeUpdate(ms?: number, now = Date.now()): string | undefined {
