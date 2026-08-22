@@ -148,10 +148,7 @@ export function useNodeLayouts({
       ),
       map,
       layouts,
-      linkMetricsByLink ?? {},
-      submapHosts,
-      hostMetadata,
-      childMaps
+      linkMetricsByLink ?? {}
     );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {

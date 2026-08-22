@@ -40,7 +40,7 @@ function formatRegionTrafficSuffix(stats: RegionHostStats): string | undefined {
   return parts.join(' ');
 }
 
-/** Rede: texto descritivo. Submapa: parado / alerta / online. */
+/** Rede: texto descritivo. Submapa: parado / alerta / online (sem tráfego — já vai nas interfaces). */
 export function formatRegionStats(
   stats: RegionHostStats,
   queryReady = true,
@@ -58,14 +58,14 @@ export function formatRegionStats(
     }
     if (!queryReady) {
       if (stats.total > 0) {
-        return withTraffic(`${stats.total} hosts`);
+        return `${stats.total} hosts`;
       }
-      return traffic ?? '0 / 0 / 0';
+      return '0 / 0 / 0';
     }
     if (stats.total === 0) {
-      return traffic ?? '0 / 0 / 0';
+      return '0 / 0 / 0';
     }
-    return withTraffic(`${stats.offline} / ${stats.alert} / ${stats.online}`);
+    return `${stats.offline} / ${stats.alert} / ${stats.online}`;
   }
   if (stats.loadFailed) {
     return 'Mapa indisponível';
@@ -405,40 +405,6 @@ function addTrafficTotals(
   return { rxBps, txBps };
 }
 
-function hostKeysForSubmapNode(
-  node: TopologyNode,
-  submapHosts: Record<string, string[] | null | undefined>,
-  childMaps?: Record<string, TopologyMap | undefined>,
-  hostMetadata?: HostMetadataMap
-): string[] | undefined {
-  const childId = node.submapChildMapId?.trim();
-  const childMap = childId ? childMaps?.[childId] : undefined;
-  if (childMap) {
-    return childMapHostKeys(childMap, hostMetadata);
-  }
-  const fetched = submapHosts[node.id];
-  if (fetched === undefined || fetched === null) {
-    return undefined;
-  }
-  return fetched;
-}
-
-function nodeIdsForHostKeys(
-  hostKeys: string[],
-  hostNodes: TopologyNode[],
-  hostMetadata?: HostMetadataMap
-): Set<string> {
-  const keySet = new Set(hostKeys.map((key) => key.trim().toLowerCase()).filter(Boolean));
-  const ids = new Set<string>();
-  for (const node of hostNodes) {
-    const key = resolveHostLookupKey(node, hostMetadata)?.trim().toLowerCase();
-    if (key && keySet.has(key)) {
-      ids.add(node.id);
-    }
-  }
-  return ids;
-}
-
 function regionNodeIdsForLink(
   link: TopologyLink,
   regionNodeIds: Set<string>
@@ -446,15 +412,12 @@ function regionNodeIdsForLink(
   return regionNodeIds.has(link.from) || regionNodeIds.has(link.to);
 }
 
-/** Soma RX/TX dos links que tocam cada submapa ou rede. */
+/** Soma RX/TX dos links que tocam cada rede. Submapa não agrega — o tráfego já vai nas interfaces. */
 export function mergeRegionTrafficStats(
   regionStats: Map<string, RegionHostStats>,
   map: TopologyMap,
   nodeLayouts: Map<string, NodeLayout & TopologyNode>,
-  linkMetricsByLink: LinkRuntimeMetricsMap,
-  submapHosts: Record<string, string[] | null | undefined> = {},
-  hostMetadata: HostMetadataMap = {},
-  childMaps?: Record<string, TopologyMap | undefined>
+  linkMetricsByLink: LinkRuntimeMetricsMap
 ): Map<string, RegionHostStats> {
   if (!map.links.length || !Object.keys(linkMetricsByLink).length) {
     return regionStats;
@@ -464,24 +427,6 @@ export function mergeRegionTrafficStats(
   const trafficByRegion = new Map<string, { rxBps?: number; txBps?: number }>();
 
   for (const node of map.nodes) {
-    if (node.type === 'submap') {
-      const hostKeys = hostKeysForSubmapNode(node, submapHosts, childMaps, hostMetadata);
-      if (!hostKeys?.length) {
-        continue;
-      }
-      trafficByRegion.set(node.id, { rxBps: 0, txBps: 0 });
-      const nodeIds = nodeIdsForHostKeys(hostKeys, hostNodes, hostMetadata);
-      for (const link of map.links) {
-        if (!regionNodeIdsForLink(link, nodeIds)) {
-          continue;
-        }
-        const totals = trafficFromLinkMetrics(linkMetricsByLink[linkKey(link)]);
-        const prev = trafficByRegion.get(node.id) ?? {};
-        trafficByRegion.set(node.id, addTrafficTotals(prev, totals));
-      }
-      continue;
-    }
-
     if (node.type !== 'network') {
       continue;
     }

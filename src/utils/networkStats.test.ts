@@ -33,13 +33,24 @@ describe('formatRegionStats — submapa', () => {
     expect(text).toBe('12 hosts');
   });
 
-  it('anexa tráfego agregado ao texto do submapa', () => {
+  it('não anexa tráfego ao texto do submapa — já aparece nas interfaces', () => {
     const text = formatRegionStats(
       { total: 3, offline: 0, alert: 0, online: 3, unknown: 0, rxBps: 1_200_000_000, txBps: 800_000_000 },
       true,
       'submap'
     );
-    expect(text).toBe('0 / 0 / 3 · ↓ 1.2 Gbps ↑ 800 Mbps');
+    expect(text).toBe('0 / 0 / 3');
+  });
+});
+
+describe('formatRegionStats — rede', () => {
+  it('anexa tráfego agregado ao texto da caixa de rede', () => {
+    const text = formatRegionStats(
+      { total: 3, offline: 0, alert: 0, online: 3, unknown: 0, rxBps: 1_200_000_000, txBps: 800_000_000 },
+      true,
+      'network'
+    );
+    expect(text).toBe('3 hosts · OK · ↓ 1.2 Gbps ↑ 800 Mbps');
   });
 });
 
@@ -99,7 +110,7 @@ describe('regionFillColor — submapa', () => {
 });
 
 describe('mergeRegionTrafficStats', () => {
-  it('soma RX/TX dos links cujos endpoints pertencem ao submapa', () => {
+  it('não soma tráfego no submapa — o valor já vai nas interfaces dos cabos', () => {
     const map = {
       ...emptyMap(),
       nodes: [
@@ -122,17 +133,49 @@ describe('mergeRegionTrafficStats', () => {
       {},
       { sm1: ['10.0.0.1', '10.0.0.2'] }
     );
-    const merged = mergeRegionTrafficStats(
-      baseStats,
-      map,
-      layouts,
-      {
-        'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
-      },
-      { sm1: ['10.0.0.1', '10.0.0.2'] }
-    );
-    expect(merged.get('sm1')?.rxBps).toBe(500_000_000);
-    expect(merged.get('sm1')?.txBps).toBe(100_000_000);
+    const merged = mergeRegionTrafficStats(baseStats, map, layouts, {
+      'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
+    });
+    expect(merged.get('sm1')?.rxBps).toBeUndefined();
+    expect(merged.get('sm1')?.txBps).toBeUndefined();
+  });
+
+  it('soma RX/TX dos links cujos hosts estão dentro da rede', () => {
+    const map = {
+      ...emptyMap(),
+      nodes: [
+        { id: 'net1', type: 'network' as const, label: 'LAN', x: 0, y: 0, width: 400, height: 200 },
+        { id: 'h1', type: 'host' as const, zabbixHost: '10.0.0.1', x: 10, y: 10, networkId: 'net1' },
+        { id: 'h2', type: 'host' as const, zabbixHost: '10.0.0.2', x: 80, y: 10, networkId: 'net1' },
+      ],
+      links: [
+        {
+          from: 'h1',
+          to: 'h2',
+          fromInterface: { name: 'eth0', metrics: { rx: { itemId: '1' }, tx: { itemId: '2' } } },
+        },
+      ],
+    };
+    const layouts = new Map<string, import('./nodeLayout').NodeLayout & TopologyNode>();
+    for (const node of map.nodes) {
+      layouts.set(node.id, {
+        ...node,
+        x: node.x,
+        y: node.y,
+        w: node.width ?? 40,
+        h: node.height ?? 24,
+        label: node.label ?? node.id,
+        labelFontSize: 12,
+        subFontSize: 10,
+        labelY: 12,
+      });
+    }
+    const baseStats = buildRegionStatsMap(map.nodes, layouts, {});
+    const merged = mergeRegionTrafficStats(baseStats, map, layouts, {
+      'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
+    });
+    expect(merged.get('net1')?.rxBps).toBe(500_000_000);
+    expect(merged.get('net1')?.txBps).toBe(100_000_000);
   });
 });
 
