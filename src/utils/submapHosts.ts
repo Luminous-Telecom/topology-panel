@@ -1,6 +1,6 @@
 import { HostDisplayMap, HostMetadataMap, TopologyLinkPeerHost, TopologyMap, TopologyNode } from '../types';
 import { canonicalizeHostKeys, resolveHostLookupKey } from './hostLookup';
-import { findHostDisplayBucket } from './queryHosts';
+import { findHostDisplayBucket, flattenHostDisplayByRefId, submapQueryRefIds } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 
 /** Chaves canônicas (IP ou nome) dos hosts type=host já desenhados neste mapa. */
@@ -31,17 +31,27 @@ export function submapHostListForNode(
   parentHostKeys: Set<string>,
   hostMetadata?: HostMetadataMap
 ): string[] | undefined {
-  const refId = node.queryRefId?.trim();
-  if (!refId) {
+  const refIds = submapQueryRefIds(node);
+  if (!refIds.length) {
     return [];
   }
   if (!queryReady) {
     return undefined;
   }
-  const normalized = refId.toUpperCase();
-  const fromLabels = queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? [];
-  const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
-  const raw = fromLabels.length > 0 ? fromLabels : bucket ? Object.keys(bucket) : [];
+  const fromLabels: string[] = [];
+  const buckets: Record<string, HostDisplayMap> = {};
+  for (const refId of refIds) {
+    const normalized = refId.trim().toUpperCase();
+    for (const host of queryHostsByRefId[normalized] ?? queryHostsByRefId[refId] ?? []) {
+      fromLabels.push(host);
+    }
+    const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
+    if (bucket) {
+      buckets[normalized] = bucket;
+    }
+  }
+  const merged = flattenHostDisplayByRefId(buckets);
+  const raw = fromLabels.length > 0 ? fromLabels : Object.keys(merged);
   const keys = canonicalizeHostKeys(raw, hostMetadata);
   if (!parentHostKeys.size) {
     return keys;

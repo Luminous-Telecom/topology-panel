@@ -6,10 +6,10 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   fetchZabbixDirectMetadata,
-  fetchZabbixStatusItems,
   isBenignZabbixFetchError,
   ZabbixDirectMetadata,
 } from '../utils/zabbixApi';
+import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
 import {
   POLL_WATCHDOG_MS,
   canStartPolledFetch,
@@ -25,8 +25,10 @@ import {
  *
  * Sem cache nem publicação intermediária: `ready` só sobe após a resposta completa do status.
  *
- * O ciclo periódico é uma única `item.get`. A identidade dos hosts (nome, IP, grupos, tags) é
- * buscada uma vez por configuração, porque não decide online/offline — só o status é refeito.
+ * O ciclo periódico chama `ds.query()` do datasource Zabbix: grupo no campo group e o
+ * item de status no campo item — o mesmo shape do editor, sem JSON-RPC de item.
+ * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
+ * o DataFrame não traz isso.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -34,7 +36,7 @@ const EMPTY_INDEX = buildQueryIndex(undefined);
 const GENERIC_ERROR = 'Falha ao consultar o Zabbix. Verifique o datasource e os grupos configurados.';
 const NO_GROUPS_ERROR = 'Nenhum dos grupos configurados existe no Zabbix.';
 const NO_STATUS_ITEMS_ERROR =
-  'Nenhum host dos grupos respondeu com o item de status. Confira a chave em "Item de status".';
+  'Nenhum host dos grupos respondeu com o item de status. Confira o nome do item em "Item de status".';
 
 export interface UseZabbixDirectIndexOptions {
   enabled: boolean;
@@ -141,8 +143,15 @@ export function useZabbixDirectIndex({
       inFlight = true;
       try {
         const meta = await ensureMetadata(abortSignal);
-        const statusItems = meta.groupIds.length
-          ? await fetchZabbixStatusItems(datasourceUid, meta.groupIds, itemKey, abortSignal)
+        const statusItems = meta.resolvedGroups.length
+          ? await fetchZabbixStatusViaQuery({
+              datasourceUid,
+              groupNames: meta.resolvedGroups,
+              statusItemKey: itemKey,
+              hosts: meta.hosts,
+              abortSignal,
+              refreshSec: intervalSec,
+            })
           : [];
         if (cancelled || generation <= lastPublishedGeneration) {
           return;

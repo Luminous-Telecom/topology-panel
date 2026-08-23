@@ -49,9 +49,9 @@ const LazyZabbixDatasourceEditor = lazy(() =>
     default: m.ZabbixDatasourceEditor,
   }))
 );
-const LazyZabbixHostGroupsEditor = lazy(() =>
-  import('../components/ZabbixHostGroupsEditor').then((m) => ({
-    default: m.ZabbixHostGroupsEditor,
+const LazyZabbixStatusItemEditor = lazy(() =>
+  import('../components/ZabbixStatusItemEditor').then((m) => ({
+    default: m.ZabbixStatusItemEditor,
   }))
 );
 
@@ -153,12 +153,12 @@ export function ZabbixDatasourceEditor(
   );
 }
 
-export function ZabbixHostGroupsEditor(
-  props: ComponentProps<typeof LazyZabbixHostGroupsEditor>
+export function ZabbixStatusItemEditor(
+  props: ComponentProps<typeof LazyZabbixStatusItemEditor>
 ): JSX.Element {
   return (
     <Suspense fallback={loading}>
-      <LazyZabbixHostGroupsEditor {...props} />
+      <LazyZabbixStatusItemEditor {...props} />
     </Suspense>
   );
 }

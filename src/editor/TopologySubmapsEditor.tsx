@@ -16,7 +16,7 @@ export function TopologySubmapsEditor(props: Props) {
     locked,
     toggleLock,
     submapNodes,
-    queryRefInfos,
+    datasourceUid,
     childMapIds,
     openNodes,
     toggleNodeOpen,
@@ -36,7 +36,7 @@ export function TopologySubmapsEditor(props: Props) {
         uid={uid}
         locked={locked}
         submapNodes={submapNodes}
-        queryRefInfos={queryRefInfos}
+        datasourceUid={datasourceUid}
         childMapIds={childMapIds}
         openNodes={openNodes}
         onToggleNode={toggleNodeOpen}

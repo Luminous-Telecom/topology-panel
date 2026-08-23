@@ -3,7 +3,7 @@ import { HostMetadataMap, TopologyNetworkInterface } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
 import { InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { fetchZabbixHostInterfaceItems } from '../utils/zabbixApi';
+import { fetchZabbixHostInterfaceItemsViaQuery } from '../utils/zabbixDatasourceQuery';
 
 export interface UseZabbixHostInterfacesResult {
   interfacesByHost: Record<string, TopologyNetworkInterface[]>;
@@ -54,7 +54,7 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces monitoradas — sempre via API Zabbix (`item.get`).
+ * Inventário de interfaces monitoradas — Metrics com grupo, host e item (palavras-chave).
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
@@ -107,7 +107,7 @@ export function useZabbixHostInterfaces(
 
     interfacesCache
       .get(cacheKey, async () => {
-        const entries = await fetchZabbixHostInterfaceItems(
+        const entries = await fetchZabbixHostInterfaceItemsViaQuery(
           datasourceUid,
           hostKey.split('\0'),
           searchKeys,

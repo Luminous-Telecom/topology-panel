@@ -12,7 +12,6 @@ import {
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
-import { resolvePanelQueryRefInfos } from '../../services/zabbixDirectIndex';
 import { addZabbixHostAt } from '../../utils/mapEdits';
 import { activeChildMaps } from '../../utils/childMapEdits';
 import { updateLinkProps } from '../../utils/mapLinkEdits';
@@ -118,7 +117,7 @@ export function CanvasModals({
         <NodeEditModal
           key={`${editNode.id}:${editNode.width ?? ''}:${editNode.height ?? ''}`}
           node={editNode}
-          queryRefInfos={resolvePanelQueryRefInfos(options)}
+          datasourceUid={options.zabbixDatasourceUid}
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
           childMapIds={Object.keys(activeChildMaps(options.childMaps)).sort()}

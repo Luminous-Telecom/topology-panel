@@ -17,10 +17,17 @@ Qualquer arquivo em `src/`.
 
 ## O `QueryIndex` é a fonte do mapa
 
-Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado a partir da
-API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
-`hooks/useZabbixDirectIndex.ts`): metadados uma vez (`hostgroup.get` + `host.get`) e status a cada
-ciclo numa única `item.get` (`lastvalue`/`lastclock` da chave configurada).
+Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado em
+`buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`, via `hooks/useZabbixDirectIndex.ts`):
+metadados uma vez (`hostgroup.get` + `host.get`) e valor a cada ciclo via `DataSourceApi.query()`
+(`utils/zabbixDatasourceQuery.ts`): um target Metrics pelos grupos visíveis (`zabbixGroupsFilter`:
+nome exato se for um; regex âncora se forem vários) com o item de status no campo `item`. Sem
+`item.get` e sem um target por grupo — o grafana-zabbix vira cada target em várias JSON-RPC.
+Em qualquer nível: grupos do nó pai + grupos dos submapas desenhados no mapa visível
+(`queryRefIds` / `effectiveSubmapQueryRefIds`, via `zabbixGroupsForVisibleMap` em
+`utils/queryHosts.ts`). Atalho para outro mapa interno herda os grupos do nó que originou
+esse mapa — o rótulo curto do atalho sozinho não consulta o Zabbix. O campo de grupos do
+painel não existe — o grupo fica no submapa.
 
 - Consumidor novo recebe `QueryIndex` por parâmetro e nunca lê `data.series` nem chama a API por
   conta própria.
@@ -28,29 +35,37 @@ ciclo numa única `item.get` (`lastvalue`/`lastclock` da chave configurada).
   (`directRefId`), então `displayQueryRefIds` e o campo de grupo do submapa seguem valendo.
 - Cor e rótulo de status saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`), a partir dos
   thresholds e value mappings configurados nas opções do painel.
-- Série do gráfico de hover: `fetchHostHoverSeriesFromZabbix` (`history.get` do host). Não invente
-  série a partir do snapshot do mapa.
-- A cor/status do mapa vem do `lastvalue` da chave de status via `fetchZabbixStatusItems` — sem
-  overlay de `history.get` no ciclo do mapa.
-- Problemas Zabbix (Warning+, via `useZabbixHostProblems`) pintam o host com `colorAlert` e entram
-  na lista de alertas. Offline da Query continua vencendo. Não recalcule isso com outra chamada.
+- Série do gráfico de hover: `fetchHostHoverSeriesViaQuery` (`ds.query()` Metrics: grupo do host +
+  item ICMP/status). Não invente série a partir do snapshot do mapa.
+- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics, janela curta).
+  O target preenche `group` com o filtro dos grupos visíveis e `item` com o valor configurado no
+  painel (nome do item no editor Zabbix, ou regex). Sem `item.get`. `skipDataQuery` permanece true.
+- Problemas Zabbix (Warning+, via `useZabbixHostProblems` / `ds.query()` Problems) usam os nomes
+  de grupo **já resolvidos** na metadata (`zabbixGroupsFromHostMetadata`) — o `queryRefId` legado
+  em outro casing não casa no filtro do grafana-zabbix. Nunca `/.*/`. Pintam o host com
+  `colorAlert` e entram na lista de alertas. Offline da Query continua vencendo. Não recalcule
+  isso com outra chamada.
 - Fora do caminho do `QueryIndex` e de `hostProblems`, nunca colora o mapa nem calcule status a
   partir de chamada de API.
 - O painel declara `skipDataQuery` em `plugin.json`: não há aba Query.
 
 ## API Zabbix — só nas exceções autorizadas
 
-`utils/zabbixApi.ts` é o **único** arquivo que fala com a API Zabbix, e só pode ser importado por:
+`utils/zabbixApi.ts` é o **único** arquivo que fala JSON-RPC com o Zabbix.
+`utils/zabbixDatasourceQuery.ts` é o **único** arquivo que chama `DataSourceApi.query()` do plugin
+Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 
 | Consumidor autorizado | Uso permitido |
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
-| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` + `event.get`), badges, lista de todos os mapas, cor e hover |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` de interfaces), inventário para seletor de link |
-| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get`), métricas voláteis de links (RX/TX/status) |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` + `fetchZabbixStatusItems` (`hostgroup.get` + `host.get` uma vez; `item.get` de status a cada ciclo), fonte do mapa |
-| `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`), seletor de grupos do painel de opções |
-| `hooks/useHostHoverSeries.ts` | `fetchHostHoverSeriesFromZabbix` (`history.get` paginado), sparkline do hover |
+| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblemsViaQuery` (`ds.query()` Problems) |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: grupo do host + item = palavra-chave RX/TX/status/capacidade) |
+| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValuesViaQuery` (`ds.query()` Item ID) |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez) e `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo) |
+| `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
+| `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
+| `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
+| `hooks/useHostHoverSeries.ts` | `fetchHostHoverSeriesViaQuery` (`ds.query()` Metrics), sparkline do hover |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,

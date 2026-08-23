@@ -1,71 +1,75 @@
 import React, { useMemo } from 'react';
 import { SelectableValue } from '@grafana/data';
-import { Select } from '@grafana/ui';
-import { TopologyQueryRefInfo } from '../types';
-import { queryRefRowTitle } from '../utils/queryRefLabel';
+import { MultiSelect } from '@grafana/ui';
+import { useZabbixHostGroups } from '../hooks/useZabbixHostGroups';
+import { resolveCatalogGroupName, uniqueGroupNames } from '../utils/queryHosts';
 
 interface Props {
-  value: string;
-  onChange: (refId: string) => void;
-  queryRefs: TopologyQueryRefInfo[];
+  value: string[];
+  onChange: (groups: string[]) => void;
+  datasourceUid?: string;
   disabled?: boolean;
   menuShouldPortal?: boolean;
   /** Associa o <Select> a um <Field label> externo (htmlFor) */
   inputId?: string;
 }
 
-function queryRefToOption(info: TopologyQueryRefInfo): SelectableValue<string> {
-  return {
-    value: info.refId,
-    label: queryRefRowTitle(info.refId, info.hint),
-    description: info.hint,
-  };
-}
-
-/** Select de grupo Zabbix (refId virtual) para vincular submapas ao status ICMP. */
+/** MultiSelect de grupos Zabbix para vincular o submapa ao status. */
 export function QueryRefSelect({
   value,
   onChange,
-  queryRefs,
+  datasourceUid,
   disabled,
   menuShouldPortal = true,
   inputId,
 }: Props) {
-  const normalized = value.trim().toUpperCase();
+  const { groups, loading, loadError } = useZabbixHostGroups(datasourceUid);
+  const selected = useMemo(() => uniqueGroupNames(value), [value]);
 
   const options = useMemo(() => {
-    const items: SelectableValue<string>[] = [{ value: '', label: 'Nenhuma' }];
-    for (const info of queryRefs) {
-      items.push(queryRefToOption(info));
-    }
-    if (normalized && !queryRefs.some((info) => info.refId === normalized)) {
-      items.push({
-        value: normalized,
-        label: normalized,
-        description: 'Não está entre os grupos configurados',
-      });
-    }
+    const names = new Set([...groups, ...selected]);
+    const items: Array<SelectableValue<string>> = [...names]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map((name) => ({
+        value: name,
+        label: name,
+        description: groups.some((group) => group.toUpperCase() === name.toUpperCase())
+          ? undefined
+          : 'Não encontrado no Zabbix',
+      }));
     return items;
-  }, [queryRefs, normalized]);
+  }, [groups, selected]);
 
-  if (!queryRefs.length && !normalized) {
+  const selectValue = useMemo(
+    () => selected.map((name) => resolveCatalogGroupName(name, groups) ?? name),
+    [groups, selected]
+  );
+
+  if (!datasourceUid) {
     return (
       <span id={inputId} style={{ fontSize: 12, opacity: 0.75 }}>
-        Nenhum grupo detectado — configure os grupos de host em Fonte de dados.
+        Escolha o datasource Zabbix em Fonte de dados.
       </span>
     );
   }
 
   return (
-    <Select
-      inputId={inputId}
-      options={options}
-      value={normalized || null}
-      disabled={disabled}
-      menuShouldPortal={menuShouldPortal}
-      placeholder="Selecionar grupo…"
-      noOptionsMessage="Nenhum grupo disponível"
-      onChange={(v) => onChange(v?.value ?? '')}
-    />
+    <>
+      <MultiSelect
+        inputId={inputId}
+        options={options}
+        value={selectValue}
+        disabled={disabled}
+        isLoading={loading}
+        menuShouldPortal={menuShouldPortal}
+        placeholder="Selecionar grupos…"
+        noOptionsMessage="Nenhum grupo disponível"
+        onChange={(items) => {
+          const next = uniqueGroupNames(items.map((item) => item.value ?? '').filter(Boolean));
+          onChange(next);
+        }}
+      />
+      {loadError ? <span style={{ fontSize: 11, opacity: 0.85 }}>{loadError}</span> : null}
+    </>
   );
 }

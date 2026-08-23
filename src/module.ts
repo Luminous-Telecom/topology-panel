@@ -11,7 +11,7 @@ import {
   TopologySubmapsEditor,
   TopologyTemplatesEditor,
   ZabbixDatasourceEditor,
-  ZabbixHostGroupsEditor,
+  ZabbixStatusItemEditor,
 } from './editor/lazyPanelEditors';
 import { addMapSection, MAP_SECTION_ROOT } from './editor/mapSectionNested';
 import {
@@ -36,22 +36,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: undefined,
       })
       .addCustomEditor({
-        id: 'zabbixHostGroups',
-        path: 'zabbixHostGroups',
-        name: 'Grupos de host',
-        description:
-          'Cada grupo aparece em "Mostrar hosts do grupo no mapa" e no campo de grupo dos submapas.',
-        editor: ZabbixHostGroupsEditor,
-        category: ['Fonte de dados'],
-        defaultValue: undefined,
-      })
-      .addTextInput({
+        id: 'zabbixStatusItemKey',
         path: 'zabbixStatusItemKey',
         name: 'Item de status',
         description:
-          'Chave do item lido em cada host para decidir online/offline (ex.: icmpping). O valor passa pelo mapeamento de status configurado em Aparência.',
-        defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
+          'Nome do item no editor grafana-zabbix. O valor passa pelo mapeamento de status em Aparência.',
+        editor: ZabbixStatusItemEditor,
         category: ['Fonte de dados'],
+        defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
       })
       .addTextInput({
         path: 'zabbixRxItemKeyword',

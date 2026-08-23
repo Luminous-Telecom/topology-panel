@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Field, Select } from '@grafana/ui';
 import { NodeEditFormSetter, NodeEditFormValues } from '../../hooks/useNodeEditForm';
-import { TopologyQueryRefInfo } from '../../types';
 import { DashboardPickerSelect } from '../DashboardPickerSelect';
 import { QueryRefSelect } from '../QueryRefSelect';
 import { NumberField } from './NumberField';
@@ -10,11 +9,11 @@ interface Props {
   uid: string;
   values: NodeEditFormValues;
   set: NodeEditFormSetter;
-  queryRefInfos: TopologyQueryRefInfo[];
+  datasourceUid?: string;
   childMapIds?: string[];
 }
 
-export function SubmapFields({ uid, values, set, queryRefInfos, childMapIds = [] }: Props) {
+export function SubmapFields({ uid, values, set, datasourceUid, childMapIds = [] }: Props) {
   const childMapOptions = useMemo(
     () => [
       { label: '— Nenhum —', value: '' },
@@ -56,14 +55,14 @@ export function SubmapFields({ uid, values, set, queryRefInfos, childMapIds = []
         />
       </Field>
       <Field
-        label="Grupo Zabbix"
-        description="Grupo cujo status define os hosts monitorados deste submapa"
+        label="Grupos Zabbix"
+        description="Ao abrir o mapa interno, status, hosts, itens e interfaces vêm só destes grupos"
       >
         <QueryRefSelect
           inputId={`${uid}-submap-query`}
-          value={values.queryRefId}
-          queryRefs={queryRefInfos}
-          onChange={(value) => set('queryRefId', value)}
+          value={values.queryRefIds}
+          datasourceUid={datasourceUid}
+          onChange={(groups) => set('queryRefIds', groups)}
         />
       </Field>
       <NumberField

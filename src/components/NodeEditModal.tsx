@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Button, Field, Input } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
-import { NodeEditSavePayload, TopologyMap, TopologyNode, TopologyQueryRefInfo } from '../types';
+import { NodeEditSavePayload, TopologyMap, TopologyNode } from '../types';
 import { HostIconPicker } from './HostIconPicker';
 import { FieldReadout } from './FieldReadout';
 import { DashboardPickerFields } from './nodeEdit/DashboardPickerFields';
@@ -19,7 +19,7 @@ import { hostsAlreadyOnMap, QueryHostOption, queryHostPickerOptions, resolveQuer
 
 interface Props {
   node: TopologyNode;
-  queryRefInfos?: TopologyQueryRefInfo[];
+  datasourceUid?: string;
   queryHostOptions?: QueryHostOption[];
   storedMap?: TopologyMap;
   childMapIds?: string[];
@@ -45,7 +45,7 @@ function hostSelectValue(node: TopologyNode): string | undefined {
 
 export function NodeEditModal({
   node,
-  queryRefInfos = [],
+  datasourceUid,
   queryHostOptions = [],
   storedMap,
   childMapIds = [],
@@ -150,7 +150,7 @@ export function NodeEditModal({
           uid={uid}
           values={values}
           set={set}
-          queryRefInfos={queryRefInfos}
+          datasourceUid={datasourceUid}
           childMapIds={childMapIds}
         />
       )}

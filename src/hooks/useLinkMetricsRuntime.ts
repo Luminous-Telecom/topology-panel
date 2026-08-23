@@ -8,7 +8,7 @@ import {
   collectLinkMetricItemIds,
   utilizationThresholdsFromOptions,
 } from '../utils/linkMetricsRuntime';
-import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
+import { fetchZabbixItemLastValuesViaQuery } from '../utils/zabbixDatasourceQuery';
 import {
   POLL_WATCHDOG_MS,
   canStartPolledFetch,
@@ -157,7 +157,7 @@ export function useLinkMetricsRuntime(
           metricsCache.invalidate(cacheKey);
         }
         const next = await metricsCache.get(cacheKey, async () => {
-          const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current, abortSignal);
+          const items = await fetchZabbixItemLastValuesViaQuery(datasourceUid, itemIdsRef.current, abortSignal);
           return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
         });
         if (cancelled || generation !== fetchGeneration) {

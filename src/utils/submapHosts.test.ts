@@ -65,6 +65,18 @@ describe('submapHostListForNode', () => {
     const hosts = { B: ['10.0.0.9'] };
     expect(submapHostListForNode(submap('B'), display, hosts, true, new Set())).toEqual(['10.0.0.9']);
   });
+
+  it('junta hosts de vários grupos do mesmo submapa', () => {
+    const node: TopologyNode = {
+      id: 'sm',
+      type: 'submap',
+      x: 0,
+      y: 0,
+      queryRefIds: ['B', 'C'],
+    };
+    const hosts = { B: ['10.0.0.1'], C: ['10.0.0.3'] };
+    expect(submapHostListForNode(node, display, hosts, true, new Set())).toEqual(['10.0.0.1', '10.0.0.3']);
+  });
 });
 
 describe('innerHostsForSubmapNode / shouldOpenLinkInterfaceModal', () => {

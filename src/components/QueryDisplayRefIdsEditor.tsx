@@ -4,13 +4,21 @@ import { css } from '@emotion/css';
 import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
 import { resolvePanelQueryRefInfos } from '../services/zabbixDirectIndex';
-import { collectSubmapQueryRefIds } from '../utils/queryHosts';
+import { collectAllSubmapGroups, collectSubmapQueryRefIds } from '../utils/queryHosts';
 import { queryRefBadgeLabel, queryRefRowTitle } from '../utils/queryRefLabel';
 
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 
 function resolveAvailableQueryRefs(context: Props['context']): TopologyQueryRefInfo[] {
-  return resolvePanelQueryRefInfos(context.options);
+  const options = context.options;
+  if (!options) {
+    return [];
+  }
+  return resolvePanelQueryRefInfos(
+    options,
+    options.queryRefInfosAvailable,
+    collectAllSubmapGroups(options)
+  );
 }
 
 function normalizeRefId(refId: string): string {
@@ -83,7 +91,7 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   if (!queryRefs.length) {
     return (
       <span style={{ fontSize: 12, opacity: 0.75 }}>
-        Escolha o datasource Zabbix e ao menos um grupo de host em Fonte de dados.
+        Configure o grupo Zabbix em um submapa.
       </span>
     );
   }

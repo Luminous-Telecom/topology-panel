@@ -28,13 +28,17 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 |---|---|
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling de status) |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: `zabbixGroupsFilter` + item) |
+| Inventário de itens de interface (query) | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um target por host, palavras-chave no mesmo item) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
-| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` |
+| Lastvalue de itemids de cabo | `fetchZabbixItemLastValuesViaQuery` em `utils/zabbixDatasourceQuery.ts` |
+| Problemas Warning+ | `fetchZabbixHostProblemsViaQuery` em `utils/zabbixDatasourceQuery.ts` |
+| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
+| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
-| Série temporal do gráfico de hover | `fetchHostHoverSeriesFromZabbix` em `utils/zabbixApi.ts` |
+| Série temporal do gráfico de hover | `fetchHostHoverSeriesViaQuery` em `utils/zabbixDatasourceQuery.ts` |
 | Relógio do dashboard no hover (`skipDataQuery` ignora `data.timeRange`) | `panelDataWithDashboardTimeRange` em `utils/hostTimeSeries.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
@@ -43,6 +47,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
 | Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `resolveLinkUtilizationLevel` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
+| Grupos Zabbix do mapa visível (pai + submapas aninhados) | `zabbixGroupsForVisibleMap` em `utils/queryHosts.ts` |
+| Grupos gravados no nó submapa (`queryRefIds` ou `queryRefId` legado) | `submapQueryRefIds` em `utils/queryHosts.ts` |
+| Grupos efetivos do atalho (próprios + dono do mapa interno) | `effectiveSubmapQueryRefIds` em `utils/queryHosts.ts` |
+| Grupos no casing do Zabbix a partir da metadata | `zabbixGroupsFromHostMetadata` em `utils/queryHosts.ts` |
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
 | Medida de texto e caixa do nó | `utils/nodeLayout.ts` |

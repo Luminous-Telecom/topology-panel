@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { TopologyDashboardChoice, TopologyHostIcon, TopologyNode } from '../types';
+import { submapQueryRefIds } from '../utils/queryHosts';
 
 /**
  * Campos do formulário de propriedades do nó. Medidas ficam como texto porque o `Input type=number`
@@ -11,7 +12,7 @@ export interface NodeEditFormValues {
   submapUid: string;
   submapSlug: string;
   submapChildMapId: string;
-  queryRefId: string;
+  queryRefIds: string[];
   dashboardChoices: TopologyDashboardChoice[];
   icon: TopologyHostIcon;
   width: string;
@@ -40,7 +41,7 @@ export function initialNodeEditValues(node: TopologyNode): NodeEditFormValues {
     submapUid: node.submapUid ?? '',
     submapSlug: node.submapSlug ?? '',
     submapChildMapId: node.submapChildMapId ?? '',
-    queryRefId: node.queryRefId ?? '',
+    queryRefIds: submapQueryRefIds(node),
     dashboardChoices: node.dashboardChoices ?? [],
     icon: node.icon ?? 'network',
     width: numberField(node.width),

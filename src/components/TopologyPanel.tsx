@@ -16,7 +16,8 @@ import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
-import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, sameQueryRefInfos, sameStringList } from '../utils/queryHosts';
+import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, zabbixGroupsForVisibleMap, zabbixGroupsFromHostMetadata } from '../utils/queryHosts';
+import { sameTopologyView } from '../utils/zoomMath';
 import {
   hostDisplayByRefIdFromIndex,
   queryHostsByRefIdFromIndex,
@@ -101,7 +102,14 @@ export function TopologyPanel({
         return;
       }
       if (mapId === ROOT_MAP_ID) {
+        if (sameTopologyView(latestOptionsRef.current.view, view)) {
+          return;
+        }
         onOptionsChange({ ...latestOptionsRef.current, view });
+        return;
+      }
+      const current = latestOptionsRef.current.childMapViews?.[mapId];
+      if (sameTopologyView(current, view)) {
         return;
       }
       onOptionsChange({
@@ -152,12 +160,17 @@ export function TopologyPanel({
     ]
   );
 
+  const statusGroupNames = useMemo(
+    () => zabbixGroupsForVisibleMap(resolvedOptions, currentMapId),
+    [resolvedOptions.map, resolvedOptions.childMaps, currentMapId]
+  );
+
   /** Status e hosts vêm do snapshot Zabbix (API direta, consulta atual). RX/TX em polling separado. */
   const querySource = useTopologyQueryIndex({
     panelData: data,
     enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
-    groupNames: resolvedOptions.zabbixHostGroups ?? [],
+    groupNames: statusGroupNames,
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
     eventBus,
@@ -234,28 +247,6 @@ export function TopologyPanel({
 
   const hostDisplay = useStableIdentity(hostDisplayRaw);
 
-  const queryRefIdsAvailable = queryIndex.refIds;
-  const queryRefInfosAvailable = queryIndex.refInfos;
-
-  useEffect(() => {
-    if (!canPersistOptions) {
-      return;
-    }
-    const currentIds = latestOptionsRef.current.queryRefIdsAvailable ?? [];
-    const currentInfos = latestOptionsRef.current.queryRefInfosAvailable ?? [];
-    if (
-      sameStringList(currentIds, queryRefIdsAvailable) &&
-      sameQueryRefInfos(currentInfos, queryRefInfosAvailable)
-    ) {
-      return;
-    }
-    onOptionsChange({
-      ...latestOptionsRef.current,
-      queryRefIdsAvailable,
-      queryRefInfosAvailable,
-    });
-  }, [canPersistOptions, onOptionsChange, queryRefIdsAvailable, queryRefInfosAvailable]);
-
   const submapQueryRefIds = useMemo(
     () => collectSubmapQueryRefIds(activeStoredMap),
     [activeStoredMap]
@@ -267,8 +258,11 @@ export function TopologyPanel({
   );
 
   const displayQueryHostsRaw = useMemo(
-    () => extractDisplayQueryHosts(queryIndex, submapQueryRefIds, displayQueryRefIds),
-    [queryIndex, submapQueryRefIds, displayQueryRefIds]
+    () =>
+      currentMapId === ROOT_MAP_ID
+        ? extractDisplayQueryHosts(queryIndex, submapQueryRefIds, displayQueryRefIds)
+        : [],
+    [queryIndex, submapQueryRefIds, displayQueryRefIds, currentMapId]
   );
 
   const displayQueryHosts = useStableIdentity(displayQueryHostsRaw);
@@ -294,7 +288,7 @@ export function TopologyPanel({
     return activeStoredMap.nodes.filter(
       (n) =>
         n.type === 'submap' &&
-        (n.submapUid?.trim() || n.queryRefId?.trim() || n.submapChildMapId?.trim())
+        (n.submapUid?.trim() || Boolean(n.queryRefIds?.length) || n.queryRefId?.trim() || n.submapChildMapId?.trim())
     );
   }, [activeStoredMap.nodes]);
 
@@ -347,9 +341,12 @@ export function TopologyPanel({
     if (!queryReady) {
       return {};
     }
-    const maps = [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))];
+    const maps =
+      currentMapId === ROOT_MAP_ID
+        ? [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))]
+        : [activeStoredMap];
     return collectHostMetadataForMaps(maps, hostMetadata);
-  }, [queryReady, resolvedOptions.map, resolvedOptions.childMaps, hostMetadata]);
+  }, [queryReady, resolvedOptions.map, resolvedOptions.childMaps, hostMetadata, currentMapId, activeStoredMap]);
 
   const applyActiveMap = useCallback(
     (map: TopologyMap) => {
@@ -363,9 +360,15 @@ export function TopologyPanel({
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
 
+  const problemGroupNames = useMemo(() => {
+    const resolved = zabbixGroupsFromHostMetadata(queryMeta);
+    return resolved.length ? resolved : statusGroupNames;
+  }, [queryMeta, statusGroupNames]);
+
   const { problems: hostProblemsRaw } = useZabbixHostProblems(
     queryReady ? zabbixDatasourceUid : undefined,
-    problemsHostMetadata
+    problemsHostMetadata,
+    problemGroupNames
   );
 
   const hostProblems = useStableIdentity(hostProblemsRaw);
@@ -386,7 +389,14 @@ export function TopologyPanel({
         return;
       }
       if (currentMapId === ROOT_MAP_ID) {
+        if (sameTopologyView(latestOptionsRef.current.view, view)) {
+          return;
+        }
         onOptionsChange({ ...latestOptionsRef.current, view });
+        return;
+      }
+      const current = latestOptionsRef.current.childMapViews?.[currentMapId];
+      if (sameTopologyView(current, view)) {
         return;
       }
       onOptionsChange({

@@ -4,7 +4,8 @@ import { HostMetadataMap, TopologyPanelOptions } from '../types';
 import { HostLookupRef } from '../utils/hostLookup';
 import { HostHoverSeries } from '../utils/hostTimeSeries';
 import { StatusColorOptions } from '../utils/statusMapping';
-import { fetchHostHoverSeriesFromZabbix, isBenignZabbixFetchError } from '../utils/zabbixApi';
+import { isBenignZabbixFetchError } from '../utils/zabbixApi';
+import { fetchHostHoverSeriesViaQuery } from '../utils/zabbixDatasourceQuery';
 import { ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY } from '../types';
 
 interface UseHostHoverSeriesParams {
@@ -69,7 +70,7 @@ export function useHostHoverSeries({
     let cancelled = false;
     setLoading(true);
 
-    fetchHostHoverSeriesFromZabbix(
+    fetchHostHoverSeriesViaQuery(
       zabbixDatasourceUid,
       lookupRef,
       hostMetadata,

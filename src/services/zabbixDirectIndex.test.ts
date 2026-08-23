@@ -42,6 +42,14 @@ describe('statusValuesByHostId', () => {
     expect(values.has('10')).toBe(false);
   });
 
+  it('aceita o item quando o campo do painel é o nome, não a key_', () => {
+    const values = statusValuesByHostId(
+      [{ ...item('10', 'icmppingsec', '0.012'), name: 'Status item' }],
+      'Status item'
+    );
+    expect(values.get('10')?.value).toBe(0.012);
+  });
+
   it('com mesmo rank, prefere lastclock mais recente e depois falha (0)', () => {
     const values = statusValuesByHostId(
       [
@@ -154,19 +162,28 @@ describe('directRefInfosFromGroups', () => {
   });
 });
 
+describe('buildZabbixDirectIndex com nome de item', () => {
+  it('indexa lastValues quando o campo do painel é o nome, não a key_', () => {
+    const index = buildZabbixDirectIndex({
+      datasourceUid: 'zbx',
+      groupNames: ['Backbone'],
+      statusItemKey: 'Status item',
+      hosts: [host({ hostid: '10', name: 'host-a', host: 'host-a', ip: '10.0.0.1', groups: ['Backbone'] })],
+      statusItems: [{ ...item('10', 'icmppingsec', '0.012'), name: 'Status item' }],
+    });
+    expect(index.byRefId.get('BACKBONE')?.lastValues.get('host-a')).toBe(0.012);
+  });
+});
+
 describe('resolvePanelQueryRefInfos', () => {
   it('prioriza refInfos sincronizados pelo painel', () => {
     const synced = [{ refId: 'A', hint: 'Query A' }];
-    expect(resolvePanelQueryRefInfos({ zabbixHostGroups: ['X'] }, synced)).toBe(
-      synced
-    );
+    expect(resolvePanelQueryRefInfos({}, synced)).toBe(synced);
   });
 
-  it('cai nos grupos Zabbix quando não há sync', () => {
-    expect(
-      resolvePanelQueryRefInfos({
-        zabbixHostGroups: ['Backbone'],
-      })
-    ).toEqual([{ refId: 'BACKBONE', hint: 'Grupo Zabbix: Backbone' }]);
+  it('cai nos grupos dos submapas quando não há sync', () => {
+    expect(resolvePanelQueryRefInfos({}, [], ['Backbone'])).toEqual([
+      { refId: 'BACKBONE', hint: 'Grupo Zabbix: Backbone' },
+    ]);
   });
 });

@@ -70,11 +70,12 @@ describe('buildNodeEditPayload — demais tipos', () => {
     expect(buildNodeEditPayload(n, values(n, { label: '  ' }))?.patch.label).toBe('Sala');
   });
 
-  it('submapa: medida vazia vira automático e refId sobe para maiúsculas', () => {
+  it('submapa: medida vazia vira automático e guarda os grupos no casing original', () => {
     const n = node({ type: 'submap' });
-    const payload = buildNodeEditPayload(n, values(n, { width: '', queryRefId: ' b ' }));
+    const payload = buildNodeEditPayload(n, values(n, { width: '', queryRefIds: [' Backbone ', 'borda'] }));
     expect(payload?.patch.width).toBeUndefined();
-    expect(payload?.patch.queryRefId).toBe('B');
+    expect(payload?.patch.queryRefIds).toEqual(['Backbone', 'borda']);
+    expect(payload?.patch.queryRefId).toBeUndefined();
   });
 
   it('seletor descarta dashboard sem uid e não guarda subtítulo', () => {

@@ -1,6 +1,7 @@
 import { NodeEditFormValues } from '../hooks/useNodeEditForm';
 import { NodeEditSavePayload, TopologyNode } from '../types';
 import { isIpv4 } from './ipv4';
+import { uniqueGroupNames } from './queryHosts';
 
 /** Medida opcional: vazio significa "automático", então vira `undefined` em vez de zero. */
 function optionalSize(raw: string, min: number): number | undefined {
@@ -80,7 +81,9 @@ export function buildNodeEditPayload(
   if (type === 'submap') {
     patch.width = optionalSize(values.width, 40);
     patch.height = optionalSize(values.height, 24);
-    patch.queryRefId = trimmedOrUndefined(values.queryRefId.toUpperCase());
+    const groups = uniqueGroupNames(values.queryRefIds);
+    patch.queryRefIds = groups.length ? groups : undefined;
+    patch.queryRefId = undefined;
   }
   if (type === 'dashboard_picker') {
     patch.dashboardChoices = values.dashboardChoices.filter((choice) => choice.uid.trim());

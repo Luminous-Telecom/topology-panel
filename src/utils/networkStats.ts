@@ -3,7 +3,7 @@ import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from '.
 import { linkKey } from './mapLinkEdits';
 import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { NodeLayout } from './nodeLayout';
-import { findHostDisplayBucket, lookupHostDisplay } from './queryHosts';
+import { findHostDisplayBucket, flattenHostDisplayByRefId, lookupHostDisplay, submapQueryRefIds } from './queryHosts';
 import { isHostNode } from './topologyNodes';
 import { panelColorWithAlpha } from './panelColors';
 import { formatBitsPerSecond } from './zabbixAdapter/formatTraffic';
@@ -243,10 +243,15 @@ export function buildRegionStatsMap(
         result.set(node.id, { total: 0, offline: 0, alert: 0, online: 0, unknown: 0, loadFailed: true });
         continue;
       }
-      const refId = node.queryRefId?.trim();
-      const statusMap = refId
-        ? findHostDisplayBucket(hostDisplayByRefId, refId) ?? {}
-        : hostDisplay;
+      const refIds = submapQueryRefIds(node);
+      const buckets: Record<string, HostDisplayMap> = {};
+      for (const refId of refIds) {
+        const bucket = findHostDisplayBucket(hostDisplayByRefId, refId);
+        if (bucket) {
+          buckets[refId] = bucket;
+        }
+      }
+      const statusMap = refIds.length ? flattenHostDisplayByRefId(buckets) : hostDisplay;
       result.set(node.id, countRegionStats(fetched, statusMap, hostMetadata, hostProblems));
       continue;
     }

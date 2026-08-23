@@ -2,14 +2,14 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultOptions } from '../types';
 import { emptyMap, hostNode } from '../utils/testMapFixtures';
-import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
+import { fetchZabbixItemLastValuesViaQuery } from '../utils/zabbixDatasourceQuery';
 import { useLinkMetricsRuntime } from './useLinkMetricsRuntime';
 
-vi.mock('../utils/zabbixApi', () => ({
-  fetchZabbixItemLastValues: vi.fn(),
+vi.mock('../utils/zabbixDatasourceQuery', () => ({
+  fetchZabbixItemLastValuesViaQuery: vi.fn(),
 }));
 
-const fetchLastValues = vi.mocked(fetchZabbixItemLastValues);
+const fetchLastValues = vi.mocked(fetchZabbixItemLastValuesViaQuery);
 
 function mapWithTraffic() {
   return {

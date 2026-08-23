@@ -5,6 +5,7 @@ import {
   TopologyInterfaceReference,
   TopologyLink,
   TopologyMap,
+  TopologyMetricReference,
   TopologyPanelOptions,
 } from '../types';
 import { linkKey } from './mapLinkEdits';
@@ -91,18 +92,25 @@ export function resolveLinkMapTrafficMetrics(
   return {};
 }
 
-function readItemValue(items: Record<string, ZabbixItemLastValue>, itemId?: string): number | undefined {
-  if (!itemId) {
+function readItemValue(
+  items: Record<string, ZabbixItemLastValue>,
+  ref?: TopologyMetricReference
+): number | undefined {
+  if (!ref) {
     return undefined;
   }
-  return parseTrafficLastValue(items[itemId]?.lastvalue);
+  const raw = items[ref.itemId]?.lastvalue ?? (ref.key ? items[ref.key]?.lastvalue : undefined);
+  return parseTrafficLastValue(raw);
 }
 
-function readItemClock(items: Record<string, ZabbixItemLastValue>, itemId?: string): number | undefined {
-  if (!itemId) {
+function readItemClock(
+  items: Record<string, ZabbixItemLastValue>,
+  ref?: TopologyMetricReference
+): number | undefined {
+  if (!ref) {
     return undefined;
   }
-  const clock = Number(items[itemId]?.lastclock);
+  const clock = Number(items[ref.itemId]?.lastclock ?? (ref.key ? items[ref.key]?.lastclock : undefined));
   return Number.isFinite(clock) ? clock * 1000 : undefined;
 }
 
@@ -115,17 +123,17 @@ function buildEndpointMetrics(
     return { capacityMbps: fallbackCapacityMbps };
   }
   const m = ref.metrics;
-  const rxBps = readItemValue(items, m.rx?.itemId);
-  const txBps = readItemValue(items, m.tx?.itemId);
-  const operRaw = readItemValue(items, m.operStatus?.itemId);
-  const speedBps = readItemValue(items, m.speed?.itemId);
+  const rxBps = readItemValue(items, m.rx);
+  const txBps = readItemValue(items, m.tx);
+  const operRaw = readItemValue(items, m.operStatus);
+  const speedBps = readItemValue(items, m.speed);
   const capacityMbps = speedBpsToMbps(speedBps) ?? fallbackCapacityMbps;
-  const errors = readItemValue(items, m.errors?.itemId);
-  const drops = readItemValue(items, m.drops?.itemId);
+  const errors = readItemValue(items, m.errors);
+  const drops = readItemValue(items, m.drops);
   const clocks = [
-    readItemClock(items, m.rx?.itemId),
-    readItemClock(items, m.tx?.itemId),
-    readItemClock(items, m.operStatus?.itemId),
+    readItemClock(items, m.rx),
+    readItemClock(items, m.tx),
+    readItemClock(items, m.operStatus),
   ].filter((c): c is number => c !== undefined);
   const lastUpdateMs = clocks.length ? Math.max(...clocks) : undefined;
 

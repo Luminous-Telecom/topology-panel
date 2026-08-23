@@ -501,11 +501,11 @@ export interface ZabbixDirectMetadata {
   hosts: ZabbixDirectHost[];
   /** Grupos configurados que existem de fato no Zabbix — vazio indica configuração errada. */
   resolvedGroups: string[];
-  /** groupids resolvidos, reaproveitados pela `item.get` de status de cada ciclo. */
+  /** groupids resolvidos, reaproveitados pela descoberta única dos itemids de status. */
   groupIds: string[];
 }
 
-/** Grupos de host disponíveis no Zabbix — alimenta o seletor de grupos do painel. */
+/** Grupos de host disponíveis no Zabbix — alimenta o MultiSelect do submapa. */
 export async function fetchZabbixHostGroupNames(datasourceUid: string): Promise<string[]> {
   if (!datasourceUid) {
     return [];
@@ -530,10 +530,11 @@ async function fetchGroupIdsByName(
   groupNames: string[],
   callOptions: ZabbixCallOptions = {}
 ): Promise<Map<string, string>> {
+  const wantedKeys = new Set(groupNames.map((name) => name.trim().toUpperCase()).filter(Boolean));
   const groups = await zabbixCall<Array<{ groupid?: string; name?: string }>>(
     datasourceUid,
     'hostgroup.get',
-    { output: ['groupid', 'name'], filter: { name: groupNames } },
+    { output: ['groupid', 'name'] },
     ZABBIX_CALL_TIMEOUT_MS,
     callOptions
   );
@@ -541,9 +542,10 @@ async function fetchGroupIdsByName(
   for (const group of groups ?? []) {
     const name = group.name?.trim();
     const groupid = asZabbixId(group.groupid);
-    if (name && groupid) {
-      byName.set(name, groupid);
+    if (!name || !groupid || !wantedKeys.has(name.toUpperCase())) {
+      continue;
     }
+    byName.set(name, groupid);
   }
   return byName;
 }
@@ -599,93 +601,12 @@ async function fetchMonitoredHostsInGroups(
   return hosts;
 }
 
-/** Tentativas antes de desistir da chamada de status (sem cache, sem valor parcial). */
-export const STATUS_CALL_MAX_ATTEMPTS = 3;
-const STATUS_CALL_RETRY_DELAY_MS = 300;
-
-function sleepMs(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-/** Repete antes de desistir — instabilidade pontual não pode zerar o status do mapa inteiro. */
-async function zabbixCallWithRetry<T>(
-  datasourceUid: string,
-  method: string,
-  params: object,
-  timeoutMs?: number,
-  callOptions: ZabbixCallOptions = {}
-): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= STATUS_CALL_MAX_ATTEMPTS; attempt++) {
-    throwIfAborted(callOptions.abortSignal);
-    try {
-      return await zabbixCall<T>(datasourceUid, method, params, timeoutMs, callOptions);
-    } catch (err) {
-      lastError = err;
-      if (isBenignZabbixFetchError(err) && callOptions.abortSignal?.aborted) {
-        throw err;
-      }
-      if (attempt < STATUS_CALL_MAX_ATTEMPTS) {
-        await sleepMs(STATUS_CALL_RETRY_DELAY_MS);
-      }
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error('Falha ao consultar o Zabbix.');
-}
-
-/**
- * Status de todos os hosts dos grupos numa única `item.get`.
- *
- * `lastvalue`/`lastclock` são o estado atual do item no servidor, então não há `history.get` por
- * cima: era ele que multiplicava as requisições do ciclo (um lote a cada 100 hosts) sem trazer
- * ponto mais novo que o próprio `lastvalue`. O `output` fica no mínimo que
- * `statusValuesByHostId` consome — `name` e `value_type` só engordavam a resposta.
- */
-export async function fetchZabbixStatusItems(
-  datasourceUid: string,
-  groupIds: string[],
-  statusItemKey: string,
-  abortSignal?: AbortSignal
-): Promise<ZabbixInterfaceItem[]> {
-  const ids = [...new Set(groupIds.map((id) => asZabbixId(id)).filter(Boolean))];
-  const itemKey = statusItemKey.trim();
-  if (!datasourceUid || !ids.length || !itemKey) {
-    return [];
-  }
-
-  try {
-    const items = await zabbixCallWithRetry<ZabbixInterfaceItem[]>(
-      datasourceUid,
-      'item.get',
-      {
-        groupids: ids,
-        output: ['itemid', 'hostid', 'key_', 'lastvalue', 'lastclock'],
-        search: { key_: itemKey },
-        startSearch: true,
-        monitored: true,
-        webitems: false,
-      },
-      ZABBIX_STATUS_CALL_TIMEOUT_MS,
-      {
-        abortSignal,
-        requestId: `topology-status-${datasourceUid}`,
-      }
-    );
-    return items ?? [];
-  } catch (err) {
-    if (isBenignZabbixFetchError(err)) {
-      throw err;
-    }
-    throw new Error('Falha ao consultar itens de status no Zabbix.');
-  }
-}
-
 /**
  * Identidade dos hosts dos grupos: nome, IP, grupos e tags.
  *
  * Sai do ciclo periódico de propósito — nada aqui decide online/offline, e refazer `hostgroup.get`
  * + `host.get` a cada atualização era metade das chamadas do ciclo. O hook busca uma vez por
- * configuração de painel; o status continua vindo inteiro da consulta atual.
+ * configuração de painel; o valor de status vem só de `ds.query()`.
  */
 export async function fetchZabbixDirectMetadata(
   datasourceUid: string,
@@ -703,6 +624,7 @@ export async function fetchZabbixDirectMetadata(
   };
 
   const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted, callOptions);
+  /** Nomes no casing do Zabbix — o `queryRefId` legado grava o grupo em maiúsculas. */
   const resolvedGroups = [...groupIdByName.keys()];
   const groupIds = [...groupIdByName.values()];
   if (!resolvedGroups.length) {

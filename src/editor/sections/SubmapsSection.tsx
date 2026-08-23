@@ -1,15 +1,16 @@
 import React from 'react';
 import { Button, CollapsableSection, Field, Icon, Input, Select, Stack } from '@grafana/ui';
-import { TopologyNode, TopologyQueryRefInfo } from '../../types';
+import { TopologyNode } from '../../types';
 import { DashboardPickerSelect } from '../../components/DashboardPickerSelect';
 import { FieldReadout } from '../../components/FieldReadout';
 import { QueryRefSelect } from '../../components/QueryRefSelect';
+import { submapQueryRefIds } from '../../utils/queryHosts';
 
 interface SubmapsSectionProps {
   uid: string;
   locked: boolean;
   submapNodes: TopologyNode[];
-  queryRefInfos: TopologyQueryRefInfo[];
+  datasourceUid?: string;
   childMapIds?: string[];
   openNodes: Record<string, boolean>;
   onToggleNode: (nodeId: string, open: boolean) => void;
@@ -23,7 +24,7 @@ export function SubmapsSection({
   uid,
   locked,
   submapNodes,
-  queryRefInfos,
+  datasourceUid,
   childMapIds = [],
   openNodes,
   onToggleNode,
@@ -91,15 +92,20 @@ export function SubmapsSection({
                 />
               </Field>
               <Field
-                label="Grupo Zabbix"
-                description="Este grupo alimenta a contagem de hosts do submapa"
+                label="Grupos Zabbix"
+                description="Ao abrir o mapa interno, status, hosts, itens e interfaces vêm só destes grupos"
               >
                 <QueryRefSelect
                   inputId={`${uid}-submap-${idx}-query`}
-                  value={node.queryRefId ?? ''}
-                  queryRefs={queryRefInfos}
+                  value={submapQueryRefIds(node)}
+                  datasourceUid={datasourceUid}
                   disabled={locked}
-                  onChange={(refId) => onUpdate(idx, { queryRefId: refId.trim().toUpperCase() || undefined })}
+                  onChange={(groups) =>
+                    onUpdate(idx, {
+                      queryRefIds: groups.length ? groups : undefined,
+                      queryRefId: undefined,
+                    })
+                  }
                 />
               </Field>
               <Button variant="destructive" size="sm" disabled={locked} onClick={() => onRemove(idx)}>

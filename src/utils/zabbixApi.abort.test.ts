@@ -7,7 +7,7 @@ vi.mock('@grafana/runtime', () => ({
   getDataSourceSrv: () => ({ getInstanceSettings: () => undefined }),
 }));
 
-import { fetchZabbixStatusItems } from './zabbixApi';
+import { fetchZabbixDirectMetadata } from './zabbixApi';
 
 describe('cancelamento de requisições Zabbix', () => {
   beforeEach(() => {
@@ -17,12 +17,12 @@ describe('cancelamento de requisições Zabbix', () => {
   it('passa abortSignal e requestId estável para o BackendSrv', async () => {
     post.mockResolvedValue({ result: [] });
 
-    await fetchZabbixStatusItems('ds', ['1'], 'icmppingsec');
+    await fetchZabbixDirectMetadata('ds', ['Backbone']);
 
     expect(post).toHaveBeenCalledTimes(1);
     const [, , options] = post.mock.calls[0] as [string, unknown, { abortSignal?: AbortSignal; requestId?: string }];
     expect(options.abortSignal).toBeInstanceOf(AbortSignal);
-    expect(options.requestId).toBe('topology-status-ds');
+    expect(options.requestId).toBe('topology-metadata-ds');
   });
 
   it('interrompe a chamada quando o AbortSignal externo dispara', async () => {
@@ -36,7 +36,7 @@ describe('cancelamento de requisições Zabbix', () => {
     );
 
     const controller = new AbortController();
-    const pending = fetchZabbixStatusItems('ds', ['1'], 'icmppingsec', controller.signal);
+    const pending = fetchZabbixDirectMetadata('ds', ['Backbone'], controller.signal);
     controller.abort();
 
     await expect(pending).rejects.toThrow(/abort/i);

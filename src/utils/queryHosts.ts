@@ -3,6 +3,7 @@ import {
   HostDisplayMap,
   HostMetadataMap,
   TopologyMap,
+  TopologyNode,
   TopologyPanelOptions,
   TopologyQueryRefInfo,
 } from '../types';
@@ -10,7 +11,10 @@ import {
   numericHostsForRefIds,
   QueryIndex,
 } from '../services/queryIndex';
+import { directRefId } from '../services/zabbixDirectIndex';
+import { activeChildMaps } from './childMapEdits';
 import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, preferHostDisplayInfo } from './hostLookup';
+import { ROOT_MAP_ID, resolveTopologyMapById } from './topologyMapNavigation';
 
 /**
  * Helpers do índice de hosts (grupos Zabbix como refId virtual).
@@ -67,16 +71,163 @@ export function flattenHostDisplayByRefId(
   return result;
 }
 
+/** Nome no catálogo que casa com o refId, sem distinguir maiúsculas. */
+export function resolveCatalogGroupName(
+  refId: string,
+  catalog: readonly string[] | undefined
+): string | undefined {
+  const trimmed = refId.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const wanted = directRefId(trimmed);
+  for (const name of catalog ?? []) {
+    if (directRefId(name) === wanted) {
+      return name;
+    }
+  }
+  return undefined;
+}
+
+/** Nomes de grupo no casing do Zabbix — saem da metadata já resolvida, não do queryRefId. */
+export function zabbixGroupsFromHostMetadata(metadata: HostMetadataMap): string[] {
+  const refs: string[] = [];
+  for (const entry of Object.values(metadata)) {
+    if (entry.hostGroups?.length) {
+      refs.push(...entry.hostGroups);
+    }
+  }
+  return uniqueGroupNames(refs);
+}
+
+/** Grupos únicos, no casing em que foram gravados. */
+export function uniqueGroupNames(refIds: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const groups: string[] = [];
+  for (const raw of refIds) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = directRefId(trimmed);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    groups.push(trimmed);
+  }
+  return groups;
+}
+
+/** Grupos do nó submapa — `queryRefIds` ou o `queryRefId` legado. */
+export function submapQueryRefIds(node: TopologyNode): string[] {
+  if (node.type !== 'submap') {
+    return [];
+  }
+  if (node.queryRefIds?.length) {
+    return uniqueGroupNames(node.queryRefIds);
+  }
+  return uniqueGroupNames(node.queryRefId ? [node.queryRefId] : []);
+}
+
+/**
+ * Grupos efetivos do submapa: os gravados no nó e, se for atalho para um mapa interno,
+ * os do nó que originou esse mapa (o atalho costuma ter um rótulo curto que não existe no Zabbix).
+ */
+export function effectiveSubmapQueryRefIds(
+  node: TopologyNode,
+  options?: Pick<TopologyPanelOptions, 'map' | 'childMaps'>
+): string[] {
+  const own = submapQueryRefIds(node);
+  const childId = node.submapChildMapId?.trim();
+  if (!childId || !options) {
+    return own;
+  }
+  const owner = findSubmapNodeForChildMap(options.map, options.childMaps, childId);
+  if (!owner || owner === node) {
+    return own;
+  }
+  return uniqueGroupNames([...own, ...submapQueryRefIds(owner)]);
+}
+
+/** Grupos únicos dos submapas desenhados neste mapa. */
+export function collectSubmapCatalogGroups(
+  map: TopologyMap,
+  options?: Pick<TopologyPanelOptions, 'map' | 'childMaps'>
+): string[] {
+  const refs: string[] = [];
+  for (const node of map.nodes ?? []) {
+    refs.push(...effectiveSubmapQueryRefIds(node, options));
+  }
+  return uniqueGroupNames(refs);
+}
+
+/** Grupos de todos os submapas (raiz + childMaps). */
+export function collectAllSubmapGroups(
+  options: Pick<TopologyPanelOptions, 'map' | 'childMaps'>
+): string[] {
+  const refs = [...collectSubmapCatalogGroups(options.map, options)];
+  for (const map of Object.values(activeChildMaps(options.childMaps))) {
+    refs.push(...collectSubmapCatalogGroups(map, options));
+  }
+  return uniqueGroupNames(refs);
+}
+
+/** Nó submapa cujo mapa interno é `childMapId` — procura no raiz e nos childMaps (cidade aninhada). */
+export function findSubmapNodeForChildMap(
+  rootMap: TopologyMap,
+  childMaps: TopologyPanelOptions['childMaps'],
+  childMapId: string
+): TopologyNode | undefined {
+  const wanted = childMapId.trim();
+  if (!wanted) {
+    return undefined;
+  }
+  const maps: TopologyMap[] = [rootMap, ...Object.values(activeChildMaps(childMaps))];
+  for (const map of maps) {
+    for (const node of map.nodes ?? []) {
+      if (node.type === 'submap' && node.submapChildMapId?.trim() === wanted) {
+        return node;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Grupos enviados à query Metrics do mapa visível.
+ * Em qualquer nível: grupos do nó pai (se houver) + grupos dos submapas desenhados neste mapa.
+ */
+export function zabbixGroupsForVisibleMap(
+  options: Pick<TopologyPanelOptions, 'map' | 'childMaps'>,
+  currentMapId: string
+): string[] {
+  const refs: string[] = [];
+
+  if (currentMapId !== ROOT_MAP_ID) {
+    const parent = findSubmapNodeForChildMap(options.map, options.childMaps, currentMapId);
+    if (parent) {
+      refs.push(...effectiveSubmapQueryRefIds(parent, options));
+    }
+  }
+
+  const visibleMap =
+    currentMapId === ROOT_MAP_ID
+      ? options.map
+      : resolveTopologyMapById(options, currentMapId);
+  if (visibleMap) {
+    refs.push(...collectSubmapCatalogGroups(visibleMap, options));
+  }
+
+  return uniqueGroupNames(refs);
+}
+
 /** RefIds de grupo reservados a submapas (não desenham hosts no mapa pai). */
 export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
   const refs = new Set<string>();
   for (const node of map.nodes ?? []) {
-    if (node.type !== 'submap') {
-      continue;
-    }
-    const refId = node.queryRefId?.trim();
-    if (refId) {
-      refs.add(refId.toUpperCase());
+    for (const refId of submapQueryRefIds(node)) {
+      refs.add(directRefId(refId));
     }
   }
   return refs;

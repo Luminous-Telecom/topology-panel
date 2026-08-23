@@ -9,7 +9,6 @@ import {
   parseTopologyJson,
   topologyToJson,
 } from '../types';
-import { resolvePanelQueryRefInfos } from '../services/zabbixDirectIndex';
 import { activeChildMaps } from '../utils/childMapEdits';
 import { inferLinkMedium } from '../utils/linkMedium';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
@@ -21,7 +20,7 @@ export function useTopologyMapEditor({ value, onChange, context }: EditorProps) 
   const uid = useId();
   const panelOptions = context.options;
   const map = value ?? panelOptions.map ?? defaultTopologyMap();
-  const queryRefInfos = resolvePanelQueryRefInfos(panelOptions);
+  const datasourceUid = panelOptions?.zabbixDatasourceUid;
   const locked = Boolean(map.locked);
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonText, setJsonText] = useState(() => topologyToJson(map));
@@ -207,7 +206,7 @@ export function useTopologyMapEditor({ value, onChange, context }: EditorProps) 
     jsonError,
     setJsonText,
     setJsonMode,
-    queryRefInfos,
+    datasourceUid,
     hostNodes,
     submapNodes,
     childMapIds,

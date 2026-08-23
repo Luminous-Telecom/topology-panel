@@ -37,15 +37,16 @@ export function directRefInfosFromGroups(groupNames: string[]): TopologyQueryRef
   return infos.sort((a, b) => a.refId.localeCompare(b.refId));
 }
 
-/** RefIds disponíveis no editor — grupos Zabbix configurados no painel. */
+/** RefIds disponíveis no editor — grupos gravados nos submapas. */
 export function resolvePanelQueryRefInfos(
-  options: Pick<TopologyPanelOptions, 'zabbixHostGroups' | 'queryRefInfosAvailable'>,
-  syncedFromRuntime: TopologyQueryRefInfo[] = options.queryRefInfosAvailable ?? []
+  options: Pick<TopologyPanelOptions, 'queryRefInfosAvailable'>,
+  syncedFromRuntime: TopologyQueryRefInfo[] = options.queryRefInfosAvailable ?? [],
+  groupNames: readonly string[] = []
 ): TopologyQueryRefInfo[] {
   if (syncedFromRuntime.length) {
     return syncedFromRuntime;
   }
-  return directRefInfosFromGroups(options.zabbixHostGroups ?? []);
+  return directRefInfosFromGroups([...groupNames]);
 }
 
 /**
@@ -67,6 +68,33 @@ export function statusItemRank(itemKey: string, wantedKey: string): number | und
     return undefined;
   }
   return /^[a-z0-9_.]/.test(itemKey.slice(wantedKey.length)) ? undefined : 2;
+}
+
+/**
+ * Mesma prioridade de `statusItemRank`, também pelo nome do campo Item do editor.
+ * Sem isso, um nome com espaços descarta a série (a frame traz `key_` diferente).
+ */
+export function statusItemMatchRank(
+  item: { key_?: string; name?: string },
+  wantedKey: string
+): number | undefined {
+  const wanted = wantedKey.trim().toLowerCase();
+  if (!wanted) {
+    return undefined;
+  }
+  const key = item.key_?.trim().toLowerCase() ?? '';
+  const byKey = statusItemRank(key, wanted);
+  if (byKey !== undefined) {
+    return byKey;
+  }
+  const name = item.name?.trim().toLowerCase();
+  if (name && name === wanted) {
+    return 3;
+  }
+  if (key && !/^[a-z][a-z0-9_.]*$/i.test(wanted)) {
+    return 4;
+  }
+  return undefined;
 }
 
 function numericLastValue(item: ZabbixInterfaceItem): number | undefined {
@@ -105,7 +133,7 @@ export function statusValuesByHostId(
 
   for (const item of items) {
     const hostid = item.hostid?.trim();
-    const rank = statusItemRank(item.key_?.trim().toLowerCase() ?? '', wanted);
+    const rank = statusItemMatchRank(item, wanted);
     const value = numericLastValue(item);
     if (!hostid || rank === undefined || value === undefined) {
       continue;

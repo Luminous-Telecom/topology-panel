@@ -88,8 +88,12 @@ export interface TopologyNode {
    */
   submapChildMapId?: string;
   /**
-   * Grupo Zabbix (refId virtual) cujo status alimenta este submapa.
-   * Hosts desse grupo não aparecem no mapa pai.
+   * Grupos Zabbix cujo status alimenta este submapa.
+   * Hosts desses grupos não aparecem no mapa pai. Casing igual ao Zabbix.
+   */
+  queryRefIds?: string[];
+  /**
+   * Legado — um único grupo. Lido quando `queryRefIds` está vazio (`submapQueryRefIds`).
    */
   queryRefId?: string;
   /**
@@ -383,8 +387,7 @@ export interface TopologyPanelOptions {
   /** Datasource Zabbix consultado pelo mapa. */
   zabbixDatasourceUid?: string;
   /**
-   * Grupos de host do Zabbix que alimentam o mapa.
-   * Cada grupo vira um refId virtual em `displayQueryRefIds` e no campo de grupo dos submapas.
+   * Legado — grupos ficam no submapa (`queryRefIds`). Ignorado pela query do mapa visível.
    */
   zabbixHostGroups?: string[];
   /** Chave do item lido em cada host para resolver o status. */

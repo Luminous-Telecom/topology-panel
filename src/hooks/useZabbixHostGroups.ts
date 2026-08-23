@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createAsyncCache } from '../services/asyncCache';
-import { fetchZabbixHostGroupNames } from '../utils/zabbixApi';
+import { fetchZabbixHostGroupNamesViaQuery } from '../utils/zabbixDatasourceQuery';
 
 /** Lista de grupos muda pouco; o TTL evita uma chamada por remontagem do painel de opções. */
 const GROUPS_TTL_MS = 60_000;
@@ -16,7 +16,7 @@ export interface UseZabbixHostGroupsResult {
   loadError?: string;
 }
 
-/** Grupos de host do Zabbix — alimenta o seletor do modo "Zabbix direto". */
+/** Grupos de host do Zabbix — alimenta o MultiSelect do submapa e o item de status. */
 export function useZabbixHostGroups(datasourceUid?: string): UseZabbixHostGroupsResult {
   const [groups, setGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,7 @@ export function useZabbixHostGroups(datasourceUid?: string): UseZabbixHostGroups
     setLoadError(undefined);
 
     groupsCache
-      .get(datasourceUid, () => fetchZabbixHostGroupNames(datasourceUid))
+      .get(datasourceUid, () => fetchZabbixHostGroupNamesViaQuery(datasourceUid))
       .then((result) => {
         if (!cancelled) {
           setGroups(result);

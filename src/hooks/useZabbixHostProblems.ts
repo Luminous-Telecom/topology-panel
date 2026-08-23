@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HostMetadataMap } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
-import { fetchZabbixHostProblems } from '../utils/zabbixApi';
+import { fetchZabbixHostProblemsViaQuery } from '../utils/zabbixDatasourceQuery';
 import { createAsyncCache } from '../services/asyncCache';
 
 const PROBLEMS_TTL_MS = 30_000;
@@ -21,22 +21,30 @@ function collectHostIds(metadata: HostMetadataMap): string[] {
   return [...ids];
 }
 
-/** Problemas Zabbix (Warning+) de todos os mapas — badges, lista, cor e hover. */
+/** Problemas Zabbix (Warning+) do mapa visível — badges, lista, cor e hover. */
 export function useZabbixHostProblems(
   datasourceUid: string | undefined,
-  hostMetadata: HostMetadataMap
+  hostMetadata: HostMetadataMap,
+  groupNames: readonly string[]
 ): { problems: HostProblemsMap; loading: boolean } {
   const hostIds = useMemo(() => collectHostIds(hostMetadata), [hostMetadata]);
   const hostKey = useMemo(() => hostIds.sort().join('\0'), [hostIds]);
+  const groupsKey = useMemo(
+    () => [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))].join('\0'),
+    [groupNames]
+  );
   const cacheKey = useMemo(
-    () => (datasourceUid && hostKey ? `${datasourceUid}\u0000problems\u0000${hostKey}` : ''),
-    [datasourceUid, hostKey]
+    () =>
+      datasourceUid && hostKey && groupsKey
+        ? `${datasourceUid}\u0000problems\u0000${hostKey}\u0000${groupsKey}`
+        : '',
+    [datasourceUid, hostKey, groupsKey]
   );
   const [problems, setProblems] = useState<HostProblemsMap>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!datasourceUid || !hostKey || !cacheKey) {
+    if (!datasourceUid || !hostKey || !groupsKey || !cacheKey) {
       setProblems({});
       setLoading(false);
       return;
@@ -46,7 +54,9 @@ export function useZabbixHostProblems(
     setLoading(true);
 
     void problemsCache
-      .get(cacheKey, () => fetchZabbixHostProblems(datasourceUid, hostKey.split('\0')))
+      .get(cacheKey, () =>
+        fetchZabbixHostProblemsViaQuery(datasourceUid, hostKey.split('\0'), groupsKey.split('\0'))
+      )
       .then((next) => {
         if (!cancelled) {
           setProblems(next);
@@ -63,7 +73,7 @@ export function useZabbixHostProblems(
     return () => {
       cancelled = true;
     };
-  }, [datasourceUid, hostKey, cacheKey]);
+  }, [datasourceUid, hostKey, groupsKey, cacheKey]);
 
   return { problems, loading };
 }
