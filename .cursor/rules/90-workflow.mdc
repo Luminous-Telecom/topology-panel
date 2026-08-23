@@ -20,8 +20,10 @@ Toda tarefa e todo commit deste repositório.
 3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
 4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
 5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.
-6. **Não rode deploy** durante o desenvolvimento. Publicação em homolog/prod só quando o usuário
-  pedir explicitamente (`./scripts/deploy.sh homolog` ou `prod`).
+6. **Não rode deploy** durante o desenvolvimento. Publicação só quando o usuário pedir
+   explicitamente. "Deploy" (sem qualificador) = **homolog e prod** (`./scripts/deploy.sh homolog`
+   e em seguida `SKIP_VERSION_BUMP=1 ./scripts/deploy.sh prod`, ou o inverso se o bump já rodou).
+   Ambiente único só se o usuário disser `só homolog`, `só prod`, `homolog` ou `prod`.
 
 ## Commits
 

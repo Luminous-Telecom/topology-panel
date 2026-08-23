@@ -34,10 +34,11 @@ de topologia de rede com status vindo do Zabbix.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).
 - Ao mudar a versão, faça bump de `package.json` e `src/plugin.json` **juntos**, com o mesmo número.
-- Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh [homolog|prod]` (build,
-  `rsync` do `dist/` por SSH e restart do serviço). A pasta `scripts/` é local e **não** vai para o
-  git — host, usuário e senha ficam no próprio `deploy.sh`. Nunca publique em `prod` sem o usuário
-  dizer `prod` explicitamente.
+- Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh`. Pedido de "deploy"
+  (sem qualificador) publica em **homolog e prod**, nesta ordem — um bump de versão no início e
+  `SKIP_VERSION_BUMP=1` no segundo alvo para os dois ficarem na mesma versão. Só um ambiente se o
+  usuário disser explicitamente `só homolog`, `só prod`, `homolog` ou `prod`. A pasta `scripts/` é
+  local e **não** vai para o git — host, usuário e senha ficam no próprio `deploy.sh`.
 
 ## Exceções
 
