@@ -9,7 +9,11 @@ import {
   utilizationThresholdsFromOptions,
 } from '../utils/linkMetricsRuntime';
 import { fetchZabbixItemLastValues } from '../utils/zabbixApi';
-import { POLL_WATCHDOG_MS, canStartPolledFetch } from '../utils/pollingGate';
+import {
+  POLL_WATCHDOG_MS,
+  canStartPolledFetch,
+  canStartRefreshEventFetch,
+} from '../utils/pollingGate';
 import { structuralShare } from '../utils/structuralIdentity';
 
 /**
@@ -89,6 +93,13 @@ export function useLinkMetricsRuntime(
     let inFlight = false;
     let lastStartMs = 0;
     let fetchGeneration = 0;
+    /** Cancela a busca anterior quando o watchdog ou o timer disparam outro ciclo. */
+    let fetchAbort: AbortController | undefined;
+
+    const intervalSec =
+      refreshSec != null && refreshSec > 0
+        ? Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec))
+        : null;
 
     const applyMetrics = (next: LinkRuntimeMetricsMap) => {
       if (cancelled) {
@@ -113,18 +124,30 @@ export function useLinkMetricsRuntime(
       setStale(Object.keys(lastGoodRef.current).length > 0);
     };
 
-    const fetchMetrics = async (bypassCache = false) => {
+    const fetchMetrics = async (bypassCache = false, source: 'poll' | 'refreshEvent' = 'poll') => {
       if (cancelled) {
         return;
       }
       if (document.hidden && !inFlight && Date.now() - lastStartMs < POLL_WATCHDOG_MS) {
         return;
       }
-      if (!canStartPolledFetch(Date.now(), lastStartMs, inFlight)) {
+      const allowed =
+        source === 'refreshEvent'
+          ? canStartRefreshEventFetch(
+              Date.now(),
+              lastStartMs,
+              inFlight,
+              intervalSec != null ? intervalSec * 1000 : null
+            )
+          : canStartPolledFetch(Date.now(), lastStartMs, inFlight);
+      if (!allowed) {
         return;
       }
       lastStartMs = Date.now();
       const generation = ++fetchGeneration;
+      fetchAbort?.abort();
+      fetchAbort = new AbortController();
+      const abortSignal = fetchAbort.signal;
       inFlight = true;
       setLoading(true);
       setStale(Object.keys(lastGoodRef.current).length > 0);
@@ -134,7 +157,7 @@ export function useLinkMetricsRuntime(
           metricsCache.invalidate(cacheKey);
         }
         const next = await metricsCache.get(cacheKey, async () => {
-          const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current);
+          const items = await fetchZabbixItemLastValues(datasourceUid, itemIdsRef.current, abortSignal);
           return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
         });
         if (cancelled || generation !== fetchGeneration) {
@@ -142,6 +165,9 @@ export function useLinkMetricsRuntime(
         }
         applyMetrics(next);
       } catch {
+        if (abortSignal.aborted && !cancelled) {
+          return;
+        }
         if (generation === fetchGeneration) {
           applyError();
         }
@@ -154,10 +180,6 @@ export function useLinkMetricsRuntime(
 
     void fetchMetrics(false);
 
-    const intervalSec =
-      refreshSec != null && refreshSec > 0
-        ? Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec))
-        : null;
     const timer =
       intervalSec != null ? window.setInterval(() => void fetchMetrics(true), intervalSec * 1000) : undefined;
 
@@ -167,10 +189,13 @@ export function useLinkMetricsRuntime(
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
-    const refreshSub = eventBus?.getStream(RefreshEvent).subscribe(() => void fetchMetrics(true));
+    const refreshSub = eventBus
+      ?.getStream(RefreshEvent)
+      .subscribe(() => void fetchMetrics(true, 'refreshEvent'));
 
     return () => {
       cancelled = true;
+      fetchAbort?.abort();
       if (timer !== undefined) {
         window.clearInterval(timer);
       }

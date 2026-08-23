@@ -27,7 +27,7 @@ import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
-import { useZabbixDirectIndex } from '../hooks/useZabbixDirectIndex';
+import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
@@ -50,6 +50,7 @@ export function TopologyPanel({
   options,
   data,
   timeRange,
+  timeZone,
   width,
   height,
   eventBus,
@@ -154,11 +155,9 @@ export function TopologyPanel({
     ]
   );
 
-  /**
-   * Status, hosts, grupos (refIds virtuais) e metadata vêm da API Zabbix. O índice tem o mesmo
-   * formato que o painel já consome rio abaixo.
-   */
-  const direct = useZabbixDirectIndex({
+  /** Status e hosts vêm do snapshot Zabbix (API direta, consulta atual). RX/TX em polling separado. */
+  const querySource = useTopologyQueryIndex({
+    panelData: data,
     enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: resolvedOptions.zabbixHostGroups ?? [],
@@ -167,9 +166,12 @@ export function TopologyPanel({
     eventBus,
   });
 
-  const queryIndex = direct.index;
+  const queryIndex = querySource.index;
   const queryMeta = queryIndex.metadata;
   const zabbixDatasourceUid = resolvedOptions.zabbixDatasourceUid;
+  const queryReady = querySource.ready;
+  const queryError = Boolean(querySource.error);
+  const queryLoading = querySource.loading && !queryReady && !queryError;
 
   /**
    * O `host.get` do snapshot já traz nome, IP, descrição, grupos e tags — buscar metadata de novo
@@ -199,13 +201,12 @@ export function TopologyPanel({
    * último status bom indefinidamente. Sem isto, uma falha permanente mascararia o problema
    * mostrando para sempre o último status visto (ver `no-fallbacks.mdc`).
    */
-  const queryError = Boolean(direct.error);
 
   const { metricsByLink: linkMetricsByLink, fetchedAtMs: linkMetricsFetchedAtMs } = useLinkMetricsRuntime(
     zabbixDatasourceUid,
     activeStoredMap,
     resolvedOptions,
-    !queryError,
+    queryReady && !queryError,
     {
       refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
       eventBus,
@@ -222,11 +223,11 @@ export function TopologyPanel({
   }, [queryIndex, statusColorOptions, activeStoredMap, dataMeta]);
 
   const hostDisplayByRefIdRaw = useMemo(() => {
-    if (queryError || !direct.ready) {
+    if (queryError || !querySource.ready) {
       return {};
     }
     return liveHostDisplayByRefId;
-  }, [liveHostDisplayByRefId, queryError, direct.ready]);
+  }, [liveHostDisplayByRefId, queryError, querySource.ready]);
 
   /**
    * O refresh entrega objetos novos mesmo para host que não mudou de valor. Sem reaproveitar a
@@ -288,8 +289,6 @@ export function TopologyPanel({
 
   const hostMetadata = dataMeta;
 
-  const queryReady = direct.ready;
-
   const displayMap = useMemo(
     () => mergeMapWithQueryHosts(activeStoredMap, displayQueryHosts, hostMetadata),
     [activeStoredMap, displayQueryHosts, hostMetadata]
@@ -316,8 +315,8 @@ export function TopologyPanel({
   const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
   const queryHostsByRefIdRaw = useMemo(
-    () => (queryError || !direct.ready ? {} : liveQueryHostsByRefId),
-    [liveQueryHostsByRefId, queryError, direct.ready]
+    () => (queryError || !querySource.ready ? {} : liveQueryHostsByRefId),
+    [liveQueryHostsByRefId, queryError, querySource.ready]
   );
 
   const queryHostsByRefId = useStableIdentity(queryHostsByRefIdRaw);
@@ -503,6 +502,7 @@ export function TopologyPanel({
         hostDisplayByRefId={hostDisplayByRefId}
         queryReady={queryReady}
         queryError={queryError}
+        queryLoading={queryLoading}
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}

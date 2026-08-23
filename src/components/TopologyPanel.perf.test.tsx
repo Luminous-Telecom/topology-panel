@@ -89,22 +89,30 @@ vi.mock('./TopologyCanvas', async (importOriginal) => {
   return { ...mod, TopologyCanvas: Spy };
 });
 
-const directIndexState = vi.hoisted(() => ({
+const queryIndexState = vi.hoisted(() => ({
   index: undefined as import('../services/queryIndex').QueryIndex | undefined,
   ready: true,
   error: undefined as string | undefined,
 }));
 
-vi.mock('../hooks/useZabbixDirectIndex', async () => {
+vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const { buildQueryIndex } = await import('../services/queryIndex');
   const empty = buildQueryIndex(undefined);
   return {
-    useZabbixDirectIndex: () => ({
-      index: directIndexState.index ?? empty,
-      ready: directIndexState.ready,
-      loading: false,
-      error: directIndexState.error,
-    }),
+    useTopologyQueryIndex: (opts: { panelData?: import('@grafana/data').PanelData }) => {
+      if (opts.panelData?.series?.length) {
+        const fromData = buildQueryIndex(opts.panelData);
+        if (fromData.hosts.length) {
+          return { index: fromData, ready: true, loading: false, error: undefined };
+        }
+      }
+      return {
+        index: queryIndexState.index ?? empty,
+        ready: queryIndexState.ready,
+        loading: false,
+        error: queryIndexState.error,
+      };
+    },
   };
 });
 
@@ -292,9 +300,9 @@ function resetCounts(): void {
 
 beforeEach(() => {
   resetCounts();
-  directIndexState.index = buildDirectIndex(HOST_COUNT);
-  directIndexState.ready = true;
-  directIndexState.error = undefined;
+  queryIndexState.index = buildDirectIndex(HOST_COUNT);
+  queryIndexState.ready = true;
+  queryIndexState.error = undefined;
 });
 
 function perfOptions(map: TopologyMap): TopologyPanelOptions {
@@ -373,8 +381,7 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     const { rerender } = render(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     resetCounts();
-    directIndexState.index = buildDirectIndex(HOST_COUNT, new Set([7]));
-    rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
+    rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT, new Set([7])))} />);
 
     // eslint-disable-next-line no-console
     console.log(

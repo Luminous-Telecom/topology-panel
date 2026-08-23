@@ -14,6 +14,10 @@ describe('isBenignZabbixFetchError', () => {
     expect(isBenignZabbixFetchError(new Error('timeout'))).toBe(true);
   });
 
+  it('reconhece abort do BackendSrv e timeout com cancelamento real', () => {
+    expect(isBenignZabbixFetchError(new Error('Request was aborted'))).toBe(true);
+  });
+
   it('não trata erro de API como transitório', () => {
     expect(isBenignZabbixFetchError(new Error('Falha ao consultar o Zabbix.'))).toBe(false);
   });

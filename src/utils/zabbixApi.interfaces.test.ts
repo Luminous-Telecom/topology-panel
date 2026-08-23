@@ -4,6 +4,9 @@ const post = vi.fn();
 
 vi.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ post }),
+  getDataSourceSrv: () => ({
+    getInstanceSettings: () => ({ jsonData: {} }),
+  }),
 }));
 
 import { fetchZabbixHostInterfaceItems } from './zabbixApi';

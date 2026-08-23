@@ -22,6 +22,14 @@ export interface AsyncCache<T> {
 export interface AsyncCacheOptions<T> {
   ttlMs: number;
   /**
+   * Teto de entradas guardadas.
+   *
+   * Entrada expirada só saía quando a mesma chave era pedida de novo, e há chave que nunca se
+   * repete — a série do hover inclui o intervalo do dashboard, que muda a cada refresh. Num painel
+   * aberto o dia inteiro isso acumulava série antiga que ninguém mais lê.
+   */
+  maxEntries?: number;
+  /**
    * Decide se o resultado merece ir para o cache. Sem isso, uma resposta vazia por falha de rede
    * ficaria congelada até o TTL expirar, escondendo a recuperação do serviço.
    */
@@ -30,10 +38,30 @@ export interface AsyncCacheOptions<T> {
   now?: () => number;
 }
 
+const DEFAULT_MAX_ENTRIES = 50;
+
 export function createAsyncCache<T>(options: AsyncCacheOptions<T>): AsyncCache<T> {
-  const { ttlMs, isCacheable, now = Date.now } = options;
+  const { ttlMs, isCacheable, now = Date.now, maxEntries = DEFAULT_MAX_ENTRIES } = options;
   const entries = new Map<string, CacheEntry<T>>();
   const inFlight = new Map<string, Promise<T>>();
+
+  function store(key: string, value: T): void {
+    const current = now();
+    for (const [entryKey, entry] of entries) {
+      if (entry.expiresAt <= current) {
+        entries.delete(entryKey);
+      }
+    }
+    entries.set(key, { value, expiresAt: current + ttlMs });
+    // `Map` preserva a ordem de inserção, então a primeira chave é sempre a mais antiga.
+    while (entries.size > maxEntries) {
+      const oldest = entries.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      entries.delete(oldest.value);
+    }
+  }
 
   function freshValue(key: string): CacheEntry<T> | undefined {
     const entry = entries.get(key);
@@ -61,7 +89,7 @@ export function createAsyncCache<T>(options: AsyncCacheOptions<T>): AsyncCache<T
       const request = load()
         .then((value) => {
           if (!isCacheable || isCacheable(value)) {
-            entries.set(key, { value, expiresAt: now() + ttlMs });
+            store(key, value);
           }
           return value;
         })

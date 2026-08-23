@@ -4,6 +4,9 @@ const post = vi.fn();
 
 vi.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ post }),
+  getDataSourceSrv: () => ({
+    getInstanceSettings: () => ({ jsonData: {} }),
+  }),
 }));
 
 import { fetchZabbixHostProblems } from './zabbixApi';
@@ -42,5 +45,38 @@ describe('fetchZabbixHostProblems', () => {
     expect(summary['1001']?.names).toEqual(['Interface down', 'ICMP timeout']);
     const problemCall = post.mock.calls.find(([, body]) => body.method === 'problem.get');
     expect(problemCall?.[1]?.params?.output).toContain('name');
+  });
+
+  it('consulta o mapa inteiro em duas chamadas, sem lote por host', async () => {
+    const hostIds = Array.from({ length: 250 }, (_, i) => String(1000 + i));
+    post.mockImplementation(async (_url: string, body: { method: string; params: { hostids?: string[] } }) => {
+      if (body.method === 'problem.get') {
+        expect(body.params.hostids).toHaveLength(250);
+        return { result: [{ eventid: '51', severity: '4', name: 'Interface down' }] };
+      }
+      if (body.method === 'event.get') {
+        return { result: [{ eventid: '51', hosts: [{ hostid: '1000' }] }] };
+      }
+      throw new Error(`método inesperado: ${body.method}`);
+    });
+
+    const summary = await fetchZabbixHostProblems('ds', hostIds);
+
+    expect(summary['1000']?.count).toBe(1);
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('não chama event.get quando não há problema ativo', async () => {
+    post.mockImplementation(async (_url: string, body: { method: string }) => {
+      if (body.method === 'problem.get') {
+        return { result: [] };
+      }
+      throw new Error(`método inesperado: ${body.method}`);
+    });
+
+    const summary = await fetchZabbixHostProblems('ds', ['1001']);
+
+    expect(summary).toEqual({});
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });

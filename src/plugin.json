@@ -18,8 +18,8 @@
       "small": "img/plugin-icon.svg",
       "large": "img/plugin-icon.svg"
     },
-    "version": "1.4.357",
-    "updated": "2026-08-22"
+    "version": "1.4.362",
+    "updated": "2026-08-23"
   },
   "dependencies": {
     "grafanaDependency": ">=10.0.0",

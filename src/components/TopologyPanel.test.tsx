@@ -6,19 +6,19 @@ import { Observable, Subject } from 'rxjs';
 import { TopologyPanel, Props as TopologyPanelProps } from './TopologyPanel';
 import { defaultOptions, TopologyMap, TopologyPanelOptions } from '../types';
 
-const directIndexMock = vi.hoisted(() => ({
+const queryIndexMock = vi.hoisted(() => ({
   error: undefined as string | undefined,
 }));
 
-vi.mock('../hooks/useZabbixDirectIndex', async () => {
+vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const { buildQueryIndex } = await import('../services/queryIndex');
   const empty = buildQueryIndex(undefined);
   return {
-    useZabbixDirectIndex: () => ({
+    useTopologyQueryIndex: () => ({
       index: empty,
-      ready: !directIndexMock.error,
+      ready: !queryIndexMock.error,
       loading: false,
-      error: directIndexMock.error,
+      error: queryIndexMock.error,
     }),
   };
 });
@@ -69,7 +69,7 @@ function renderTopologyPanel(
 
 describe('TopologyPanel — inicialização de mapas', () => {
   beforeEach(() => {
-    directIndexMock.error = undefined;
+    queryIndexMock.error = undefined;
   });
 
   it('mapa em branco (sem nós) renderiza o canvas sem lançar exceção', () => {
@@ -102,7 +102,7 @@ describe('TopologyPanel — inicialização de mapas', () => {
   });
 
   it('erro do Zabbix não deixa a UI sem indicação', () => {
-    directIndexMock.error = 'Falha ao consultar o Zabbix.';
+    queryIndexMock.error = 'Falha ao consultar o Zabbix.';
     const options = defaultOptions();
     options.map = { width: 1200, height: 800, nodes: [], links: [] };
     renderTopologyPanel(options);

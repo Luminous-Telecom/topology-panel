@@ -92,6 +92,8 @@ interface Props {
   queryReady?: boolean;
   /** Query do painel em LoadingState.Error — status ao vivo indisponível (mostra aviso, não mascara). */
   queryError?: boolean;
+  /** Consulta de status em andamento antes da primeira resposta boa. */
+  queryLoading?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
   /** Intervalo de busca do plugin (zabbixRefreshSec). O contador
@@ -155,6 +157,7 @@ export function TopologyCanvas({
   hostDisplayByRefId: liveHostDisplayByRefId = NO_HOST_DISPLAY_BY_REF_ID,
   queryReady: liveQueryReady = false,
   queryError: liveQueryError = false,
+  queryLoading: liveQueryLoading = false,
   hostMetadata: liveHostMetadata,
   submapHosts: liveSubmapHosts = NO_SUBMAP_HOSTS,
   refreshIntervalSec = null,
@@ -1327,6 +1330,7 @@ export function TopologyCanvas({
         onSearchFocusNode={focusNodeOnMap}
         hostMetadata={hostMetadata}
         queryError={Boolean(queryError)}
+        queryLoading={liveQueryLoading && !liveQueryReady && !liveQueryError}
         onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
       />
 

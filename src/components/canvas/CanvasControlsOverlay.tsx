@@ -3,6 +3,7 @@ import { CanvasTool, HostMetadataMap, TopologyMap } from '../../types';
 import { TopologyBreadcrumbItem } from '../../utils/topologyMapNavigation';
 import { MapNavigationControls } from './MapNavigationControls';
 import { TopologyQueryErrorBadge } from './TopologyQueryErrorBadge';
+import { TopologyQueryLoadingBadge } from './TopologyQueryLoadingBadge';
 import { TopologyToolbar } from './TopologyToolbar';
 import { canvasStyles } from './canvasStyles';
 
@@ -37,6 +38,7 @@ interface Props {
   onSearchFocusNode: (nodeId: string) => void;
   hostMetadata?: HostMetadataMap;
   queryError: boolean;
+  queryLoading?: boolean;
   onInsertBlueprint?: () => void;
   nocModeActive?: boolean;
   onToggleNocMode?: () => void;
@@ -81,6 +83,7 @@ export function CanvasControlsOverlay({
   onSearchFocusNode,
   hostMetadata,
   queryError,
+  queryLoading = false,
   onInsertBlueprint,
   nocModeActive = false,
   onToggleNocMode,
@@ -142,6 +145,7 @@ export function CanvasControlsOverlay({
       )}
 
       <TopologyQueryErrorBadge visible={queryError} />
+      <TopologyQueryLoadingBadge visible={queryLoading && !queryError} />
 
       {editable && map.nodes.length === 0 && (
         <div

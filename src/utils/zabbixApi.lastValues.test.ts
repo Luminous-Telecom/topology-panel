@@ -4,6 +4,9 @@ const post = vi.fn();
 
 vi.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ post }),
+  getDataSourceSrv: () => ({
+    getInstanceSettings: () => ({ jsonData: {} }),
+  }),
 }));
 
 import { fetchHostIcmpStatus, fetchZabbixItemLastValues } from './zabbixApi';
@@ -13,36 +16,34 @@ describe('fetchZabbixItemLastValues', () => {
     post.mockReset();
   });
 
-  it('substitui lastvalue atrasado pelo ponto mais novo do history.get, igual ao status dos hosts', async () => {
-    post.mockImplementation(async (_url: string, body: { method: string }) => {
+  it('busca todos os itemids numa chamada só, sem history.get', async () => {
+    const ids = Array.from({ length: 120 }, (_, i) => String(i + 1));
+    post.mockImplementation(async (_url: string, body: { method: string; params: { itemids?: string[] } }) => {
       if (body.method === 'item.get') {
         return {
-          result: [{ itemid: '10', lastvalue: '100', lastclock: '1000', value_type: '3' }],
-        };
-      }
-      if (body.method === 'history.get') {
-        return {
-          result: [{ itemid: '10', clock: '2000', value: '999' }],
+          result: (body.params.itemids ?? []).map((itemid) => ({
+            itemid,
+            lastvalue: '100',
+            lastclock: '1000',
+            value_type: '3',
+          })),
         };
       }
       throw new Error(`método inesperado: ${body.method}`);
     });
 
-    const values = await fetchZabbixItemLastValues('ds', ['10']);
-    expect(values['10']?.lastvalue).toBe('999');
-    expect(values['10']?.lastclock).toBe('2000');
-    expect(post.mock.calls.some(([, body]) => body.method === 'history.get')).toBe(true);
+    const values = await fetchZabbixItemLastValues('ds', ids);
+
+    expect(Object.keys(values)).toHaveLength(120);
+    expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it('mantém o lastvalue do item.get quando o history.get não volta ponto', async () => {
+  it('usa o lastvalue do item.get como valor corrente', async () => {
     post.mockImplementation(async (_url: string, body: { method: string }) => {
       if (body.method === 'item.get') {
         return {
           result: [{ itemid: '10', lastvalue: '100', lastclock: '1000', value_type: '3' }],
         };
-      }
-      if (body.method === 'history.get') {
-        throw new Error('timeout');
       }
       throw new Error(`método inesperado: ${body.method}`);
     });
@@ -58,29 +59,18 @@ describe('fetchHostIcmpStatus', () => {
     post.mockReset();
   });
 
-  it('usa o último ponto do history.get quando o lastvalue do icmppingsec está atrasado', async () => {
-    post.mockImplementation(async (_url: string, body: { method: string; params?: { itemids?: string[] } }) => {
+  it('lê perda, RTT e alcance do lastvalue dos itens ICMP', async () => {
+    post.mockImplementation(async (_url: string, body: { method: string }) => {
       if (body.method === 'host.get') {
         return { result: [{ hostid: '1' }] };
       }
       if (body.method === 'item.get') {
         return {
           result: [
-            { itemid: 'p', key_: 'icmpping', lastvalue: '1', lastclock: '1000', value_type: '3' },
-            { itemid: 's', key_: 'icmppingsec', lastvalue: '0.0008', lastclock: '1000', value_type: '0' },
+            { itemid: 'p', key_: 'icmpping', lastvalue: '0', lastclock: '2000', value_type: '3' },
+            { itemid: 's', key_: 'icmppingsec', lastvalue: '0', lastclock: '2000', value_type: '0' },
           ],
         };
-      }
-      if (body.method === 'history.get') {
-        const ids = body.params?.itemids ?? [];
-        const rows: Array<{ itemid: string; clock: string; value: string }> = [];
-        if (ids.includes('p')) {
-          rows.push({ itemid: 'p', clock: '2000', value: '0' });
-        }
-        if (ids.includes('s')) {
-          rows.push({ itemid: 's', clock: '2000', value: '0' });
-        }
-        return { result: rows };
       }
       throw new Error(`método inesperado: ${body.method}`);
     });

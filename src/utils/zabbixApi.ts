@@ -47,49 +47,71 @@ function asZabbixId(value: unknown): string {
 }
 
 const ZABBIX_CALL_TIMEOUT_MS = 15_000;
+/**
+ * Teto para a chamada única de status, que cobre todos os hosts dos grupos de uma vez. Ela tem
+ * payload maior que as demais e não tem para onde ser dividida sem voltar a somar round-trips.
+ */
+const ZABBIX_STATUS_CALL_TIMEOUT_MS = 45_000;
+
+/** Opções extras da chamada Zabbix — cancelamento e silêncio de toast em polling. */
+export interface ZabbixCallOptions {
+  abortSignal?: AbortSignal;
+  /** Cancela a requisição anterior com o mesmo id no BackendSrv do Grafana. */
+  requestId?: string;
+  showErrorAlert?: boolean;
+}
 
 /** Requisição abortada pelo Grafana/React, timeout ou queda momentânea de rede — não é falha permanente. */
 export function isBenignZabbixFetchError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
-  return /failed to fetch|context canceled|context cancelled|abort|network error|networkerror|timeout/i.test(
+  return /failed to fetch|context canceled|context cancelled|abort|request was aborted|network error|networkerror|timeout/i.test(
     msg
   );
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error('timeout'));
-    }, timeoutMs);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (err: unknown) => {
-        window.clearTimeout(timer);
-        reject(err);
-      }
-    );
-  });
+function throwIfAborted(abortSignal?: AbortSignal): void {
+  if (abortSignal?.aborted) {
+    throw new Error('abort');
+  }
 }
 
-async function zabbixCall<T>(datasourceUid: string, method: string, params: object): Promise<T> {
+async function zabbixCall<T>(
+  datasourceUid: string,
+  method: string,
+  params: object,
+  timeoutMs = ZABBIX_CALL_TIMEOUT_MS,
+  callOptions: ZabbixCallOptions = {}
+): Promise<T> {
+  throwIfAborted(callOptions.abortSignal);
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromParent = () => controller.abort();
+  if (callOptions.abortSignal) {
+    callOptions.abortSignal.addEventListener('abort', abortFromParent, { once: true });
+  }
+
   let response: ZabbixApiResponse<T> | T;
   try {
-    response = await withTimeout(
-      getBackendSrv().post<ZabbixApiResponse<T> | T>(
-        `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
-        { method, params }
-      ),
-      ZABBIX_CALL_TIMEOUT_MS
+    response = await getBackendSrv().post<ZabbixApiResponse<T> | T>(
+      `/api/datasources/uid/${datasourceUid}/resources/zabbix-api`,
+      { method, params },
+      {
+        abortSignal: controller.signal,
+        showErrorAlert: callOptions.showErrorAlert ?? false,
+        requestId: callOptions.requestId,
+      }
     );
   } catch (err) {
     if (isBenignZabbixFetchError(err)) {
       throw err;
     }
     throw new Error('Falha ao consultar o Zabbix.');
+  } finally {
+    window.clearTimeout(timer);
+    callOptions.abortSignal?.removeEventListener('abort', abortFromParent);
   }
+
   if (response && typeof response === 'object' && 'error' in response && response.error) {
     throw new Error(response.error.message ?? 'Falha ao consultar o Zabbix.');
   }
@@ -439,17 +461,13 @@ export async function fetchHostIcmpStatus(
     return { ...empty, error: 'Itens ICMP (icmpping) não encontrados neste host' };
   }
 
-  const forHistory: ZabbixInterfaceItem[] = rawItems.map((item) => ({
+  const items: ZabbixInterfaceItem[] = rawItems.map((item) => ({
     itemid: asZabbixId(item.itemid),
     key_: item.key_,
     lastvalue: item.lastvalue,
     lastclock: item.lastclock,
     value_type: item.value_type,
   }));
-  const latest = await fetchLatestHistoryByItemId(datasourceUid, forHistory);
-  const items = forHistory.map((item) =>
-    overlayStatusItemLastValue(item, latest.get(asZabbixId(item.itemid)))
-  );
 
   let reachable: boolean | null = null;
   let lossPct: number | null = null;
@@ -503,42 +521,6 @@ export interface ZabbixInterfaceItem {
   tags?: Array<{ tag: string; value: string }>;
 }
 
-export interface ZabbixHistoryPoint {
-  clockSec: number;
-  value: number;
-}
-
-function itemLastClockSec(item: Pick<ZabbixInterfaceItem, 'lastclock'>): number | undefined {
-  const raw = item.lastclock?.trim();
-  if (!raw) {
-    return undefined;
-  }
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : undefined;
-}
-
-/**
- * Último ponto do `history.get` substitui `item.lastvalue` quando é mais novo — o lastvalue do
- * icmppingsec pode ficar no último RTT com sucesso enquanto o histórico já tem Down/Up.
- */
-export function overlayStatusItemLastValue(
-  item: ZabbixInterfaceItem,
-  point: ZabbixHistoryPoint | undefined
-): ZabbixInterfaceItem {
-  if (!point) {
-    return item;
-  }
-  const currentClock = itemLastClockSec(item) ?? Number.NEGATIVE_INFINITY;
-  if (point.clockSec < currentClock) {
-    return item;
-  }
-  return {
-    ...item,
-    lastvalue: String(point.value),
-    lastclock: String(Math.trunc(point.clockSec)),
-  };
-}
-
 export interface ZabbixHostInterfaceItems {
   hostKey: string;
   hostid: string;
@@ -552,10 +534,16 @@ export interface ZabbixItemLastValue {
   value_type?: string | number;
 }
 
-/** Últimos valores de itens em lote — tráfego dos cabos. Mesmo overlay de history.get do status. */
+/**
+ * Tráfego dos cabos — todos os itemids numa única `item.get`, sem `history.get` por cima.
+ *
+ * Mesmo raciocínio do status: `lastvalue` já é o valor corrente do item, e os lotes de 50 mais o
+ * histórico respondiam por dezenas de requisições por ciclo.
+ */
 export async function fetchZabbixItemLastValues(
   datasourceUid: string,
-  itemIds: string[]
+  itemIds: string[],
+  abortSignal?: AbortSignal
 ): Promise<Record<string, ZabbixItemLastValue>> {
   const ids = [...new Set(itemIds.map((id) => id.trim()).filter(Boolean))];
   if (!datasourceUid || !ids.length) {
@@ -563,42 +551,24 @@ export async function fetchZabbixItemLastValues(
   }
 
   const result: Record<string, ZabbixItemLastValue> = {};
-  const rawItems: ZabbixInterfaceItem[] = [];
-  for (const batch of chunk(ids, BATCH_SIZE)) {
-    try {
-      const items = await zabbixCall<ZabbixItemLastValue[]>(datasourceUid, 'item.get', {
-        itemids: batch,
-        output: ['itemid', 'lastvalue', 'lastclock', 'value_type'],
-      });
-      for (const item of items ?? []) {
-        const itemid = asZabbixId(item.itemid);
-        if (itemid) {
-          result[itemid] = item;
-          rawItems.push({
-            itemid,
-            key_: '',
-            lastvalue: item.lastvalue,
-            lastclock: item.lastclock,
-            value_type: item.value_type,
-          });
-        }
-      }
-    } catch {
-      /* lote sem resposta */
+  const items = await zabbixCall<ZabbixItemLastValue[]>(
+    datasourceUid,
+    'item.get',
+    {
+      itemids: ids,
+      output: ['itemid', 'lastvalue', 'lastclock', 'value_type'],
+    },
+    ZABBIX_STATUS_CALL_TIMEOUT_MS,
+    {
+      abortSignal,
+      requestId: `topology-linkmetrics-${datasourceUid}`,
     }
-  }
-  if (!rawItems.length) {
-    return result;
-  }
-  const latest = await fetchLatestHistoryByItemId(datasourceUid, rawItems);
-  for (const raw of rawItems) {
-    const itemid = asZabbixId(raw.itemid);
-    const overlaid = overlayStatusItemLastValue(raw, latest.get(itemid));
-    result[itemid] = {
-      ...result[itemid],
-      lastvalue: overlaid.lastvalue,
-      lastclock: overlaid.lastclock,
-    };
+  );
+  for (const item of items ?? []) {
+    const itemid = asZabbixId(item.itemid);
+    if (itemid) {
+      result[itemid] = item;
+    }
   }
   return result;
 }
@@ -618,12 +588,13 @@ export interface ZabbixDirectHost {
   tags?: Array<{ tag: string; value: string }>;
 }
 
-export interface ZabbixDirectSnapshot {
+/** Identidade dos hosts dos grupos — buscada por configuração, não a cada ciclo de status. */
+export interface ZabbixDirectMetadata {
   hosts: ZabbixDirectHost[];
-  /** Itens de status (`search` pela chave configurada) de todos os hosts do snapshot. */
-  statusItems: ZabbixInterfaceItem[];
   /** Grupos configurados que existem de fato no Zabbix — vazio indica configuração errada. */
   resolvedGroups: string[];
+  /** groupids resolvidos, reaproveitados pela `item.get` de status de cada ciclo. */
+  groupIds: string[];
 }
 
 /** Grupos de host disponíveis no Zabbix — alimenta o seletor de grupos do painel. */
@@ -648,12 +619,15 @@ export async function fetchZabbixHostGroupNames(datasourceUid: string): Promise<
 
 async function fetchGroupIdsByName(
   datasourceUid: string,
-  groupNames: string[]
+  groupNames: string[],
+  callOptions: ZabbixCallOptions = {}
 ): Promise<Map<string, string>> {
   const groups = await zabbixCall<Array<{ groupid?: string; name?: string }>>(
     datasourceUid,
     'hostgroup.get',
-    { output: ['groupid', 'name'], filter: { name: groupNames } }
+    { output: ['groupid', 'name'], filter: { name: groupNames } },
+    ZABBIX_CALL_TIMEOUT_MS,
+    callOptions
   );
   const byName = new Map<string, string>();
   for (const group of groups ?? []) {
@@ -669,19 +643,26 @@ async function fetchGroupIdsByName(
 async function fetchMonitoredHostsInGroups(
   datasourceUid: string,
   groupIds: string[],
-  wantedGroups: Set<string>
+  wantedGroups: Set<string>,
+  callOptions: ZabbixCallOptions = {}
 ): Promise<ZabbixDirectHost[]> {
   const rows = await zabbixCall<
     Array<ZabbixHost & { groups?: Array<{ name?: string }>; hostgroups?: Array<{ name?: string }> }>
-  >(datasourceUid, 'host.get', {
-    groupids: groupIds,
-    output: ZABBIX_HOST_OUTPUT,
-    selectInterfaces: ['ip', 'main', 'type'],
-    selectHostGroups: ['name'],
-    selectTags: ['tag', 'value'],
-    filter: { status: ZABBIX_HOST_MONITORED },
-    monitored_hosts: true,
-  });
+  >(
+    datasourceUid,
+    'host.get',
+    {
+      groupids: groupIds,
+      output: ZABBIX_HOST_OUTPUT,
+      selectInterfaces: ['ip', 'main', 'type'],
+      selectHostGroups: ['name'],
+      selectTags: ['tag', 'value'],
+      filter: { status: ZABBIX_HOST_MONITORED },
+      monitored_hosts: true,
+    },
+    ZABBIX_STATUS_CALL_TIMEOUT_MS,
+    callOptions
+  );
 
   const hosts: ZabbixDirectHost[] = [];
   for (const row of rows ?? []) {
@@ -710,145 +691,123 @@ async function fetchMonitoredHostsInGroups(
   return hosts;
 }
 
-async function fetchStatusItemsForHosts(
+/** Tentativas antes de desistir da chamada de status (sem cache, sem valor parcial). */
+export const STATUS_CALL_MAX_ATTEMPTS = 3;
+const STATUS_CALL_RETRY_DELAY_MS = 300;
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** Repete antes de desistir — instabilidade pontual não pode zerar o status do mapa inteiro. */
+async function zabbixCallWithRetry<T>(
   datasourceUid: string,
-  hostIds: string[],
-  statusItemKey: string
-): Promise<ZabbixInterfaceItem[]> {
-  const items: ZabbixInterfaceItem[] = [];
-  for (const batch of chunk(hostIds, BATCH_SIZE)) {
+  method: string,
+  params: object,
+  timeoutMs?: number,
+  callOptions: ZabbixCallOptions = {}
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= STATUS_CALL_MAX_ATTEMPTS; attempt++) {
+    throwIfAborted(callOptions.abortSignal);
     try {
-      const batchItems = await zabbixCall<ZabbixInterfaceItem[]>(datasourceUid, 'item.get', {
-        hostids: batch,
-        output: ['itemid', 'key_', 'name', 'lastvalue', 'lastclock', 'hostid', 'value_type'],
-        search: { key_: statusItemKey },
-        monitored: true,
-      });
-      for (const item of batchItems ?? []) {
-        items.push(item);
+      return await zabbixCall<T>(datasourceUid, method, params, timeoutMs, callOptions);
+    } catch (err) {
+      lastError = err;
+      if (isBenignZabbixFetchError(err) && callOptions.abortSignal?.aborted) {
+        throw err;
       }
-    } catch {
-      /* lote sem resposta */
-    }
-  }
-  return items;
-}
-
-/** Janela curta só para o último ponto — status dos hosts e tráfego dos cabos. */
-const STATUS_HISTORY_LOOKBACK_SEC = 180;
-const STATUS_HISTORY_LIMIT = 800;
-
-function statusItemHistoryType(valueType: string | number | undefined): 0 | 3 {
-  return Number(valueType) === 3 ? 3 : 0;
-}
-
-async function fetchLatestHistoryByItemId(
-  datasourceUid: string,
-  items: ZabbixInterfaceItem[]
-): Promise<Map<string, ZabbixHistoryPoint>> {
-  const latest = new Map<string, ZabbixHistoryPoint>();
-  const idsByType = new Map<0 | 3, string[]>();
-  for (const item of items) {
-    const itemid = asZabbixId(item.itemid);
-    if (!itemid) {
-      continue;
-    }
-    const historyType = statusItemHistoryType(item.value_type);
-    const ids = idsByType.get(historyType);
-    if (ids) {
-      ids.push(itemid);
-    } else {
-      idsByType.set(historyType, [itemid]);
-    }
-  }
-
-  const timeTill = Math.floor(Date.now() / 1000);
-  const timeFrom = timeTill - STATUS_HISTORY_LOOKBACK_SEC;
-
-  for (const [historyType, itemIds] of idsByType) {
-    for (const batch of chunk([...new Set(itemIds)], BATCH_SIZE)) {
-      try {
-        const rows = await zabbixCall<Array<{ itemid?: string; clock?: string | number; value?: string | number }>>(
-          datasourceUid,
-          'history.get',
-          {
-            output: ['itemid', 'clock', 'value'],
-            history: historyType,
-            itemids: batch,
-            time_from: timeFrom,
-            time_till: timeTill,
-            sortfield: 'clock',
-            sortorder: 'DESC',
-            limit: STATUS_HISTORY_LIMIT,
-          }
-        );
-        for (const row of rows ?? []) {
-          const itemid = asZabbixId(row.itemid);
-          const clockSec = parseFloatOrNull(row.clock != null ? String(row.clock) : undefined);
-          const value = parseFloatOrNull(row.value != null ? String(row.value) : undefined);
-          if (!itemid || clockSec === null || value === null) {
-            continue;
-          }
-          const current = latest.get(itemid);
-          if (!current || clockSec > current.clockSec) {
-            latest.set(itemid, { clockSec, value });
-          }
-        }
-      } catch {
-        /* lote sem histórico — o lastvalue do item.get permanece */
+      if (attempt < STATUS_CALL_MAX_ATTEMPTS) {
+        await sleepMs(STATUS_CALL_RETRY_DELAY_MS);
       }
     }
   }
-
-  return latest;
+  throw lastError instanceof Error ? lastError : new Error('Falha ao consultar o Zabbix.');
 }
 
 /**
- * Hosts e últimos valores de status dos grupos configurados — base do modo "Zabbix direto".
+ * Status de todos os hosts dos grupos numa única `item.get`.
  *
- * `item.get` traz o lastvalue; `history.get` só o ponto mais recente da chave de status, para a
- * cor do mapa acompanhar Down/Up igual ao hover (o lastvalue do icmppingsec pode ficar no último
- * RTT com sucesso). O tráfego dos cabos usa o mesmo overlay em `fetchZabbixItemLastValues`.
+ * `lastvalue`/`lastclock` são o estado atual do item no servidor, então não há `history.get` por
+ * cima: era ele que multiplicava as requisições do ciclo (um lote a cada 100 hosts) sem trazer
+ * ponto mais novo que o próprio `lastvalue`. O `output` fica no mínimo que
+ * `statusValuesByHostId` consome — `name` e `value_type` só engordavam a resposta.
  */
-export async function fetchZabbixDirectSnapshot(
+export async function fetchZabbixStatusItems(
   datasourceUid: string,
-  groupNames: string[],
-  statusItemKey: string
-): Promise<ZabbixDirectSnapshot> {
-  const wanted = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
+  groupIds: string[],
+  statusItemKey: string,
+  abortSignal?: AbortSignal
+): Promise<ZabbixInterfaceItem[]> {
+  const ids = [...new Set(groupIds.map((id) => asZabbixId(id)).filter(Boolean))];
   const itemKey = statusItemKey.trim();
-  if (!datasourceUid || !wanted.length || !itemKey) {
-    return { hosts: [], statusItems: [], resolvedGroups: [] };
+  if (!datasourceUid || !ids.length || !itemKey) {
+    return [];
   }
 
-  const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted);
+  try {
+    const items = await zabbixCallWithRetry<ZabbixInterfaceItem[]>(
+      datasourceUid,
+      'item.get',
+      {
+        groupids: ids,
+        output: ['itemid', 'hostid', 'key_', 'lastvalue', 'lastclock'],
+        search: { key_: itemKey },
+        startSearch: true,
+        monitored: true,
+        webitems: false,
+      },
+      ZABBIX_STATUS_CALL_TIMEOUT_MS,
+      {
+        abortSignal,
+        requestId: `topology-status-${datasourceUid}`,
+      }
+    );
+    return items ?? [];
+  } catch (err) {
+    if (isBenignZabbixFetchError(err)) {
+      throw err;
+    }
+    throw new Error('Falha ao consultar itens de status no Zabbix.');
+  }
+}
+
+/**
+ * Identidade dos hosts dos grupos: nome, IP, grupos e tags.
+ *
+ * Sai do ciclo periódico de propósito — nada aqui decide online/offline, e refazer `hostgroup.get`
+ * + `host.get` a cada atualização era metade das chamadas do ciclo. O hook busca uma vez por
+ * configuração de painel; o status continua vindo inteiro da consulta atual.
+ */
+export async function fetchZabbixDirectMetadata(
+  datasourceUid: string,
+  groupNames: string[],
+  abortSignal?: AbortSignal
+): Promise<ZabbixDirectMetadata> {
+  const wanted = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
+  if (!datasourceUid || !wanted.length) {
+    return { hosts: [], resolvedGroups: [], groupIds: [] };
+  }
+
+  const callOptions: ZabbixCallOptions = {
+    abortSignal,
+    requestId: `topology-metadata-${datasourceUid}`,
+  };
+
+  const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted, callOptions);
   const resolvedGroups = [...groupIdByName.keys()];
+  const groupIds = [...groupIdByName.values()];
   if (!resolvedGroups.length) {
-    return { hosts: [], statusItems: [], resolvedGroups };
+    return { hosts: [], resolvedGroups, groupIds };
   }
 
   const hosts = await fetchMonitoredHostsInGroups(
     datasourceUid,
-    [...groupIdByName.values()],
-    new Set(resolvedGroups)
+    groupIds,
+    new Set(resolvedGroups),
+    callOptions
   );
-  if (!hosts.length) {
-    return { hosts, statusItems: [], resolvedGroups };
-  }
-
-  const rawItems = await fetchStatusItemsForHosts(
-    datasourceUid,
-    hosts.map((host) => host.hostid),
-    itemKey
-  );
-  if (!rawItems.length) {
-    return { hosts, statusItems: [], resolvedGroups };
-  }
-  const latest = await fetchLatestHistoryByItemId(datasourceUid, rawItems);
-  const statusItems = rawItems.map((item) =>
-    overlayStatusItemLastValue(item, latest.get(asZabbixId(item.itemid)))
-  );
-  return { hosts, statusItems, resolvedGroups };
+  return { hosts, resolvedGroups, groupIds };
 }
 
 async function fetchInterfaceItemsByKeySearch(
@@ -981,68 +940,79 @@ export async function fetchZabbixHostProblems(
   const summary: HostProblemsMap = {};
   const nameSeverityByHost = new Map<string, Map<string, number>>();
 
-  for (const batch of chunk(ids, BATCH_SIZE)) {
-    try {
-      const problems = await zabbixCall<ZabbixProblemRow[]>(datasourceUid, 'problem.get', {
-        hostids: batch,
+  /**
+   * Duas chamadas para o mapa inteiro, não duas por lote de 50 hosts: com centenas de hosts isso
+   * eram dezenas de round-trips sequenciais na abertura do painel. O `event.get` continua sendo
+   * necessário porque `problem.get` não devolve o host do evento.
+   */
+  try {
+    const problems = await zabbixCall<ZabbixProblemRow[]>(
+      datasourceUid,
+      'problem.get',
+      {
+        hostids: ids,
         output: ['eventid', 'severity', 'name'],
         suppressed: false,
-      });
+      },
+      ZABBIX_STATUS_CALL_TIMEOUT_MS
+    );
 
-      const eventIds = [
-        ...new Set((problems ?? []).map((problem) => asZabbixId(problem.eventid)).filter(Boolean)),
-      ];
-      if (!eventIds.length) {
+    const severityByEvent = new Map<string, number>();
+    const nameByEvent = new Map<string, string>();
+    for (const problem of problems ?? []) {
+      const eventid = asZabbixId(problem.eventid);
+      if (!eventid) {
         continue;
       }
-
-      const severityByEvent = new Map<string, number>();
-      const nameByEvent = new Map<string, string>();
-      for (const problem of problems ?? []) {
-        const eventid = asZabbixId(problem.eventid);
-        if (!eventid) {
-          continue;
-        }
-        const severity = Number(problem.severity);
-        severityByEvent.set(eventid, Number.isFinite(severity) ? severity : 0);
-        const name = problem.name?.trim();
-        if (name) {
-          nameByEvent.set(eventid, name);
-        }
+      const severity = Number(problem.severity);
+      severityByEvent.set(eventid, Number.isFinite(severity) ? severity : 0);
+      const name = problem.name?.trim();
+      if (name) {
+        nameByEvent.set(eventid, name);
       }
+    }
 
-      const events = await zabbixCall<ZabbixProblemEventRow[]>(datasourceUid, 'event.get', {
+    const eventIds = [...severityByEvent.keys()];
+    if (!eventIds.length) {
+      return summary;
+    }
+
+    const events = await zabbixCall<ZabbixProblemEventRow[]>(
+      datasourceUid,
+      'event.get',
+      {
         eventids: eventIds,
         output: ['eventid'],
         selectHosts: ['hostid'],
-      });
+      },
+      ZABBIX_STATUS_CALL_TIMEOUT_MS
+    );
 
-      for (const event of events ?? []) {
-        const eventid = asZabbixId(event.eventid);
-        if (!eventid) {
-          continue;
-        }
-        const sev = severityByEvent.get(eventid) ?? 0;
-        if (sev < ZABBIX_PROBLEM_MIN_SEVERITY) {
-          continue;
-        }
-        const problemName = nameByEvent.get(eventid);
-        for (const host of event.hosts ?? []) {
-          const hostid = asZabbixId(host.hostid);
-          if (!hostid) {
-            continue;
-          }
-          const prev = summary[hostid];
-          summary[hostid] = {
-            count: (prev?.count ?? 0) + 1,
-            maxSeverity: Math.max(prev?.maxSeverity ?? 0, sev),
-          };
-          rememberProblemName(nameSeverityByHost, hostid, problemName, sev);
-        }
+    for (const event of events ?? []) {
+      const eventid = asZabbixId(event.eventid);
+      if (!eventid) {
+        continue;
       }
-    } catch {
-      /* lote sem resposta */
+      const sev = severityByEvent.get(eventid) ?? 0;
+      if (sev < ZABBIX_PROBLEM_MIN_SEVERITY) {
+        continue;
+      }
+      const problemName = nameByEvent.get(eventid);
+      for (const host of event.hosts ?? []) {
+        const hostid = asZabbixId(host.hostid);
+        if (!hostid) {
+          continue;
+        }
+        const prev = summary[hostid];
+        summary[hostid] = {
+          count: (prev?.count ?? 0) + 1,
+          maxSeverity: Math.max(prev?.maxSeverity ?? 0, sev),
+        };
+        rememberProblemName(nameSeverityByHost, hostid, problemName, sev);
+      }
     }
+  } catch {
+    /* sem problemas para exibir nesta atualização */
   }
 
   for (const [hostid, current] of Object.entries(summary)) {

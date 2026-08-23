@@ -80,6 +80,35 @@ describe('createAsyncCache', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('descarta entrada expirada de chave que nunca mais é pedida', async () => {
+    let clock = 0;
+    const load = vi.fn(async () => 'valor');
+    const cache = createAsyncCache<string>({ ttlMs: 1000, now: () => clock });
+
+    // Chave com intervalo variável, como a série do hover: nunca se repete.
+    await cache.get('serie\u00000-100', load);
+    clock = 2000;
+    await cache.get('serie\u00002000-2100', load);
+
+    expect(await cache.get('serie\u00000-100', load)).toBe('valor');
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('respeita o teto de entradas descartando a mais antiga', async () => {
+    const load = vi.fn(async () => 'valor');
+    const cache = createAsyncCache<string>({ ttlMs: 10_000, maxEntries: 2 });
+
+    await cache.get('a', load);
+    await cache.get('b', load);
+    await cache.get('c', load);
+
+    expect(await cache.get('b', load)).toBe('valor');
+    expect(load).toHaveBeenCalledTimes(3);
+
+    await cache.get('a', load);
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
   it('invalidate força nova busca antes do TTL', async () => {
     const load = vi.fn(async () => 'valor');
     const cache = createAsyncCache<string>({ ttlMs: 10_000 });
