@@ -145,7 +145,7 @@ export function CanvasControlsOverlay({
       )}
 
       <TopologyQueryErrorBadge visible={queryError} />
-      <TopologyQueryLoadingBadge visible={queryLoading && !queryError} />
+      <TopologyQueryLoadingBadge visible={queryLoading} />
 
       {editable && map.nodes.length === 0 && (
         <div
@@ -153,7 +153,7 @@ export function CanvasControlsOverlay({
           style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}
         >
           Clique com o <strong>botão direito</strong> para adicionar dispositivos, redes, submapas,
-          seletores e links. Hosts Zabbix vêm da aba <strong>Query</strong>.
+          seletores e links. Hosts Zabbix vêm dos grupos configurados em Fonte de dados.
         </div>
       )}
     </>

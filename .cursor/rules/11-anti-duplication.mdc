@@ -46,7 +46,6 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Lista de hosts dos pickers (Adicionar host, editar nó) | `utils/queryHostPicker.ts` |
 | Guards `isHostNode`/`isSubmapNode`/`findNodeById` | `utils/topologyNodes.ts` |
 | Medida de texto e caixa do nó | `utils/nodeLayout.ts` |
-| Metadata/IP de host via Zabbix (uso restrito) | `hooks/useZabbixHostMetadata.ts` |
 
 ## Mapa, geometria e interação
 

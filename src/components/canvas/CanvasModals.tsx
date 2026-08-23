@@ -48,7 +48,6 @@ interface CanvasModalsProps {
   modals: NodePropertiesModalsState;
   bulk: BulkEditModalsState;
   queryHostOptions: QueryHostOption[];
-  zabbixMetadataLoading: boolean;
   zabbixDatasourceUid?: string;
   queryData?: PanelData;
   hostMetadata?: HostMetadataMap;
@@ -85,7 +84,6 @@ export function CanvasModals({
   modals,
   bulk,
   queryHostOptions,
-  zabbixMetadataLoading,
   zabbixDatasourceUid,
   queryData,
   hostMetadata,
@@ -155,7 +153,6 @@ export function CanvasModals({
           mode="add"
           queryHostOptions={queryHostOptions}
           storedMap={storedMap}
-          zabbixMetadataLoading={zabbixMetadataLoading}
           onClose={() => setAddHostAt(null)}
           onConfirm={(visibleName, ip, icon) =>
             persist(addZabbixHostAt(storedMap, addHostAt.mapX, addHostAt.mapY, visibleName, ip, icon))

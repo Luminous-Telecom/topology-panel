@@ -4,8 +4,8 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 /**
- * Índice de status do mapa: usa snapshot direto Zabbix (rápido, último valor) e aceita
- * `PanelData` do Grafana quando houver séries (ex.: testes ou painel com Query no futuro).
+ * Índice de status do mapa: snapshot direto Zabbix (API) e, se houver séries no `PanelData`
+ * (testes), o índice montado a partir delas.
  */
 
 export interface UseTopologyQueryIndexOptions {

@@ -28,7 +28,6 @@ import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
-import { useZabbixHostMetadata } from '../hooks/useZabbixHostMetadata';
 import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
@@ -41,8 +40,6 @@ import {
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
-
-const NO_METADATA_HOSTS: string[] = [];
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -173,20 +170,9 @@ export function TopologyPanel({
   const queryError = Boolean(querySource.error);
   const queryLoading = querySource.loading && !queryReady && !queryError;
 
-  /**
-   * O `host.get` do snapshot já traz nome, IP, descrição, grupos e tags — buscar metadata de novo
-   * seria uma segunda volta na API pelo mesmo dado.
-   */
-  const metadataHostNames = NO_METADATA_HOSTS;
-
-  const { metadata: apiHostMetadata, loading: zabbixMetadataLoading } = useZabbixHostMetadata(
-    zabbixDatasourceUid,
-    metadataHostNames
-  );
-
   const dataMetaRaw = useMemo(
-    () => enrichHostMetadataFromMap({ ...queryMeta, ...apiHostMetadata }, activeStoredMap),
-    [queryMeta, apiHostMetadata, activeStoredMap]
+    () => enrichHostMetadataFromMap(queryMeta, activeStoredMap),
+    [queryMeta, activeStoredMap]
   );
 
   /**
@@ -508,7 +494,6 @@ export function TopologyPanel({
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
         queryData={queryData}
         zabbixDatasourceUid={zabbixDatasourceUid}
-        zabbixMetadataLoading={zabbixMetadataLoading}
         linkMetricsByLink={linkMetricsByLink}
         linkMetricsFetchedAtMs={linkMetricsFetchedAtMs}
         hostProblems={hostProblems}

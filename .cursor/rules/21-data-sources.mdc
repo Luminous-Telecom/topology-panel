@@ -19,8 +19,8 @@ Qualquer arquivo em `src/`.
 
 Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado a partir da
 API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
-`hooks/useZabbixDirectIndex.ts`): último ponto da chave de status (`host.get` + `item.get` +
-`history.get`).
+`hooks/useZabbixDirectIndex.ts`): metadados uma vez (`hostgroup.get` + `host.get`) e status a cada
+ciclo numa única `item.get` (`lastvalue`/`lastclock` da chave configurada).
 
 - Consumidor novo recebe `QueryIndex` por parâmetro e nunca lê `data.series` nem chama a API por
   conta própria.
@@ -30,9 +30,8 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
   thresholds e value mappings configurados nas opções do painel.
 - Série do gráfico de hover: `fetchHostHoverSeriesFromZabbix` (`history.get` do host). Não invente
   série a partir do snapshot do mapa.
-- A cor/status do mapa vem do último ponto da chave de status: `item.get` e, se houver ponto mais
-  novo, `history.get` curto em `fetchZabbixDirectSnapshot` — o `lastvalue` do icmppingsec pode
-  ficar no último RTT com sucesso enquanto o histórico já mostra Down/Up.
+- A cor/status do mapa vem do `lastvalue` da chave de status via `fetchZabbixStatusItems` — sem
+  overlay de `history.get` no ciclo do mapa.
 - Problemas Zabbix (Warning+, via `useZabbixHostProblems`) pintam o host com `colorAlert` e entram
   na lista de alertas. Offline da Query continua vencendo. Não recalcule isso com outra chamada.
 - Fora do caminho do `QueryIndex` e de `hostProblems`, nunca colora o mapa nem calcule status a
@@ -45,23 +44,23 @@ API Zabbix (`buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`, via
 
 | Consumidor autorizado | Uso permitido |
 |---|---|
-| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*` + `history.get` do último ponto), para o ping interativo |
-| `hooks/useZabbixHostMetadata.ts` | `fetchZabbixHostMetadata` (`host.get` em lote com grupos/tags), IP e regras de template |
-| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` + `name`), badges, lista de todos os mapas, cor e hover |
+| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
+| `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblems` (`problem.get` + `event.get`), badges, lista de todos os mapas, cor e hover |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` de interfaces), inventário para seletor de link |
-| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get` + `history.get` do último ponto), métricas voláteis de links (RX/TX/status) |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectSnapshot` (`hostgroup.get` + `host.get` + `item.get` da chave de status + `history.get` só do último ponto), fonte do mapa |
+| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValues` (`item.get`), métricas voláteis de links (RX/TX/status) |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` + `fetchZabbixStatusItems` (`hostgroup.get` + `host.get` uma vez; `item.get` de status a cada ciclo), fonte do mapa |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`), seletor de grupos do painel de opções |
+| `hooks/useHostHoverSeries.ts` | `fetchHostHoverSeriesFromZabbix` (`history.get` paginado), sparkline do hover |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
 - Polling do mapa: `useZabbixDirectIndex.ts` (status) e `useLinkMetricsRuntime.ts` (tráfego RX/TX),
   ambos no `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
-  Travas: aba oculta, watchdog e `canStartPolledFetch` (`utils/pollingGate.ts`). Não crie um
-  terceiro laço.
-- Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get` fora do hover
-  e do último ponto de status/tráfego/ICMP do ping, ou metadata para outra finalidade) exige **aprovação
+  Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
+  `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um terceiro laço.
+- Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get` fora do hover,
+  ou metadata para outra finalidade) exige **aprovação
   explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
 - Busca e classificação de interface usam **só** as palavras-chave das opções do painel
   (`zabbixRxItemKeyword`, `zabbixTxItemKeyword`, `zabbixOperStatusItemKeyword`,

@@ -22,8 +22,6 @@ interface Props {
   initialIp?: string;
   /** Ícone atual (modo editar) */
   initialIcon?: TopologyHostIcon;
-  /** Aguardando IP da API Zabbix (interface principal). */
-  zabbixMetadataLoading?: boolean;
   onConfirm: (visibleName: string, ip: string, icon: TopologyHostIcon) => void;
   onClose: () => void;
 }
@@ -35,7 +33,6 @@ export function ZabbixHostPickerModal({
   initialVisibleName,
   initialIp,
   initialIcon,
-  zabbixMetadataLoading = false,
   onConfirm,
   onClose,
 }: Props) {
@@ -91,8 +88,7 @@ export function ZabbixHostPickerModal({
     : !hostOptions.length
       ? 'Todos os hosts dos grupos já estão no mapa.'
       : null;
-  const needsManualIp = Boolean(hostKey && !autoIp && !zabbixMetadataLoading);
-  const waitingForZabbixIp = Boolean(hostKey && !autoIp && zabbixMetadataLoading);
+  const needsManualIp = Boolean(hostKey && !autoIp);
 
   return (
     <TopologyModal title={title} onClose={onClose}>
@@ -117,10 +113,6 @@ export function ZabbixHostPickerModal({
       {autoIp ? (
         <FieldReadout label="IP">
           <div style={ipReadoutStyle}>{autoIp}</div>
-        </FieldReadout>
-      ) : waitingForZabbixIp ? (
-        <FieldReadout label="IP">
-          <div style={{ fontSize: 13, opacity: 0.8 }}>Buscando IP no Zabbix…</div>
         </FieldReadout>
       ) : needsManualIp ? (
         <Field

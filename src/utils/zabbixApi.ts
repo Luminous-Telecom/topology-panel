@@ -1,6 +1,6 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { TimeRange } from '@grafana/data';
-import { HostMetadata, HostMetadataMap } from '../types';
+import { HostMetadataMap } from '../types';
 import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 import { isIpv4 } from './ipv4';
 import { collectHostLookupCandidates, HostLookupRef } from './hostLookup';
@@ -54,7 +54,7 @@ const ZABBIX_CALL_TIMEOUT_MS = 15_000;
 const ZABBIX_STATUS_CALL_TIMEOUT_MS = 45_000;
 
 /** Opções extras da chamada Zabbix — cancelamento e silêncio de toast em polling. */
-export interface ZabbixCallOptions {
+interface ZabbixCallOptions {
   abortSignal?: AbortSignal;
   /** Cancela a requisição anterior com o mesmo id no BackendSrv do Grafana. */
   requestId?: string;
@@ -245,97 +245,6 @@ function pickMainInterfaceIp(
   return undefined;
 }
 
-function indexZabbixHostMetadata(result: HostMetadataMap, host: ZabbixHost): void {
-  const visibleName = host.name?.trim() || host.host?.trim();
-  const technicalName = host.host?.trim();
-  const hostid = asZabbixId(host.hostid) || undefined;
-  const ip = pickMainInterfaceIp(host.interfaces);
-  if (!visibleName && !technicalName) {
-    return;
-  }
-  const entry: HostMetadata = {
-    name: visibleName || technicalName || '',
-    ip,
-    hostid,
-    description: normalizeZabbixHostDescription(host.description),
-    hostGroups: host.groups?.map((g) => g.name?.trim()).filter((n): n is string => Boolean(n)),
-    tags: host.tags?.map((t) => ({ tag: t.tag?.trim() ?? '', value: t.value?.trim() ?? '' })),
-  };
-  const keys = [visibleName, technicalName, hostid, ip];
-  for (const key of keys) {
-    const trimmed = key?.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const prev = result[trimmed];
-    result[trimmed] = prev
-      ? {
-          name: entry.name || prev.name,
-          ip: prev.ip && isIpv4(prev.ip) ? prev.ip : entry.ip,
-          hostid: prev.hostid || entry.hostid,
-          description: entry.description || prev.description,
-          hostGroups: entry.hostGroups?.length ? entry.hostGroups : prev.hostGroups,
-          tags: entry.tags?.length ? entry.tags : prev.tags,
-        }
-      : entry;
-  }
-}
-
-/** IP/nome da interface principal via host.get — usado quando a Query não traz IP nos labels. */
-export async function fetchZabbixHostMetadata(
-  datasourceUid: string,
-  hostNames: string[]
-): Promise<HostMetadataMap> {
-  const names = [
-    ...new Set(
-      hostNames
-        .map((name) => name.trim())
-        .filter((name) => Boolean(name) && !isIpv4(name))
-    ),
-  ];
-  if (!datasourceUid || !names.length) {
-    return {};
-  }
-
-  const result: HostMetadataMap = {};
-  const seenHostIds = new Set<string>();
-
-  for (const batch of chunk(names, BATCH_SIZE)) {
-    try {
-      const [byName, byHost] = await Promise.all([
-        zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
-          filter: { name: batch },
-          output: ZABBIX_HOST_OUTPUT,
-          selectInterfaces: ['ip', 'main', 'type'],
-          selectHostGroups: ['name'],
-          selectTags: ['tag', 'value'],
-        }),
-        zabbixCall<ZabbixHost[]>(datasourceUid, 'host.get', {
-          filter: { host: batch },
-          output: ZABBIX_HOST_OUTPUT,
-          selectInterfaces: ['ip', 'main', 'type'],
-          selectHostGroups: ['name'],
-          selectTags: ['tag', 'value'],
-        }),
-      ]);
-      for (const host of [...(byName ?? []), ...(byHost ?? [])]) {
-        const hostid = asZabbixId(host.hostid);
-        if (hostid && seenHostIds.has(hostid)) {
-          continue;
-        }
-        if (hostid) {
-          seenHostIds.add(hostid);
-        }
-        indexZabbixHostMetadata(result, host);
-      }
-    } catch {
-      /* lote sem resposta */
-    }
-  }
-
-  return result;
-}
-
 export interface HostIcmpStatus {
   reachable: boolean | null;
   lossPct: number | null;
@@ -432,8 +341,7 @@ export async function executeHostPingScript(
 
 /**
  * Última medição ICMP do host no Zabbix (icmpping / icmppingloss / icmppingsec).
- * Mesmo overlay de `history.get` do status do mapa — o lastvalue do icmppingsec pode ficar no
- * último RTT com sucesso.
+ * Lê `lastvalue`/`lastclock` do `item.get` — sem overlay de histórico.
  */
 export async function fetchHostIcmpStatus(
   datasourceUid: string,

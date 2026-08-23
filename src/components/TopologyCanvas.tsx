@@ -112,8 +112,6 @@ interface Props {
   /** Problemas Zabbix para badges NOC */
   hostProblems?: HostProblemsMap;
   onNocModeChange?: (enabled: boolean) => void;
-  /** Buscando IP da interface principal no Zabbix. */
-  zabbixMetadataLoading?: boolean;
   onMapChange?: (map: TopologyMap) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
@@ -167,7 +165,6 @@ export function TopologyCanvas({
   linkMetricsFetchedAtMs,
   hostProblems,
   onNocModeChange,
-  zabbixMetadataLoading = false,
   onMapChange,
   onViewChange,
   onShowMinimapChange,
@@ -1497,7 +1494,6 @@ export function TopologyCanvas({
         modals={modals}
         bulk={bulk}
         queryHostOptions={queryHostOptions}
-        zabbixMetadataLoading={zabbixMetadataLoading}
         zabbixDatasourceUid={zabbixDatasourceUid}
         queryData={queryData}
         hostMetadata={hostMetadata}
