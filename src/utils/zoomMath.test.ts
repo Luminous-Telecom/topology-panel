@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SCALE, MIN_SCALE, pinchZoom, wheelZoom, zoomAtPoint } from './zoomMath';
+import { MAX_SCALE, MIN_SCALE, pinchZoom, sameTopologyView, wheelZoom, zoomAtPoint } from './zoomMath';
 
 const view = { x: 0, y: 0, scale: 1 };
 
@@ -21,6 +21,21 @@ describe('wheelZoom', () => {
   it('roda para cima aproxima e para baixo afasta', () => {
     expect(wheelZoom(view, 0, 0, -1).scale).toBeCloseTo(1.1);
     expect(wheelZoom(view, 0, 0, 1).scale).toBeCloseTo(0.9);
+  });
+});
+
+describe('sameTopologyView', () => {
+  it('trata dois undefined como iguais e um lado ausente como diferente', () => {
+    expect(sameTopologyView(undefined, undefined)).toBe(true);
+    expect(sameTopologyView(view, undefined)).toBe(false);
+    expect(sameTopologyView(undefined, view)).toBe(false);
+  });
+
+  it('compara x, y e scale', () => {
+    expect(sameTopologyView(view, { x: 0, y: 0, scale: 1 })).toBe(true);
+    expect(sameTopologyView(view, { x: 1, y: 0, scale: 1 })).toBe(false);
+    expect(sameTopologyView(view, { x: 0, y: 1, scale: 1 })).toBe(false);
+    expect(sameTopologyView(view, { x: 0, y: 0, scale: 2 })).toBe(false);
   });
 });
 

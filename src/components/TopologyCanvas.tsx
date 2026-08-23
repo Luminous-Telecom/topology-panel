@@ -589,7 +589,7 @@ export function TopologyCanvas({
       return;
     }
 
-    commitView(transform);
+    commitView(transform, { persist: false });
     syncScrollFromView();
     lastFitViewportRef.current = { navKey, w, h };
   }, [

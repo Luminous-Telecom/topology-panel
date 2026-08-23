@@ -120,6 +120,45 @@ describe('useTopologyViewport', () => {
     }
   });
 
+  it('onViewChange não dispara no mount nem após o fit automático (persist: false)', () => {
+    vi.useFakeTimers();
+    try {
+      const onViewChange = vi.fn();
+      const { result } = renderViewport({ savedView: undefined, onViewChange });
+
+      act(() => {
+        result.current.commitView({ x: 40, y: 10, scale: 0.8 }, { persist: false });
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(onViewChange).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('depois de um fit sem persistir, pan/zoom do usuário ainda notifica onViewChange', () => {
+    vi.useFakeTimers();
+    try {
+      const onViewChange = vi.fn();
+      const { result } = renderViewport({ onViewChange });
+
+      act(() => {
+        result.current.commitView({ x: 40, y: 10, scale: 0.8 }, { persist: false });
+      });
+      act(() => {
+        result.current.commitView({ x: 41, y: 12, scale: 0.8 });
+      });
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(onViewChange).toHaveBeenCalledWith({ x: 41, y: 12, scale: 0.8 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('onViewChange não é chamado se a view resultante for igual à savedView', () => {
     vi.useFakeTimers();
     try {

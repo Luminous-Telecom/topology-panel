@@ -6,6 +6,17 @@ export const MAX_SCALE = 4;
 /** Passo do zoom por "clique" da roda do mouse. */
 export const WHEEL_ZOOM_STEP = 0.1;
 
+/** Compara pan/zoom do canvas — usado para não persistir view idêntica no dashboard. */
+export function sameTopologyView(a: TopologyView | undefined, b: TopologyView | undefined): boolean {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return a.x === b.x && a.y === b.y && a.scale === b.scale;
+}
+
 /**
  * Zoom mantendo fixo o ponto do mapa que está sob o cursor (`mx`/`my` já em coordenadas do
  * elemento, não da tela).

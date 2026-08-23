@@ -1,8 +1,14 @@
 import { MutableRefObject, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyView } from '../types';
+import { sameTopologyView } from '../utils/zoomMath';
 import { useCanvasZoomGestures } from './useCanvasZoomGestures';
 import { useFullscreen } from './useFullscreen';
 import { useViewportSize } from './useViewportSize';
+
+/** `persist: false` — fit automático e restauração; não grava no dashboard. */
+export interface CommitViewOptions {
+  persist?: boolean;
+}
 
 interface UseTopologyViewportParams {
   wrapRef: RefObject<HTMLDivElement>;
@@ -28,7 +34,10 @@ interface UseTopologyViewportParams {
 interface UseTopologyViewportResult {
   view: TopologyView;
   viewRef: MutableRefObject<TopologyView>;
-  commitView: (next: TopologyView | ((prev: TopologyView) => TopologyView)) => void;
+  commitView: (
+    next: TopologyView | ((prev: TopologyView) => TopologyView),
+    options?: CommitViewOptions
+  ) => void;
   viewport: { w: number; h: number };
   viewportRef: MutableRefObject<{ w: number; h: number }>;
   isFullscreen: boolean;
@@ -62,28 +71,36 @@ export function useTopologyViewport({
     savedView && typeof savedView.scale === 'number' ? savedView : { x: 0, y: 0, scale: 1 }
   );
   const viewRef = useRef(view);
-  const commitView = useCallback((next: TopologyView | ((prev: TopologyView) => TopologyView)) => {
-    if (typeof next === 'function') {
-      setView((prev) => {
-        const resolved = next(prev);
-        viewRef.current = resolved;
-        return resolved;
-      });
-      return;
-    }
-    viewRef.current = next;
-    setView(next);
-  }, []);
+  const persistEnabledRef = useRef(false);
+  const commitView = useCallback(
+    (next: TopologyView | ((prev: TopologyView) => TopologyView), options?: CommitViewOptions) => {
+      persistEnabledRef.current = options?.persist !== false;
+      if (typeof next === 'function') {
+        setView((prev) => {
+          const resolved = next(prev);
+          viewRef.current = resolved;
+          return resolved;
+        });
+        return;
+      }
+      viewRef.current = next;
+      setView(next);
+    },
+    []
+  );
   const { viewport, viewportRef } = useViewportSize({ wrapRef, sizeElement, sizeElementRef });
   const { isFullscreen, toggleFullscreen } = useFullscreen({ wrapRef, onFullscreenChange, showToast });
   const pinchActiveRef = useRef(false);
 
-  // Grava a view no mapa só depois que o usuário para de mexer, para não persistir cada frame.
+  // Só persiste pan/zoom do usuário (debounce). Fit de abertura e view inicial não sujam o dashboard.
   useEffect(() => {
     if (!onViewChange) {
       return;
     }
-    if (savedView && savedView.x === view.x && savedView.y === view.y && savedView.scale === view.scale) {
+    if (!persistEnabledRef.current) {
+      return;
+    }
+    if (sameTopologyView(savedView, view)) {
       return;
     }
     const timer = window.setTimeout(() => onViewChange(view), 400);
