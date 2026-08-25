@@ -19,7 +19,7 @@ Qualquer arquivo em `src/`.
 
 Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado em
 `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`, via `hooks/useZabbixDirectIndex.ts`):
-metadados uma vez (`hostgroup.get` + `host.get`) e valor a cada ciclo via `DataSourceApi.query()`
+metadados a cada ciclo (`hostgroup.get` + `host.get` só de hosts monitorados) e valor via `DataSourceApi.query()`
 (`utils/zabbixDatasourceQuery.ts`): um target Metrics pelos grupos visíveis (`zabbixGroupsFilter`:
 nome exato se for um; regex âncora se forem vários) com o item de status no campo `item`. Sem
 `item.get` e sem um target por grupo — o grafana-zabbix vira cada target em várias JSON-RPC.
@@ -60,7 +60,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos) em paralelo |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada ciclo), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos) em paralelo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |

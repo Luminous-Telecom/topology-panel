@@ -33,9 +33,10 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * e Problems (Warning+) no mesmo request. O tráfego dos cabos lê o `lastvalue` do `item.get`
  * em paralelo — o Zabbix já guarda o valor atual (preprocessing vira bps). Cabo só com `key`
  * resolve itemid e lastvalue na mesma chamada.
- * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
- * o DataFrame não traz isso. O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana
- * recria o EventBus no load e isso abortava o primeiro `ds.query()` para disparar outro.
+ * A identidade dos hosts (IP, tags, descrição) vem de `host.get` a cada ciclo — o DataFrame
+ * não traz isso, e só a lista atual de monitorados evita status fantasma de host desativado.
+ * O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana recria o EventBus no load
+ * e isso abortava o primeiro `ds.query()` para disparar outro.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -176,7 +177,7 @@ export function useZabbixDirectIndex({
     let lastPublishedGeneration = 0;
     /** Timeout/abort isolado só vira erro visível na segunda falha seguida. */
     let consecutiveFailures = 0;
-    /** Identidade dos hosts desta configuração; refeita só se a busca anterior falhou. */
+    /** Última identidade boa; o ciclo relê `host.get` para tirar host desativado do índice. */
     let metadata: ZabbixDirectMetadata | undefined;
     /** itemid numérico por key — só busca as chaves que ainda não resolveram. */
     let itemIdByKey = new Map<string, string>();
@@ -188,9 +189,7 @@ export function useZabbixDirectIndex({
     let latestProblems: HostProblemsMap = EMPTY_PROBLEMS;
 
     const ensureMetadata = async (abortSignal: AbortSignal): Promise<ZabbixDirectMetadata> => {
-      if (!metadata) {
-        metadata = await fetchZabbixDirectMetadata(datasourceUid, groupsRef.current, abortSignal);
-      }
+      metadata = await fetchZabbixDirectMetadata(datasourceUid, groupsRef.current, abortSignal);
       return metadata;
     };
 

@@ -134,6 +134,20 @@ describe('buildZabbixDirectIndex', () => {
     expect(empty.refIds).toEqual(['VAZIO']);
   });
 
+  it('não aplica lastvalue de host que saiu da lista monitorada', () => {
+    const scoped = buildZabbixDirectIndex({
+      datasourceUid: 'zbx',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts: [hosts[0]],
+      statusItems: [item('10', 'icmpping', '1'), item('11', 'icmpping', '0')],
+    });
+    expect(scoped.hosts).toEqual(['RB-CORE']);
+    expect(scoped.byRefId.get('BACKBONE')?.lastValues.get('RB-CORE')).toBe(1);
+    expect(scoped.byRefId.get('BACKBONE')?.lastValues.has('RB-BORDA')).toBe(false);
+    expect(scoped.metadata['RB-BORDA']).toBeUndefined();
+  });
+
   it('ignora grupo do host que não está configurado no painel', () => {
     const scoped = buildZabbixDirectIndex({
       datasourceUid: 'zbx',

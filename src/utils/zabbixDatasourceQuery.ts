@@ -479,18 +479,26 @@ function hostIdLookup(hosts: ZabbixDirectHost[]): Map<string, string> {
   return byKey;
 }
 
+function monitoredHostId(hostid: string | undefined, byHostKey: Map<string, string>): string | undefined {
+  const trimmed = hostid?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return byHostKey.get(trimmed.toLowerCase());
+}
+
 function resolveHostId(
   field: Field,
   hostLabel: string | undefined,
   byHostKey: Map<string, string>,
   itemById?: Map<string, ZabbixInterfaceItem>
 ): string | undefined {
-  const fromField = hostIdFromField(field);
+  const fromField = monitoredHostId(hostIdFromField(field), byHostKey);
   if (fromField) {
     return fromField;
   }
   const itemid = itemIdFromField(field);
-  const fromLookup = itemid ? itemById?.get(itemid)?.hostid?.trim() : undefined;
+  const fromLookup = monitoredHostId(itemid ? itemById?.get(itemid)?.hostid : undefined, byHostKey);
   if (fromLookup) {
     return fromLookup;
   }

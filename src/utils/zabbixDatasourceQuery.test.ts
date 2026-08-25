@@ -346,6 +346,29 @@ describe('parseStatusItemsFromFrames', () => {
     );
     expect(items).toEqual([]);
   });
+
+  it('ignora hostid da série que não está nos metadados monitorados', () => {
+    const items = parseStatusItemsFromFrames(
+      [
+        {
+          fields: [
+            { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+            {
+              name: 'Value',
+              type: FieldType.number,
+              values: [0],
+              labels: { host: 'host-off', hostid: '99', item_key: 'icmpping' },
+              config: {},
+            },
+          ],
+          length: 1,
+        },
+      ],
+      hosts,
+      'icmpping'
+    );
+    expect(items).toEqual([]);
+  });
 });
 
 describe('fetchZabbixStatusViaQuery', () => {

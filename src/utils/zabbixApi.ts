@@ -679,9 +679,9 @@ async function fetchMonitoredHostsInGroups(
 /**
  * Identidade dos hosts dos grupos: nome, IP, grupos e tags.
  *
- * Sai do ciclo periódico de propósito — nada aqui decide online/offline, e refazer `hostgroup.get`
- * + `host.get` a cada atualização era metade das chamadas do ciclo. O hook busca uma vez por
- * configuração de painel; o valor de status vem só de `ds.query()`.
+ * `host.get` filtra só monitorados (`status: 0` + `monitored_hosts`). O hook relê isso a cada
+ * ciclo — sem isso, host desativado no Zabbix continua no índice e o Metrics devolve o último
+ * icmpping (0 = offline). O valor de status vem só de `ds.query()`.
  */
 export async function fetchZabbixDirectMetadata(
   datasourceUid: string,

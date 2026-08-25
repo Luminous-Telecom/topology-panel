@@ -31,11 +31,11 @@ function host(id: string, group: string) {
   };
 }
 
-function statusItem(hostid: string) {
+function statusItem(hostid: string, lastvalue = '1') {
   return {
     itemid: `item-${hostid}`,
     key_: 'icmpping',
-    lastvalue: '1',
+    lastvalue,
     lastclock: '1000',
     hostid,
   };
@@ -305,5 +305,49 @@ describe('useZabbixDirectIndex', () => {
     await flush();
 
     expect(fetchStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('relê os hosts monitorados a cada ciclo e tira o status de host desativado', async () => {
+    fetchMetadata
+      .mockResolvedValueOnce({
+        hosts: [host('1', 'Backbone')],
+        resolvedGroups: ['Backbone'],
+        groupIds: ['10'],
+      })
+      .mockResolvedValueOnce({
+        hosts: [],
+        resolvedGroups: ['Backbone'],
+        groupIds: ['10'],
+      });
+    fetchStatus.mockResolvedValue({
+      items: [statusItem('1', '0')],
+      hoverByHost: {},
+      lastValues: {},
+      problems: {},
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.index.hosts).toContain('host-1');
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMetadata).toHaveBeenCalledTimes(2);
+    expect(result.current.index.hosts).not.toContain('host-1');
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.has('host-1')).toBe(false);
   });
 });

@@ -11,7 +11,14 @@ import { fetchZabbixDirectMetadata } from './zabbixApi';
 
 interface ApiBody {
   method: string;
-  params: { groupids?: string[]; hostids?: string[]; output?: string[]; search?: { key_?: string } };
+  params: {
+    groupids?: string[];
+    hostids?: string[];
+    output?: string[];
+    search?: { key_?: string };
+    filter?: { status?: number };
+    monitored_hosts?: boolean;
+  };
 }
 
 describe('fetchZabbixDirectMetadata', () => {
@@ -47,6 +54,11 @@ describe('fetchZabbixDirectMetadata', () => {
     expect(metadata.hosts).toHaveLength(1);
     expect(metadata.hosts[0].ip).toBe('10.0.0.1');
     expect(post).toHaveBeenCalledTimes(2);
+    const hostGet = post.mock.calls.find((call) => (call[1] as ApiBody).method === 'host.get');
+    expect((hostGet?.[1] as ApiBody).params).toMatchObject({
+      filter: { status: 0 },
+      monitored_hosts: true,
+    });
   });
 
   it('casa o grupo do submapa sem distinguir maiúsculas e devolve o nome do Zabbix', async () => {
