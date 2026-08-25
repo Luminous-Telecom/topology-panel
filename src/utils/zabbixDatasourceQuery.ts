@@ -37,7 +37,8 @@ import {
  *
  * `skipDataQuery` permanece true: a aba Query do Grafana não aparece. Cada preocupação preenche
  * o campo correspondente — grupo de hosts, item ICMP/status, item de interface — e o plugin
- * resolve grupo → hosts → itens → histórico. Identidade (IP, tags, descrição) continua em
+ * resolve grupo → hosts → itens → histórico. Status e problemas saem do mesmo `ds.query()`
+ * (targets Metrics + Problems). Identidade (IP, tags, descrição) continua em
  * `host.get`: o frame não traz isso.
  */
 
@@ -111,9 +112,17 @@ export interface ZabbixStatusQuerySnapshot {
   items: ZabbixInterfaceItem[];
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  problems: HostProblemsMap;
+  /** Target Problems falhou no mesmo request — o hook mantém o último badge. */
+  problemsUnavailable?: boolean;
 }
 
-const EMPTY_STATUS_SNAPSHOT: ZabbixStatusQuerySnapshot = { items: [], hoverByHost: {}, lastValues: {} };
+const EMPTY_STATUS_SNAPSHOT: ZabbixStatusQuerySnapshot = {
+  items: [],
+  hoverByHost: {},
+  lastValues: {},
+  problems: {},
+};
 
 function throwIfAborted(abortSignal?: AbortSignal): void {
   if (abortSignal?.aborted) {
@@ -309,13 +318,18 @@ export function buildZabbixStatusQueryRequest(
   itemIds?: string[],
   timeRange?: TimeRange
 ): DataQueryRequest<ZabbixMetricsQuery> | undefined {
-  const targets =
+  const statusTargets =
     itemIds !== undefined
       ? buildZabbixStatusItemIdTargets(datasourceUid, itemIds)
       : buildZabbixStatusTargets(datasourceUid, groupNames, statusItemKey);
-  if (!targets.length) {
+  if (!statusTargets.length) {
     return undefined;
   }
+  /*
+   * Problems no mesmo `/api/ds/query`: o grafana-zabbix aceita queryTypes mistos por target.
+   * Tráfego fica fora — janela de 5 min e 2 pontos, incompatível com o sparkline do hover.
+   */
+  const targets = [...statusTargets, ...buildZabbixProblemsTargets(datasourceUid, groupNames)];
   const range = timeRange ?? statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC);
   return zabbixQueryRequest(
     datasourceUid,
@@ -843,6 +857,29 @@ async function runDatasourceQuery(
   return result;
 }
 
+function isZabbixProblemsRefId(refId: string | undefined): boolean {
+  return typeof refId === 'string' && /^P\d+$/.test(refId);
+}
+
+function partitionZabbixPollFrames(frames: Array<DataFrame | unknown>): {
+  status: DataFrame[];
+  problems: DataFrame[];
+} {
+  const status: DataFrame[] = [];
+  const problems: DataFrame[] = [];
+  for (const frame of frames) {
+    if (!isDataFrame(frame)) {
+      continue;
+    }
+    if (isZabbixProblemsRefId(frame.refId)) {
+      problems.push(frame);
+    } else {
+      status.push(frame);
+    }
+  }
+  return { status, problems };
+}
+
 function throwIfQueryFailed(response: DataQueryResponse): void {
   if (response.state === LoadingState.Error && !response.error?.message && !response.errors?.length) {
     throw new Error('Falha ao consultar itens de status no Zabbix.');
@@ -854,6 +891,17 @@ function throwIfQueryFailed(response: DataQueryResponse): void {
   if (firstError) {
     throw new Error(firstError);
   }
+}
+
+/** Status veio: não derruba o mapa se o target Problems falhou no mesmo request. */
+function throwIfStatusPollFailed(response: DataQueryResponse): void {
+  const frames = response.data ?? [];
+  for (const frame of frames) {
+    if (isDataFrame(frame) && !isZabbixProblemsRefId(frame.refId)) {
+      return;
+    }
+  }
+  throwIfQueryFailed(response);
 }
 
 export async function fetchZabbixStatusViaQuery(
@@ -888,13 +936,26 @@ export async function fetchZabbixStatusViaQuery(
     datasourceUid,
     statusRequest,
     abortSignal,
-    'Falha ao consultar itens de status no Zabbix.'
+    'Falha ao consultar itens de status no Zabbix.',
+    throwIfStatusPollFailed
   );
-  const statusFrames = statusResponse.data ?? [];
+  const { status: statusFrames, problems: problemFrames } = partitionZabbixPollFrames(
+    statusResponse.data ?? []
+  );
+  const problemsUnavailable =
+    !problemFrames.length &&
+    (statusResponse.state === LoadingState.Error ||
+      Boolean(statusResponse.error) ||
+      Boolean(statusResponse.errors?.length));
   return {
     items: parseStatusItemsFromFrames(statusFrames, hosts, statusItemKey),
     hoverByHost: parseHoverSeriesFromFrames(statusFrames, hosts, statusItemKey, statusOptions),
     lastValues: parseItemLastValuesFromFrames(statusFrames),
+    problems: parseProblemsFromFrames(
+      problemFrames,
+      hosts.map((host) => host.hostid)
+    ),
+    problemsUnavailable,
   };
 }
 
@@ -902,7 +963,8 @@ async function queryZabbixWithRetry(
   datasourceUid: string,
   request: DataQueryRequest<ZabbixMetricsQuery>,
   abortSignal: AbortSignal | undefined,
-  errorMessage: string
+  errorMessage: string,
+  validateResponse: (response: DataQueryResponse) => void = throwIfQueryFailed
 ): Promise<DataQueryResponse> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= STATUS_QUERY_MAX_ATTEMPTS; attempt++) {
@@ -911,7 +973,7 @@ async function queryZabbixWithRetry(
       const ds = await getDataSourceSrv().get(datasourceUid);
       throwIfAborted(abortSignal);
       const response = await runDatasourceQuery(ds, request, abortSignal);
-      throwIfQueryFailed(response);
+      validateResponse(response);
       return response;
     } catch (err) {
       lastError = err;
@@ -1163,39 +1225,6 @@ export function parseProblemsFromFrames(
     }
   }
   return summary;
-}
-
-export async function fetchZabbixHostProblemsViaQuery(
-  datasourceUid: string,
-  hostIds: string[],
-  groupNames: readonly string[],
-  abortSignal?: AbortSignal
-): Promise<HostProblemsMap> {
-  const ids = [...new Set(hostIds.map((id) => id.trim()).filter(Boolean))];
-  if (!datasourceUid || !ids.length) {
-    return {};
-  }
-  const targets = buildZabbixProblemsTargets(datasourceUid, groupNames);
-  if (!targets.length) {
-    return {};
-  }
-  const nowMs = Date.now();
-  const request = zabbixQueryRequest(
-    datasourceUid,
-    `topology-problems-${datasourceUid}`,
-    targets,
-    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
-    ZABBIX_DIRECT_MIN_REFRESH_SEC,
-    1000,
-    nowMs
-  );
-  const response = await queryZabbixWithRetry(
-    datasourceUid,
-    request,
-    abortSignal,
-    'Falha ao consultar problemas no Zabbix.'
-  );
-  return parseProblemsFromFrames(response.data ?? [], ids);
 }
 
 function itemNameFromField(field: Field): string | undefined {

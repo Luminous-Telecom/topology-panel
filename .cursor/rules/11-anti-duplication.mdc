@@ -28,12 +28,12 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 |---|---|
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: `zabbixGroupsFilter` + item) |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems no mesmo request: `zabbixGroupsFilter` + item + P0) |
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; resolve via `resolveZabbixItemIdsByKeys` em `utils/zabbixApi.ts` (`hostid:key` — a key sozinha se repete entre hosts), em paralelo ao status |
-| Problemas Warning+ | `hooks/useZabbixDirectIndex.ts` (mesmo ciclo de status/tráfego) + `fetchZabbixHostProblemsViaQuery` em `utils/zabbixDatasourceQuery.ts` |
+| Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |

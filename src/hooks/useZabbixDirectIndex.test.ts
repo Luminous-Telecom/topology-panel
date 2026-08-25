@@ -4,7 +4,6 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
 import {
-  fetchZabbixHostProblemsViaQuery,
   fetchZabbixStatusViaQuery,
   fetchZabbixTrafficLastValuesViaQuery,
 } from '../utils/zabbixDatasourceQuery';
@@ -20,13 +19,11 @@ vi.mock('../utils/zabbixApi', () => ({
 vi.mock('../utils/zabbixDatasourceQuery', () => ({
   fetchZabbixStatusViaQuery: vi.fn(),
   fetchZabbixTrafficLastValuesViaQuery: vi.fn(async () => ({})),
-  fetchZabbixHostProblemsViaQuery: vi.fn(async () => ({})),
 }));
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
 const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValuesViaQuery);
-const fetchProblems = vi.mocked(fetchZabbixHostProblemsViaQuery);
 const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
 
 function host(id: string, group: string) {
@@ -49,6 +46,13 @@ function statusItem(hostid: string) {
   };
 }
 
+function statusSnapshot(
+  hostid: string,
+  problems: Record<string, { count: number; maxSeverity: number; names?: string[] }> = {}
+) {
+  return { items: [statusItem(hostid)], hoverByHost: {}, lastValues: {}, problems };
+}
+
 async function flush() {
   await act(async () => {
     await Promise.resolve();
@@ -63,8 +67,6 @@ describe('useZabbixDirectIndex', () => {
     fetchStatus.mockReset();
     fetchLastValues.mockReset();
     fetchLastValues.mockResolvedValue({});
-    fetchProblems.mockReset();
-    fetchProblems.mockResolvedValue({});
     resolveKeys.mockReset();
     resolveKeys.mockResolvedValue(new Map());
   });
@@ -79,7 +81,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
 
     const { result, rerender } = renderHook(
       ({ groupNames }: { groupNames: string[] }) =>
@@ -105,7 +107,7 @@ describe('useZabbixDirectIndex', () => {
           finishNext = resolve;
         })
     );
-    fetchStatus.mockResolvedValueOnce({ items: [statusItem('2')], hoverByHost: {}, lastValues: {} });
+    fetchStatus.mockResolvedValueOnce(statusSnapshot('2'));
 
     rerender({ groupNames: ['Borda'] });
     expect(result.current.ready).toBe(true);
@@ -134,11 +136,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce({
-      items: [statusItem('1')],
-      hoverByHost: {},
-      lastValues: {},
-    });
+    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
     fetchLastValues.mockResolvedValueOnce({ '10': { itemid: '10', lastvalue: '1' } });
 
     const { result } = renderHook(() =>
@@ -158,20 +156,14 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
-  it('busca problemas Warning+ em paralelo ao status e só fica ready quando os dois voltam', async () => {
+  it('traz problemas Warning+ no mesmo snapshot do status', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
-    let finishProblems: (value: Awaited<ReturnType<typeof fetchZabbixHostProblemsViaQuery>>) => void =
-      () => undefined;
-    fetchProblems.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishProblems = resolve;
-        })
+    fetchStatus.mockResolvedValueOnce(
+      statusSnapshot('1', { '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } })
     );
 
     const { result } = renderHook(() =>
@@ -186,16 +178,6 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).toHaveBeenCalledWith('ds', ['1'], ['Backbone'], expect.any(AbortSignal));
-    expect(result.current.ready).toBe(false);
-    expect(result.current.problems).toEqual({});
-
-    await act(async () => {
-      finishProblems({ '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
     expect(result.current.ready).toBe(true);
     expect(result.current.index.hosts).toContain('host-1');
     expect(result.current.problems['1']?.names).toEqual(['Interface down']);
@@ -207,8 +189,13 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
-    fetchProblems.mockRejectedValueOnce(new Error('Falha ao consultar problemas no Zabbix.'));
+    fetchStatus.mockResolvedValueOnce({
+      items: [statusItem('1')],
+      hoverByHost: {},
+      lastValues: {},
+      problems: {},
+      problemsUnavailable: true,
+    });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -233,11 +220,7 @@ describe('useZabbixDirectIndex', () => {
       groupIds: ['10'],
     });
     resolveKeys.mockResolvedValueOnce(new Map([['1:vendor.metric.rx[10]', '77']]));
-    fetchStatus.mockResolvedValueOnce({
-      items: [statusItem('1')],
-      hoverByHost: {},
-      lastValues: {},
-    });
+    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
     fetchLastValues.mockResolvedValueOnce({ '77': { itemid: '77', lastvalue: '500000000' } });
 
     const { result } = renderHook(() =>
@@ -268,7 +251,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    fetchStatus.mockResolvedValue(statusSnapshot('1'));
     const eventBus = new EventBusSrv();
 
     renderHook(() =>
@@ -299,7 +282,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    fetchStatus.mockResolvedValue(statusSnapshot('1'));
 
     const { rerender } = renderHook(
       ({ eventBus }: { eventBus: EventBusSrv }) =>

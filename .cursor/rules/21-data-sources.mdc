@@ -42,10 +42,10 @@ painel não existe — o grupo fica no submapa.
   resposta alimenta o sparkline do hover (`maxDataPoints` do gráfico). O target preenche `group`
   com o filtro dos grupos visíveis e `item` com o valor configurado no painel. Sem `item.get`.
   `skipDataQuery` permanece true.
-- Problemas Zabbix (Warning+, via `useZabbixDirectIndex` / `ds.query()` Problems no mesmo ciclo
-  de status e tráfego) usam os grupos já resolvidos da metadata (`resolvedGroups`). Nunca `/.*/`.
-  Pintam o host com `colorAlert` e entram na lista de alertas. Offline da Query continua vencendo.
-  Não recalcule isso com outra chamada.
+- Problemas Zabbix (Warning+, via `useZabbixDirectIndex` / `ds.query()` Problems no **mesmo**
+  `/api/ds/query` do status: target P0 junto do Metrics G0) usam os grupos já resolvidos da
+  metadata (`resolvedGroups`). Nunca `/.*/`. Pintam o host com `colorAlert` e entram na lista
+  de alertas. Offline da Query continua vencendo. Não recalcule isso com outra chamada.
 - Fora do caminho do `QueryIndex` e de `hostProblems`, nunca colora o mapa nem calcule status a
   partir de chamada de API.
 - O painel declara `skipDataQuery` em `plugin.json`: não há aba Query.
@@ -60,7 +60,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo para status/hover), `fetchZabbixTrafficLastValuesViaQuery` (`ds.query()` Item ID, último ponto da série dos cabos) e `fetchZabbixHostProblemsViaQuery` (`ds.query()` Problems) em paralelo no mesmo ciclo |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValuesViaQuery` (`ds.query()` Item ID, janela de 5 min) em paralelo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
@@ -68,9 +68,9 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
-- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics, último ponto da série dos cabos
-  via `ds.query()` Item ID e problemas Warning+ via `ds.query()` Problems em paralelo no mesmo ciclo;
-  cabo usa janela de 5 min, não o timeRange do dashboard; itemids de **toda a árvore**, não só do
+- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e problemas Warning+ no mesmo
+  `ds.query()`; último ponto da série dos cabos via `ds.query()` Item ID em paralelo — cabo usa
+  janela de 5 min, não o timeRange do dashboard; itemids de **toda a árvore**, não só do
   mapa aberto), no `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
   `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`

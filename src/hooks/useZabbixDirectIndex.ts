@@ -14,7 +14,6 @@ import {
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
 import {
-  fetchZabbixHostProblemsViaQuery,
   fetchZabbixStatusViaQuery,
   fetchZabbixTrafficLastValuesViaQuery,
 } from '../utils/zabbixDatasourceQuery';
@@ -33,12 +32,10 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * A primeira publicação espera a resposta completa. Trocar grupos (abrir submapa, editar)
  * não zera o índice: o mapa continua com o último snapshot até o novo chegar.
  *
- * O ciclo periódico chama `ds.query()` do datasource Zabbix: grupo no campo group e o
- * item de status no campo item — o mesmo shape do editor, sem JSON-RPC de item.
- * O último ponto da série RX/TX dos cabos entra num `ds.query()` Item ID em paralelo.
- * Problemas Warning+ entram no mesmo `Promise.all` — a primeira pintura já traz alerta junto
- * com status e tráfego, não numa busca depois do `ready`.
- * Cabo só com `key` resolve o itemid em paralelo ao status (não bloqueia o restante do ciclo).
+ * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status/hover)
+ * e Problems (Warning+) no mesmo request. O último ponto RX/TX dos cabos fica noutro
+ * `ds.query()` Item ID — janela de 5 min, incompatível com o sparkline. Os dois rodam em
+ * paralelo. Cabo só com `key` resolve o itemid em paralelo ao status.
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
  * o DataFrame não traz isso. O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana
  * recria o EventBus no load e isso abortava o primeiro `ds.query()` para disparar outro.
@@ -247,8 +244,7 @@ export function useZabbixDirectIndex({
       inFlight = true;
       try {
         const meta = await ensureMetadata(abortSignal);
-        const hostIds = meta.hosts.map((host) => host.hostid);
-        const [snapshot, trafficLastValues, nextProblems] = meta.resolvedGroups.length
+        const [snapshot, trafficLastValues] = meta.resolvedGroups.length
           ? await Promise.all([
               fetchZabbixStatusViaQuery({
                 datasourceUid,
@@ -269,29 +265,24 @@ export function useZabbixDirectIndex({
                   abortSignal
                 );
               })(),
-              fetchZabbixHostProblemsViaQuery(
-                datasourceUid,
-                hostIds,
-                meta.resolvedGroups,
-                abortSignal
-              ).catch((err: unknown) => {
-                if (abortSignal.aborted) {
-                  throw err;
-                }
-                return latestProblems;
-              }),
             ])
           : [
-              { items: [], hoverByHost: EMPTY_HOVER, lastValues: EMPTY_LAST_VALUES },
+              {
+                items: [],
+                hoverByHost: EMPTY_HOVER,
+                lastValues: EMPTY_LAST_VALUES,
+                problems: EMPTY_PROBLEMS,
+              },
               EMPTY_LAST_VALUES,
-              EMPTY_PROBLEMS,
             ];
         const lastValues = aliasLastValuesByItemKey(trafficLastValues, itemIdByKey);
         if (cancelled || generation <= lastPublishedGeneration) {
           return;
         }
         lastPublishedGeneration = generation;
-        latestProblems = nextProblems;
+        if (!snapshot.problemsUnavailable) {
+          latestProblems = snapshot.problems;
+        }
         if (!meta.resolvedGroups.length) {
           setState({
             index: EMPTY_INDEX,
@@ -329,7 +320,7 @@ export function useZabbixDirectIndex({
           index,
           hoverByHost: snapshot.hoverByHost,
           lastValues,
-          problems: nextProblems,
+          problems: latestProblems,
           ready: true,
           loading: false,
           error: undefined,

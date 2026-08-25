@@ -91,13 +91,15 @@ describe('buildZabbixStatusQueryRequest', () => {
   it('monta um target Metrics com os grupos visíveis, sem cache do Grafana QueryRunner', () => {
     const request = buildZabbixStatusQueryRequest('ds', ['Backbone', 'Borda'], 'icmpping', 30, 1_700_000_000_000);
     expect(request).toBeDefined();
-    expect(request?.targets).toHaveLength(1);
+    expect(request?.targets).toHaveLength(2);
     expect(request?.targets[0].queryType).toBe('0');
     expect(request?.targets[0].group?.filter).toBe(zabbixGroupsFilter(['Backbone', 'Borda']));
     expect(request?.targets[0].host?.filter).toBe('/.*/');
     expect(request?.targets[0].item?.filter).toBe(zabbixMetricsItemFilter('icmpping'));
+    expect(request?.targets[1].queryType).toBe('5');
+    expect(request?.targets[1].refId).toBe('P0');
     const named = buildZabbixStatusQueryRequest('ds', ['Backbone'], 'Status item', 30, 1_700_000_000_000);
-    expect(named?.targets).toHaveLength(1);
+    expect(named?.targets).toHaveLength(2);
     expect(named?.targets[0].group?.filter).toBe(zabbixGroupsFilter(['Backbone']));
     expect(named?.targets[0].item?.filter).toBe('Status item');
     expect(request?.targets[0].options?.useTrends).toBe('false');
@@ -116,10 +118,11 @@ describe('buildZabbixStatusQueryRequest', () => {
       1_700_000_000_000,
       ['100', '101', '100']
     );
-    expect(request?.targets).toHaveLength(1);
+    expect(request?.targets).toHaveLength(2);
     expect(request?.targets[0].queryType).toBe('3');
     expect(request?.targets[0].itemids).toBe('100,101');
     expect(request?.targets[0].item).toBeUndefined();
+    expect(request?.targets[1].queryType).toBe('5');
   });
 
   it('não monta request sem grupos ou chave', () => {
@@ -420,7 +423,7 @@ describe('fetchZabbixStatusViaQuery', () => {
     expect(getMock).toHaveBeenCalledWith('ds');
     expect(query).toHaveBeenCalledTimes(1);
     const request = query.mock.calls[0][0] as { targets: unknown[]; skipQueryCache?: boolean };
-    expect(request.targets).toHaveLength(1);
+    expect(request.targets).toHaveLength(2);
     expect(request.skipQueryCache).toBe(true);
     expect(items).toHaveLength(1);
     expect(items[0].lastvalue).toBe('1');
@@ -459,6 +462,96 @@ describe('fetchZabbixStatusViaQuery', () => {
     expect(query).toHaveBeenCalledTimes(1);
     expect((query.mock.calls[0][0] as { requestId?: string }).requestId).toBe('topology-status-ds');
     expect(snapshot.items).toHaveLength(1);
+    expect(
+      (query.mock.calls[0][0] as { targets: Array<{ queryType?: string }> }).targets.map((t) => t.queryType)
+    ).toEqual(['0', '5']);
+  });
+
+  it('lê problemas do target P0 no mesmo ds.query, sem misturar no status', async () => {
+    const query = vi.fn().mockReturnValue(
+      of({
+        data: [
+          {
+            refId: 'G0',
+            fields: [
+              { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+              {
+                name: 'Value',
+                type: FieldType.number,
+                values: [1],
+                labels: { host: 'host-a', item_key: 'icmpping' },
+                config: {},
+              },
+            ],
+            length: 1,
+          },
+          {
+            refId: 'P0',
+            fields: [
+              {
+                name: 'Problems',
+                type: FieldType.other,
+                values: [{ severity: 4, name: 'Interface down', hosts: [{ hostid: '10' }] }],
+                config: {},
+              },
+            ],
+            length: 1,
+          },
+        ],
+      })
+    );
+    getMock.mockResolvedValue({ query });
+
+    const snapshot = await fetchZabbixStatusViaQuery({
+      datasourceUid: 'ds',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts,
+      refreshSec: 30,
+    });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(snapshot.items).toHaveLength(1);
+    expect(snapshot.problems['10']?.names).toEqual(['Interface down']);
+    expect(snapshot.problemsUnavailable).toBe(false);
+  });
+
+  it('mantém o status quando o target Problems falha no mesmo request', async () => {
+    const query = vi.fn().mockReturnValue(
+      of({
+        state: LoadingState.Error,
+        error: { message: 'problems failed' },
+        data: [
+          {
+            refId: 'G0',
+            fields: [
+              { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+              {
+                name: 'Value',
+                type: FieldType.number,
+                values: [1],
+                labels: { host: 'host-a', item_key: 'icmpping' },
+                config: {},
+              },
+            ],
+            length: 1,
+          },
+        ],
+      })
+    );
+    getMock.mockResolvedValue({ query });
+
+    const snapshot = await fetchZabbixStatusViaQuery({
+      datasourceUid: 'ds',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts,
+      refreshSec: 30,
+    });
+
+    expect(snapshot.items).toHaveLength(1);
+    expect(snapshot.problems).toEqual({});
+    expect(snapshot.problemsUnavailable).toBe(true);
   });
 });
 
@@ -595,9 +688,10 @@ describe('fetchZabbixStatusViaQuery-loading', () => {
     });
 
     const request = query.mock.calls[0][0] as { targets: Array<{ queryType?: string; itemids?: string }> };
-    expect(request.targets).toHaveLength(1);
+    expect(request.targets).toHaveLength(2);
     expect(request.targets[0].queryType).toBe('3');
     expect(request.targets[0].itemids).toBe('100');
+    expect(request.targets[1].queryType).toBe('5');
     expect(items).toHaveLength(1);
     expect(items[0].key_).toBe('icmppingsec');
     expect(items[0].lastvalue).toBe('0.002');
