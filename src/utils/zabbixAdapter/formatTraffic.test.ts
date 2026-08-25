@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLinkMapTrafficLabel, formatPluginRefreshInterval, formatRelativeUpdate } from './formatTraffic';
+import { formatEndpointTrafficPair, formatLinkMapTrafficLabel, formatPluginRefreshInterval, formatRelativeUpdate } from './formatTraffic';
 
 describe('formatPluginRefreshInterval', () => {
   it('usa o intervalo do plugin, com o mínimo de 5s', () => {
@@ -20,6 +20,22 @@ describe('formatLinkMapTrafficLabel', () => {
 
   it('omite a direção sem valor', () => {
     expect(formatLinkMapTrafficLabel(1_000_000, undefined)).toBe('↑1 Mbps');
+  });
+});
+
+describe('formatEndpointTrafficPair', () => {
+  it('origem mostra TX depois RX', () => {
+    expect(formatEndpointTrafficPair('10 Mbps', '20 Mbps', 'from')).toEqual({
+      label: 'TX / RX',
+      value: '20 Mbps / 10 Mbps',
+    });
+  });
+
+  it('destino mostra RX depois TX', () => {
+    expect(formatEndpointTrafficPair('10 Mbps', '20 Mbps', 'to')).toEqual({
+      label: 'RX / TX',
+      value: '10 Mbps / 20 Mbps',
+    });
   });
 });
 

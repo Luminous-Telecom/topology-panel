@@ -38,6 +38,18 @@ export function formatLinkMapTrafficLabel(
   return tx ? `↑${tx}` : `↓${rx}`;
 }
 
+/** Origem: TX depois RX (sai do host). Destino: RX depois TX (entra no host). */
+export function formatEndpointTrafficPair(
+  rx: string,
+  tx: string,
+  role: 'from' | 'to'
+): { label: string; value: string } {
+  if (role === 'from') {
+    return { label: 'TX / RX', value: `${tx} / ${rx}` };
+  }
+  return { label: 'RX / TX', value: `${rx} / ${tx}` };
+}
+
 export function computeUtilizationPct(trafficBps: number | undefined, capacityMbps: number | undefined): number | undefined {
   if (
     trafficBps === undefined ||

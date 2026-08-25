@@ -12,6 +12,7 @@ import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import { linkKey } from '../utils/mapLinkEdits';
 import {
   formatBitsPerSecond,
+  formatEndpointTrafficPair,
   linkStatusLabel,
   operStatusLabel,
 } from '../utils/zabbixAdapter/formatTraffic';
@@ -137,15 +138,19 @@ function EndpointBlock({
   title,
   ifaceName,
   metrics,
+  role,
 }: {
   title: string;
   ifaceName?: string;
   metrics?: LinkRuntimeMetrics['from'];
+  role: 'from' | 'to';
 }) {
-  const rx = formatBitsPerSecond(metrics?.rxBps);
-  const tx = formatBitsPerSecond(metrics?.txBps);
+  const rx = formatBitsPerSecond(metrics?.rxBps) ?? 'N/A';
+  const tx = formatBitsPerSecond(metrics?.txBps) ?? 'N/A';
   const rxUtil = metrics?.rxUtilizationPct !== undefined ? `${metrics.rxUtilizationPct}%` : 'N/A';
   const txUtil = metrics?.txUtilizationPct !== undefined ? `${metrics.txUtilizationPct}%` : 'N/A';
+  const traffic = formatEndpointTrafficPair(rx, tx, role);
+  const util = formatEndpointTrafficPair(rxUtil, txUtil, role);
   const errors = metrics?.errors !== undefined ? String(Math.round(metrics.errors)) : 'N/A';
   const drops = metrics?.drops !== undefined ? String(Math.round(metrics.drops)) : 'N/A';
 
@@ -155,8 +160,8 @@ function EndpointBlock({
         {title}
         {ifaceName ? <span className={overlayMutedStyle}> · {ifaceName}</span> : null}
       </div>
-      <MetricRow label="RX / TX" value={`${rx ?? 'N/A'} / ${tx ?? 'N/A'}`} />
-      <MetricRow label="Util. RX / TX" value={`${rxUtil} / ${txUtil}`} />
+      <MetricRow label={traffic.label} value={traffic.value} />
+      <MetricRow label={`Util. ${util.label}`} value={util.value} />
       <MetricRow label="Status oper." value={operStatusLabel(metrics?.operStatus)} />
       <MetricRow label="Erros / Drops" value={`${errors} / ${drops}`} />
     </div>
@@ -224,8 +229,8 @@ export function LinkDetailsDrawer({
 
         <div className={dividerStyle} />
 
-        <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} />
-        <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} />
+        <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} role="from" />
+        <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} role="to" />
       </div>
 
       {onEdit ? (
