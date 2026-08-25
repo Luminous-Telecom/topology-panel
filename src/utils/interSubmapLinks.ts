@@ -1,6 +1,11 @@
 import { TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { activeChildMaps } from './childMapEdits';
-import { linksMatchEndpoints, removeLinkByEndpoints, upsertLinkWithInterfaces } from './mapLinkEdits';
+import {
+  hopFieldsMatch,
+  linksMatchIdentity,
+  removeLink,
+  upsertLinkWithInterfaces,
+} from './mapLinkEdits';
 import {
   counterpartSubmapBoxScore,
   findCounterpartSubmapBoxes,
@@ -159,10 +164,10 @@ function upsertInnerHop(
   }
   const regionLabel = findSubmapNodeByChildMapId(options.map, remoteMapId)?.label;
   const preferred = pickCounterpartSubmapBox(boxes, remoteMapId, regionLabel) ?? boxes[0];
-  const existing = map.links.find((link) => {
-    const other = link.from === host.id ? link.to : link.to === host.id ? link.from : undefined;
-    return Boolean(other && boxes.some((box) => box.id === other));
-  });
+  const remoteBoxIds = new Set(boxes.map((box) => box.id));
+  const existing = map.links.find((link) =>
+    innerHopMatches(link, host.id, remoteBoxIds, remoteHost, localInterface, remoteInterface)
+  );
 
   let working = map;
   let box = preferred;
@@ -174,7 +179,7 @@ function upsertInnerHop(
       : 0;
     const preferredScore = counterpartSubmapBoxScore(preferred, remoteMapId, regionLabel);
     if (existingBoxId !== preferred.id && preferredScore > existingScore) {
-      working = removeLinkByEndpoints(map, existing.from, existing.to);
+      working = removeLink(map, existing);
       box = preferred;
     } else if (existingBox) {
       box = existingBox;
@@ -184,7 +189,7 @@ function upsertInnerHop(
   const desiredFrom = localIsOrigin ? host.id : box.id;
   const desiredTo = localIsOrigin ? box.id : host.id;
   if (existing && (existing.from !== desiredFrom || existing.to !== desiredTo)) {
-    working = removeLinkByEndpoints(working, existing.from, existing.to);
+    working = removeLink(working, existing);
   }
 
   const hop = localIsOrigin
@@ -271,88 +276,6 @@ export function syncInterSubmapCounterpartLinks(
   return next;
 }
 
-function sameInterface(
-  a?: TopologyInterfaceReference,
-  b?: TopologyInterfaceReference
-): boolean {
-  if (!a?.name?.trim() || !b?.name?.trim()) {
-    return false;
-  }
-  if (a.name.trim() !== b.name.trim()) {
-    return false;
-  }
-  const indexA = a.snmpIndex?.trim();
-  const indexB = b.snmpIndex?.trim();
-  if (indexA && indexB) {
-    return indexA === indexB;
-  }
-  return true;
-}
-
-function samePeer(a?: TopologyLinkPeerHost, b?: TopologyLinkPeerHost): boolean {
-  if (!a || !b) {
-    return false;
-  }
-  if (a.nodeId && b.nodeId && a.nodeId === b.nodeId) {
-    return true;
-  }
-  const keyA = a.zabbixHost?.trim();
-  const keyB = b.zabbixHost?.trim();
-  return Boolean(keyA && keyB && keyA === keyB);
-}
-
-function fieldConflicts<T>(
-  linkField: T | undefined,
-  connField: T | undefined,
-  same: (left: T, right: T) => boolean
-): boolean {
-  if (!linkField || !connField) {
-    return false;
-  }
-  return !same(linkField, connField);
-}
-
-function hasInterface(ref?: TopologyInterfaceReference): boolean {
-  return Boolean(ref?.name?.trim());
-}
-
-/**
- * O hop é o espelho desta conexão se nenhum campo identifica outra (interface/peer diferentes)
- * e, quando o hop tem identidade, ela coincide com a conexão excluída.
- */
-function hopFieldsMatch(
-  linkPeerA: TopologyLinkPeerHost | undefined,
-  connPeerA: TopologyLinkPeerHost | undefined,
-  linkIfaceA: TopologyInterfaceReference | undefined,
-  connIfaceA: TopologyInterfaceReference | undefined,
-  linkPeerB: TopologyLinkPeerHost | undefined,
-  connPeerB: TopologyLinkPeerHost | undefined,
-  linkIfaceB: TopologyInterfaceReference | undefined,
-  connIfaceB: TopologyInterfaceReference | undefined
-): boolean {
-  if (fieldConflicts(linkPeerA, connPeerA, samePeer)) {
-    return false;
-  }
-  if (fieldConflicts(linkPeerB, connPeerB, samePeer)) {
-    return false;
-  }
-  if (fieldConflicts(linkIfaceA, connIfaceA, sameInterface)) {
-    return false;
-  }
-  if (fieldConflicts(linkIfaceB, connIfaceB, sameInterface)) {
-    return false;
-  }
-  if (!linkPeerA && !linkPeerB && !hasInterface(linkIfaceA) && !hasInterface(linkIfaceB)) {
-    return true;
-  }
-  return (
-    samePeer(linkPeerA, connPeerA) ||
-    samePeer(linkPeerB, connPeerB) ||
-    sameInterface(linkIfaceA, connIfaceA) ||
-    sameInterface(linkIfaceB, connIfaceB)
-  );
-}
-
 function linkConnectsSets(link: TopologyLink, setA: Set<string>, setB: Set<string>): boolean {
   return (setA.has(link.from) && setB.has(link.to)) || (setB.has(link.from) && setA.has(link.to));
 }
@@ -419,13 +342,11 @@ function innerHopMatches(
 }
 
 function removeMatchingLinks(map: TopologyMap, matches: (link: TopologyLink) => boolean): TopologyMap {
-  let next = map;
-  for (const link of map.links) {
-    if (matches(link)) {
-      next = removeLinkByEndpoints(next, link.from, link.to);
-    }
+  const nextLinks = map.links.filter((link) => !matches(link));
+  if (nextLinks.length === map.links.length) {
+    return map;
   }
-  return next;
+  return { ...map, links: nextLinks };
 }
 
 function removeOverviewHops(
@@ -539,7 +460,7 @@ export function removeMissingInterSubmapCounterparts(
 ): TopologyPanelOptions {
   let next = options;
   for (const link of previousMap.links) {
-    if (currentMap.links.some((item) => linksMatchEndpoints(item, link))) {
+    if (currentMap.links.some((item) => linksMatchIdentity(item, link))) {
       continue;
     }
     next = removeInterSubmapCounterpartLinks(next, currentMapId, link, previousMap);

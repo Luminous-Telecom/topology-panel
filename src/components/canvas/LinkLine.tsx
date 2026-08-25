@@ -17,7 +17,7 @@ import {
 } from '../../utils/linkMetricsRuntime';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { resolvePanelColor } from '../../utils/panelColors';
-import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from '../../utils/linkGeometry';
+import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint, offsetPolyline } from '../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../utils/linkMedium';
 import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../utils/zabbixAdapter/formatTraffic';
 import { NodeLayout } from '../../utils/nodeLayout';
@@ -26,6 +26,7 @@ import { canvasStyles } from './canvasStyles';
 interface LinkLineProps {
   link: TopologyLink;
   waypoints: LinkPoint[];
+  bundleOffset?: number;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
   editable: boolean;
@@ -64,6 +65,7 @@ function linkMarkerSuffix(
 function LinkLineComponent({
   link,
   waypoints,
+  bundleOffset = 0,
   nodeLayouts,
   options,
   editable,
@@ -87,16 +89,17 @@ function LinkLineComponent({
   }
   const gridStep = options.gridSize ?? 10;
   const geom = computeLinkGeometry(from, to, gridStep, waypoints);
-  const { d, pathPoints } = geom;
+  const { pathPoints } = geom;
   const hasWaypoints = waypoints.length > 0;
+  const d = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset);
   const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
   const active = selected || hovered;
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? '10 6' : undefined;
   const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
   const laneOffset = Math.max(2, strokeWidth * 0.75);
-  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, laneOffset);
-  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, -laneOffset);
+  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset + laneOffset);
+  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset - laneOffset);
   const displayTraffic = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
   const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? displayTraffic.capacityMbps);
   const fromName = link.fromInterface?.name;
@@ -104,7 +107,8 @@ function LinkLineComponent({
   const txLabel = formatBitsPerSecond(displayTraffic.txBps);
   const rxLabel = formatBitsPerSecond(displayTraffic.rxBps);
   const labelText = formatLinkMapTrafficLabel(displayTraffic.txBps, displayTraffic.rxBps);
-  const mid = linkLabelAnchor(pathPoints, from, to);
+  const drawnPoints = bundleOffset === 0 ? pathPoints : offsetPolyline(pathPoints, bundleOffset);
+  const mid = linkLabelAnchor(drawnPoints, from, to);
   const labelWidth = labelText ? labelText.length * 5.2 + 10 : 0;
   const labelRad = (mid.angle * Math.PI) / 180;
   const labelOffset = 9;
@@ -348,6 +352,9 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     return false;
   }
   if (prev.fromHostOffline !== next.fromHostOffline || prev.toHostOffline !== next.toHostOffline) {
+    return false;
+  }
+  if (prev.bundleOffset !== next.bundleOffset) {
     return false;
   }
   if (!sameWaypoints(prev.waypoints, next.waypoints)) {

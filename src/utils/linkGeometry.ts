@@ -1,5 +1,8 @@
 /** Geometria de links — path reto ou com waypoints para desviar obstáculos. */
 
+import { TopologyLink } from '../types';
+import { linkKey, linksMatchEndpoints } from './mapLinkEdits';
+
 export interface LinkPoint {
   x: number;
   y: number;
@@ -168,8 +171,8 @@ export function nearestWaypointIndex(
   return bestIndex;
 }
 
-/** Desloca a polilinha perpendicularmente (px) — duas faixas lado a lado no link. */
-function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[] {
+/** Desloca a polilinha perpendicularmente (px) — faixas RX/TX e cabos paralelos. */
+export function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[] {
   if (points.length < 2 || offset === 0) {
     return points.map((p) => ({ ...p }));
   }
@@ -240,4 +243,23 @@ export function linkLabelAnchor(
   const a = pathPoints[onPath.insertIndex];
   const b = pathPoints[onPath.insertIndex + 1];
   return { x: onPath.x, y: onPath.y, angle: segmentAngle(a, b) };
+}
+
+const PARALLEL_LINK_SPACING = 12;
+
+/**
+ * Deslocamento perpendicular para cabos que compartilham o mesmo par de nós.
+ * Um cabo sozinho fica na linha original (offset 0).
+ */
+export function parallelLinkBundleOffset(link: TopologyLink, links: TopologyLink[]): number {
+  const group = links.filter((item) => linksMatchEndpoints(item, link));
+  if (group.length <= 1) {
+    return 0;
+  }
+  const sorted = [...group].sort((a, b) => linkKey(a).localeCompare(linkKey(b)));
+  const index = sorted.findIndex((item) => linkKey(item) === linkKey(link));
+  if (index < 0) {
+    return 0;
+  }
+  return (index - (sorted.length - 1) / 2) * PARALLEL_LINK_SPACING;
 }

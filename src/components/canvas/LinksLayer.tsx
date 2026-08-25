@@ -7,7 +7,7 @@ import { NodeLayout } from '../../utils/nodeLayout';
 import { LinkLine } from './LinkLine';
 
 interface Props {
-  renderLinks: Array<{ link: TopologyLink; key: string }>;
+  renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
   editable: boolean;
@@ -48,13 +48,14 @@ export function LinksLayer({
 }: Props) {
   return (
     <>
-      {renderLinks.map(({ link, key }) => {
+      {renderLinks.map(({ link, key, bundleOffset }) => {
         const lk = linkKey(link);
         return (
         <LinkLine
           key={key}
           link={link}
           waypoints={resolveLinkWaypoints(link)}
+          bundleOffset={bundleOffset}
           nodeLayouts={nodeLayouts}
           options={options}
           editable={editable}

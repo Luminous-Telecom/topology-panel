@@ -2,7 +2,7 @@ import { TopologyHostIcon, TopologyLink, TopologyMap, TopologyNode } from '../ty
 import { hostToNodeId } from './hostLookup';
 import { upsertHostLayout } from './mapSync';
 import { findNodeById, isHostNode } from './topologyNodes';
-import { addLinkToMap, updateLinkProps } from './mapLinkEdits';
+import { addLinkWithInterfaces } from './mapLinkEdits';
 
 const CLIPBOARD_VERSION = 1 as const;
 const STORAGE_KEY = 'luminous-topology-panel-clipboard';
@@ -307,7 +307,6 @@ export function pasteTopologySelection(
       continue;
     }
 
-    next = addLinkToMap(next, from, to);
     const waypoints =
       link.waypoints && link.waypoints.length > 0
         ? link.waypoints.map((wp) => ({
@@ -316,9 +315,13 @@ export function pasteTopologySelection(
           }))
         : undefined;
 
-    next = updateLinkProps(next, from, to, {
-      medium: link.medium,
+    next = addLinkWithInterfaces(next, from, to, {
+      fromInterface: link.fromInterface,
+      toInterface: link.toInterface,
+      fromPeerHost: link.fromPeerHost,
+      toPeerHost: link.toPeerHost,
       bandwidthMbps: link.bandwidthMbps,
+      medium: link.medium,
       waypoints,
     });
   }

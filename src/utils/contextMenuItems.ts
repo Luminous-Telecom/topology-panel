@@ -1,7 +1,7 @@
 import { ContextMenuItem } from '../components/TopologyContextMenu';
 import { TopologyLink, TopologyMap, TopologyNode } from '../types';
 import { resolveLinkMedium } from './linkMedium';
-import { removeLinkByEndpoints, updateLinkProps } from './mapLinkEdits';
+import { removeLink, updateLinkProps } from './mapLinkEdits';
 
 export function deleteNodesMenuLabel(count: number): string {
   return count > 1 ? `Excluir seleção (${count})` : 'Excluir seleção';
@@ -112,18 +112,18 @@ export function buildLinkMenuItems({
     {
       id: 'link-fiber',
       label: medium === 'fiber' ? '✓ Fibra (linha contínua)' : 'Marcar como fibra',
-      onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'fiber' })),
+      onClick: () => persist(updateLinkProps(storedMap, link, { medium: 'fiber' })),
     },
     {
       id: 'link-radio',
       label: medium === 'radio' ? '✓ Rádio (linha tracejada)' : 'Marcar como rádio',
-      onClick: () => persist(updateLinkProps(storedMap, link.from, link.to, { medium: 'radio' })),
+      onClick: () => persist(updateLinkProps(storedMap, link, { medium: 'radio' })),
     },
     {
       id: 'delete-link',
       label: 'Excluir link',
       variant: 'delete',
-      onClick: () => persist(removeLinkByEndpoints(storedMap, link.from, link.to)),
+      onClick: () => persist(removeLink(storedMap, link)),
     },
   ];
 }

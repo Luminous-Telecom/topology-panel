@@ -7,7 +7,7 @@ import {
 } from './interSubmapLinks';
 import { emptyMap, hostNode } from './testMapFixtures';
 import { applyTopologyMapToPanelOptions, ROOT_MAP_ID } from './topologyMapNavigation';
-import { linksMatchEndpoints, removeLinkByEndpoints } from './mapLinkEdits';
+import { linksMatchEndpoints, removeLink } from './mapLinkEdits';
 import { removeNodeFromMap } from './mapEdits';
 
 function submapBox(id: string, childMapId: string, label: string): TopologyNode {
@@ -335,6 +335,44 @@ describe('syncInterSubmapCounterpartLinks', () => {
     expect(findLink(next.map, 'box-a', 'box-b')).toBeDefined();
     expect(next.childMaps?.['map-b']?.links).toEqual([]);
   });
+
+  it('espelha segundo cabo do mesmo host quando as interfaces diferem', () => {
+    const synced = fullySyncedFromOrigin();
+    const ifaceC = { name: 'eth-c' };
+    const ifaceD = { name: 'eth-d' };
+    const withSecond = {
+      ...synced,
+      childMaps: {
+        ...synced.childMaps,
+        'map-a': {
+          ...synced.childMaps!['map-a']!,
+          links: [
+            ...synced.childMaps!['map-a']!.links,
+            {
+              from: 'ha',
+              to: 'to-b',
+              fromInterface: ifaceC,
+              toInterface: ifaceD,
+              toPeerHost: peerB,
+            },
+          ],
+        },
+      },
+    };
+
+    const next = syncInterSubmapCounterpartLinks(
+      withSecond,
+      'map-a',
+      withSecond.childMaps!['map-a']!.links[1]!
+    );
+
+    expect(next.map.links).toHaveLength(2);
+    expect(next.childMaps?.['map-a']?.links).toHaveLength(2);
+    expect(next.childMaps?.['map-b']?.links).toHaveLength(2);
+    expect(
+      next.map.links.some((link) => link.fromInterface?.name === 'eth-c' || link.toInterface?.name === 'eth-c')
+    ).toBe(true);
+  });
 });
 
 function fullySyncedFromOrigin(): TopologyPanelOptions {
@@ -381,7 +419,7 @@ function deleteLinkOnMap(
   if (!link) {
     throw new Error(`cabo ausente: ${from}-${to}`);
   }
-  const without = removeLinkByEndpoints(current, from, to);
+  const without = removeLink(current, link);
   const base = applyTopologyMapToPanelOptions(options, mapId, without);
   return removeInterSubmapCounterpartLinks(base, mapId, link);
 }
@@ -575,13 +613,50 @@ describe('removeInterSubmapCounterpartLinks', () => {
       )
     ).toBe(false);
   });
+
+  it('ao excluir um cabo paralelo, preserva o outro entre os mesmos submapas', () => {
+    const synced = fullySyncedFromOrigin();
+    const ifaceC = { name: 'eth-c' };
+    const ifaceD = { name: 'eth-d' };
+    const withSecondHop = {
+      ...synced,
+      childMaps: {
+        ...synced.childMaps,
+        'map-a': {
+          ...synced.childMaps!['map-a']!,
+          links: [
+            ...synced.childMaps!['map-a']!.links,
+            {
+              from: 'ha',
+              to: 'to-b',
+              fromInterface: ifaceC,
+              toInterface: ifaceD,
+              toPeerHost: peerB,
+            },
+          ],
+        },
+      },
+    };
+    const dual = syncInterSubmapCounterpartLinks(
+      withSecondHop,
+      'map-a',
+      withSecondHop.childMaps!['map-a']!.links[1]!
+    );
+
+    const next = deleteLinkOnMap(dual, 'map-a', 'ha', 'to-b');
+
+    expect(next.childMaps?.['map-a']?.links).toHaveLength(1);
+    expect(next.childMaps?.['map-a']?.links[0]?.fromInterface?.name).toBe('eth-c');
+    expect(next.map.links).toHaveLength(1);
+    expect(next.childMaps?.['map-b']?.links).toHaveLength(1);
+  });
 });
 
 describe('removeMissingInterSubmapCounterparts', () => {
   it('detecta o cabo removido do mapa ativo e limpa os espelhos', () => {
     const synced = fullySyncedFromOrigin();
     const previous = synced.childMaps!['map-a']!;
-    const current = removeLinkByEndpoints(previous, 'ha', 'to-b');
+    const current = removeLink(previous, previous.links[0]!);
     const base = applyTopologyMapToPanelOptions(synced, 'map-a', current);
     const next = removeMissingInterSubmapCounterparts(base, 'map-a', previous, current);
 

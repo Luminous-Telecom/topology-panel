@@ -4,6 +4,7 @@ import { defaultOptions } from '../types';
 import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
 import { emptyMap, hostNode } from './testMapFixtures';
+import { linkKey } from './mapLinkEdits';
 
 describe('formatRegionStats — submapa', () => {
   it('mostra parado/alerta/online quando há hosts', () => {
@@ -134,7 +135,7 @@ describe('mergeRegionTrafficStats', () => {
       { sm1: ['10.0.0.1', '10.0.0.2'] }
     );
     const merged = mergeRegionTrafficStats(baseStats, map, layouts, {
-      'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
+      [linkKey(map.links[0]!)]: { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
     });
     expect(merged.get('sm1')?.rxBps).toBeUndefined();
     expect(merged.get('sm1')?.txBps).toBeUndefined();
@@ -172,7 +173,7 @@ describe('mergeRegionTrafficStats', () => {
     }
     const baseStats = buildRegionStatsMap(map.nodes, layouts, {});
     const merged = mergeRegionTrafficStats(baseStats, map, layouts, {
-      'h1-h2': { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
+      [linkKey(map.links[0]!)]: { from: { rxBps: 500_000_000, txBps: 100_000_000 }, to: {}, status: 'up' },
     });
     expect(merged.get('net1')?.rxBps).toBe(500_000_000);
     expect(merged.get('net1')?.txBps).toBe(100_000_000);

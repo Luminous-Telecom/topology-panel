@@ -11,6 +11,7 @@ import {
   visibleHostProblemNames,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
+import { linkKey } from '../mapLinkEdits';
 
 describe('topologyFilters', () => {
   const map: TopologyMap = {
@@ -34,7 +35,7 @@ describe('topologyFilters', () => {
     const ctx = {
       map,
       linkMetricsByLink: {
-        'core-olt': {
+        [linkKey(map.links[0]!)]: {
           from: { txUtilizationPct: 91 },
           to: {},
           status: 'up' as const,

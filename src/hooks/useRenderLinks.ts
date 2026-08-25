@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { TopologyLink, TopologyNode } from '../types';
+import { parallelLinkBundleOffset } from '../utils/linkGeometry';
 import { linkKey } from '../utils/mapLinkEdits';
 import { NodeLayout } from '../utils/nodeLayout';
 
@@ -7,6 +8,8 @@ export interface RenderLink {
   link: TopologyLink;
   /** Chave estável para o React — ver comentário da ordenação. */
   key: string;
+  /** Deslocamento perpendicular quando há cabos paralelos entre o mesmo par. */
+  bundleOffset: number;
 }
 
 /**
@@ -37,7 +40,7 @@ export function useRenderLinks(
       const base = linkKey(link);
       const seen = occurrences.get(base) ?? 0;
       occurrences.set(base, seen + 1);
-      return { link, key: seen === 0 ? base : `${base}#${seen}` };
+      return { link, key: seen === 0 ? base : `${base}#${seen}`, bundleOffset: parallelLinkBundleOffset(link, validLinks) };
     });
     const selectedKey = selectedLink ? linkKey(selectedLink) : null;
     return keyed.sort((a, b) => {

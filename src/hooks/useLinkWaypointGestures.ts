@@ -6,8 +6,10 @@ import {
   computeLinkGeometry,
   LinkPoint,
   nearestWaypointIndex,
+  offsetPolyline,
+  parallelLinkBundleOffset,
 } from '../utils/linkGeometry';
-import { linkKey, linksMatchEndpoints, updateLinkProps } from '../utils/mapLinkEdits';
+import { linkKey, updateLinkProps } from '../utils/mapLinkEdits';
 import { NodeLayout } from '../utils/nodeLayout';
 
 export interface LinkWaypointGesturesParams {
@@ -74,7 +76,7 @@ export function useLinkWaypointGestures({
   const resolveLinkWaypoints = useCallback(
     (link: TopologyLink): LinkPoint[] => {
       const preview = dragPreview?.linkWaypoints;
-      if (preview && linksMatchEndpoints(preview, link)) {
+      if (preview && preview.key === linkKey(link)) {
         return preview.waypoints;
       }
       const stored = storedMap.links.find((l) => linkKey(l) === linkKey(link));
@@ -97,6 +99,8 @@ export function useLinkWaypointGestures({
 
       const currentWaypoints = resolveLinkWaypoints(link).map((p) => ({ ...p }));
       const geom = computeLinkGeometry(from, to, gridStep, currentWaypoints);
+      const bundleOffset = parallelLinkBundleOffset(link, storedMap.links);
+      const visualPoints = bundleOffset === 0 ? geom.pathPoints : offsetPolyline(geom.pathPoints, bundleOffset);
       const point = { x: mapX, y: mapY };
       const hitRadius = Math.max(8, 10 / view.scale);
       let index = waypointIndex;
@@ -107,12 +111,13 @@ export function useLinkWaypointGestures({
       }
 
       if (index < 0) {
-        const hit = closestPointOnPolyline(geom.pathPoints, point);
-        if (hit.distance > hitRadius * 1.25) {
+        const visualHit = closestPointOnPolyline(visualPoints, point);
+        if (visualHit.distance > hitRadius * 1.25) {
           return;
         }
+        const logicalHit = closestPointOnPolyline(geom.pathPoints, point);
         // Não insere ainda: o snap na grade no pointerdown já entortava a linha só de tocar.
-        pendingInsert = { x: hit.x, y: hit.y, insertIndex: hit.insertIndex };
+        pendingInsert = { x: logicalHit.x, y: logicalHit.y, insertIndex: logicalHit.insertIndex };
         index = -1;
       }
 
@@ -138,6 +143,7 @@ export function useLinkWaypointGestures({
       resolveLinkWaypoints,
       setSelectedLink,
       setSelectedNodeIds,
+      storedMap.links,
       view.scale,
       wrapRef,
     ]
@@ -174,7 +180,7 @@ export function useLinkWaypointGestures({
         i === d.waypointIndex ? { x: snapCoord(point.x), y: snapCoord(point.y) } : wp
       );
       d.waypoints = waypoints;
-      setDragPreview({ linkWaypoints: { from: d.link.from, to: d.link.to, waypoints } });
+      setDragPreview({ linkWaypoints: { key: linkKey(d.link), waypoints } });
     },
     [clientToMap, setDragPreview, snapCoord]
   );
@@ -194,7 +200,7 @@ export function useLinkWaypointGestures({
   const commitLinkWaypoint = useCallback(
     (d: Extract<DragState, { kind: 'link-waypoint' }>) => {
       if (d.moved && d.waypointIndex >= 0) {
-        persist(updateLinkProps(storedMap, d.link.from, d.link.to, { waypoints: d.waypoints }));
+        persist(updateLinkProps(storedMap, d.link, { waypoints: d.waypoints }));
       }
       setDragPreview(null);
     },
@@ -208,7 +214,7 @@ export function useLinkWaypointGestures({
         return;
       }
       const waypoints = current.filter((_, i) => i !== waypointIndex);
-      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints }));
+      persist(updateLinkProps(storedMap, link, { waypoints }));
       setDragPreview(null);
     },
     [persist, resolveLinkWaypoints, setDragPreview, storedMap]
@@ -231,7 +237,7 @@ export function useLinkWaypointGestures({
 
   const resetLinkRoute = useCallback(
     (link: TopologyLink) => {
-      persist(updateLinkProps(storedMap, link.from, link.to, { waypoints: [] }));
+      persist(updateLinkProps(storedMap, link, { waypoints: [] }));
       setDragPreview(null);
     },
     [persist, setDragPreview, storedMap]

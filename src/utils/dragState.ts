@@ -74,7 +74,7 @@ export type DragPreview = {
   positions?: Record<string, { x: number; y: number }>;
   width?: number;
   height?: number;
-  linkWaypoints?: { from: string; to: string; waypoints: LinkPoint[] };
+  linkWaypoints?: { key: string; waypoints: LinkPoint[] };
 } | null;
 
 export function canMoveSelectedNode(node: TopologyNode, networksLocked: boolean): boolean {
