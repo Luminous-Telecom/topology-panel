@@ -177,7 +177,7 @@ export function TopologyPanel({
     [activeStoredMap.links]
   );
 
-  /** Status e hover num `ds.query()`; RX/TX dos cabos num `item.get` lastvalue, em paralelo no mesmo ciclo. */
+  /** Status e hover num `ds.query()`; RX/TX dos cabos noutro (último ponto da série), em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     panelData: data,
     enabled: true,

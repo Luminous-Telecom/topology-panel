@@ -15,13 +15,17 @@ import {
   buildZabbixInterfaceTargets,
   buildZabbixProblemsTargets,
   buildZabbixStatusQueryRequest,
+  buildZabbixTrafficQueryRequest,
   fetchZabbixHostInterfaceItemsViaQuery,
+  fetchZabbixTrafficLastValuesViaQuery,
   parseHoverSeriesFromFrames,
   fetchZabbixHostGroupNamesViaQuery,
   fetchZabbixItemNamesViaQuery,
   fetchZabbixStatusViaQuery,
+  TRAFFIC_QUERY_MAX_POINTS,
   ZABBIX_MFQ_GROUPS,
   ZABBIX_MFQ_ITEMS,
+  ZABBIX_STATUS_QUERY_RANGE_SEC,
   parseInterfaceItemsFromFrames,
   parseItemLastValuesFromFrames,
   parseProblemsFromFrames,
@@ -121,6 +125,37 @@ describe('buildZabbixStatusQueryRequest', () => {
   it('não monta request sem grupos ou chave', () => {
     expect(buildZabbixStatusQueryRequest('ds', [], 'icmpping', 30)).toBeUndefined();
     expect(buildZabbixStatusQueryRequest('ds', ['Backbone'], '  ', 30)).toBeUndefined();
+  });
+});
+
+describe('buildZabbixTrafficQueryRequest', () => {
+  it('monta Item ID numa janela curta, sem misturar com o status', () => {
+    const nowMs = 1_700_000_000_000;
+    const request = buildZabbixTrafficQueryRequest('ds', ['10', '11'], 30, nowMs);
+    expect(request).toBeDefined();
+    expect(request?.targets).toHaveLength(1);
+    expect(request?.targets[0].queryType).toBe('3');
+    expect(request?.targets[0].refId).toBe('T0');
+    expect(request?.targets[0].itemids).toBe('10,11');
+    expect(request?.requestId).toBe('topology-traffic-ds');
+    expect(request?.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
+    const spanMs = request ? request.range.to.valueOf() - request.range.from.valueOf() : 0;
+    expect(spanMs).toBe(ZABBIX_STATUS_QUERY_RANGE_SEC * 1000);
+  });
+
+  it('descarta itemid não numérico em vez de incluir chave de item', () => {
+    const request = buildZabbixTrafficQueryRequest(
+      'ds',
+      ['10', 'vendor.metric.rx[10]', '11'],
+      30,
+      1_700_000_000_000
+    );
+    expect(request?.targets[0].itemids).toBe('10,11');
+  });
+
+  it('sem nenhum itemid válido não monta request', () => {
+    expect(buildZabbixTrafficQueryRequest('ds', ['vendor.metric.rx[10]'], 30)).toBeUndefined();
+    expect(buildZabbixTrafficQueryRequest('ds', [], 30)).toBeUndefined();
   });
 });
 
@@ -425,6 +460,68 @@ describe('fetchZabbixStatusViaQuery', () => {
     expect((query.mock.calls[0][0] as { requestId?: string }).requestId).toBe('topology-status-ds');
     expect(snapshot.items).toHaveLength(1);
   });
+});
+
+describe('fetchZabbixTrafficLastValuesViaQuery', () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
+  it('lê o último ponto da série dos cabos, com janela curta e requestId próprio', async () => {
+    const query = vi.fn().mockReturnValue(
+      of({
+        data: [
+          {
+            refId: 'T0',
+            fields: [
+              { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+              {
+                name: 'Value',
+                type: FieldType.number,
+                values: [42],
+                labels: { host: 'host-a', item: 'RX', item_key: 'vendor.metric.rx[10]' },
+                config: {},
+              },
+            ],
+            length: 1,
+          },
+        ],
+      })
+    );
+    getMock.mockResolvedValue({ query });
+
+    const lastValues = await fetchZabbixTrafficLastValuesViaQuery('ds', ['10', '11'], 30);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    const trafficReq = query.mock.calls[0][0] as {
+      requestId?: string;
+      maxDataPoints?: number;
+      range: { from: { valueOf: () => number }; to: { valueOf: () => number } };
+    };
+    expect(trafficReq.requestId).toBe('topology-traffic-ds');
+    expect(trafficReq.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
+    expect(trafficReq.range.to.valueOf() - trafficReq.range.from.valueOf()).toBe(
+      ZABBIX_STATUS_QUERY_RANGE_SEC * 1000
+    );
+    expect(lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('42');
+  });
+
+  it('sem itemid válido não consulta o datasource', async () => {
+    const lastValues = await fetchZabbixTrafficLastValuesViaQuery('ds', ['vendor.metric.rx[10]'], 30);
+    expect(getMock).not.toHaveBeenCalled();
+    expect(lastValues).toEqual({});
+  });
+});
+
+describe('fetchZabbixStatusViaQuery-loading', () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
+  const hosts = [
+    host({ hostid: '10', name: 'host-a', host: 'host-a' }),
+    host({ hostid: '11', name: 'host-b', host: 'host-b' }),
+  ];
 
   it('ignora a emissão Loading vazia e usa o Done', async () => {
     const query = vi.fn().mockReturnValue(

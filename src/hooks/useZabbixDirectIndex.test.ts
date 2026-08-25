@@ -1,12 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchZabbixDirectMetadata, fetchZabbixItemLastValues, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
-import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
+import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
+import {
+  fetchZabbixStatusViaQuery,
+  fetchZabbixTrafficLastValuesViaQuery,
+} from '../utils/zabbixDatasourceQuery';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 vi.mock('../utils/zabbixApi', () => ({
   fetchZabbixDirectMetadata: vi.fn(),
-  fetchZabbixItemLastValues: vi.fn(async () => ({})),
   isBenignZabbixFetchError: vi.fn(() => false),
   isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
   resolveZabbixItemIdsByKeys: vi.fn(async () => new Map()),
@@ -14,11 +16,12 @@ vi.mock('../utils/zabbixApi', () => ({
 
 vi.mock('../utils/zabbixDatasourceQuery', () => ({
   fetchZabbixStatusViaQuery: vi.fn(),
+  fetchZabbixTrafficLastValuesViaQuery: vi.fn(async () => ({})),
 }));
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
-const fetchLastValues = vi.mocked(fetchZabbixItemLastValues);
+const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValuesViaQuery);
 const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
 
 function host(id: string, group: string) {
@@ -118,7 +121,7 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.hosts).not.toContain('host-1');
   });
 
-  it('busca lastvalue dos cabos em paralelo ao status', async () => {
+  it('busca o último ponto da série dos cabos em paralelo ao status', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -144,7 +147,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal));
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], 60, expect.any(AbortSignal));
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
@@ -180,7 +183,7 @@ describe('useZabbixDirectIndex', () => {
       expect.any(AbortSignal),
       ['1']
     );
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], expect.any(AbortSignal));
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], 60, expect.any(AbortSignal));
     expect(result.current.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
 });

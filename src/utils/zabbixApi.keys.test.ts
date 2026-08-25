@@ -9,7 +9,7 @@ vi.mock('@grafana/runtime', () => ({
   }),
 }));
 
-import { fetchZabbixItemLastValues, resolveZabbixItemIdsByKeys } from './zabbixApi';
+import { resolveZabbixItemIdsByKeys } from './zabbixApi';
 
 describe('resolveZabbixItemIdsByKeys', () => {
   beforeEach(() => {
@@ -44,56 +44,5 @@ describe('resolveZabbixItemIdsByKeys', () => {
     );
     expect(resolved.get('vendor.metric.rx[10]')).toBe('77');
     expect(resolved.has('vendor.metric.tx[10]')).toBe(false);
-  });
-});
-
-describe('fetchZabbixItemLastValues', () => {
-  beforeEach(() => {
-    post.mockReset();
-  });
-
-  it('indexa lastvalue por itemid e pela key', async () => {
-    post.mockResolvedValueOnce({
-      result: [
-        {
-          itemid: '10',
-          key_: 'vendor.metric.rx[10]',
-          lastvalue: '500000000',
-          lastclock: '1700000000',
-        },
-      ],
-    });
-
-    const values = await fetchZabbixItemLastValues('ds', ['10', 'vendor.metric.rx[10]']);
-    expect(post).toHaveBeenCalledWith(
-      '/api/datasources/uid/ds/resources/zabbix-api',
-      {
-        method: 'item.get',
-        params: {
-          itemids: ['10'],
-          output: ['itemid', 'key_', 'lastvalue', 'lastclock'],
-        },
-      },
-      expect.objectContaining({ showErrorAlert: false, requestId: 'topology-traffic-lv-ds-0' })
-    );
-    expect(values['10']?.lastvalue).toBe('500000000');
-    expect(values['10']?.lastclock).toBe('1700000000');
-    expect(values['vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
-  });
-
-  it('sem itemid numérico não chama a API', async () => {
-    const values = await fetchZabbixItemLastValues('ds', ['vendor.metric.rx[10]']);
-    expect(post).not.toHaveBeenCalled();
-    expect(values).toEqual({});
-  });
-
-  it('devolve lastvalue zero de item não monitorado', async () => {
-    post.mockResolvedValueOnce({
-      result: [{ itemid: '10', key_: 'vendor.metric.rx[10]', lastvalue: '0', lastclock: '1700000000' }],
-    });
-
-    const values = await fetchZabbixItemLastValues('ds', ['10']);
-    expect(post.mock.calls[0][1].params.monitored).toBeUndefined();
-    expect(values['10']?.lastvalue).toBe('0');
   });
 });

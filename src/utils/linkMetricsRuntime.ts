@@ -81,7 +81,7 @@ function collectKeysFromReference(ref?: TopologyInterfaceReference): string[] {
 }
 
 /**
- * Chaves dos cabos sem itemid numérico — o poll resolve via `item.get` e só então lê o lastvalue.
+ * Chaves dos cabos sem itemid numérico — o poll resolve via `item.get` e só então pede a série.
  */
 export function collectLinkMetricKeys(links: TopologyLink[]): string[] {
   const keys = new Set<string>();

@@ -6,7 +6,6 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   fetchZabbixDirectMetadata,
-  fetchZabbixItemLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
   resolveZabbixItemIdsByKeys,
@@ -14,7 +13,10 @@ import {
   ZabbixItemLastValue,
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
-import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
+import {
+  fetchZabbixStatusViaQuery,
+  fetchZabbixTrafficLastValuesViaQuery,
+} from '../utils/zabbixDatasourceQuery';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { POLL_WATCHDOG_MS, canStartRefreshEventFetch } from '../utils/pollingGate';
 import { StatusColorOptions } from '../utils/statusMapping';
@@ -31,7 +33,7 @@ import { StatusColorOptions } from '../utils/statusMapping';
  *
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: grupo no campo group e o
  * item de status no campo item — o mesmo shape do editor, sem JSON-RPC de item.
- * Lastvalue RX/TX dos cabos entra num `item.get` em paralelo (sem histórico).
+ * O último ponto da série RX/TX dos cabos entra num `ds.query()` Item ID em paralelo.
  * Cabo só com `key` é resolvido uma vez via `item.get` — o DataFrame do inventário não traz id.
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
  * o DataFrame não traz isso.
@@ -53,7 +55,7 @@ export interface UseZabbixDirectIndexOptions {
   eventBus?: EventBus;
   timeRange?: TimeRange;
   statusOptions?: StatusColorOptions;
-  /** Itemids de RX/TX dos cabos — `item.get` lastvalue em paralelo. */
+  /** Itemids de RX/TX dos cabos — último ponto da série em paralelo. */
   trafficItemIds?: string[];
   /** Chaves dos cabos sem itemid numérico — resolvidas uma vez via `item.get`. */
   trafficKeys?: string[];
@@ -240,7 +242,12 @@ export function useZabbixDirectIndex({
                 timeRange: timeRangeRef.current,
                 statusOptions: statusOptionsRef.current,
               }),
-              fetchZabbixItemLastValues(datasourceUid, resolvedTrafficIds, abortSignal),
+              fetchZabbixTrafficLastValuesViaQuery(
+                datasourceUid,
+                resolvedTrafficIds,
+                intervalSec,
+                abortSignal
+              ),
             ])
           : [
               { items: [], hoverByHost: EMPTY_HOVER, lastValues: EMPTY_LAST_VALUES },

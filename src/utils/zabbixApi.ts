@@ -408,8 +408,8 @@ export function isNumericZabbixItemId(value: string | undefined): boolean {
  * Resolve chave de item → itemid numérico (`item.get` com filtro exato).
  *
  * O DataFrame do grafana-zabbix quase nunca traz `itemid`. O cabo fica só com a `key`, e o
- * `item.get` de lastvalue recusa qualquer valor não numérico em `itemids`. Sem este passo o
- * poll de tráfego ignora o cabo mesmo depois de reescolher a interface.
+ * `ds.query()` Item ID recusa qualquer valor não numérico. Sem este passo o poll de tráfego
+ * ignora o cabo mesmo depois de reescolher a interface.
  */
 export async function resolveZabbixItemIdsByKeys(
   datasourceUid: string,
@@ -445,60 +445,6 @@ export async function resolveZabbixItemIdsByKeys(
     resolved.set(key, itemid);
   }
   return resolved;
-}
-
-/** Fatia de `itemids` no `item.get` de lastvalue — evita body enorme no proxy. */
-const ITEM_LASTVALUE_CHUNK = 200;
-
-/**
- * Lastvalue atual dos itens de cabo (`item.get`), sem histórico e sem filtro `monitored`.
- *
- * `monitored: true` omitia item unsupported (host recém-ligado, SNMP ainda não suportado) e o
- * cabo ficava sem RX/TX mesmo com lastvalue gravado. O mapa mostra sempre o último valor
- * que o Zabbix tem para aquele itemid.
- */
-export async function fetchZabbixItemLastValues(
-  datasourceUid: string,
-  itemIds: string[],
-  abortSignal?: AbortSignal
-): Promise<Record<string, ZabbixItemLastValue>> {
-  const ids = [...new Set(itemIds.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id)))];
-  const result: Record<string, ZabbixItemLastValue> = {};
-  if (!datasourceUid || !ids.length) {
-    return result;
-  }
-  for (let offset = 0; offset < ids.length; offset += ITEM_LASTVALUE_CHUNK) {
-    const chunk = ids.slice(offset, offset + ITEM_LASTVALUE_CHUNK);
-    const rawItems = await zabbixCall<
-      Array<{ itemid?: string; key_?: string; lastvalue?: string; lastclock?: string }>
-    >(
-      datasourceUid,
-      'item.get',
-      {
-        itemids: chunk,
-        output: ['itemid', 'key_', 'lastvalue', 'lastclock'],
-      },
-      ZABBIX_CALL_TIMEOUT_MS,
-      { abortSignal, requestId: `topology-traffic-lv-${datasourceUid}-${offset}` }
-    );
-    for (const item of rawItems ?? []) {
-      const itemid = asZabbixId(item.itemid);
-      if (!isNumericZabbixItemId(itemid)) {
-        continue;
-      }
-      const row: ZabbixItemLastValue = {
-        itemid,
-        lastvalue: item.lastvalue,
-        lastclock: item.lastclock,
-      };
-      result[itemid] = row;
-      const key = item.key_?.trim();
-      if (key) {
-        result[key] = row;
-      }
-    }
-  }
-  return result;
 }
 
 export interface ZabbixInterfaceItem {
