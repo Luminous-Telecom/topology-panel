@@ -29,6 +29,44 @@ export interface AddLinkWithInterfacesOptions {
   discovery?: TopologyLink['discovery'];
 }
 
+/**
+ * Cria o cabo ou atualiza interfaces/peers se os extremos já existem (qualquer direção).
+ * Não cria segundo cabo entre o mesmo par — o mapa só admite um.
+ */
+export function upsertLinkWithInterfaces(
+  map: TopologyMap,
+  from: string,
+  to: string,
+  options: AddLinkWithInterfacesOptions = {}
+): TopologyMap {
+  const existing = map.links.find((link) => linksMatchEndpoints(link, { from, to }));
+  if (!existing) {
+    return addLinkWithInterfaces(map, from, to, options);
+  }
+  const sameDirection = existing.from === from && existing.to === to;
+  const patch: Parameters<typeof updateLinkProps>[3] = {};
+  const fromInterface = sameDirection ? options.fromInterface : options.toInterface;
+  const toInterface = sameDirection ? options.toInterface : options.fromInterface;
+  const fromPeerHost = sameDirection ? options.fromPeerHost : options.toPeerHost;
+  const toPeerHost = sameDirection ? options.toPeerHost : options.fromPeerHost;
+  if (fromInterface) {
+    patch.fromInterface = fromInterface;
+  }
+  if (toInterface) {
+    patch.toInterface = toInterface;
+  }
+  if (fromPeerHost) {
+    patch.fromPeerHost = fromPeerHost;
+  }
+  if (toPeerHost) {
+    patch.toPeerHost = toPeerHost;
+  }
+  if (options.bandwidthMbps && options.bandwidthMbps > 0) {
+    patch.bandwidthMbps = options.bandwidthMbps;
+  }
+  return updateLinkProps(map, existing.from, existing.to, patch);
+}
+
 export function addLinkWithInterfaces(
   map: TopologyMap,
   from: string,

@@ -20,14 +20,6 @@ function nodeTypeLabel(type?: TopologyNodeType): string {
   }
 }
 
-function nodeSearchText(node: TopologyNode, hostMetadata?: HostMetadataMap): string {
-  const description = resolveHostDescription(node, hostMetadata);
-  return [node.label, node.id, node.subtitle, node.zabbixHost, description]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
 /** Envolve o botão da toolbar e o painel, que é posicionado em relação a ele. */
 export const searchWrapStyle = css`
   position: relative;
@@ -129,7 +121,16 @@ export function TopologySearch({
     if (!q) {
       return [];
     }
-    return nodes.filter((n) => nodeSearchText(n, hostMetadata).includes(q)).slice(0, 20);
+    return nodes
+      .filter((node) => {
+        const description = resolveHostDescription(node, hostMetadata);
+        const hay = [node.label, node.id, node.subtitle, node.zabbixHost, description]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, 20);
   }, [nodes, hostMetadata, query]);
 
   useEffect(() => {

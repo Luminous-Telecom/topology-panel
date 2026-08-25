@@ -6,7 +6,7 @@ import {
   TopologyPanelOptions,
 } from '../../types';
 import { textOnBackground } from '../../utils/colorContrast';
-import { HostIconGlyph, hostIconRenderSize } from '../../utils/hostIcons';
+import { HostIconGlyph } from '../../utils/hostIcons';
 import {
   RegionHostStats,
   formatRegionStats,
@@ -166,9 +166,7 @@ function HostNodeShapeComponent({
         }
         strokeWidth={isSelected || isSelectedLinkEndpoint ? 3 : isLinkSource || isLinkTarget ? 2 : 1}
       />
-      {hostIcon && (
-        <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} size={hostIconRenderSize(hostIcon)} />
-      )}
+      {hostIcon && <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} />}
       {editable &&
         (node.type === 'static' || node.type === 'submap' || node.type === 'dashboard_picker') && (
         <rect

@@ -38,16 +38,50 @@ function writeFlowOffset(el: Element, offset: number): void {
 /** Atualiza stroke-dashoffset via rAF com velocidade individual por faixa. */
 export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let raf = 0;
+  /** Timer do modo dormente — nenhuma faixa com tráfego, nada para animar. */
+  let idleTimer = 0;
   let paused = false;
   let lanes: Element[] = [];
   let lanesReadAt = 0;
 
+  const clearPending = () => {
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+    if (idleTimer) {
+      window.clearTimeout(idleTimer);
+      idleTimer = 0;
+    }
+  };
+
+  const schedule = () => {
+    if (paused || raf || idleTimer) {
+      return;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+
+  /**
+   * Sem faixa ativa não existe animação para avançar. Em vez de gastar um frame por vez só para
+   * reler os mesmos atributos, dorme até a próxima varredura do DOM — é o que mantém o painel
+   * barato num mapa sem tráfego ou com todos os cabos parados.
+   */
+  const sleepUntilNextScan = () => {
+    idleTimer = window.setTimeout(() => {
+      idleTimer = 0;
+      schedule();
+    }, FLOW_QUERY_INTERVAL_MS);
+  };
+
   const tick = () => {
+    raf = 0;
     const now = performance.now();
     if (now - lanesReadAt >= FLOW_QUERY_INTERVAL_MS) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
     }
+    let animated = 0;
     for (const el of lanes) {
       if (el.getAttribute('data-link-flow-active') === 'false') {
         continue;
@@ -57,34 +91,31 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
         continue;
       }
       writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + speed);
+      animated++;
     }
-    raf = requestAnimationFrame(tick);
+    if (!animated) {
+      sleepUntilNextScan();
+      return;
+    }
+    schedule();
   };
 
-  const start = () => {
-    if (!raf && !paused) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  start();
+  schedule();
 
   return {
-    stop: () => {
-      cancelAnimationFrame(raf);
-      raf = 0;
-    },
+    stop: clearPending,
     setPaused: (next) => {
       if (paused === next) {
         return;
       }
       paused = next;
       if (paused) {
-        cancelAnimationFrame(raf);
-        raf = 0;
-      } else {
-        start();
+        clearPending();
+        return;
       }
+      // Força reler o DOM: o mapa pode ter mudado enquanto a animação estava parada.
+      lanesReadAt = 0;
+      schedule();
     },
   };
 }

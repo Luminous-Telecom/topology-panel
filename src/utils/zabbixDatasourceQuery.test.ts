@@ -11,10 +11,15 @@ vi.mock('@grafana/runtime', () => ({
 
 import {
   STATUS_QUERY_MAX_ATTEMPTS,
+  TRAFFIC_QUERY_MAX_POINTS,
+  ZABBIX_INTERFACE_ITEM_FILTER,
+  ZABBIX_STATUS_QUERY_RANGE_SEC,
   buildZabbixInterfaceTargets,
   buildZabbixProblemsTargets,
   buildZabbixStatusQueryRequest,
-  fetchHostHoverSeriesViaQuery,
+  buildZabbixTrafficQueryRequest,
+  fetchZabbixHostInterfaceItemsViaQuery,
+  parseHoverSeriesFromFrames,
   fetchZabbixHostGroupNamesViaQuery,
   fetchZabbixItemNamesViaQuery,
   fetchZabbixStatusViaQuery,
@@ -26,7 +31,7 @@ import {
   parseStatusItemsFromFrames,
   zabbixGroupFilter,
   zabbixGroupsFilter,
-  zabbixItemKeywordFilter,
+  zabbixInterfaceHostFilter,
   zabbixItemNameFilter,
   zabbixMetricsItemFilter,
   zabbixStatusItemFilter,
@@ -98,6 +103,7 @@ describe('buildZabbixStatusQueryRequest', () => {
     expect(request?.skipQueryCache).toBe(true);
     expect(request?.queryCachingTTL).toBe(0);
     expect(request?.requestId).toBe('topology-status-ds');
+    expect(request?.maxDataPoints).toBe(240);
   });
 
   it('com itemids monta target Item ID, sem filtro por nome', () => {
@@ -118,6 +124,37 @@ describe('buildZabbixStatusQueryRequest', () => {
   it('não monta request sem grupos ou chave', () => {
     expect(buildZabbixStatusQueryRequest('ds', [], 'icmpping', 30)).toBeUndefined();
     expect(buildZabbixStatusQueryRequest('ds', ['Backbone'], '  ', 30)).toBeUndefined();
+  });
+});
+
+describe('buildZabbixTrafficQueryRequest', () => {
+  it('monta Item ID numa janela curta, sem misturar com o status', () => {
+    const nowMs = 1_700_000_000_000;
+    const request = buildZabbixTrafficQueryRequest('ds', ['10', '11'], 30, nowMs);
+    expect(request).toBeDefined();
+    expect(request?.targets).toHaveLength(1);
+    expect(request?.targets[0].queryType).toBe('3');
+    expect(request?.targets[0].refId).toBe('T0');
+    expect(request?.targets[0].itemids).toBe('10,11');
+    expect(request?.requestId).toBe('topology-traffic-ds');
+    expect(request?.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
+    const spanMs = request ? request.range.to.valueOf() - request.range.from.valueOf() : 0;
+    expect(spanMs).toBe(ZABBIX_STATUS_QUERY_RANGE_SEC * 1000);
+  });
+
+  it('descarta itemid não numérico em vez de incluir chave de item', () => {
+    const request = buildZabbixTrafficQueryRequest(
+      'ds',
+      ['10', 'vendor.metric.rx[10]', '11'],
+      30,
+      1_700_000_000_000
+    );
+    expect(request?.targets[0].itemids).toBe('10,11');
+  });
+
+  it('sem nenhum itemid válido não monta request', () => {
+    expect(buildZabbixTrafficQueryRequest('ds', ['vendor.metric.rx[10]'], 30)).toBeUndefined();
+    expect(buildZabbixTrafficQueryRequest('ds', [], 30)).toBeUndefined();
   });
 });
 
@@ -371,7 +408,7 @@ describe('fetchZabbixStatusViaQuery', () => {
     );
     getMock.mockResolvedValue({ query });
 
-    const items = await fetchZabbixStatusViaQuery({
+    const { items } = await fetchZabbixStatusViaQuery({
       datasourceUid: 'ds',
       groupNames: ['Backbone', 'Borda'],
       statusItemKey: 'icmpping',
@@ -386,6 +423,77 @@ describe('fetchZabbixStatusViaQuery', () => {
     expect(request.skipQueryCache).toBe(true);
     expect(items).toHaveLength(1);
     expect(items[0].lastvalue).toBe('1');
+  });
+
+  it('busca tráfego dos cabos em paralelo, com janela curta e requestId próprio', async () => {
+    const query = vi.fn().mockImplementation((request: { requestId?: string }) => {
+      if (request.requestId === 'topology-traffic-ds') {
+        return of({
+          data: [
+            {
+              refId: 'T0',
+              fields: [
+                { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+                {
+                  name: 'Value',
+                  type: FieldType.number,
+                  values: [42],
+                  labels: { host: 'host-a', item: 'RX', item_key: 'vendor.metric.rx[10]' },
+                  config: {},
+                },
+              ],
+              length: 1,
+            },
+          ],
+        });
+      }
+      return of({
+        data: [
+          {
+            fields: [
+              { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+              {
+                name: 'Value',
+                type: FieldType.number,
+                values: [1],
+                labels: { host: 'host-a', item_key: 'icmpping' },
+                config: {},
+              },
+            ],
+            length: 1,
+          },
+        ],
+      });
+    });
+    getMock.mockResolvedValue({ query });
+
+    const snapshot = await fetchZabbixStatusViaQuery({
+      datasourceUid: 'ds',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts,
+      refreshSec: 30,
+      trafficItemIds: ['10', '11'],
+    });
+
+    expect(query).toHaveBeenCalledTimes(2);
+    const ids = query.mock.calls.map(
+      (call) => (call[0] as { requestId?: string }).requestId
+    );
+    expect(ids).toContain('topology-status-ds');
+    expect(ids).toContain('topology-traffic-ds');
+    const trafficReq = query.mock.calls.find(
+      (call) => (call[0] as { requestId?: string }).requestId === 'topology-traffic-ds'
+    )?.[0] as {
+      maxDataPoints?: number;
+      range: { from: { valueOf: () => number }; to: { valueOf: () => number } };
+    };
+    expect(trafficReq.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
+    expect(trafficReq.range.to.valueOf() - trafficReq.range.from.valueOf()).toBe(
+      ZABBIX_STATUS_QUERY_RANGE_SEC * 1000
+    );
+    expect(snapshot.items).toHaveLength(1);
+    expect(snapshot.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('42');
   });
 
   it('ignora a emissão Loading vazia e usa o Done', async () => {
@@ -414,7 +522,7 @@ describe('fetchZabbixStatusViaQuery', () => {
     );
     getMock.mockResolvedValue({ query });
 
-    const items = await fetchZabbixStatusViaQuery({
+    const { items } = await fetchZabbixStatusViaQuery({
       datasourceUid: 'ds',
       groupNames: ['Backbone'],
       statusItemKey: 'icmpping',
@@ -449,7 +557,7 @@ describe('fetchZabbixStatusViaQuery', () => {
     );
     getMock.mockResolvedValue({ query });
 
-    const items = await fetchZabbixStatusViaQuery({
+    const { items } = await fetchZabbixStatusViaQuery({
       datasourceUid: 'ds',
       groupNames: ['Backbone'],
       statusItemKey: 'icmppingsec',
@@ -468,7 +576,7 @@ describe('fetchZabbixStatusViaQuery', () => {
   });
 
   it('com itemIds vazio não chama o datasource', async () => {
-    const items = await fetchZabbixStatusViaQuery({
+    const { items } = await fetchZabbixStatusViaQuery({
       datasourceUid: 'ds',
       groupNames: ['Backbone'],
       statusItemKey: 'icmppingsec',
@@ -508,7 +616,7 @@ describe('fetchZabbixStatusViaQuery', () => {
       };
     });
 
-    const items = await fetchZabbixStatusViaQuery({
+    const { items } = await fetchZabbixStatusViaQuery({
       datasourceUid: 'ds',
       groupNames: ['Backbone'],
       statusItemKey: 'icmpping',
@@ -532,6 +640,21 @@ describe('fetchZabbixStatusViaQuery', () => {
         refreshSec: 30,
       })
     ).rejects.toThrow('Falha ao consultar itens de status no Zabbix.');
+  });
+
+  it('não repete quando o Grafana aborta o requestId anterior', async () => {
+    getMock.mockRejectedValue(new Error('Request was aborted'));
+
+    await expect(
+      fetchZabbixStatusViaQuery({
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        hosts,
+        refreshSec: 30,
+      })
+    ).rejects.toThrow(/abort/i);
+    expect(getMock).toHaveBeenCalledTimes(1);
   });
 
   it('cancela a subscription quando o AbortSignal dispara', async () => {
@@ -573,6 +696,48 @@ describe('parseItemLastValuesFromFrames', () => {
     ]);
     expect(values['10']?.lastvalue).toBe('100');
     expect(values['vendor.metric.rx[10]']?.lastvalue).toBe('100');
+  });
+
+  it('indexa frames de cabo (refId T) pelo itemid do campo', () => {
+    const values = parseItemLastValuesFromFrames([
+      {
+        refId: 'T0',
+        fields: [
+          { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+          {
+            name: 'Value',
+            type: FieldType.number,
+            values: [42],
+            labels: { itemid: '10', item_key: 'vendor.metric.rx[10]' },
+            config: {},
+          },
+        ],
+        length: 1,
+      },
+    ]);
+    expect(values['10']?.lastvalue).toBe('42');
+    expect(values['0']).toBeUndefined();
+  });
+
+  it('indexa o frame real do grafana-zabbix (item_key, sem label itemid)', () => {
+    const values = parseItemLastValuesFromFrames([
+      {
+        refId: 'T0',
+        fields: [
+          { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+          {
+            name: 'Value',
+            type: FieldType.number,
+            values: [42],
+            labels: { host: 'host-a', item: 'RX', item_key: 'vendor.metric.rx[10]' },
+            config: {},
+          },
+        ],
+        length: 1,
+      },
+    ]);
+    expect(values['vendor.metric.rx[10]']?.lastvalue).toBe('42');
+    expect(values['0']).toBeUndefined();
   });
 });
 
@@ -634,107 +799,35 @@ describe('zabbixMetricsItemFilter', () => {
   });
 });
 
-describe('zabbixItemKeywordFilter', () => {
-  it('monta regex de contém para um ou vários trechos', () => {
-    expect(zabbixItemKeywordFilter(['vendor.metric.rx'])).toBe('/vendor\\.metric\\.rx/i');
-    expect(zabbixItemKeywordFilter(['vendor.metric.rx', 'vendor.metric.tx'])).toBe(
-      '/vendor\\.metric\\.rx|vendor\\.metric\\.tx/i'
-    );
+describe('zabbixInterfaceHostFilter', () => {
+  it('ignora IP e ancora o nome sem distinguir maiúsculas', () => {
+    expect(zabbixInterfaceHostFilter(['10.0.0.1', 'host-a'])).toBe('/^host-a$/i');
+    expect(zabbixInterfaceHostFilter(['host-a', 'host-b'])).toBe('/^(?:host-a|host-b)$/i');
+    expect(zabbixInterfaceHostFilter(['10.0.0.1'])).toBe('');
   });
 });
 
 describe('buildZabbixInterfaceTargets', () => {
-  it('monta um target por host com as palavras-chave no mesmo filtro de item', () => {
-    const targets = buildZabbixInterfaceTargets(
-      'ds',
-      [
-        { hostKey: '10.0.0.1', name: 'host-a', group: 'Backbone' },
-        { hostKey: '10.0.0.2', name: 'host-b' },
-      ],
-      ['vendor.metric.rx', 'vendor.metric.tx']
-    );
+  it('monta um target por host com item /.*/ e sem usar IP no filtro de host', () => {
+    const targets = buildZabbixInterfaceTargets('ds', [
+      { hostKey: '10.0.0.1', name: 'host-a', aliases: ['host-a', '10.0.0.1'], group: 'Backbone' },
+      { hostKey: '10.0.0.2', name: 'host-b' },
+    ]);
     expect(targets).toHaveLength(2);
     expect(targets[0].group?.filter).toBe('Backbone');
-    expect(targets[0].host?.filter).toBe('host-a');
-    expect(targets[0].item?.filter).toBe(zabbixItemKeywordFilter(['vendor.metric.rx', 'vendor.metric.tx']));
+    expect(targets[0].host?.filter).toBe('/^host-a$/i');
+    expect(targets[0].item?.filter).toBe(ZABBIX_INTERFACE_ITEM_FILTER);
     expect(targets[1].group?.filter).toBe('/.*/');
-    expect(targets[1].host?.filter).toBe('host-b');
-    expect(targets[1].item?.filter).toBe(targets[0].item?.filter);
-  });
-});
-
-describe('fetchHostHoverSeriesViaQuery', () => {
-  beforeEach(() => {
-    getMock.mockReset();
+    expect(targets[1].host?.filter).toBe('/^host-b$/i');
   });
 
-  it('consulta Metrics com o grupo do host e o item ICMP no campo item', async () => {
-    const query = vi.fn().mockReturnValue(of({ data: [] }));
-    getMock.mockResolvedValue({ query });
-
-    await fetchHostHoverSeriesViaQuery(
-      'ds',
-      { zabbixHost: 'host-a', zabbixHostId: '10' },
-      { 'host-a': { name: 'host-a', hostid: '10', hostGroups: ['Backbone'] } },
-      undefined,
-      'icmpping',
-      {} as never
-    );
-
-    const request = query.mock.calls[0][0] as {
-      targets: Array<{ group?: { filter: string }; host?: { filter: string }; item?: { filter: string } }>;
-    };
-    expect(request.targets).toHaveLength(1);
-    expect(request.targets[0].group?.filter).toBe('Backbone');
-    expect(request.targets[0].host?.filter).toBe('host-a');
-    expect(request.targets[0].item?.filter).toBe(zabbixMetricsItemFilter('icmpping'));
-  });
-
-  it('aceita o histórico quando o campo do painel é o nome do item, não a key_', async () => {
-    const query = vi.fn().mockReturnValue(
-      of({
-        data: [
-          {
-            fields: [
-              { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
-              {
-                name: 'Value',
-                type: FieldType.number,
-                values: [0.012],
-                labels: { host: 'host-a', item_key: 'icmppingsec', item: 'Status item' },
-                config: {},
-              },
-            ],
-            length: 1,
-          },
-        ],
-      })
-    );
-    getMock.mockResolvedValue({ query });
-
-    const series = await fetchHostHoverSeriesViaQuery(
-      'ds',
-      { zabbixHost: 'host-a', zabbixHostId: '10' },
-      { 'host-a': { name: 'host-a', hostid: '10', hostGroups: ['Backbone'] } },
-      undefined,
-      'Status item',
-      {
-        colorOnline: '#0f0',
-        colorOffline: '#f00',
-        colorAlert: '#fa0',
-        statusValueMappings: [
-          { value: 0, status: 'offline', label: 'Down' },
-          { from: 0, status: 'online', label: 'Up' },
-        ],
-      }
-    );
-
-    expect(series?.points.length).toBeGreaterThan(0);
+  it('não monta target quando o host só tem IP', () => {
+    expect(buildZabbixInterfaceTargets('ds', [{ hostKey: '10.0.0.1', name: '10.0.0.1' }])).toEqual([]);
   });
 });
 
 describe('parseInterfaceItemsFromFrames', () => {
-  it('agrupa o último ponto pela key e pelo host do metadata', () => {
+  it('agrupa o último ponto pela key e casa o host pelo IP da metadata', () => {
     const entries = parseInterfaceItemsFromFrames(
       [
         {
@@ -754,7 +847,7 @@ describe('parseInterfaceItemsFromFrames', () => {
       ],
       ['10.0.0.1'],
       ['vendor.metric.rx'],
-      { '10.0.0.1': { name: 'host-a', hostid: '10001' } }
+      { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '10001' } }
     );
     expect(entries).toHaveLength(1);
     expect(entries[0].hostid).toBe('10001');
@@ -762,6 +855,116 @@ describe('parseInterfaceItemsFromFrames', () => {
     expect(entries[0].items[0].key_).toBe('vendor.metric.rx[10]');
     expect(entries[0].items[0].lastvalue).toBe('100');
     expect(entries[0].items[0].name).toBe('RX if10');
+  });
+
+  it('mantém o item sem último valor numérico quando a key casa com a palavra-chave', () => {
+    const entries = parseInterfaceItemsFromFrames(
+      [
+        {
+          fields: [
+            {
+              name: 'Value',
+              type: FieldType.number,
+              values: [],
+              labels: { host: 'host-a', item_key: 'vendor.metric.rx[10]', itemid: '21' },
+              config: {},
+            },
+          ],
+          length: 0,
+        },
+      ],
+      ['host-a'],
+      ['vendor.metric.rx'],
+      { 'host-a': { name: 'host-a', hostid: '10001' } }
+    );
+    expect(entries[0].items).toHaveLength(1);
+    expect(entries[0].items[0].itemid).toBe('21');
+    expect(entries[0].items[0].lastvalue).toBeUndefined();
+  });
+});
+
+describe('fetchZabbixHostInterfaceItemsViaQuery', () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
+  it('consulta um target por hostid mesmo com várias chaves de lookup', async () => {
+    const query = vi.fn().mockReturnValue(of({ data: [] }));
+    getMock.mockResolvedValue({ query });
+
+    await fetchZabbixHostInterfaceItemsViaQuery(
+      'ds',
+      ['10.0.0.1', 'host-a'],
+      ['vendor.metric.rx'],
+      {
+        '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '10001', hostGroups: ['Backbone'] },
+        'host-a': { name: 'host-a', ip: '10.0.0.1', hostid: '10001', hostGroups: ['Backbone'] },
+      }
+    );
+
+    const request = query.mock.calls[0][0] as {
+      maxDataPoints: number;
+      requestId: string;
+      targets: Array<{ group?: { filter: string }; host?: { filter: string }; item?: { filter: string } }>;
+    };
+    expect(request.targets).toHaveLength(1);
+    expect(request.targets[0].group?.filter).toBe('Backbone');
+    expect(request.targets[0].host?.filter).toBe('/^host-a$/i');
+    expect(request.targets[0].item?.filter).toBe(ZABBIX_INTERFACE_ITEM_FILTER);
+    expect(request.maxDataPoints).toBe(1);
+    expect(request.requestId).toMatch(/^topology-interfaces-ds-\d+$/);
+  });
+
+  it('usa requestId diferente para cada extremo do cabo', async () => {
+    const query = vi.fn().mockReturnValue(of({ data: [] }));
+    getMock.mockResolvedValue({ query });
+
+    await fetchZabbixHostInterfaceItemsViaQuery('ds', ['host-a'], ['vendor.metric.rx'], {
+      'host-a': { name: 'host-a', hostid: '10001', hostGroups: ['Backbone'] },
+    });
+    await fetchZabbixHostInterfaceItemsViaQuery('ds', ['host-b'], ['vendor.metric.rx'], {
+      'host-b': { name: 'host-b', hostid: '10002', hostGroups: ['Backbone'] },
+    });
+
+    const first = query.mock.calls[0][0] as { requestId: string };
+    const second = query.mock.calls[1][0] as { requestId: string };
+    expect(first.requestId).not.toBe(second.requestId);
+  });
+});
+
+describe('parseHoverSeriesFromFrames', () => {
+  it('indexa a série do poll pelo hostid e pelo nome', () => {
+    const byHost = parseHoverSeriesFromFrames(
+      [
+        {
+          fields: [
+            { name: 'Time', type: FieldType.time, values: [1_000_000, 2_000_000], config: {} },
+            {
+              name: 'Value',
+              type: FieldType.number,
+              values: [0.012, 0.014],
+              labels: { host: 'host-a', item_key: 'icmppingsec', item: 'Status item' },
+              config: {},
+            },
+          ],
+          length: 2,
+        },
+      ],
+      [host({ hostid: '10', name: 'host-a' })],
+      'Status item',
+      {
+        colorOnline: '#0f0',
+        colorOffline: '#f00',
+        colorAlert: '#fa0',
+        statusValueMappings: [
+          { value: 0, status: 'offline', label: 'Down' },
+          { from: 0, status: 'online', label: 'Up' },
+        ],
+      }
+    );
+
+    expect(byHost['10']?.points).toHaveLength(2);
+    expect(byHost['host-a']?.points).toHaveLength(2);
   });
 });
 

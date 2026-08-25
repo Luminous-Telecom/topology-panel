@@ -48,7 +48,8 @@ export function hostIp(node: { subtitle?: string }): string | undefined {
     return raw;
   }
   const match = raw.match(IPV4_IN_TEXT);
-  return match?.[1];
+  // A regex de texto livre casa formato, não faixa: sem este filtro `999.999.999.999` virava IP.
+  return match && isIpv4(match[1]) ? match[1] : undefined;
 }
 
 async function copyText(text: string): Promise<boolean> {

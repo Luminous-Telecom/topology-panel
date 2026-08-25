@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayMap, TopologyMap, TopologyNode } from '../types';
 import {
+  findSubmapNodeByChildMapId,
+  pickCounterpartSubmapBox,
   innerHostsForSubmapNode,
   linkPeerHostFromNode,
   parentMapHostKeys,
@@ -102,5 +104,17 @@ describe('innerHostsForSubmapNode / shouldOpenLinkInterfaceModal', () => {
   it('resolve o host interno pelo peer gravado no cabo', () => {
     const peer = linkPeerHostFromNode(innerB);
     expect(resolveInnerHost([innerA, innerB], peer)?.id).toBe('hb');
+  });
+
+  it('acha a caixa do mapa interno neste mapa', () => {
+    expect(findSubmapNodeByChildMapId(map([box]), 'filial')?.id).toBe('sm');
+    expect(findSubmapNodeByChildMapId(map([box]), 'outro')).toBeUndefined();
+  });
+
+  it('escolhe a caixa da região, não a batizada com host', () => {
+    const generic = { ...box, id: 'sm-generic', label: 'Filial' };
+    const named = { ...box, id: 'sm-host', label: 'host-a' };
+    const picked = pickCounterpartSubmapBox([named, generic], 'filial');
+    expect(picked?.id).toBe('sm-generic');
   });
 });

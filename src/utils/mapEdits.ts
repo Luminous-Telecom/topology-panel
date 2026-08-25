@@ -6,7 +6,7 @@ import { TopologyMap, TopologyNode } from '../types';
 import { collectHostHiddenKeys, resolveHostLayoutKey } from './hostLookup';
 import { isIpv4 } from './ipv4';
 import { upsertHostLayout } from './mapSync';
-import { findNodeById, isHostNode, isSubmapNode } from './topologyNodes';
+import { findNodeById, isHostNode } from './topologyNodes';
 
 export function toggleMapLock(map: TopologyMap): TopologyMap {
   return { ...map, locked: !map.locked };
@@ -206,7 +206,6 @@ export function moveStoredNode(map: TopologyMap, node: TopologyNode, x: number, 
   const patch: Partial<TopologyNode> = {
     x: Math.round(x),
     y: Math.round(y),
-    positionMode: 'manual',
   };
   if (isHostNode(node) && node.networkId) {
     patch.networkId = undefined;

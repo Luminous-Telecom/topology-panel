@@ -409,13 +409,6 @@ function addTrafficTotals(
   return { rxBps, txBps };
 }
 
-function regionNodeIdsForLink(
-  link: TopologyLink,
-  regionNodeIds: Set<string>
-): boolean {
-  return regionNodeIds.has(link.from) || regionNodeIds.has(link.to);
-}
-
 /** Soma RX/TX dos links que tocam cada rede. Submapa não agrega — o tráfego já vai nas interfaces. */
 export function mergeRegionTrafficStats(
   regionStats: Map<string, RegionHostStats>,
@@ -430,30 +423,51 @@ export function mergeRegionTrafficStats(
   const hostNodes = map.nodes.filter((node) => isHostNode(node));
   const trafficByRegion = new Map<string, { rxBps?: number; txBps?: number }>();
 
+  /**
+   * Região de cada host, montada uma vez. Antes cada rede varria `map.links` inteiro para achar
+   * os cabos que tocavam os seus hosts, o que custava O(redes × cabos) a cada poll de métricas.
+   */
+  const regionByHostId = new Map<string, string[]>();
   for (const node of map.nodes) {
     if (node.type !== 'network') {
       continue;
     }
-
     const layout = nodeLayouts.get(node.id);
     if (!layout) {
       continue;
     }
-
     const inside = hostsInsideNetwork(node.id, layout, hostNodes, nodeLayouts);
     if (!inside.length) {
       continue;
     }
-
-    const nodeIds = new Set(inside.map((host) => host.id));
     trafficByRegion.set(node.id, { rxBps: 0, txBps: 0 });
+    for (const host of inside) {
+      const regions = regionByHostId.get(host.id);
+      if (regions) {
+        regions.push(node.id);
+        continue;
+      }
+      regionByHostId.set(host.id, [node.id]);
+    }
+  }
+
+  if (trafficByRegion.size) {
     for (const link of map.links) {
-      if (!regionNodeIdsForLink(link, nodeIds)) {
+      const regions = new Set([
+        ...(regionByHostId.get(link.from) ?? []),
+        ...(regionByHostId.get(link.to) ?? []),
+      ]);
+      if (!regions.size) {
         continue;
       }
       const totals = trafficFromLinkMetrics(link, linkMetricsByLink[linkKey(link)]);
-      const prev = trafficByRegion.get(node.id) ?? {};
-      trafficByRegion.set(node.id, addTrafficTotals(prev, totals));
+      for (const regionId of regions) {
+        const prev = trafficByRegion.get(regionId);
+        if (!prev) {
+          continue;
+        }
+        trafficByRegion.set(regionId, addTrafficTotals(prev, totals));
+      }
     }
   }
 

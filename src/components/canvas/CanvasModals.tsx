@@ -8,16 +8,18 @@ import {
   HostMetadataMap,
   NodeEditSavePayload,
   TopologyInterfaceReference,
+  TopologyLink,
   TopologyLinkPeerHost,
   TopologyMap,
   TopologyPanelOptions,
 } from '../../types';
 import { addZabbixHostAt } from '../../utils/mapEdits';
 import { activeChildMaps } from '../../utils/childMapEdits';
-import { updateLinkProps } from '../../utils/mapLinkEdits';
+import { linksMatchEndpoints, updateLinkProps } from '../../utils/mapLinkEdits';
 import { BulkSubmapLayoutSize } from '../../utils/mapBulkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
+import { HostHoverSeriesMap } from '../../utils/hostTimeSeries';
 import { HostProblemsMap } from '../../utils/noc/types';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
 import { HostHoverPopover } from '../HostHoverPopover';
@@ -42,13 +44,14 @@ interface CanvasModalsProps {
   storedMap: TopologyMap;
   nodeLayouts?: Map<string, BulkSubmapLayoutSize>;
   options: TopologyPanelOptions;
-  persist: (map: TopologyMap) => void;
+  persist: (map: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => void;
   showToast: (message: string) => void;
   modals: NodePropertiesModalsState;
   bulk: BulkEditModalsState;
   queryHostOptions: QueryHostOption[];
   zabbixDatasourceUid?: string;
   queryData?: PanelData;
+  hoverByHost?: HostHoverSeriesMap;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
   hostProblems?: HostProblemsMap;
@@ -85,6 +88,7 @@ export function CanvasModals({
   queryHostOptions,
   zabbixDatasourceUid,
   queryData,
+  hoverByHost,
   hostMetadata,
   hostDisplay,
   hostProblems,
@@ -183,12 +187,12 @@ export function CanvasModals({
           screenX={hostHover.screenX}
           screenY={hostHover.screenY}
           queryData={queryData}
+          hoverByHost={hoverByHost}
           hostMetadata={hostMetadata}
           hostDisplay={hostDisplay}
           hostProblems={hostProblems}
           options={options}
           queryReady={queryReady}
-          zabbixDatasourceUid={zabbixDatasourceUid}
         />
       ) : null}
 
@@ -204,7 +208,11 @@ export function CanvasModals({
           zabbixOperStatusItemKeyword={options.zabbixOperStatusItemKeyword}
           zabbixSpeedItemKeyword={options.zabbixSpeedItemKeyword}
           onClose={() => setEditLink(null)}
-          onSave={(patch) => persist(updateLinkProps(storedMap, editLink.from, editLink.to, patch))}
+          onSave={(patch) => {
+            const next = updateLinkProps(storedMap, editLink.from, editLink.to, patch);
+            const updated = next.links.find((link) => linksMatchEndpoints(link, editLink));
+            persist(next, updated ? { interSubmapLink: updated } : undefined);
+          }}
         />
       )}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLinkToMap, addLinkWithInterfaces, linksMatchEndpoints } from './mapLinkEdits';
+import { addLinkToMap, addLinkWithInterfaces, linksMatchEndpoints, upsertLinkWithInterfaces } from './mapLinkEdits';
 import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('linksMatchEndpoints', () => {
@@ -57,5 +57,22 @@ describe('addLinkToMap', () => {
       zabbixHost: '10.0.0.1',
       label: 'host-a',
     });
+  });
+});
+
+describe('upsertLinkWithInterfaces', () => {
+  it('atualiza o cabo existente na direção invertida sem duplicar', () => {
+    const map = emptyMap({
+      nodes: [hostNode(), hostNode({ id: 'b' })],
+      links: [{ from: 'b', to: 'a' }],
+    });
+    const next = upsertLinkWithInterfaces(map, 'a', 'b', {
+      fromInterface: { name: 'eth-a' },
+      toInterface: { name: 'eth-b' },
+    });
+    expect(next.links).toHaveLength(1);
+    expect(next.links[0]?.from).toBe('b');
+    expect(next.links[0]?.fromInterface).toEqual({ name: 'eth-b' });
+    expect(next.links[0]?.toInterface).toEqual({ name: 'eth-a' });
   });
 });

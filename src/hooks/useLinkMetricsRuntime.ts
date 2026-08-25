@@ -1,208 +1,42 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { EventBus } from '@grafana/data';
-import { RefreshEvent } from '@grafana/runtime';
-import { LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
-import { createAsyncCache } from '../services/asyncCache';
-import {
-  buildLinkRuntimeMetricsMap,
-  collectLinkMetricItemIds,
-  utilizationThresholdsFromOptions,
-} from '../utils/linkMetricsRuntime';
-import { fetchZabbixItemLastValuesViaQuery } from '../utils/zabbixDatasourceQuery';
-import {
-  POLL_WATCHDOG_MS,
-  canStartPolledFetch,
-  canStartRefreshEventFetch,
-} from '../utils/pollingGate';
+import { useMemo, useRef } from 'react';
+import { LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions } from '../types';
+import { buildLinkRuntimeMetricsMap, utilizationThresholdsFromOptions } from '../utils/linkMetricsRuntime';
 import { structuralShare } from '../utils/structuralIdentity';
+import { ZabbixItemLastValue } from '../utils/zabbixApi';
 
-/**
- * Dedupe de remount/corrida — estritamente abaixo do piso de 5s do modo Zabbix, para o tick
- * mínimo não cair no cache do mount no limite exato.
- */
-const LINK_METRICS_TTL_MS = 3_000;
-
-/** Identidade única para "sem métrica" — ver comentário no efeito abaixo. */
+/** Identidade única para "sem métrica" — um `{}` novo a cada render invalidava layouts e badges. */
 const EMPTY_LINK_METRICS: LinkRuntimeMetricsMap = {};
-
-const metricsCache = createAsyncCache<LinkRuntimeMetricsMap>({
-  ttlMs: LINK_METRICS_TTL_MS,
-});
+const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
 
 export interface UseLinkMetricsRuntimeResult {
   metricsByLink: LinkRuntimeMetricsMap;
-  loading: boolean;
-  stale: boolean;
-  /** Relógio da última busca boa — o lastclock do item Zabbix pode ser bem mais velho. */
-  fetchedAtMs?: number;
-}
-
-export interface UseLinkMetricsRuntimeOptions {
-  /** Intervalo periódico em segundos; `null` = só manual / RefreshEvent. */
-  refreshSec?: number | null;
-  eventBus?: EventBus;
 }
 
 /**
  * Métricas voláteis de links (RX/TX/utilização/status) — não persistidas no JSON.
- * Atualiza em lote via `item.get` (lastvalue). Polling no zabbixRefreshSec; dedupe curto (3s)
- * só no remount.
+ * Os lastvalues vêm do poll (query Item ID em paralelo com o status); este hook só monta o mapa do cabo.
  */
 export function useLinkMetricsRuntime(
-  datasourceUid: string | undefined,
   map: TopologyMap,
   options: TopologyPanelOptions,
-  enabled = true,
-  runtimeOptions: UseLinkMetricsRuntimeOptions = {}
+  lastValues: Record<string, ZabbixItemLastValue>
 ): UseLinkMetricsRuntimeResult {
-  const { refreshSec = null, eventBus } = runtimeOptions;
-  const itemIds = useMemo(() => collectLinkMetricItemIds(map.links), [map.links]);
-  const itemKey = useMemo(() => [...itemIds].sort().join('\0'), [itemIds]);
   const thresholds = useMemo(() => utilizationThresholdsFromOptions(options), [
     options.linkUtilThresholdAttention,
     options.linkUtilThresholdHigh,
     options.linkUtilThresholdCritical,
   ]);
-  const [metricsByLink, setMetricsByLink] = useState<LinkRuntimeMetricsMap>({});
-  const [loading, setLoading] = useState(false);
-  const [stale, setStale] = useState(false);
-  const [fetchedAtMs, setFetchedAtMs] = useState<number | undefined>();
-  const lastGoodRef = useRef<LinkRuntimeMetricsMap>({});
+  const lastGoodRef = useRef<LinkRuntimeMetricsMap>(EMPTY_LINK_METRICS);
 
-  const mapRef = useRef(map);
-  mapRef.current = map;
-  const itemIdsRef = useRef(itemIds);
-  itemIdsRef.current = itemIds;
-  const thresholdsRef = useRef(thresholds);
-  thresholdsRef.current = thresholds;
+  const metricsByLink = useMemo(() => {
+    const values = lastValues ?? EMPTY_LAST_VALUES;
+    const next = Object.keys(values).length
+      ? buildLinkRuntimeMetricsMap(map, values, thresholds)
+      : EMPTY_LINK_METRICS;
+    const shared = structuralShare(next, lastGoodRef.current);
+    lastGoodRef.current = shared;
+    return shared;
+  }, [map, lastValues, thresholds]);
 
-  const cacheKey = `${datasourceUid ?? ''}\u0000linkmetrics\u0000${itemKey}`;
-
-  useEffect(() => {
-    if (!enabled || !datasourceUid || !itemKey) {
-      // Sem isto, um `{}` novo a cada run invalidava `useNodeLayouts` e os badges
-      // de todos os nós sem nada ter mudado.
-      setMetricsByLink((prev) => (Object.keys(prev).length === 0 ? prev : EMPTY_LINK_METRICS));
-      setLoading(false);
-      setStale(false);
-      setFetchedAtMs(undefined);
-      return;
-    }
-
-    let cancelled = false;
-    let inFlight = false;
-    let lastStartMs = 0;
-    let fetchGeneration = 0;
-    /** Cancela a busca anterior quando o watchdog ou o timer disparam outro ciclo. */
-    let fetchAbort: AbortController | undefined;
-
-    const intervalSec =
-      refreshSec != null && refreshSec > 0
-        ? Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec))
-        : null;
-
-    const applyMetrics = (next: LinkRuntimeMetricsMap) => {
-      if (cancelled) {
-        return;
-      }
-      // Cada busca monta objetos novos; sem reaproveitar os iguais, todo link e todo nó
-      // redesenhavam a cada ciclo de métricas mesmo com RX/TX parados.
-      const shared = structuralShare(next, lastGoodRef.current);
-      lastGoodRef.current = shared;
-      setMetricsByLink(shared);
-      setFetchedAtMs(Date.now());
-      setLoading(false);
-      setStale(false);
-    };
-
-    const applyError = () => {
-      if (cancelled) {
-        return;
-      }
-      setMetricsByLink(lastGoodRef.current);
-      setLoading(false);
-      setStale(Object.keys(lastGoodRef.current).length > 0);
-    };
-
-    const fetchMetrics = async (bypassCache = false, source: 'poll' | 'refreshEvent' = 'poll') => {
-      if (cancelled) {
-        return;
-      }
-      if (document.hidden && !inFlight && Date.now() - lastStartMs < POLL_WATCHDOG_MS) {
-        return;
-      }
-      const allowed =
-        source === 'refreshEvent'
-          ? canStartRefreshEventFetch(
-              Date.now(),
-              lastStartMs,
-              inFlight,
-              intervalSec != null ? intervalSec * 1000 : null
-            )
-          : canStartPolledFetch(Date.now(), lastStartMs, inFlight);
-      if (!allowed) {
-        return;
-      }
-      lastStartMs = Date.now();
-      const generation = ++fetchGeneration;
-      fetchAbort?.abort();
-      fetchAbort = new AbortController();
-      const abortSignal = fetchAbort.signal;
-      inFlight = true;
-      setLoading(true);
-      setStale(Object.keys(lastGoodRef.current).length > 0);
-
-      try {
-        if (bypassCache) {
-          metricsCache.invalidate(cacheKey);
-        }
-        const next = await metricsCache.get(cacheKey, async () => {
-          const items = await fetchZabbixItemLastValuesViaQuery(datasourceUid, itemIdsRef.current, abortSignal);
-          return buildLinkRuntimeMetricsMap(mapRef.current, items, thresholdsRef.current);
-        });
-        if (cancelled || generation !== fetchGeneration) {
-          return;
-        }
-        applyMetrics(next);
-      } catch {
-        if (abortSignal.aborted && !cancelled) {
-          return;
-        }
-        if (generation === fetchGeneration) {
-          applyError();
-        }
-      } finally {
-        if (generation === fetchGeneration) {
-          inFlight = false;
-        }
-      }
-    };
-
-    void fetchMetrics(false);
-
-    const timer =
-      intervalSec != null ? window.setInterval(() => void fetchMetrics(true), intervalSec * 1000) : undefined;
-
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        void fetchMetrics(true);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    const refreshSub = eventBus
-      ?.getStream(RefreshEvent)
-      .subscribe(() => void fetchMetrics(true, 'refreshEvent'));
-
-    return () => {
-      cancelled = true;
-      fetchAbort?.abort();
-      if (timer !== undefined) {
-        window.clearInterval(timer);
-      }
-      document.removeEventListener('visibilitychange', handleVisibility);
-      refreshSub?.unsubscribe();
-    };
-  }, [enabled, datasourceUid, itemKey, cacheKey, refreshSec, eventBus]);
-
-  return { metricsByLink, loading, stale, fetchedAtMs };
+  return { metricsByLink };
 }

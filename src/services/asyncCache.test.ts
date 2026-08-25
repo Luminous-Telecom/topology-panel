@@ -109,6 +109,22 @@ describe('createAsyncCache', () => {
     expect(load).toHaveBeenCalledTimes(4);
   });
 
+  it('respeita o teto também nas requisições em voo', async () => {
+    const pending = deferred<string>();
+    const load = vi.fn(() => pending.promise);
+    const cache = createAsyncCache<string>({ ttlMs: 10_000, maxEntries: 2 });
+
+    // Três chaves que nunca repetem e nenhuma resolveu ainda — o teto só valia para o concluído.
+    const inFlight = [cache.get('a', load), cache.get('b', load), cache.get('c', load)];
+
+    // 'a' já saiu do mapa de em-voo, então é pedida de novo em vez de reusar a promise presa.
+    inFlight.push(cache.get('a', load));
+    expect(load).toHaveBeenCalledTimes(4);
+
+    pending.resolve('valor');
+    expect(await Promise.all(inFlight)).toEqual(['valor', 'valor', 'valor', 'valor']);
+  });
+
   it('invalidate força nova busca antes do TTL', async () => {
     const load = vi.fn(async () => 'valor');
     const cache = createAsyncCache<string>({ ttlMs: 10_000 });

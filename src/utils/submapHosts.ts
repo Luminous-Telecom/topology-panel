@@ -59,6 +59,75 @@ export function submapHostListForNode(
   return keys.filter((key) => !parentHostKeys.has(key.toLowerCase()));
 }
 
+/** Nó submapa deste mapa que aponta para o mapa interno `childMapId`. */
+export function findSubmapNodeByChildMapId(
+  map: TopologyMap,
+  childMapId: string
+): TopologyNode | undefined {
+  return findCounterpartSubmapBoxes(map, childMapId)[0];
+}
+
+/** Todas as caixas deste mapa que apontam para o mesmo mapa interno. */
+export function findCounterpartSubmapBoxes(map: TopologyMap, childMapId: string): TopologyNode[] {
+  const wanted = childMapId.trim();
+  if (!wanted) {
+    return [];
+  }
+  return map.nodes.filter((node) => node.type === 'submap' && node.submapChildMapId?.trim() === wanted);
+}
+
+function normalizeBoxMatchToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Prefere a caixa da região (rótulo = id do mapa interno ou da caixa na raiz), não uma caixa
+ * batizada com host (ex.: o mesmo mapa com duas caixas).
+ */
+export function counterpartSubmapBoxScore(
+  box: TopologyNode,
+  childMapId: string,
+  regionLabel?: string
+): number {
+  const names = [box.label, box.id].map((value) => normalizeBoxMatchToken(value?.trim() || '')).filter(Boolean);
+  const mapToken = normalizeBoxMatchToken(childMapId);
+  const regionToken = normalizeBoxMatchToken(regionLabel?.trim() || '');
+  let best = 0;
+  for (const name of names) {
+    if (mapToken && name === mapToken) {
+      best = Math.max(best, 100);
+    }
+    if (regionToken && name === regionToken) {
+      best = Math.max(best, 100);
+    }
+  }
+  return best;
+}
+
+/** Caixa do submapa de destino — a da região, não a que repete o nome de um host. */
+export function pickCounterpartSubmapBox(
+  boxes: TopologyNode[],
+  childMapId: string,
+  regionLabel?: string
+): TopologyNode | undefined {
+  if (!boxes.length) {
+    return undefined;
+  }
+  if (boxes.length === 1) {
+    return boxes[0];
+  }
+  let best = boxes[0];
+  let bestScore = counterpartSubmapBoxScore(best, childMapId, regionLabel);
+  for (const box of boxes.slice(1)) {
+    const score = counterpartSubmapBoxScore(box, childMapId, regionLabel);
+    if (score > bestScore) {
+      best = box;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /** Mapa interno apontado pelo nó de submapa, se existir. */
 export function submapChildMap(
   node: TopologyNode,

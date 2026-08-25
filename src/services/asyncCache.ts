@@ -85,6 +85,15 @@ export function createAsyncCache<T>(options: AsyncCacheOptions<T>): AsyncCache<T
       if (pending) {
         return pending;
       }
+      // `maxEntries` só limitava o que já concluiu. Chave que nunca repete (a série do hover inclui
+      // o intervalo do dashboard) podia acumular requisição em voo sem teto nenhum.
+      while (inFlight.size >= maxEntries) {
+        const oldest = inFlight.keys().next();
+        if (oldest.done) {
+          break;
+        }
+        inFlight.delete(oldest.value);
+      }
 
       const request = load()
         .then((value) => {
@@ -94,7 +103,11 @@ export function createAsyncCache<T>(options: AsyncCacheOptions<T>): AsyncCache<T
           return value;
         })
         .finally(() => {
-          inFlight.delete(key);
+          // Só limpa se ainda for esta requisição: a chave pode ter sido descartada pelo teto
+          // e repedida, e apagar a entrada nova tiraria o dedupe de quem está esperando.
+          if (inFlight.get(key) === request) {
+            inFlight.delete(key);
+          }
         });
 
       inFlight.set(key, request);

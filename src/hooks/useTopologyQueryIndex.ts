@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
-import { EventBus, LoadingState, PanelData } from '@grafana/data';
+import { EventBus, LoadingState, PanelData, TimeRange } from '@grafana/data';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
+import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
+import { StatusColorOptions } from '../utils/statusMapping';
+import { ZabbixItemLastValue } from '../utils/zabbixApi';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 /**
@@ -16,10 +19,16 @@ export interface UseTopologyQueryIndexOptions {
   statusItemKey: string;
   refreshSec: number;
   eventBus?: EventBus;
+  timeRange?: TimeRange;
+  statusOptions?: StatusColorOptions;
+  trafficItemIds?: string[];
+  trafficKeys?: string[];
 }
 
 export interface UseTopologyQueryIndexResult {
   index: QueryIndex;
+  hoverByHost: HostHoverSeriesMap;
+  lastValues: Record<string, ZabbixItemLastValue>;
   ready: boolean;
   loading: boolean;
   error?: string;
@@ -44,6 +53,10 @@ export function useTopologyQueryIndex({
   statusItemKey,
   refreshSec,
   eventBus,
+  timeRange,
+  statusOptions,
+  trafficItemIds,
+  trafficKeys,
 }: UseTopologyQueryIndexOptions): UseTopologyQueryIndexResult {
   const direct = useZabbixDirectIndex({
     enabled,
@@ -52,6 +65,10 @@ export function useTopologyQueryIndex({
     statusItemKey,
     refreshSec,
     eventBus,
+    timeRange,
+    statusOptions,
+    trafficItemIds,
+    trafficKeys,
   });
 
   const fromPanelData = useMemo(() => panelDataIndex(panelData), [panelData]);
@@ -66,5 +83,12 @@ export function useTopologyQueryIndex({
 
   const error = fromPanelData ? undefined : direct.error;
 
-  return { index, ready, loading, error };
+  return {
+    index,
+    hoverByHost: fromPanelData ? {} : direct.hoverByHost,
+    lastValues: fromPanelData ? {} : (direct.lastValues ?? {}),
+    ready,
+    loading,
+    error,
+  };
 }

@@ -19,6 +19,20 @@ describe('parseZabbixInterfaceItems', () => {
     expect(portA?.bindingConfidence).toBe('high');
   });
 
+  it('descarta itemid sintetico e guarda so a key', () => {
+    // Sem o id no frame, o inventário monta `hostid:key`. Persistir isso fazia o mapa mandá-lo como
+    // itemid real no `ds.query()`, que recusava o request inteiro e derrubava o status.
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10001', [
+      { itemid: '10001:vendor.metric.rx[10]', key_: 'vendor.metric.rx[10]', hostid: '10001' },
+      { itemid: '', key_: 'vendor.metric.tx[10]', hostid: '10001' },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.metrics.rx?.itemId).toBeUndefined();
+    expect(interfaces[0]?.metrics.rx?.key).toBe('vendor.metric.rx[10]');
+    expect(interfaces[0]?.metrics.tx?.itemId).toBeUndefined();
+    expect(interfaces[0]?.metrics.tx?.key).toBe('vendor.metric.tx[10]');
+  });
+
   it('agrupa itens com index numerico e usa o name do item', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10002', [
       {

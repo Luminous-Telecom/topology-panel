@@ -103,8 +103,6 @@ export interface TopologyNode {
   dashboardChoices?: TopologyDashboardChoice[];
   x: number;
   y: number;
-  /** `manual` (padrão) preserva posição no auto-layout; `auto` segue reorganização. */
-  positionMode?: 'manual' | 'auto';
   width?: number;
   height?: number;
   /** Cor de preenchimento (type=network | static) */
@@ -134,7 +132,12 @@ export type MetricBindingConfidence = 'high' | 'medium' | 'low' | 'ambiguous';
 
 /** Referência persistida a um item Zabbix. */
 export interface TopologyMetricReference {
-  itemId: string;
+  /**
+   * Itemid numérico do Zabbix. Ausente quando o DataFrame não trouxe o id — aí a leitura do último
+   * valor cai na `key`. Nunca guarde valor sintético aqui: este campo vai para `itemids` no
+   * `ds.query()`, que recusa o request inteiro se algum id não for numérico.
+   */
+  itemId?: string;
   key?: string;
   confidence?: MetricBindingConfidence;
 }
@@ -335,8 +338,6 @@ export interface TopologyPanelOptions {
   childMaps?: Record<string, TopologyMap | undefined>;
   /** Posição e zoom por mapa filho (persiste ao salvar o dashboard) */
   childMapViews?: Record<string, TopologyView>;
-  /** Id do mapa raiz; implícito = "root" usando `map` */
-  rootMapId?: string;
   /** Colors */
   /** Host online (mapeamento de valor) */
   colorOnline: string;
@@ -386,10 +387,6 @@ export interface TopologyPanelOptions {
   showSubtitle: boolean;
   /** Datasource Zabbix consultado pelo mapa. */
   zabbixDatasourceUid?: string;
-  /**
-   * Legado — grupos ficam no submapa (`queryRefIds`). Ignorado pela query do mapa visível.
-   */
-  zabbixHostGroups?: string[];
   /** Chave do item lido em cada host para resolver o status. */
   zabbixStatusItemKey?: string;
   /**
@@ -419,8 +416,6 @@ export interface TopologyPanelOptions {
    * Vazio = nenhum grupo adiciona hosts automaticamente.
    */
   displayQueryRefIds?: string[];
-  /** Sincronizado pelo painel a partir dos grupos Zabbix (não editar manualmente). */
-  queryRefIdsAvailable?: string[];
   /** Metadados dos grupos (refId + resumo) para o editor de opções. */
   queryRefInfosAvailable?: TopologyQueryRefInfo[];
   /** Enable pan with mouse drag */

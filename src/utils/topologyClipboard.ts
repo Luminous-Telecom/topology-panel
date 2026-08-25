@@ -98,6 +98,23 @@ export function hasTopologyClipboard(): boolean {
   return clip !== null && clip.nodes.length > 0;
 }
 
+/**
+ * Credencial de Tools não entra no clipboard.
+ *
+ * O payload vai para o `sessionStorage`, que é legível por qualquer script de mesma origem e pelo
+ * DevTools — seria um segundo lugar, mais exposto que o JSON do dashboard, guardando a mesma senha.
+ * Quem colar o nó cadastra usuário e senha de novo em Propriedades.
+ */
+function withoutToolCredentials(node: TopologyNode): TopologyNode {
+  if (node.toolUsername === undefined && node.toolPassword === undefined) {
+    return node;
+  }
+  const copy = { ...node };
+  delete copy.toolUsername;
+  delete copy.toolPassword;
+  return copy;
+}
+
 function resolveNodeForCopy(
   displayMap: TopologyMap,
   storedMap: TopologyMap,
@@ -110,18 +127,18 @@ function resolveNodeForCopy(
 
   const storedNode = findNodeById(storedMap.nodes, nodeId);
   if (storedNode) {
-    return { ...storedNode, x: displayNode.x, y: displayNode.y };
+    return withoutToolCredentials({ ...storedNode, x: displayNode.x, y: displayNode.y });
   }
 
   const hostKey = displayNode.zabbixHost?.trim();
   if (hostKey) {
     const byHost = storedMap.nodes.find((n) => isHostNode(n) && n.zabbixHost?.trim() === hostKey);
     if (byHost) {
-      return { ...byHost, x: displayNode.x, y: displayNode.y };
+      return withoutToolCredentials({ ...byHost, x: displayNode.x, y: displayNode.y });
     }
   }
 
-  return { ...displayNode };
+  return withoutToolCredentials({ ...displayNode });
 }
 
 function idPrefixForNode(node: TopologyNode): string {

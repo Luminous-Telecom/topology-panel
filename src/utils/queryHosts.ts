@@ -5,7 +5,6 @@ import {
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
-  TopologyQueryRefInfo,
 } from '../types';
 import {
   numericHostsForRefIds,
@@ -14,26 +13,11 @@ import {
 import { directRefId } from '../services/zabbixDirectIndex';
 import { activeChildMaps } from './childMapEdits';
 import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, preferHostDisplayInfo } from './hostLookup';
-import { ROOT_MAP_ID, resolveTopologyMapById } from './topologyMapNavigation';
 
 /**
  * Helpers do índice de hosts (grupos Zabbix como refId virtual).
  * Status e listas vêm do `QueryIndex` montado pelo snapshot Zabbix — nada percorre `data.series`.
  */
-
-export function sameQueryRefInfos(a: TopologyQueryRefInfo[], b: TopologyQueryRefInfo[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  return a.every((item, index) => item.refId === b[index].refId && item.hint === b[index].hint);
-}
-
-export function sameStringList(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  return a.every((value, index) => value === b[index]);
-}
 
 /** Bucket de status por refId (match case-insensitive). */
 export function findHostDisplayBucket(
@@ -162,7 +146,10 @@ export function collectSubmapCatalogGroups(
   return uniqueGroupNames(refs);
 }
 
-/** Grupos de todos os submapas (raiz + childMaps). */
+/**
+ * Grupos de todos os submapas (raiz + childMaps).
+ * É o filtro da query de status: não depende do mapa aberto, para o submapa já nascer colorido.
+ */
 export function collectAllSubmapGroups(
   options: Pick<TopologyPanelOptions, 'map' | 'childMaps'>
 ): string[] {
@@ -192,34 +179,6 @@ export function findSubmapNodeForChildMap(
     }
   }
   return undefined;
-}
-
-/**
- * Grupos enviados à query Metrics do mapa visível.
- * Em qualquer nível: grupos do nó pai (se houver) + grupos dos submapas desenhados neste mapa.
- */
-export function zabbixGroupsForVisibleMap(
-  options: Pick<TopologyPanelOptions, 'map' | 'childMaps'>,
-  currentMapId: string
-): string[] {
-  const refs: string[] = [];
-
-  if (currentMapId !== ROOT_MAP_ID) {
-    const parent = findSubmapNodeForChildMap(options.map, options.childMaps, currentMapId);
-    if (parent) {
-      refs.push(...effectiveSubmapQueryRefIds(parent, options));
-    }
-  }
-
-  const visibleMap =
-    currentMapId === ROOT_MAP_ID
-      ? options.map
-      : resolveTopologyMapById(options, currentMapId);
-  if (visibleMap) {
-    refs.push(...collectSubmapCatalogGroups(visibleMap, options));
-  }
-
-  return uniqueGroupNames(refs);
 }
 
 /** RefIds de grupo reservados a submapas (não desenham hosts no mapa pai). */

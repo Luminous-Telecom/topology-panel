@@ -85,12 +85,9 @@ const legendCountdownStyle = css`
 export function TopologyColorLegend({
   items,
   refreshIntervalSec = null,
-  refreshResetKey,
 }: {
   items: TopologyLegendItem[];
   refreshIntervalSec?: number | null;
-  /** Muda a cada busca boa de tráfego — reinicia o contador local para `refreshIntervalSec`. */
-  refreshResetKey?: unknown;
 }) {
   const theme = useTheme2();
   const visible = items
@@ -110,8 +107,7 @@ export function TopologyColorLegend({
       setCountdown((c) => (c == null || c <= 1 ? refreshIntervalSec : c - 1));
     }, 1000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshIntervalSec, refreshResetKey]);
+  }, [refreshIntervalSec]);
 
   const countdownLabel =
     refreshIntervalSec == null ? 'Atualização: manual' : `Atualiza em ${countdown ?? refreshIntervalSec}s`;

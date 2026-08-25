@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildLinkRuntimeMetricsMap, resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
+import {
+  aliasLastValuesByItemKey,
+  buildLinkRuntimeMetricsMap,
+  collectLinkMetricKeys,
+  resolveLinkMapTrafficMetrics,
+} from './linkMetricsRuntime';
 import { emptyMap } from './testMapFixtures';
 
 describe('buildLinkRuntimeMetricsMap', () => {
@@ -35,6 +40,34 @@ describe('buildLinkRuntimeMetricsMap', () => {
     expect(linkMetrics?.status).toBe('up');
   });
 
+  it('lê o cabo vinculado só por key, sem itemid numérico', () => {
+    const map = {
+      ...emptyMap(),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          bandwidthMbps: 1000,
+          fromInterface: {
+            name: 'eth0',
+            metrics: {
+              rx: { key: 'vendor.metric.rx[10]' },
+              tx: { key: 'vendor.metric.tx[10]' },
+            },
+          },
+        },
+      ],
+    };
+    const metrics = buildLinkRuntimeMetricsMap(map, {
+      'vendor.metric.rx[10]': { itemid: '', lastvalue: '250000000' },
+      'vendor.metric.tx[10]': { itemid: '', lastvalue: '50000000' },
+    });
+    expect(metrics['a-b']?.from.rxBps).toBe(250000000);
+    expect(metrics['a-b']?.from.txBps).toBe(50000000);
+    // A orientação do mapa também precisa reconhecer o vínculo por key.
+    expect(resolveLinkMapTrafficMetrics(map.links[0], metrics['a-b']).rxBps).toBe(250000000);
+  });
+
   it('usa métricas do destino quando a origem não tem RX/TX (nuvem / link externo)', () => {
     const map = {
       ...emptyMap(),
@@ -60,5 +93,34 @@ describe('buildLinkRuntimeMetricsMap', () => {
     const display = resolveLinkMapTrafficMetrics(map.links[0]!, runtime);
     expect(display.txBps).toBe(800000000);
     expect(display.rxBps).toBe(200000000);
+  });
+});
+
+describe('collectLinkMetricKeys', () => {
+  it('coleta key só quando o cabo não tem itemid numérico', () => {
+    const keys = collectLinkMetricKeys([
+      {
+        from: 'a',
+        to: 'b',
+        fromInterface: {
+          name: 'eth0',
+          metrics: {
+            rx: { itemId: '10', key: 'vendor.metric.rx[10]' },
+            tx: { key: 'vendor.metric.tx[10]' },
+          },
+        },
+      },
+    ]);
+    expect(keys).toEqual(['vendor.metric.tx[10]']);
+  });
+});
+
+describe('aliasLastValuesByItemKey', () => {
+  it('copia o lastvalue do itemid resolvido para a key do cabo', () => {
+    const aliased = aliasLastValuesByItemKey(
+      { '77': { itemid: '77', lastvalue: '9' } },
+      new Map([['vendor.metric.rx[10]', '77']])
+    );
+    expect(aliased['vendor.metric.rx[10]']?.lastvalue).toBe('9');
   });
 });

@@ -18,7 +18,7 @@ import {
   UtilizationThresholds,
   DEFAULT_UTILIZATION_THRESHOLDS,
 } from './zabbixAdapter/formatTraffic';
-import { ZabbixItemLastValue } from './zabbixApi';
+import { isNumericZabbixItemId, ZabbixItemLastValue } from './zabbixApi';
 
 function collectItemIdsFromReference(ref?: TopologyInterfaceReference): string[] {
   if (!ref?.metrics) {
@@ -61,8 +61,66 @@ export function collectLinkMetricItemIds(links: TopologyLink[]): string[] {
   return [...ids];
 }
 
+function collectKeysFromReference(ref?: TopologyInterfaceReference): string[] {
+  if (!ref?.metrics) {
+    return [];
+  }
+  const keys: string[] = [];
+  for (const metric of Object.values(ref.metrics)) {
+    const key = metric?.key?.trim();
+    if (!key) {
+      continue;
+    }
+    // Já tem id numérico: entra no target Item ID direto, sem resolver a key.
+    if (isNumericZabbixItemId(metric?.itemId)) {
+      continue;
+    }
+    keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * Chaves dos cabos sem itemid numérico — o poll resolve via `item.get` e só então pede o histórico.
+ */
+export function collectLinkMetricKeys(links: TopologyLink[]): string[] {
+  const keys = new Set<string>();
+  for (const link of links) {
+    for (const key of collectKeysFromReference(link.fromInterface)) {
+      keys.add(key);
+    }
+    for (const key of collectKeysFromReference(link.toInterface)) {
+      keys.add(key);
+    }
+  }
+  return [...keys];
+}
+
+/** Copia o lastvalue do itemid resolvido para a key do cabo, que é o que a leitura usa. */
+export function aliasLastValuesByItemKey(
+  lastValues: Record<string, ZabbixItemLastValue>,
+  itemIdByKey: Map<string, string>
+): Record<string, ZabbixItemLastValue> {
+  if (!itemIdByKey.size) {
+    return lastValues;
+  }
+  const next = { ...lastValues };
+  for (const [key, itemId] of itemIdByKey) {
+    const row = next[itemId];
+    if (row && !next[key]) {
+      next[key] = row;
+    }
+  }
+  return next;
+}
+
+/** Vinculada por itemid ou por key: sem id numérico o último valor ainda é lido pela key. */
+function metricIsBound(ref?: TopologyMetricReference): boolean {
+  return Boolean(ref?.itemId || ref?.key);
+}
+
 function interfaceHasTrafficItems(ref?: TopologyInterfaceReference): boolean {
-  return Boolean(ref?.metrics?.rx?.itemId || ref?.metrics?.tx?.itemId);
+  return metricIsBound(ref?.metrics?.rx) || metricIsBound(ref?.metrics?.tx);
 }
 
 /**
@@ -99,7 +157,9 @@ function readItemValue(
   if (!ref) {
     return undefined;
   }
-  const raw = items[ref.itemId]?.lastvalue ?? (ref.key ? items[ref.key]?.lastvalue : undefined);
+  const raw =
+    (ref.itemId ? items[ref.itemId]?.lastvalue : undefined) ??
+    (ref.key ? items[ref.key]?.lastvalue : undefined);
   return parseTrafficLastValue(raw);
 }
 
@@ -110,7 +170,10 @@ function readItemClock(
   if (!ref) {
     return undefined;
   }
-  const clock = Number(items[ref.itemId]?.lastclock ?? (ref.key ? items[ref.key]?.lastclock : undefined));
+  const clock = Number(
+    (ref.itemId ? items[ref.itemId]?.lastclock : undefined) ??
+      (ref.key ? items[ref.key]?.lastclock : undefined)
+  );
   return Number.isFinite(clock) ? clock * 1000 : undefined;
 }
 

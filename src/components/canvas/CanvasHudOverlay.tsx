@@ -27,7 +27,6 @@ interface Props {
   showLegend: boolean;
   legendItems: LegendItem[];
   refreshIntervalSec?: number | null;
-  refreshResetKey?: unknown;
   contextMenu: ContextAnchor | null;
   onCloseContextMenu: () => void;
   canvasMenuItems: () => ContextMenuItem[];
@@ -50,7 +49,6 @@ export function CanvasHudOverlay({
   showLegend,
   legendItems,
   refreshIntervalSec,
-  refreshResetKey,
   contextMenu,
   onCloseContextMenu,
   canvasMenuItems,
@@ -78,7 +76,6 @@ export function CanvasHudOverlay({
         <TopologyColorLegend
           items={legendItems}
           refreshIntervalSec={refreshIntervalSec}
-          refreshResetKey={refreshResetKey}
         />
       )}
 

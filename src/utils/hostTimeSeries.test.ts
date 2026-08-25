@@ -5,6 +5,7 @@ import {
   compactHoverPoints,
   hostHoverPeriodLabel,
   hoverMetricFromItemKey,
+  lookupHostHoverSeries,
   panelDataWithDashboardTimeRange,
 } from './hostTimeSeries';
 
@@ -110,5 +111,28 @@ describe('hostHoverPeriodLabel', () => {
     const from = dateTime(to.valueOf() - 30 * 60 * 1000);
     const range: TimeRange = { from, to, raw: { from: 'now-30m', to: 'now' } };
     expect(hostHoverPeriodLabel(undefined, range)).toMatch(/^now-30m → now/);
+  });
+});
+
+describe('lookupHostHoverSeries', () => {
+  const series = {
+    points: [{ t: 1, value: 1, status: 'online' as const }],
+    metric: 'icmp_rtt' as const,
+    fieldLabel: 'ICMP',
+    failureCount: 0,
+  };
+
+  it('casa pelo nome e pelo hostid da metadata', () => {
+    const byHost = { 'host-a': series, '10': series };
+    expect(lookupHostHoverSeries(byHost, { zabbixHost: 'host-a' })).toBe(series);
+    expect(
+      lookupHostHoverSeries(byHost, { zabbixHost: 'host-a', zabbixHostId: '10' }, {
+        'host-a': { name: 'host-a', hostid: '10' },
+      })
+    ).toBe(series);
+  });
+
+  it('devolve undefined quando o poll ainda não tem o host', () => {
+    expect(lookupHostHoverSeries({}, { zabbixHost: 'host-a' })).toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@ import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
+  TopologyLink,
   TopologyMap,
   TopologyPanelOptions,
   TopologyView,
@@ -16,7 +17,7 @@ import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
-import { collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, zabbixGroupsForVisibleMap, zabbixGroupsFromHostMetadata } from '../utils/queryHosts';
+import { collectAllSubmapGroups, collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, zabbixGroupsFromHostMetadata } from '../utils/queryHosts';
 import { sameTopologyView } from '../utils/zoomMath';
 import {
   hostDisplayByRefIdFromIndex,
@@ -41,6 +42,8 @@ import {
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
+import { collectLinkMetricItemIds, collectLinkMetricKeys } from '../utils/linkMetricsRuntime';
+import { syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -161,11 +164,20 @@ export function TopologyPanel({
   );
 
   const statusGroupNames = useMemo(
-    () => zabbixGroupsForVisibleMap(resolvedOptions, currentMapId),
-    [resolvedOptions.map, resolvedOptions.childMaps, currentMapId]
+    () => collectAllSubmapGroups(resolvedOptions),
+    [resolvedOptions.map, resolvedOptions.childMaps]
   );
 
-  /** Status e hosts vêm do snapshot Zabbix (API direta, consulta atual). RX/TX em polling separado. */
+  const trafficItemIds = useMemo(
+    () => collectLinkMetricItemIds(activeStoredMap.links),
+    [activeStoredMap.links]
+  );
+  const trafficKeys = useMemo(
+    () => collectLinkMetricKeys(activeStoredMap.links),
+    [activeStoredMap.links]
+  );
+
+  /** Status e hover num `ds.query()`; RX/TX dos cabos noutro, em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     panelData: data,
     enabled: true,
@@ -174,9 +186,14 @@ export function TopologyPanel({
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
     eventBus,
+    timeRange,
+    statusOptions: statusColorOptions,
+    trafficItemIds,
+    trafficKeys,
   });
 
   const queryIndex = querySource.index;
+  const hoverByHost = querySource.hoverByHost;
   const queryMeta = queryIndex.metadata;
   const zabbixDatasourceUid = resolvedOptions.zabbixDatasourceUid;
   const queryReady = querySource.ready;
@@ -201,15 +218,10 @@ export function TopologyPanel({
    * mostrando para sempre o último status visto (ver `no-fallbacks.mdc`).
    */
 
-  const { metricsByLink: linkMetricsByLink, fetchedAtMs: linkMetricsFetchedAtMs } = useLinkMetricsRuntime(
-    zabbixDatasourceUid,
+  const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
     activeStoredMap,
     resolvedOptions,
-    queryReady && !queryError,
-    {
-      refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
-      eventBus,
-    }
+    querySource.lastValues
   );
 
   const liveHostDisplayByRefId = useMemo(() => {
@@ -348,17 +360,30 @@ export function TopologyPanel({
     return collectHostMetadataForMaps(maps, hostMetadata);
   }, [queryReady, resolvedOptions.map, resolvedOptions.childMaps, hostMetadata, currentMapId, activeStoredMap]);
 
+  const pendingInterSubmapLinkRef = useRef<TopologyLink | undefined>();
+
   const applyActiveMap = useCallback(
     (map: TopologyMap) => {
       if (!canPersistOptions || !onOptionsChange) {
         return;
       }
-      onOptionsChange(applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map));
+      const base = applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map);
+      const hop = pendingInterSubmapLinkRef.current;
+      pendingInterSubmapLinkRef.current = undefined;
+      onOptionsChange(hop ? syncInterSubmapCounterpartLinks(base, currentMapId, hop) : base);
     },
     [canPersistOptions, currentMapId, onOptionsChange]
   );
 
   const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
+
+  const handleMapChange = useCallback(
+    (map: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => {
+      pendingInterSubmapLinkRef.current = context?.interSubmapLink;
+      commitChange(map);
+    },
+    [commitChange]
+  );
 
   const problemGroupNames = useMemo(() => {
     const resolved = zabbixGroupsFromHostMetadata(queryMeta);
@@ -503,12 +528,12 @@ export function TopologyPanel({
         submapHosts={submapHosts}
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
         queryData={queryData}
+        hoverByHost={hoverByHost}
         zabbixDatasourceUid={zabbixDatasourceUid}
         linkMetricsByLink={linkMetricsByLink}
-        linkMetricsFetchedAtMs={linkMetricsFetchedAtMs}
         hostProblems={hostProblems}
         onNocModeChange={handleNocModeChange}
-        onMapChange={canPersistOptions ? commitChange : undefined}
+        onMapChange={canPersistOptions ? handleMapChange : undefined}
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}
         onShowMinimapChange={handleShowMinimapChange}
         onShowLegendChange={handleShowLegendChange}

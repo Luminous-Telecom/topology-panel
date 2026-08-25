@@ -14,13 +14,17 @@ import { getDataSourceSrv } from '@grafana/runtime';
 import { Observable } from 'rxjs';
 import { statusItemMatchRank, statusItemRank } from '../services/zabbixDirectIndex';
 import { HostMetadataMap, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
-import { createAsyncCache } from '../services/asyncCache';
-import { HostLookupRef } from './hostLookup';
-import { buildHostHoverSeriesFromZabbixHistory, HostHoverSeries } from './hostTimeSeries';
+import { isIpv4 } from './ipv4';
+import {
+  buildHostHoverSeriesFromZabbixHistory,
+  HOVER_SPARKLINE_MAX_POINTS,
+  HostHoverSeriesMap,
+} from './hostTimeSeries';
 import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 import { StatusColorOptions } from './statusMapping';
 import {
   isBenignZabbixFetchError,
+  isNumericZabbixItemId,
   ZabbixDirectHost,
   ZabbixHostInterfaceItems,
   ZabbixInterfaceItem,
@@ -50,6 +54,12 @@ export const ZABBIX_MFQ_ITEMS = 'item';
 export const ZABBIX_QUERY_SCHEMA = 12;
 /** Janela curta: o último ponto aproxima o lastvalue sem puxar horas de histórico. */
 export const ZABBIX_STATUS_QUERY_RANGE_SEC = 300;
+/** Lastvalue de cabo: só o ponto mais recente — o sparkline do hover fica na query de status. */
+export const TRAFFIC_QUERY_MAX_POINTS = 2;
+/** Inventário de interface: janela maior que o lastvalue de status — o Metrics só devolve ponto na faixa. */
+export const ZABBIX_INTERFACE_QUERY_RANGE_SEC = 3_600;
+/** grafana-zabbix `filterByRegex` casa só `name`; a key entra no parse. */
+export const ZABBIX_INTERFACE_ITEM_FILTER = '/.*/';
 export const STATUS_QUERY_MAX_ATTEMPTS = 3;
 const STATUS_QUERY_RETRY_DELAY_MS = 300;
 /** grafana-zabbix aceita lista grande; fatia evita body enorme no `/api/ds/query`. */
@@ -91,12 +101,38 @@ export interface FetchZabbixStatusViaQueryOptions {
   itemIds?: string[];
   abortSignal?: AbortSignal;
   refreshSec: number;
+  timeRange?: TimeRange;
+  statusOptions?: StatusColorOptions;
+  /** Itemids de RX/TX dos cabos — `ds.query()` Item ID em paralelo, janela curta. */
+  trafficItemIds?: string[];
 }
+
+export interface ZabbixStatusQuerySnapshot {
+  items: ZabbixInterfaceItem[];
+  hoverByHost: HostHoverSeriesMap;
+  lastValues: Record<string, ZabbixItemLastValue>;
+}
+
+const EMPTY_STATUS_SNAPSHOT: ZabbixStatusQuerySnapshot = { items: [], hoverByHost: {}, lastValues: {} };
 
 function throwIfAborted(abortSignal?: AbortSignal): void {
   if (abortSignal?.aborted) {
     throw new Error('abort');
   }
+}
+
+/** Grafana cancelou o fetch (mesmo requestId ou unmount) — não vale repetir. */
+function isCanceledQueryError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /abort|request was aborted|context canceled|context cancelled/i.test(msg);
+}
+
+/** requestId único por chamada — o BackendSrv aborta o anterior com o mesmo id. Sem host na URL. */
+let zabbixQueryRequestSeq = 0;
+
+function nextZabbixQueryRequestId(prefix: string): string {
+  zabbixQueryRequestSeq += 1;
+  return `${prefix}-${zabbixQueryRequestSeq}`;
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -171,16 +207,6 @@ export function zabbixMetricsItemFilter(statusItem: string): string {
   return zabbixItemNameFilter([value]);
 }
 
-/** Filtro Metrics por trecho de key/nome — o mesmo papel do `search` da API, no campo item. */
-export function zabbixItemKeywordFilter(keywords: string[]): string {
-  const terms = [...new Set(keywords.map((key) => key.trim()).filter(Boolean))];
-  if (!terms.length) {
-    return '';
-  }
-  const body = terms.map((term) => escapeRegex(term)).join('|');
-  return `/${body}/i`;
-}
-
 function zabbixMetricsTarget(
   datasourceUid: string,
   refId: string,
@@ -244,8 +270,17 @@ export function buildZabbixStatusTargets(
 }
 
 /** Targets Item ID — o plugin busca histórico pelos ids, sem filtrar pelo nome do item. */
-export function buildZabbixStatusItemIdTargets(datasourceUid: string, itemIds: string[]): ZabbixMetricsQuery[] {
-  const ids = [...new Set(itemIds.map((id) => id.trim()).filter(Boolean))];
+export function buildZabbixStatusItemIdTargets(
+  datasourceUid: string,
+  itemIds: string[],
+  refPrefix = 'I'
+): ZabbixMetricsQuery[] {
+  /*
+   * Só id numérico entra. Um valor não numérico faz o datasource recusar o request **inteiro**
+   * ("itemid must be a valid numeric value", HTTP 400) — e como status e tráfego dos cabos vão no
+   * mesmo `ds.query()`, uma referência de cabo salva errada apagava o status de todo o mapa.
+   */
+  const ids = [...new Set(itemIds.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id)))];
   if (!datasourceUid || !ids.length) {
     return [];
   }
@@ -253,7 +288,7 @@ export function buildZabbixStatusItemIdTargets(datasourceUid: string, itemIds: s
   for (let offset = 0; offset < ids.length; offset += STATUS_ITEMID_CHUNK) {
     const chunk = ids.slice(offset, offset + STATUS_ITEMID_CHUNK);
     targets.push({
-      refId: `I${targets.length}`,
+      refId: `${refPrefix}${targets.length}`,
       datasource: { uid: datasourceUid },
       queryType: ZABBIX_QUERY_TYPE_ITEMID,
       schema: ZABBIX_QUERY_SCHEMA,
@@ -272,7 +307,8 @@ export function buildZabbixStatusQueryRequest(
   statusItemKey: string,
   refreshSec: number,
   nowMs = Date.now(),
-  itemIds?: string[]
+  itemIds?: string[],
+  timeRange?: TimeRange
 ): DataQueryRequest<ZabbixMetricsQuery> | undefined {
   const targets =
     itemIds !== undefined
@@ -281,25 +317,43 @@ export function buildZabbixStatusQueryRequest(
   if (!targets.length) {
     return undefined;
   }
-  const intervalSec = Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec));
-  const range = statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC);
-  return {
-    requestId: `topology-status-${datasourceUid}`,
-    interval: `${intervalSec}s`,
-    intervalMs: intervalSec * 1000,
-    maxDataPoints: 5,
-    range,
-    rangeRaw: range.raw,
-    scopedVars: {},
+  const range = timeRange ?? statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC);
+  return zabbixQueryRequest(
+    datasourceUid,
+    `topology-status-${datasourceUid}`,
     targets,
-    timezone: 'browser',
-    app: 'luminous-topology-panel',
-    startTime: nowMs,
-    hideFromInspector: true,
-    skipQueryCache: true,
-    queryCachingTTL: 0,
-    cacheTimeout: null,
-  };
+    range,
+    refreshSec,
+    HOVER_SPARKLINE_MAX_POINTS,
+    nowMs
+  );
+}
+
+/**
+ * Lastvalue RX/TX dos cabos — request próprio, janela de 5 min.
+ * No grafana-zabbix o backend processa Metrics e Item ID em sequência no mesmo
+ * `/api/ds/query`; misturar com o timeRange do dashboard (horas de histórico) atrasava
+ * o rótulo do cabo até o próximo ciclo.
+ */
+export function buildZabbixTrafficQueryRequest(
+  datasourceUid: string,
+  itemIds: string[],
+  refreshSec: number,
+  nowMs = Date.now()
+): DataQueryRequest<ZabbixMetricsQuery> | undefined {
+  const targets = buildZabbixStatusItemIdTargets(datasourceUid, itemIds, 'T');
+  if (!targets.length) {
+    return undefined;
+  }
+  return zabbixQueryRequest(
+    datasourceUid,
+    `topology-traffic-${datasourceUid}`,
+    targets,
+    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
+    refreshSec,
+    TRAFFIC_QUERY_MAX_POINTS,
+    nowMs
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -368,7 +422,19 @@ function hostIdFromField(field: Field): string | undefined {
 }
 
 function itemIdFromField(field: Field): string | undefined {
-  return labelString(field.labels, 'itemid') || scopedVarString(field.config.custom, '__zbx_item_id');
+  return (
+    labelString(field.labels, 'itemid') ||
+    labelString(field.labels, '__zbx_itemid') ||
+    labelString(field.labels, '__zbx_item_id') ||
+    scopedVarString(field.config.custom, '__zbx_item_id') ||
+    numericItemIdCandidate(field.name)
+  );
+}
+
+/** grafana-zabbix não coloca `itemid` no label; às vezes o nome do campo é o id numérico. */
+function numericItemIdCandidate(value: string | undefined): string | undefined {
+  const id = value?.trim();
+  return isNumericZabbixItemId(id) ? id : undefined;
 }
 
 function readFieldValues(field: Field): unknown[] {
@@ -575,6 +641,110 @@ export function parseStatusItemsFromFrames(
   return items;
 }
 
+function hoverPointsFromField(
+  field: Field,
+  timeField: Field | undefined
+): Array<{ clockSec: number; value: number }> {
+  const values = readFieldValues(field);
+  const times = timeField ? readFieldValues(timeField) : [];
+  const points: Array<{ clockSec: number; value: number }> = [];
+  for (let i = 0; i < values.length; i++) {
+    const raw = values[i];
+    if (raw == null || raw === '') {
+      continue;
+    }
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    const clockSec = unixSecFromTimeValue(times[i]) ?? i;
+    points.push({ clockSec, value });
+  }
+  return points;
+}
+
+function rememberHoverAlias(result: HostHoverSeriesMap, key: string | undefined, series: NonNullable<ReturnType<typeof buildHostHoverSeriesFromZabbixHistory>>): void {
+  const trimmed = key?.trim();
+  if (!trimmed) {
+    return;
+  }
+  result[trimmed] = series;
+  const lower = trimmed.toLowerCase();
+  if (result[lower] === undefined) {
+    result[lower] = series;
+  }
+}
+
+/** Sparkline do hover a partir da mesma query Metrics do status. */
+export function parseHoverSeriesFromFrames(
+  frames: Array<DataFrame | unknown>,
+  hosts: ZabbixDirectHost[],
+  statusItemKey: string,
+  statusOptions?: StatusColorOptions
+): HostHoverSeriesMap {
+  const wantedKey = statusItemKey.trim();
+  if (!wantedKey || !frames.length) {
+    return {};
+  }
+  const byHostKey = hostIdLookup(hosts);
+  const hostById = new Map(hosts.map((host) => [host.hostid, host]));
+  const bestByHostId = new Map<
+    string,
+    { rank: number; key: string; label: string; points: Array<{ clockSec: number; value: number }> }
+  >();
+
+  for (const frame of frames) {
+    if (!isDataFrame(frame)) {
+      continue;
+    }
+    const timeField = timeFieldOf(frame);
+    for (const field of frame.fields) {
+      if (field.type === FieldType.time) {
+        continue;
+      }
+      const key = itemKeyFromField(field) ?? wantedKey;
+      const name = itemNameFromField(field);
+      if (!isWantedStatusItem(wantedKey, key, name)) {
+        continue;
+      }
+      const hostLabel = hostLabelFromField(field, frame.name);
+      const hostid = resolveHostId(field, hostLabel, byHostKey);
+      if (!hostid) {
+        continue;
+      }
+      const points = hoverPointsFromField(field, timeField);
+      if (!points.length) {
+        continue;
+      }
+      const rank = statusItemRank(key.trim().toLowerCase(), wantedKey.toLowerCase()) ?? 3;
+      const prev = bestByHostId.get(hostid);
+      if (!prev || rank < prev.rank) {
+        bestByHostId.set(hostid, { rank, key, label: field.name?.trim() || name || key, points });
+      }
+    }
+  }
+
+  const colors: StatusColorOptions = statusOptions ?? {
+    colorOnline: '',
+    colorOffline: '',
+    colorAlert: '',
+    statusValueMappings: [],
+  };
+  const result: HostHoverSeriesMap = {};
+  for (const [hostid, best] of bestByHostId) {
+    const series = buildHostHoverSeriesFromZabbixHistory(best.points, best.key, best.label, colors);
+    if (!series) {
+      continue;
+    }
+    const host = hostById.get(hostid);
+    rememberHoverAlias(result, hostid, series);
+    rememberHoverAlias(result, host?.name, series);
+    rememberHoverAlias(result, host?.host, series);
+    rememberHoverAlias(result, host?.ip, series);
+  }
+  return result;
+}
+
 function isQueryObservable(value: unknown): value is Observable<DataQueryResponse> {
   return typeof value === 'object' && value !== null && typeof (value as { subscribe?: unknown }).subscribe === 'function';
 }
@@ -671,26 +841,66 @@ function throwIfQueryFailed(response: DataQueryResponse): void {
 
 export async function fetchZabbixStatusViaQuery(
   options: FetchZabbixStatusViaQueryOptions
-): Promise<ZabbixInterfaceItem[]> {
-  const { datasourceUid, groupNames, statusItemKey, hosts, itemIds, abortSignal, refreshSec } = options;
-  const request = buildZabbixStatusQueryRequest(
+): Promise<ZabbixStatusQuerySnapshot> {
+  const {
+    datasourceUid,
+    groupNames,
+    statusItemKey,
+    hosts,
+    itemIds,
+    abortSignal,
+    refreshSec,
+    timeRange,
+    statusOptions,
+    trafficItemIds,
+  } = options;
+  const nowMs = Date.now();
+  const statusRequest = buildZabbixStatusQueryRequest(
     datasourceUid,
     groupNames,
     statusItemKey,
     refreshSec,
-    Date.now(),
-    itemIds
+    nowMs,
+    itemIds,
+    timeRange
   );
-  if (!request) {
-    return [];
-  }
-  const response = await queryZabbixWithRetry(
+  const trafficRequest = buildZabbixTrafficQueryRequest(
     datasourceUid,
-    request,
-    abortSignal,
-    'Falha ao consultar itens de status no Zabbix.'
+    trafficItemIds ?? [],
+    refreshSec,
+    nowMs
   );
-  return parseStatusItemsFromFrames(response.data ?? [], hosts, statusItemKey);
+  if (!statusRequest && !trafficRequest) {
+    return EMPTY_STATUS_SNAPSHOT;
+  }
+
+  const statusPromise = statusRequest
+    ? queryZabbixWithRetry(
+        datasourceUid,
+        statusRequest,
+        abortSignal,
+        'Falha ao consultar itens de status no Zabbix.'
+      )
+    : Promise.resolve<DataQueryResponse>({ data: [] });
+  const trafficPromise = trafficRequest
+    ? queryZabbixWithRetry(
+        datasourceUid,
+        trafficRequest,
+        abortSignal,
+        'Falha ao consultar o tráfego das interfaces no Zabbix.'
+      )
+    : Promise.resolve<DataQueryResponse>({ data: [] });
+
+  const [statusResponse, trafficResponse] = await Promise.all([statusPromise, trafficPromise]);
+  const statusFrames = statusResponse.data ?? [];
+  return {
+    items: parseStatusItemsFromFrames(statusFrames, hosts, statusItemKey),
+    hoverByHost: parseHoverSeriesFromFrames(statusFrames, hosts, statusItemKey, statusOptions),
+    lastValues: {
+      ...parseItemLastValuesFromFrames(statusFrames),
+      ...parseItemLastValuesFromFrames(trafficResponse.data ?? []),
+    },
+  };
 }
 
 async function queryZabbixWithRetry(
@@ -710,7 +920,7 @@ async function queryZabbixWithRetry(
       return response;
     } catch (err) {
       lastError = err;
-      if (isBenignZabbixFetchError(err) && abortSignal?.aborted) {
+      if (isCanceledQueryError(err) || (isBenignZabbixFetchError(err) && abortSignal?.aborted)) {
         throw err;
       }
       if (attempt < STATUS_QUERY_MAX_ATTEMPTS) {
@@ -781,7 +991,10 @@ export function parseItemLastValuesFromFrames(
       continue;
     }
     const timeField = timeFieldOf(frame);
-    const refItemId = typeof frame.refId === 'string' && /^I\d+$/.test(frame.refId) ? frame.refId.slice(1) : undefined;
+    const refItemId =
+      typeof frame.refId === 'string' && /^I\d+$/.test(frame.refId)
+        ? numericItemIdCandidate(frame.refId.slice(1))
+        : undefined;
     for (const field of frame.fields) {
       if (field.type === FieldType.time) {
         continue;
@@ -802,39 +1015,6 @@ export function parseItemLastValuesFromFrames(
     }
   }
   return result;
-}
-
-export async function fetchZabbixItemLastValuesViaQuery(
-  datasourceUid: string,
-  itemIds: string[],
-  abortSignal?: AbortSignal,
-  refreshSec = ZABBIX_DIRECT_MIN_REFRESH_SEC
-): Promise<Record<string, ZabbixItemLastValue>> {
-  const ids = [...new Set(itemIds.map((id) => id.trim()).filter(Boolean))];
-  if (!datasourceUid || !ids.length) {
-    return {};
-  }
-  const targets = buildZabbixStatusItemIdTargets(datasourceUid, ids);
-  if (!targets.length) {
-    return {};
-  }
-  const nowMs = Date.now();
-  const request = zabbixQueryRequest(
-    datasourceUid,
-    `topology-linkmetrics-${datasourceUid}`,
-    targets,
-    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
-    refreshSec,
-    5,
-    nowMs
-  );
-  const response = await queryZabbixWithRetry(
-    datasourceUid,
-    request,
-    abortSignal,
-    'Falha ao consultar métricas dos cabos no Zabbix.'
-  );
-  return parseItemLastValuesFromFrames(response.data ?? []);
 }
 
 export function buildZabbixProblemsTargets(
@@ -1003,160 +1183,6 @@ export async function fetchZabbixHostProblemsViaQuery(
   return parseProblemsFromFrames(response.data ?? [], ids);
 }
 
-function hoverHostEntry(ref: HostLookupRef, metadata?: HostMetadataMap): HostMetadataMap[string] | undefined {
-  const hostid = ref.zabbixHostId?.trim();
-  if (hostid && metadata) {
-    for (const entry of Object.values(metadata)) {
-      if (entry.hostid?.trim() === hostid) {
-        return entry;
-      }
-    }
-  }
-  const key = ref.zabbixHost?.trim() || ref.label?.trim();
-  return key && metadata ? metadata[key] : undefined;
-}
-
-function hoverHostFilter(ref: HostLookupRef, metadata?: HostMetadataMap): string | undefined {
-  const name = hoverHostEntry(ref, metadata)?.name?.trim() || ref.zabbixHost?.trim() || ref.label?.trim();
-  return name ? zabbixGroupFilter(name) : undefined;
-}
-
-function hoverGroupFilter(ref: HostLookupRef, metadata?: HostMetadataMap): string {
-  const group = hoverHostEntry(ref, metadata)?.hostGroups?.find((name) => name.trim())?.trim();
-  return group ? zabbixGroupFilter(group) : '/.*/';
-}
-
-function hoverPointsFromField(
-  field: Field,
-  timeField: Field | undefined
-): Array<{ clockSec: number; value: number }> {
-  const values = readFieldValues(field);
-  const times = timeField ? readFieldValues(timeField) : [];
-  const points: Array<{ clockSec: number; value: number }> = [];
-  for (let i = 0; i < values.length; i++) {
-    const raw = values[i];
-    if (raw == null || raw === '') {
-      continue;
-    }
-    const value = typeof raw === 'number' ? raw : Number(raw);
-    if (!Number.isFinite(value)) {
-      continue;
-    }
-    const clockSec = unixSecFromTimeValue(times[i]) ?? i;
-    points.push({ clockSec, value });
-  }
-  return points;
-}
-
-const hoverSeriesCache = createAsyncCache<HostHoverSeries | undefined>({
-  ttlMs: 15_000,
-  isCacheable: (value) => Boolean(value?.points.length),
-});
-
-export async function fetchHostHoverSeriesViaQuery(
-  datasourceUid: string,
-  ref: HostLookupRef,
-  metadata: HostMetadataMap | undefined,
-  timeRange: TimeRange | undefined,
-  statusItemKey: string,
-  statusOptions: StatusColorOptions
-): Promise<HostHoverSeries | undefined> {
-  const hostFilter = hoverHostFilter(ref, metadata);
-  const wantedKey = statusItemKey.trim();
-  if (!datasourceUid || !hostFilter || !wantedKey) {
-    return undefined;
-  }
-  const fromMs = timeRange?.from.valueOf() ?? Date.now() - 5 * 60_000;
-  const toMs = timeRange?.to.valueOf() ?? Date.now();
-  const cacheKey = `${datasourceUid}\u0000${hostFilter}\u0000${fromMs}\u0000${toMs}\u0000${wantedKey.toLowerCase()}`;
-
-  return hoverSeriesCache.get(cacheKey, async () => {
-    const nowMs = Date.now();
-    const range: TimeRange = timeRange ?? {
-      from: dateTime(fromMs),
-      to: dateTime(toMs),
-      raw: { from: 'now-5m', to: 'now' },
-    };
-    const request = zabbixQueryRequest(
-      datasourceUid,
-      `topology-hover-${datasourceUid}`,
-      [zabbixMetricsTarget(datasourceUid, 'H0', hoverGroupFilter(ref, metadata), hostFilter, zabbixMetricsItemFilter(wantedKey))],
-      range,
-      ZABBIX_DIRECT_MIN_REFRESH_SEC,
-      240,
-      nowMs
-    );
-    const response = await queryZabbixWithRetry(
-      datasourceUid,
-      request,
-      undefined,
-      'Falha ao consultar o histórico do host no Zabbix.'
-    );
-
-    let best: { rank: number; key: string; label: string; points: Array<{ clockSec: number; value: number }> } | undefined;
-    for (const frame of response.data ?? []) {
-      if (!isDataFrame(frame)) {
-        continue;
-      }
-      const timeField = timeFieldOf(frame);
-      for (const field of frame.fields) {
-        if (field.type === FieldType.time) {
-          continue;
-        }
-        const key = itemKeyFromField(field) ?? wantedKey;
-        const name = itemNameFromField(field);
-        if (!isWantedStatusItem(wantedKey, key, name)) {
-          continue;
-        }
-        const rank = statusItemRank(key.trim().toLowerCase(), wantedKey.toLowerCase()) ?? 3;
-        const points = hoverPointsFromField(field, timeField);
-        if (!points.length) {
-          continue;
-        }
-        if (!best || rank < best.rank) {
-          best = { rank, key, label: field.name?.trim() || key, points };
-        }
-      }
-    }
-    if (!best) {
-      return undefined;
-    }
-    return buildHostHoverSeriesFromZabbixHistory(best.points, best.key, best.label, statusOptions);
-  });
-}
-
-export interface ZabbixInterfaceQueryHost {
-  hostKey: string;
-  name: string;
-  group?: string;
-  hostid?: string;
-}
-
-/** Um target Metrics por host — grupo, host e as palavras-chave no mesmo filtro de item. */
-export function buildZabbixInterfaceTargets(
-  datasourceUid: string,
-  hosts: ZabbixInterfaceQueryHost[],
-  searchKeys: string[]
-): ZabbixMetricsQuery[] {
-  const keywords = [...new Set(searchKeys.map((key) => key.trim()).filter(Boolean))];
-  const itemFilter = zabbixItemKeywordFilter(keywords);
-  if (!datasourceUid || !hosts.length || !itemFilter) {
-    return [];
-  }
-  const targets: ZabbixMetricsQuery[] = [];
-  for (const host of hosts) {
-    const name = host.name.trim();
-    if (!name) {
-      continue;
-    }
-    const groupFilter = host.group?.trim() ? zabbixGroupFilter(host.group.trim()) : '/.*/';
-    targets.push(
-      zabbixMetricsTarget(datasourceUid, `IF${targets.length}`, groupFilter, zabbixGroupFilter(name), itemFilter)
-    );
-  }
-  return targets;
-}
-
 function itemNameFromField(field: Field): string | undefined {
   const fromLabel = labelString(field.labels, 'item');
   if (fromLabel) {
@@ -1169,6 +1195,77 @@ function itemNameFromField(field: Field): string | undefined {
   return name;
 }
 
+export interface ZabbixInterfaceQueryHost {
+  hostKey: string;
+  name: string;
+  aliases?: string[];
+  group?: string;
+  hostid?: string;
+}
+
+/** Host do Metrics: nunca IP — o grafana-zabbix filtra pelo nome do host. */
+export function zabbixInterfaceHostFilter(names: readonly string[]): string {
+  const unique = [...new Set(names.map((name) => name.trim()).filter((name) => name && !isIpv4(name)))];
+  if (!unique.length) {
+    return '';
+  }
+  if (unique.length === 1) {
+    return `/^${escapeRegex(unique[0])}$/i`;
+  }
+  return `/^(?:${unique.map((name) => escapeRegex(name)).join('|')})$/i`;
+}
+
+function interfaceQueryHosts(
+  hostKeys: string[],
+  metadata?: HostMetadataMap
+): ZabbixInterfaceQueryHost[] {
+  const seen = new Set<string>();
+  const hosts: ZabbixInterfaceQueryHost[] = [];
+  for (const hostKey of hostKeys) {
+    const meta = metadata?.[hostKey];
+    const identity = (meta?.hostid?.trim() || hostKey).toLowerCase();
+    if (seen.has(identity)) {
+      continue;
+    }
+    seen.add(identity);
+    const aliases = [meta?.name, hostKey].map((value) => value?.trim() ?? '').filter(Boolean);
+    const name = aliases.find((value) => !isIpv4(value));
+    if (!name) {
+      continue;
+    }
+    hosts.push({
+      hostKey,
+      name,
+      aliases,
+      group: meta?.hostGroups?.find((group) => group.trim())?.trim(),
+      hostid: meta?.hostid?.trim(),
+    });
+  }
+  return hosts;
+}
+
+/** Um target Metrics por host — qualquer item; as palavras-chave filtram a key no parse. */
+export function buildZabbixInterfaceTargets(
+  datasourceUid: string,
+  hosts: ZabbixInterfaceQueryHost[]
+): ZabbixMetricsQuery[] {
+  if (!datasourceUid || !hosts.length) {
+    return [];
+  }
+  const targets: ZabbixMetricsQuery[] = [];
+  for (const host of hosts) {
+    const hostFilter = zabbixInterfaceHostFilter([host.name, ...(host.aliases ?? [])]);
+    if (!hostFilter) {
+      continue;
+    }
+    const groupFilter = host.group?.trim() ? zabbixGroupFilter(host.group.trim()) : '/.*/';
+    targets.push(
+      zabbixMetricsTarget(datasourceUid, `IF${targets.length}`, groupFilter, hostFilter, ZABBIX_INTERFACE_ITEM_FILTER)
+    );
+  }
+  return targets;
+}
+
 function matchesInterfaceKeyword(key_: string, name: string | undefined, keywords: string[]): boolean {
   const hay = `${key_} ${name ?? ''}`.toLowerCase();
   return keywords.some((keyword) => hay.includes(keyword.toLowerCase()));
@@ -1178,7 +1275,7 @@ function interfaceHostKeyLookup(hostKeys: string[], metadata?: HostMetadataMap):
   const byLabel = new Map<string, string>();
   for (const key of hostKeys) {
     const meta = metadata?.[key];
-    for (const label of [key, meta?.name, meta?.hostid]) {
+    for (const label of [key, meta?.name, meta?.ip, meta?.hostid]) {
       const normalized = label?.trim().toLowerCase();
       if (normalized && !byLabel.has(normalized)) {
         byLabel.set(normalized, key);
@@ -1218,31 +1315,33 @@ export function parseInterfaceItemsFromFrames(
       if (field.type === FieldType.time) {
         continue;
       }
-      const last = lastFiniteNumber(readFieldValues(field));
-      if (!last) {
-        continue;
-      }
-      const hostLabel = hostLabelFromField(field, frame.name);
-      const hostKey = hostLabel ? byLabel.get(hostLabel.trim().toLowerCase()) : undefined;
-      if (!hostKey) {
-        continue;
-      }
       const key_ = itemKeyFromField(field);
       const name = itemNameFromField(field);
       if (!key_ || !matchesInterfaceKeyword(key_, name, keywords)) {
         continue;
       }
-      const hostid = hostIdFromField(field) || metadata?.[hostKey]?.hostid?.trim() || '';
+      const hostLabel = hostLabelFromField(field, frame.name);
+      const hostidLabel = hostIdFromField(field);
+      const hostKey =
+        (hostLabel ? byLabel.get(hostLabel.trim().toLowerCase()) : undefined) ??
+        (hostidLabel ? byLabel.get(hostidLabel.trim().toLowerCase()) : undefined);
+      if (!hostKey) {
+        continue;
+      }
+      const last = lastFiniteNumber(readFieldValues(field));
+      const hostid = hostidLabel || metadata?.[hostKey]?.hostid?.trim() || '';
       const timeValues = timeField ? readFieldValues(timeField) : [];
-      const clock = timeField ? unixSecFromTimeValue(timeValues[last.index]) : undefined;
+      const clock = last && timeField ? unixSecFromTimeValue(timeValues[last.index]) : undefined;
       const item: ZabbixInterfaceItem = {
         itemid: itemIdFromField(field) ?? `${hostid || hostKey}:${key_}`,
         key_,
-        lastvalue: String(last.value),
         hostid,
       };
       if (name) {
         item.name = name;
+      }
+      if (last) {
+        item.lastvalue = String(last.value);
       }
       if (clock != null) {
         item.lastclock = String(clock);
@@ -1269,24 +1368,18 @@ export async function fetchZabbixHostInterfaceItemsViaQuery(
   if (!datasourceUid || !keys.length || !terms.length) {
     return [];
   }
-  const hosts: ZabbixInterfaceQueryHost[] = keys.map((hostKey) => ({
-    hostKey,
-    name: metadata?.[hostKey]?.name?.trim() || hostKey,
-    group: metadata?.[hostKey]?.hostGroups?.find((name) => name.trim())?.trim(),
-    hostid: metadata?.[hostKey]?.hostid?.trim(),
-  }));
-  const targets = buildZabbixInterfaceTargets(datasourceUid, hosts, terms);
+  const targets = buildZabbixInterfaceTargets(datasourceUid, interfaceQueryHosts(keys, metadata));
   if (!targets.length) {
     return [];
   }
   const nowMs = Date.now();
   const request = zabbixQueryRequest(
     datasourceUid,
-    `topology-interfaces-${datasourceUid}`,
+    nextZabbixQueryRequestId(`topology-interfaces-${datasourceUid}`),
     targets,
-    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
+    statusQueryTimeRange(nowMs, ZABBIX_INTERFACE_QUERY_RANGE_SEC),
     ZABBIX_DIRECT_MIN_REFRESH_SEC,
-    5,
+    1,
     nowMs
   );
   const response = await queryZabbixWithRetry(

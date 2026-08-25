@@ -1,0 +1,180 @@
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
+import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
+import { useZabbixDirectIndex } from './useZabbixDirectIndex';
+
+vi.mock('../utils/zabbixApi', () => ({
+  fetchZabbixDirectMetadata: vi.fn(),
+  isBenignZabbixFetchError: vi.fn(() => false),
+  isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
+  resolveZabbixItemIdsByKeys: vi.fn(async () => new Map()),
+}));
+
+vi.mock('../utils/zabbixDatasourceQuery', () => ({
+  fetchZabbixStatusViaQuery: vi.fn(),
+}));
+
+const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
+const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
+const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
+
+function host(id: string, group: string) {
+  return {
+    hostid: id,
+    host: `host-${id}`,
+    name: `host-${id}`,
+    ip: `10.0.0.${id}`,
+    groups: [group],
+  };
+}
+
+function statusItem(hostid: string) {
+  return {
+    itemid: `item-${hostid}`,
+    key_: 'icmpping',
+    lastvalue: '1',
+    lastclock: '1000',
+    hostid,
+  };
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe('useZabbixDirectIndex', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fetchMetadata.mockReset();
+    fetchStatus.mockReset();
+    resolveKeys.mockReset();
+    resolveKeys.mockResolvedValue(new Map());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('trocar os grupos não zera o índice enquanto o novo snapshot não chega', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+
+    const { result, rerender } = renderHook(
+      ({ groupNames }: { groupNames: string[] }) =>
+        useZabbixDirectIndex({
+          enabled: true,
+          datasourceUid: 'ds',
+          groupNames,
+          statusItemKey: 'icmpping',
+          refreshSec: 60,
+        }),
+      { initialProps: { groupNames: ['Backbone'] } }
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(true);
+    expect(result.current.index.hosts).toContain('host-1');
+
+    let finishNext: (value: Awaited<ReturnType<typeof fetchZabbixDirectMetadata>>) => void = () =>
+      undefined;
+    fetchMetadata.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishNext = resolve;
+        })
+    );
+    fetchStatus.mockResolvedValueOnce({ items: [statusItem('2')], hoverByHost: {}, lastValues: {} });
+
+    rerender({ groupNames: ['Borda'] });
+    expect(result.current.ready).toBe(true);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.index.hosts).toContain('host-1');
+
+    await act(async () => {
+      finishNext({
+        hosts: [host('2', 'Borda')],
+        resolvedGroups: ['Borda'],
+        groupIds: ['20'],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.index.hosts).toContain('host-2');
+    expect(result.current.index.hosts).not.toContain('host-1');
+  });
+
+  it('repassa os itemids de cabo na mesma busca de status', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce({
+      items: [statusItem('1')],
+      hoverByHost: {},
+      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10', '11'],
+      })
+    );
+
+    await flush();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(fetchStatus.mock.calls[0][0].trafficItemIds).toEqual(['10', '11']);
+    expect(result.current.lastValues['10']?.lastvalue).toBe('1');
+  });
+
+  it('resolve chave de cabo para itemid e devolve o lastvalue pela key', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    resolveKeys.mockResolvedValueOnce(new Map([['vendor.metric.rx[10]', '77']]));
+    fetchStatus.mockResolvedValueOnce({
+      items: [statusItem('1')],
+      hoverByHost: {},
+      lastValues: { '77': { itemid: '77', lastvalue: '500000000' } },
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficKeys: ['vendor.metric.rx[10]'],
+      })
+    );
+
+    await flush();
+    expect(resolveKeys).toHaveBeenCalledWith(
+      'ds',
+      ['vendor.metric.rx[10]'],
+      expect.any(AbortSignal),
+      ['1']
+    );
+    expect(fetchStatus.mock.calls[0][0].trafficItemIds).toEqual(['77']);
+    expect(result.current.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+  });
+});

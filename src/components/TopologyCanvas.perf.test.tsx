@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultOptions, HostDisplayMap, TopologyMap, TopologyNode, TopologyView } from '../types';
 
@@ -162,10 +162,17 @@ describe(`custo de re-render de um gesto (${HOST_COUNT} hosts)`, () => {
  * viewport e o recorte não tem o que remover. O ganho aparece quando o usuário aproxima, que é o
  * que estes testes reproduzem com a roda do mouse.
  */
-function zoomIn(wrap: Element, steps: number): void {
+async function zoomIn(wrap: Element, steps: number): Promise<void> {
   for (let i = 0; i < steps; i += 1) {
     fireEvent.wheel(wrap, { deltaY: -120, clientX: 600, clientY: 400 });
   }
+  // O zoom da roda comita uma vez por frame (`useCanvasZoomGestures`): sem esperar o rAF, a view
+  // continua a de entrada e nada foi recortado ainda.
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 function wrapOf(container: HTMLElement): Element {
@@ -183,12 +190,12 @@ describe(`recorte por viewport (${HOST_COUNT} hosts)`, () => {
     expect(container.querySelectorAll('[data-node-id]').length).toBe(HOST_COUNT);
   });
 
-  it('aproximando o zoom, só os nós perto da viewport ficam no DOM', () => {
+  it('aproximando o zoom, só os nós perto da viewport ficam no DOM', async () => {
     const map = buildMap(HOST_COUNT);
     const { container } = renderEditableCanvas(map);
     const before = container.querySelectorAll('svg *').length;
 
-    zoomIn(wrapOf(container), 25);
+    await zoomIn(wrapOf(container), 25);
 
     const mounted = container.querySelectorAll('[data-node-id]').length;
     const after = container.querySelectorAll('svg *').length;
@@ -204,11 +211,11 @@ describe(`recorte por viewport (${HOST_COUNT} hosts)`, () => {
     expect(after).toBeLessThan(before);
   });
 
-  it('pan curto depois do zoom não redesenha nada: o recorte é alinhado a uma grade grossa', () => {
+  it('pan curto depois do zoom não redesenha nada: o recorte é alinhado a uma grade grossa', async () => {
     const map = buildMap(HOST_COUNT);
     const { container } = renderEditableCanvas(map);
     const wrap = wrapOf(container);
-    zoomIn(wrap, 25);
+    await zoomIn(wrap, 25);
 
     const mountedBefore = container.querySelectorAll('[data-node-id]').length;
     renderCounts.host = 0;
@@ -231,10 +238,10 @@ describe(`recorte por viewport (${HOST_COUNT} hosts)`, () => {
     expect(renderCounts.link).toBe(0);
   });
 
-  it('mapa pequeno não é recortado nem depois de aproximar', () => {
+  it('mapa pequeno não é recortado nem depois de aproximar', async () => {
     const small = buildMap(20);
     const { container } = renderEditableCanvas(small);
-    zoomIn(wrapOf(container), 25);
+    await zoomIn(wrapOf(container), 25);
     expect(container.querySelectorAll('[data-node-id]').length).toBe(20);
   });
 });

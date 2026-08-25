@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
-import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
@@ -18,6 +18,7 @@ import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLoc
 import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
+import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
 import { resolveHostDoubleClickAction } from '../utils/nodeTap';
@@ -44,6 +45,7 @@ import { CanvasSelectionShapes } from './canvas/CanvasSelectionShapes';
 import { LinksLayer } from './canvas/LinksLayer';
 import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
+import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
 import { LinkDetailsDrawer, resolveLinkDetailsMetrics } from './LinkDetailsDrawer';
 import { TopologyBlueprintModal } from './lazyModals';
@@ -97,22 +99,22 @@ interface Props {
   hostMetadata?: HostMetadataMap;
   submapHosts?: Record<string, string[] | null | undefined>;
   /** Intervalo de busca do plugin (zabbixRefreshSec). O contador
-   * "Atualiza em Ns" conta o tempo sozinho dentro de `TopologyColorLegend` — não fica em estado
-   * do painel para não forçar um re-render do mapa inteiro a cada segundo.
+   * "Atualiza em Ns" corre no mesmo relógio do poll — não reinicia quando uma busca termina,
+   * senão a query seguinte dispara com o cronômetro ainda no meio.
    */
   refreshIntervalSec?: number | null;
   /** `PanelData` com o timeRange do seletor do dashboard, para o hover ICMP. */
   queryData?: PanelData;
-  /** UID do datasource Zabbix — ping, interfaces e histórico. */
+  /** UID do datasource Zabbix — ping e interfaces. */
   zabbixDatasourceUid?: string;
+  /** Série ICMP do poll de status — o hover só lê, não consulta. */
+  hoverByHost?: HostHoverSeriesMap;
   /** Métricas voláteis de links (RX/TX/utilização) */
   linkMetricsByLink?: LinkRuntimeMetricsMap;
-  /** Instantâneo da última busca boa de tráfego (não o lastclock do item). */
-  linkMetricsFetchedAtMs?: number;
   /** Problemas Zabbix para badges NOC */
   hostProblems?: HostProblemsMap;
   onNocModeChange?: (enabled: boolean) => void;
-  onMapChange?: (map: TopologyMap) => void;
+  onMapChange?: (map: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => void;
   onViewChange?: (view: TopologyView) => void;
   onShowMinimapChange?: (show: boolean) => void;
   onShowLegendChange?: (show: boolean) => void;
@@ -145,6 +147,7 @@ const NO_QUERY_HOST_OPTIONS: QueryHostOption[] = [];
 const NO_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
 const NO_SUBMAP_HOSTS: Record<string, string[] | null | undefined> = {};
 const NO_LINK_METRICS: LinkRuntimeMetricsMap = {};
+const NO_HOVER_BY_HOST: HostHoverSeriesMap = {};
 
 export function TopologyCanvas({
   map: liveMap,
@@ -161,8 +164,8 @@ export function TopologyCanvas({
   refreshIntervalSec = null,
   queryData: liveQueryData,
   zabbixDatasourceUid,
+  hoverByHost = NO_HOVER_BY_HOST,
   linkMetricsByLink = NO_LINK_METRICS,
-  linkMetricsFetchedAtMs,
   hostProblems,
   onNocModeChange,
   onMapChange,
@@ -614,8 +617,8 @@ export function TopologyCanvas({
   }, [renderLinks, activeFilters, filterContext]);
 
   const persist = useCallback(
-    (next: TopologyMap) => {
-      onMapChange?.(next);
+    (next: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => {
+      onMapChange?.(next, context);
     },
     [onMapChange]
   );
@@ -825,15 +828,24 @@ export function TopologyCanvas({
       if (!pendingLink) {
         return;
       }
-      persist(
-        addLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
+      const next = addLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
+        fromInterface,
+        toInterface,
+        fromPeerHost,
+        toPeerHost,
+        bandwidthMbps,
+      });
+      persist(next, {
+        interSubmapLink: {
+          from: pendingLink.from,
+          to: pendingLink.to,
           fromInterface,
           toInterface,
           fromPeerHost,
           toPeerHost,
           bandwidthMbps,
-        })
-      );
+        },
+      });
       setPendingLink(null);
     },
     [pendingLink, persist, storedMap]
@@ -1192,6 +1204,23 @@ export function TopologyCanvas({
    * é isso que mantém pan e zoom sem re-render de camada. Bounds, fit, minimapa e seleção seguem
    * lendo `map.nodes` inteiro; só o que vai para o DOM é recortado.
    */
+  /**
+   * Tipos de ícone presentes no mapa, para o `<defs>`. Sai de `map.nodes` inteiro, e não dos nós
+   * visíveis, para o símbolo não ser removido e remontado durante pan e zoom; `useStableIdentity`
+   * segura a identidade da lista entre os refreshes de status.
+   */
+  const iconsInMap = useStableIdentity(
+    useMemo(() => {
+      const used = new Set<TopologyHostIcon>();
+      for (const node of map.nodes) {
+        if (isHostNode(node) && node.icon) {
+          used.add(node.icon);
+        }
+      }
+      return Array.from(used).sort();
+    }, [map.nodes])
+  );
+
   const cullingEnabled = map.nodes.length >= CULL_MIN_NODES;
   const { x0, y0, x1, y1 } = visibleWorldRect(view, viewport);
   const cullRect = useMemo<WorldRect>(() => ({ x0, y0, x1, y1 }), [x0, y0, x1, y1]);
@@ -1383,6 +1412,7 @@ export function TopologyCanvas({
             colorLinkHigh={resolveColor(options.colorLinkHigh)}
             colorLinkCongestion={resolveColor(options.colorLinkCongestion)}
           />
+          <HostIconDefs icons={iconsInMap} />
           <CanvasGridLayer
             bounds={gridBounds}
             verticalLines={gridVerticalLines}
@@ -1477,7 +1507,6 @@ export function TopologyCanvas({
         showLegend={showLegend}
         legendItems={legendItems}
         refreshIntervalSec={refreshIntervalSec}
-        refreshResetKey={linkMetricsFetchedAtMs}
         contextMenu={contextMenu}
         onCloseContextMenu={closeContextMenu}
         canvasMenuItems={canvasMenuItems}
@@ -1496,6 +1525,7 @@ export function TopologyCanvas({
         queryHostOptions={queryHostOptions}
         zabbixDatasourceUid={zabbixDatasourceUid}
         queryData={queryData}
+        hoverByHost={hoverByHost}
         hostMetadata={hostMetadata}
         hostDisplay={hostDisplay}
         hostProblems={hostProblems}

@@ -97,7 +97,7 @@ export function LinkEditModal({
     }
     return resolveInnerHost(toInnerHosts, link.toPeerHost);
   });
-  const { fromInterfaces, toInterfaces, loading: ifacesLoading, loadError } = useLinkPeerInterfaces(
+  const { fromInterfaces, toInterfaces, fromLoading, toLoading, loadError } = useLinkPeerInterfaces(
     fromPeer,
     toPeer,
     zabbixDatasourceUid,
@@ -128,9 +128,10 @@ export function LinkEditModal({
     () => resolveLinkCapacityMbps(fromIface, toIface),
     [fromIface, toIface]
   );
-  const capacityLabel = ifacesLoading
-    ? 'Carregando interfaces…'
-    : formatLinkBandwidth(autoCapacityMbps) ?? 'Selecione as interfaces monitoradas';
+  const capacityLabel =
+    fromLoading || toLoading
+      ? 'Carregando interfaces…'
+      : formatLinkBandwidth(autoCapacityMbps) ?? 'Selecione as interfaces monitoradas';
 
   const fromSelectValue = fromIface
     ? interfaceOptionValue(fromIface)
@@ -165,7 +166,7 @@ export function LinkEditModal({
             label="Interface de origem"
             hostLabel={fromPeer ? innerHostLabel(fromPeer) : fromNode.label ?? fromNode.id}
             interfaces={fromInterfaces}
-            loading={ifacesLoading}
+            loading={fromLoading}
             value={fromSelectValue}
             onChange={setFromIface}
           />
@@ -186,7 +187,7 @@ export function LinkEditModal({
             label="Interface de destino"
             hostLabel={toPeer ? innerHostLabel(toPeer) : toNode.label ?? toNode.id}
             interfaces={toInterfaces}
-            loading={ifacesLoading}
+            loading={toLoading}
             value={toSelectValue}
             onChange={setToIface}
           />

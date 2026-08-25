@@ -309,7 +309,6 @@ function perfOptions(map: TopologyMap): TopologyPanelOptions {
   const options = defaultOptions();
   options.map = map;
   options.zabbixDatasourceUid = 'ds-perf';
-  options.zabbixHostGroups = ['A'];
   options.displayQueryRefIds = ['A'];
   return options;
 }

@@ -1,15 +1,8 @@
-import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import { defaultOptions } from '../types';
 import { emptyMap, hostNode } from '../utils/testMapFixtures';
-import { fetchZabbixItemLastValuesViaQuery } from '../utils/zabbixDatasourceQuery';
 import { useLinkMetricsRuntime } from './useLinkMetricsRuntime';
-
-vi.mock('../utils/zabbixDatasourceQuery', () => ({
-  fetchZabbixItemLastValuesViaQuery: vi.fn(),
-}));
-
-const fetchLastValues = vi.mocked(fetchZabbixItemLastValuesViaQuery);
 
 function mapWithTraffic() {
   return {
@@ -26,115 +19,29 @@ function mapWithTraffic() {
   };
 }
 
-let uidSeq = 0;
-
-function renderMetrics(runtime: { refreshSec?: number | null }) {
-  uidSeq += 1;
-  const uid = `ds-link-metrics-${uidSeq}`;
-  const utils = renderHook(
-    ({ refreshSec }: { refreshSec?: number | null }) =>
-      useLinkMetricsRuntime(uid, mapWithTraffic(), defaultOptions(), true, {
-        refreshSec,
-      }),
-    { initialProps: runtime }
-  );
-  return utils;
-}
-
-async function flush() {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
-
 describe('useLinkMetricsRuntime', () => {
-  const hiddenDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
+  it('monta RX/TX do cabo a partir dos lastvalues do poll de status', () => {
+    const { result } = renderHook(() =>
+      useLinkMetricsRuntime(mapWithTraffic(), defaultOptions(), {
+        '10': { itemid: '10', lastvalue: '500000000' },
+        '11': { itemid: '11', lastvalue: '100000000' },
+      })
+    );
 
-  beforeEach(() => {
-    vi.useFakeTimers();
-    fetchLastValues.mockReset();
-    fetchLastValues.mockResolvedValue({
-      '10': { itemid: '10', lastvalue: '1' },
-      '11': { itemid: '11', lastvalue: '2' },
-    });
+    expect(result.current.metricsByLink['a-b']?.from.rxBps).toBe(500000000);
+    expect(result.current.metricsByLink['a-b']?.from.txBps).toBe(100000000);
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    if (hiddenDesc) {
-      Object.defineProperty(document, 'hidden', hiddenDesc);
-    } else {
-      Object.defineProperty(document, 'hidden', {
-        configurable: true,
-        enumerable: true,
-        get: () => false,
-      });
-    }
-  });
+  it('sem lastvalues devolve o mapa vazio estável', () => {
+    const { result, rerender } = renderHook(
+      ({ values }: { values: Record<string, { itemid: string; lastvalue: string }> }) =>
+        useLinkMetricsRuntime(mapWithTraffic(), defaultOptions(), values),
+      { initialProps: { values: {} } }
+    );
 
-  it('trocar zabbixRefreshSec de 10s para 30s muda o intervalo sem remontar o painel', async () => {
-    const { rerender, result } = renderMetrics({ refreshSec: 10 });
-    await flush();
-    expect(fetchLastValues).toHaveBeenCalledTimes(1);
-    expect(result.current.fetchedAtMs).toEqual(expect.any(Number));
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(2);
-
-    rerender({ refreshSec: 30 });
-    await flush();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(3);
-  });
-
-  it('sem refreshSec não arma setInterval', async () => {
-    renderMetrics({ refreshSec: null });
-    await flush();
-    expect(fetchLastValues).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(1);
-  });
-
-  it('aba oculta pausa o fetch de tráfego até voltar a ficar visível', async () => {
-    renderMetrics({ refreshSec: 10 });
-    await flush();
-    expect(fetchLastValues).toHaveBeenCalledTimes(1);
-
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      enumerable: true,
-      get: () => true,
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(1);
-
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      enumerable: true,
-      get: () => false,
-    });
-    await act(async () => {
-      document.dispatchEvent(new Event('visibilitychange'));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    const first = result.current.metricsByLink;
+    expect(first).toEqual({});
+    rerender({ values: {} });
+    expect(result.current.metricsByLink).toBe(first);
   });
 });

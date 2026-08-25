@@ -101,11 +101,19 @@ function addMetric(
   kind: InterfaceMetricKind,
   item: RawZabbixInterfaceItem
 ): void {
+  /*
+   * Só itemid numérico é persistido. Quando o frame não traz o id, o inventário monta um sintético
+   * (`hostid:key`) que serve de identidade na leitura, mas guardá-lo faria o mapa mandá-lo como id
+   * real em `itemids` no `ds.query()` — o datasource recusa o request inteiro e o mapa perde o
+   * status. Sem o id, a leitura do último valor usa a `key`.
+   */
   const ref: TopologyMetricReference = {
-    itemId: item.itemid,
     key: item.key_,
     confidence: 'high',
   };
+  if (isNumericOnlyLabel(item.itemid)) {
+    ref.itemId = item.itemid;
+  }
   const counts = acc.metricCounts[kind] ?? 0;
   acc.metricCounts[kind] = counts + 1;
 

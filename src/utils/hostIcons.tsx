@@ -178,41 +178,68 @@ export function HostIconImage({ icon, size = 20, color, className }: IconImagePr
   return <Icon size={size} color={fill} className={className} aria-hidden />;
 }
 
+function hostIconSymbolId(icon: TopologyHostIcon): string {
+  return `topology-icon-${icon}`;
+}
+
+/** Caixa do ícone no mapa. Não depende do nó, só do tipo — é o que permite declarar uma vez só. */
+function hostIconGlyphBox(icon: TopologyHostIcon): { w: number; h: number } {
+  return hostIconRenderDimensions(icon, hostIconRenderSize(icon));
+}
+
+/**
+ * Declara no `<defs>` do mapa um ícone por tipo usado, para o nó referenciar com `<use>`.
+ *
+ * Antes cada nó inlinava o SVG inteiro dentro de um `foreignObject`: um switch são 67 tags, e num
+ * submapa de 132 hosts isso era a maior parte dos 5798 elementos montados na entrada. De quebra,
+ * os `id` internos dos ícones (gradientes, `<style>`) deixam de ser duplicados por nó — hoje o
+ * mesmo `id` aparece uma vez por host e só funciona porque o navegador resolve no primeiro.
+ */
+export function HostIconDefs({ icons }: { icons: TopologyHostIcon[] }) {
+  return (
+    <defs>
+      {icons.map((icon) => {
+        const { h } = hostIconGlyphBox(icon);
+        const color = hostIconColor(icon);
+        const customSvg = CUSTOM_ICON_SVGS[icon];
+        if (customSvg) {
+          return (
+            <g
+              key={icon}
+              id={hostIconSymbolId(icon)}
+              color={color}
+              // SVG importado em build-time (`src/img/topology/*.svg`) — ver 20-security.mdc.
+              dangerouslySetInnerHTML={{
+                __html: inlineSvgMarkup(customSvg, h, HOST_ICON_WIDTH_SCALE[icon] ?? 1),
+              }}
+            />
+          );
+        }
+        return (
+          <g key={icon} id={hostIconSymbolId(icon)} color={color}>
+            <HostIconImage icon={icon} size={h} color={color} />
+          </g>
+        );
+      })}
+    </defs>
+  );
+}
+
 interface GlyphProps {
   icon: TopologyHostIcon;
   x: number;
   y: number;
-  size?: number;
-  color?: string;
 }
 
-/** Ícone dentro do SVG do mapa (foreignObject). */
-export function HostIconGlyph({ icon, x, y, size = HOST_ICON_SIZE, color }: GlyphProps) {
-  const iconColor = color ?? hostIconColor(icon);
-  const { w, h } = hostIconRenderDimensions(icon, size);
+/** Ícone do nó: uma referência ao `<defs>` do mapa (ver `HostIconDefs`). */
+export function HostIconGlyph({ icon, x, y }: GlyphProps) {
+  const { w, h } = hostIconGlyphBox(icon);
   return (
-    <foreignObject
+    <use
+      href={`#${hostIconSymbolId(icon)}`}
       x={x - w / 2}
       y={y - h / 2}
-      width={w}
-      height={h}
       pointerEvents="none"
-    >
-      <div
-        style={{
-          width: w,
-          height: h,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          lineHeight: 0,
-          overflow: 'hidden',
-          color: iconColor,
-          background: 'transparent',
-        }}
-      >
-        <HostIconImage icon={icon} size={h} color={iconColor} />
-      </div>
-    </foreignObject>
+    />
   );
 }

@@ -11,7 +11,8 @@ import {
 export interface UseLinkPeerInterfacesResult {
   fromInterfaces: TopologyNetworkInterface[];
   toInterfaces: TopologyNetworkInterface[];
-  loading: boolean;
+  fromLoading: boolean;
+  toLoading: boolean;
   loadError?: string;
 }
 
@@ -60,18 +61,20 @@ export function useLinkPeerInterfaces(
   const toResult = useZabbixHostInterfaces(toKeys, datasourceUid, keywords, hostMetadata);
   const fromInterfaces = pickHostInterfaces(fromResult.interfacesByHost, fromKeys);
   const toInterfaces = pickHostInterfaces(toResult.interfacesByHost, toKeys);
-  const loading = fromResult.loading || toResult.loading;
+  const fromLoading = fromResult.loading;
+  const toLoading = toResult.loading;
   return {
     fromInterfaces,
     toInterfaces,
-    loading,
+    fromLoading,
+    toLoading,
     loadError: combinePeerInterfaceLoadError({
       fromError: fromResult.loadError,
       toError: toResult.loadError,
       fromCount: fromInterfaces.length,
       toCount: toInterfaces.length,
-      loading,
-      queriedBoth: fromKeys.length > 0 && toKeys.length > 0 && !loading,
+      loading: fromLoading || toLoading,
+      queriedBoth: fromKeys.length > 0 && toKeys.length > 0 && !fromLoading && !toLoading,
     }),
   };
 }

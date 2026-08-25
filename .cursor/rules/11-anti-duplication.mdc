@@ -29,16 +29,17 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
 | Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: `zabbixGroupsFilter` + item) |
-| Inventário de itens de interface (query) | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um target por host, palavras-chave no mesmo item) |
+| Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
-| Lastvalue de itemids de cabo | `fetchZabbixItemLastValuesViaQuery` em `utils/zabbixDatasourceQuery.ts` |
+| Lastvalue de itemids de cabo | `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Item ID em paralelo ao status, prefixo `T`, janela de 5 min) |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; resolve via `resolveZabbixItemIdsByKeys` em `utils/zabbixApi.ts` |
 | Problemas Warning+ | `fetchZabbixHostProblemsViaQuery` em `utils/zabbixDatasourceQuery.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
-| Série temporal do gráfico de hover | `fetchHostHoverSeriesViaQuery` em `utils/zabbixDatasourceQuery.ts` |
+| Série temporal do gráfico de hover | `parseHoverSeriesFromFrames` + `lookupHostHoverSeries` (poll de status, sem query no hover) |
 | Relógio do dashboard no hover (`skipDataQuery` ignora `data.timeRange`) | `panelDataWithDashboardTimeRange` em `utils/hostTimeSeries.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
@@ -47,7 +48,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
 | Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `resolveLinkUtilizationLevel` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
-| Grupos Zabbix do mapa visível (pai + submapas aninhados) | `zabbixGroupsForVisibleMap` em `utils/queryHosts.ts` |
+| Grupos Zabbix da árvore (query de status, estável ao navegar) | `collectAllSubmapGroups` em `utils/queryHosts.ts` |
 | Grupos gravados no nó submapa (`queryRefIds` ou `queryRefId` legado) | `submapQueryRefIds` em `utils/queryHosts.ts` |
 | Grupos efetivos do atalho (próprios + dono do mapa interno) | `effectiveSubmapQueryRefIds` em `utils/queryHosts.ts` |
 | Grupos no casing do Zabbix a partir da metadata | `zabbixGroupsFromHostMetadata` em `utils/queryHosts.ts` |
@@ -60,10 +61,12 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Necessidade | Já existe em |
 |---|---|
 | Add/move/update/remove de nó, travas do mapa | `utils/mapEdits.ts` |
-| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`) | `utils/mapLinkEdits.ts` |
+| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`upsertLinkWithInterfaces`) | `utils/mapLinkEdits.ts` |
+| Espelhar cabo entre submapas (raiz e mapa de destino) | `syncInterSubmapCounterpartLinks` em `utils/interSubmapLinks.ts` |
 | Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
 | Traduzir o formulário de propriedades em patch do nó | `buildNodeEditPayload` em `utils/nodeEditPayload.ts` |
 | Validar estrutura do mapa | `validateTopologyMap` em `utils/mapValidation.ts` |
+| Busca do mapa | filtro em `components/canvas/TopologyMapSearch.tsx` |
 | Converter coordenada de tela para coordenada do mapa | `utils/mapCoords.ts` |
 | Posições do grupo arrastado, limites e vizinhos das guias | `utils/dragMove.ts` |
 | Matemática de zoom (roda e pinch), limites de escala | `utils/zoomMath.ts` |
@@ -90,6 +93,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
 | Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
 | Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys`, `innerHostsForSubmapNode`, `shouldOpenLinkInterfaceModal` em `utils/submapHosts.ts` |
+| Caixa da região no outro submapa (não a caixa batizada com host) | `pickCounterpartSubmapBox` em `utils/submapHosts.ts` |
 | Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |
 | Itens da legenda a partir das opções do painel | `buildLegendItems` em `utils/legendItems.ts` |
 

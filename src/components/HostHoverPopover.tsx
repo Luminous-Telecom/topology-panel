@@ -15,6 +15,7 @@ import {
   formatHoverFieldValue,
   hostHoverPeriodLabel,
   HostHoverSeries,
+  HostHoverSeriesMap,
   hoverMetricLabel,
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
@@ -43,12 +44,12 @@ interface Props {
   screenX: number;
   screenY: number;
   queryData?: PanelData;
+  hoverByHost?: HostHoverSeriesMap;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
   hostProblems?: HostProblemsMap;
   options: TopologyPanelOptions;
   queryReady?: boolean;
-  zabbixDatasourceUid?: string;
 }
 
 const CHART_W = 260;
@@ -162,12 +163,12 @@ export function HostHoverPopover({
   screenX,
   screenY,
   queryData,
+  hoverByHost,
   hostMetadata,
   hostDisplay,
   hostProblems,
   options,
   queryReady,
-  zabbixDatasourceUid,
 }: Props) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
@@ -184,12 +185,10 @@ export function HostHoverPopover({
 
   const { series, loading: seriesLoading } = useHostHoverSeries({
     enabled: true,
-    queryData,
     lookupRef,
     hostMetadata,
-    options,
+    hoverByHost,
     queryReady,
-    zabbixDatasourceUid,
   });
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);

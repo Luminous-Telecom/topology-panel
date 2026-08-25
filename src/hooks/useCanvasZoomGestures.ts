@@ -56,6 +56,9 @@ export function useCanvasZoomGestures({
     let pinch: PinchStart | null = null;
     let pinchRaf: number | null = null;
     let pinchPending: TopologyView | null = null;
+    /** View acumulada da roda no frame — scroll rápido entrega vários eventos entre dois paints. */
+    let wheelRaf: number | null = null;
+    let wheelPending: TopologyView | null = null;
 
     const sizeRect = () => (resolveSizeEl() ?? el).getBoundingClientRect();
 
@@ -83,6 +86,16 @@ export function useCanvasZoomGestures({
       };
     };
 
+    const flushWheel = () => {
+      wheelRaf = null;
+      if (!wheelPending) {
+        return;
+      }
+      const next = wheelPending;
+      wheelPending = null;
+      commitView(next);
+    };
+
     const endPinch = () => {
       pinchActiveRef.current = false;
       pinch = null;
@@ -93,6 +106,14 @@ export function useCanvasZoomGestures({
       if (pinchPending) {
         flushPinch();
       }
+    };
+
+    const cancelWheel = () => {
+      if (wheelRaf != null) {
+        cancelAnimationFrame(wheelRaf);
+        wheelRaf = null;
+      }
+      wheelPending = null;
     };
 
     const onTouchStart = (e: TouchEvent) => {
@@ -163,7 +184,20 @@ export function useCanvasZoomGestures({
       e.stopPropagation();
       e.stopImmediatePropagation();
       const rect = sizeRect();
-      commitView((v) => wheelZoom(v, e.clientX - rect.left, e.clientY - rect.top, e.deltaY));
+      /*
+       * Um commit por frame: sem isso cada notch da roda virava um re-render do canvas inteiro.
+       * O passo de `wheelZoom` é fixo (10%) e ignora a magnitude do delta, então cada evento é
+       * dobrado na view pendente — somar os deltas crus faria 25 notches valerem um só.
+       */
+      wheelPending = wheelZoom(
+        wheelPending ?? viewRef.current,
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        e.deltaY
+      );
+      if (wheelRaf == null) {
+        wheelRaf = requestAnimationFrame(flushWheel);
+      }
       restoreScroll?.();
       requestAnimationFrame(() => restoreScroll?.());
     };
@@ -211,6 +245,7 @@ export function useCanvasZoomGestures({
         el.removeEventListener('touchcancel', onTouchEnd);
       }
       endPinch();
+      cancelWheel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commitView, enableZoom, mapNodesLength, onPinchStart]);

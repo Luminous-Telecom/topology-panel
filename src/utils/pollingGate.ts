@@ -23,12 +23,11 @@ export function canStartPolledFetch(
 }
 
 /**
- * Gate do `RefreshEvent` do dashboard.
+ * Gate de qualquer disparo extra (RefreshEvent do dashboard, aba voltando a ficar visível).
  *
- * O auto-refresh do dashboard emite o evento no ritmo dele, que costuma ser bem mais curto que o
- * intervalo do painel. Pelo gate padrão cada emissão virava um ciclo completo de Zabbix, somando
- * centenas de chamadas por minuto ao lado do timer próprio. Aqui o evento só antecipa a busca
- * quando o intervalo configurado no painel já venceu.
+ * O auto-refresh do dashboard e o visibilitychange costumam ser mais curtos que o intervalo do
+ * painel. Sem este teto cada um virava um ciclo Zabbix no meio do "Atualiza em Ns" da legenda.
+ * Só libera a busca quando o intervalo configurado no painel já venceu.
  */
 export function canStartRefreshEventFetch(
   nowMs: number,

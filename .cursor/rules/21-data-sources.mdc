@@ -23,10 +23,11 @@ metadados uma vez (`hostgroup.get` + `host.get`) e valor a cada ciclo via `DataS
 (`utils/zabbixDatasourceQuery.ts`): um target Metrics pelos grupos visíveis (`zabbixGroupsFilter`:
 nome exato se for um; regex âncora se forem vários) com o item de status no campo `item`. Sem
 `item.get` e sem um target por grupo — o grafana-zabbix vira cada target em várias JSON-RPC.
-Em qualquer nível: grupos do nó pai + grupos dos submapas desenhados no mapa visível
-(`queryRefIds` / `effectiveSubmapQueryRefIds`, via `zabbixGroupsForVisibleMap` em
-`utils/queryHosts.ts`). Atalho para outro mapa interno herda os grupos do nó que originou
-esse mapa — o rótulo curto do atalho sozinho não consulta o Zabbix. O campo de grupos do
+A query de status usa os grupos de **toda a árvore** (`collectAllSubmapGroups` em
+`utils/queryHosts.ts`: raiz + childMaps, via `queryRefIds` / `effectiveSubmapQueryRefIds`).
+Assim o índice já tem os hosts do submapa antes de abrir — não refaz a busca nem zera o
+mapa ao navegar. Atalho para outro mapa interno herda os grupos do nó que originou esse
+mapa — o rótulo curto do atalho sozinho não consulta o Zabbix. O campo de grupos do
 painel não existe — o grupo fica no submapa.
 
 - Consumidor novo recebe `QueryIndex` por parâmetro e nunca lê `data.series` nem chama a API por
@@ -35,11 +36,12 @@ painel não existe — o grupo fica no submapa.
   (`directRefId`), então `displayQueryRefIds` e o campo de grupo do submapa seguem valendo.
 - Cor e rótulo de status saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`), a partir dos
   thresholds e value mappings configurados nas opções do painel.
-- Série do gráfico de hover: `fetchHostHoverSeriesViaQuery` (`ds.query()` Metrics: grupo do host +
-  item ICMP/status). Não invente série a partir do snapshot do mapa.
-- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics, janela curta).
-  O target preenche `group` com o filtro dos grupos visíveis e `item` com o valor configurado no
-  painel (nome do item no editor Zabbix, ou regex). Sem `item.get`. `skipDataQuery` permanece true.
+- Série do gráfico de hover: sai da mesma `fetchZabbixStatusViaQuery` do poll (`parseHoverSeriesFromFrames`).
+  O hover só lê `hoverByHost` — proibido `ds.query()` ao passar o mouse.
+- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics). A mesma
+  resposta alimenta o sparkline do hover (`maxDataPoints` do gráfico). O target preenche `group`
+  com o filtro dos grupos visíveis e `item` com o valor configurado no painel. Sem `item.get`.
+  `skipDataQuery` permanece true.
 - Problemas Zabbix (Warning+, via `useZabbixHostProblems` / `ds.query()` Problems) usam os nomes
   de grupo **já resolvidos** na metadata (`zabbixGroupsFromHostMetadata`) — o `queryRefId` legado
   em outro casing não casa no filtro do grafana-zabbix. Nunca `/.*/`. Pintam o host com
@@ -59,22 +61,22 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblemsViaQuery` (`ds.query()` Problems) |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: grupo do host + item = palavra-chave RX/TX/status/capacidade) |
-| `hooks/useLinkMetricsRuntime.ts` | `fetchZabbixItemLastValuesViaQuery` (`ds.query()` Item ID) |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez) e `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo) |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez) e `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo para status/hover; lastvalues de cabo num Item ID em paralelo, janela de 5 min) |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
-| `hooks/useHostHoverSeries.ts` | `fetchHostHoverSeriesViaQuery` (`ds.query()` Metrics), sparkline do hover |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
-- Polling do mapa: `useZabbixDirectIndex.ts` (status) e `useLinkMetricsRuntime.ts` (tráfego RX/TX),
-  ambos no `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
+- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e tráfego Item ID em paralelo
+  no mesmo ciclo; cabo usa janela de 5 min, não o timeRange do dashboard),
+  no `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
-  `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um terceiro laço.
-- Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get` fora do hover,
+  `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
+  só monta o mapa de cabo a partir dos lastvalues já buscados.
+- Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get`,
   ou metadata para outra finalidade) exige **aprovação
   explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
 - Busca e classificação de interface usam **só** as palavras-chave das opções do painel

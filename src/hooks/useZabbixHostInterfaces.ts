@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HostMetadataMap, TopologyNetworkInterface } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
 import { InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
@@ -54,7 +54,9 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces monitoradas — Metrics com grupo, host e item (palavras-chave).
+ * Inventário de interfaces — ds.query() Metrics (um host, qualquer item).
+ * O grafana-zabbix só filtra o campo Item pelo nome; as palavras-chave da key
+ * entram no parse das frames.
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
@@ -90,6 +92,12 @@ export function useZabbixHostInterfaces(
   const [apiError, setApiError] = useState<string | undefined>(undefined);
 
   const shouldFetch = Boolean(hostKey) && Boolean(datasourceUid) && searchKeys.length > 0;
+  const hostMetadataRef = useRef(hostMetadata);
+  hostMetadataRef.current = hostMetadata;
+  const searchKeysRef = useRef(searchKeys);
+  searchKeysRef.current = searchKeys;
+  const keyParseOptionsRef = useRef(keyParseOptions);
+  keyParseOptionsRef.current = keyParseOptions;
 
   useEffect(() => {
     if (!shouldFetch || !datasourceUid) {
@@ -110,10 +118,10 @@ export function useZabbixHostInterfaces(
         const entries = await fetchZabbixHostInterfaceItemsViaQuery(
           datasourceUid,
           hostKey.split('\0'),
-          searchKeys,
-          hostMetadata
+          searchKeysRef.current,
+          hostMetadataRef.current
         );
-        return groupInterfacesByHost(entries, keyParseOptions);
+        return groupInterfacesByHost(entries, keyParseOptionsRef.current);
       })
       .then((result) => {
         if (!cancelled) {
@@ -132,7 +140,7 @@ export function useZabbixHostInterfaces(
     return () => {
       cancelled = true;
     };
-  }, [shouldFetch, datasourceUid, hostKey, configKey, searchKeys, keyParseOptions, hostMetadata]);
+  }, [shouldFetch, datasourceUid, hostKey, configKey]);
 
   const loadError = useMemo(() => {
     if (!hostKey) {

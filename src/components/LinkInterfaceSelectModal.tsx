@@ -87,7 +87,7 @@ export function LinkInterfaceSelectModal({
     isHostNode(pending.toNode) ? pending.toNode : resolveInnerHost(toInnerHosts)
   );
 
-  const { fromInterfaces, toInterfaces, loading, loadError } = useLinkPeerInterfaces(
+  const { fromInterfaces, toInterfaces, fromLoading, toLoading, loadError } = useLinkPeerInterfaces(
     fromPeer,
     toPeer,
     zabbixDatasourceUid,
@@ -119,7 +119,7 @@ export function LinkInterfaceSelectModal({
       {loadError && <div className={modalErrorStyle}>{loadError}</div>}
       <p className={modalHintStyle}>
         {fromInnerHosts.length > 0 || toInnerHosts.length > 0
-          ? 'Em submapa, escolha o host interno e a interface. Sem interface, o cabo aparece no mapa mas não monitora tráfego.'
+          ? 'Em submapa, escolha o host interno e a interface. Ligando a outro submapa, o cabo é criado também na raiz e no mapa de destino. Sem interface, o cabo aparece no mapa mas não monitora tráfego.'
           : 'Interfaces opcionais. Sem seleção, o link aparece no mapa mas não monitora tráfego RX/TX.'}
       </p>
 
@@ -140,7 +140,7 @@ export function LinkInterfaceSelectModal({
         label="Interface de origem"
         hostLabel={sideEndpointLabel(pending.fromNode, fromInnerHosts.length > 0 ? fromPeer : undefined)}
         interfaces={fromInterfaces}
-        loading={loading}
+        loading={fromLoading}
         value={fromIface ? interfaceOptionValue(fromIface) : ''}
         onChange={setFromIface}
       />
@@ -161,7 +161,7 @@ export function LinkInterfaceSelectModal({
         label="Interface de destino"
         hostLabel={sideEndpointLabel(pending.toNode, toInnerHosts.length > 0 ? toPeer : undefined)}
         interfaces={toInterfaces}
-        loading={loading}
+        loading={toLoading}
         value={toIface ? interfaceOptionValue(toIface) : ''}
         onChange={setToIface}
       />

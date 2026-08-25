@@ -12,7 +12,12 @@ export function useLinkFlowAnimation(wrapRef: RefObject<HTMLDivElement>): void {
     }
     const controller = startLinkFlowAnimation(el);
     linkFlowRef.current = controller;
+    // Aba oculta não desenha: manter o laço rodando só gastava CPU no dashboard esquecido aberto.
+    const syncPaused = () => controller.setPaused(document.hidden);
+    syncPaused();
+    document.addEventListener('visibilitychange', syncPaused);
     return () => {
+      document.removeEventListener('visibilitychange', syncPaused);
       controller.stop();
       if (linkFlowRef.current === controller) {
         linkFlowRef.current = null;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TopologyCanvas } from './TopologyCanvas';
 import { defaultOptions, HostDisplayMap, TopologyMap, TopologyView } from '../types';
@@ -156,13 +156,19 @@ describe('TopologyCanvas — fit de entrada no mapa', () => {
     expectNodesVisibleAndCentered(map, readTransform(container));
   });
 
-  it('refresh da Query no mesmo mapa não reencaixa nem desfaz o zoom do usuário', () => {
+  it('refresh da Query no mesmo mapa não reencaixa nem desfaz o zoom do usuário', async () => {
     const map = distantMap();
     const { container, rerender } = renderCanvas(map, 'root');
     const fitted = readTransform(container);
 
     const wrap = container.firstElementChild as HTMLElement;
     fireEvent.wheel(wrap, { deltaY: -120 });
+    // O zoom da roda comita uma vez por frame (`useCanvasZoomGestures`).
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
     const zoomed = readTransform(container);
     expect(zoomed.scale).toBeGreaterThan(fitted.scale);
 
