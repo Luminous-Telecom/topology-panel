@@ -36,7 +36,8 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * O último ponto da série RX/TX dos cabos entra num `ds.query()` Item ID em paralelo.
  * Cabo só com `key` é resolvido uma vez via `item.get` — o DataFrame do inventário não traz id.
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
- * o DataFrame não traz isso.
+ * o DataFrame não traz isso. O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana
+ * recria o EventBus no load e isso abortava o primeiro `ds.query()` para disparar outro.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -132,6 +133,11 @@ export function useZabbixDirectIndex({
   trafficItemIdsRef.current = trafficIds;
   const trafficKeysRef = useRef(trafficItemKeys);
   trafficKeysRef.current = trafficItemKeys;
+  /**
+   * O Grafana recria o EventBus no carregamento do dashboard. Se o poll depende disso, o efeito
+   * aborta o primeiro `ds.query()` e dispara outro — duas buscas iguais ao recarregar.
+   */
+  const fetchSnapshotRef = useRef<() => void>(() => undefined);
 
   const [state, setState] = useState<DirectState>(() =>
     !enabled || !datasourceUid || !groups.length || !itemKey
@@ -141,6 +147,7 @@ export function useZabbixDirectIndex({
 
   useLayoutEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
+      fetchSnapshotRef.current = () => undefined;
       setState(IDLE_STATE);
       return;
     }
@@ -322,6 +329,9 @@ export function useZabbixDirectIndex({
       }
     };
 
+    fetchSnapshotRef.current = () => {
+      void fetchSnapshot();
+    };
     void fetchSnapshot();
 
     const timer = window.setInterval(() => void fetchSnapshot(), intervalSec * 1000);
@@ -333,19 +343,23 @@ export function useZabbixDirectIndex({
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
-    const refreshSub = eventBus
-      ?.getStream(RefreshEvent)
-      .subscribe(() => void fetchSnapshot());
 
     return () => {
       cancelled = true;
+      fetchSnapshotRef.current = () => undefined;
       fetchAbort?.abort();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
-      refreshSub?.unsubscribe();
     };
     // `configKey` resume datasource, grupos, chave e intervalo num único valor estável.
-  }, [enabled, configKey, eventBus, datasourceUid, itemKey]);
+  }, [enabled, configKey, datasourceUid, itemKey]);
+
+  useLayoutEffect(() => {
+    const refreshSub = eventBus?.getStream(RefreshEvent).subscribe(() => fetchSnapshotRef.current());
+    return () => {
+      refreshSub?.unsubscribe();
+    };
+  }, [eventBus]);
 
   return state;
 }

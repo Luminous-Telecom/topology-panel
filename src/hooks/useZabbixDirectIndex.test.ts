@@ -1,3 +1,5 @@
+import { EventBusSrv } from '@grafana/data';
+import { RefreshEvent } from '@grafana/runtime';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
@@ -185,5 +187,66 @@ describe('useZabbixDirectIndex', () => {
     );
     expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], 60, expect.any(AbortSignal));
     expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+  });
+
+  it('não dispara ds.query de status de novo no RefreshEvent do carregamento do dashboard', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    const eventBus = new EventBusSrv();
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        eventBus,
+      })
+    );
+
+    await flush();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      eventBus.publish(new RefreshEvent());
+      await Promise.resolve();
+    });
+
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('não reinicia o poll quando o Grafana troca a identidade do eventBus', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+
+    const { rerender } = renderHook(
+      ({ eventBus }: { eventBus: EventBusSrv }) =>
+        useZabbixDirectIndex({
+          enabled: true,
+          datasourceUid: 'ds',
+          groupNames: ['Backbone'],
+          statusItemKey: 'icmpping',
+          refreshSec: 60,
+          eventBus,
+        }),
+      { initialProps: { eventBus: new EventBusSrv() } }
+    );
+
+    await flush();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    rerender({ eventBus: new EventBusSrv() });
+    await flush();
+
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
   });
 });
