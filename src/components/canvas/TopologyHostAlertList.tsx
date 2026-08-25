@@ -18,6 +18,7 @@ import {
   overlayListButtonStyle,
   overlayListStyle,
   overlayMutedStyle,
+  overlayStackedItemStyle,
 } from '../overlayChrome';
 import {
   fitOverlayBesideAnchor,
@@ -252,7 +253,10 @@ function TopologyHostAlertListComponent({
             {hoverProblems && hoverProblems.visible.length > 0 ? (
               <>
                 {hoverProblems.visible.map((name, idx) => (
-                  <div key={`${idx}:${name}`} className={tooltipProblemStyle(colorAlert)}>
+                  <div
+                    key={`${idx}:${name}`}
+                    className={`${tooltipProblemStyle(colorAlert)} ${overlayStackedItemStyle}`}
+                  >
                     {name}
                   </div>
                 ))}

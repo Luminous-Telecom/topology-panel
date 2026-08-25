@@ -22,7 +22,7 @@ import {
 import { resolveMappingLabel } from '../utils/statusMapping';
 import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
-import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle } from './overlayChrome';
+import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle, overlayStackedItemStyle } from './overlayChrome';
 import { overlayPortalRoot } from '../utils/overlayPortal';
 import { resolveHostDescription } from '../utils/mapSync';
 
@@ -296,7 +296,7 @@ export function HostHoverPopover({
               : `Problemas ativos (${problems.visible.length + problems.hidden})`}
           </div>
           {problems.visible.map((name, idx) => (
-            <div key={`${idx}:${name}`} className={problemNameStyle}>
+            <div key={`${idx}:${name}`} className={`${problemNameStyle} ${overlayStackedItemStyle}`}>
               {name}
             </div>
           ))}

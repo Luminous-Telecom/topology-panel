@@ -80,6 +80,15 @@ export const overlayMutedStyle = css`
   line-height: 1.35;
 `;
 
+/** Linha entre itens irmãos empilhados (vários problemas no hover). */
+export const overlayStackedItemStyle = css`
+  & + & {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: ${OVERLAY_DIVIDER};
+  }
+`;
+
 export const overlayMetricRowStyle = css`
   display: flex;
   justify-content: space-between;
