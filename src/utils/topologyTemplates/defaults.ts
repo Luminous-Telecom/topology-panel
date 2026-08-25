@@ -130,7 +130,6 @@ export const BUILTIN_TOPOLOGY_BLUEPRINTS: TopologyBlueprint[] = [
       { fromRole: 'switch', toRole: 'olt1' },
       { fromRole: 'switch', toRole: 'olt2' },
     ],
-    suggestedLayout: 'hierarchical-down',
   },
   {
     id: 'backbone-simple',
@@ -157,7 +156,6 @@ export const BUILTIN_TOPOLOGY_BLUEPRINTS: TopologyBlueprint[] = [
       },
     ],
     links: [{ fromRole: 'core-a', toRole: 'core-b', medium: 'fiber' }],
-    suggestedLayout: 'hierarchical-right',
   },
   {
     id: 'ftth-access',
@@ -195,6 +193,5 @@ export const BUILTIN_TOPOLOGY_BLUEPRINTS: TopologyBlueprint[] = [
       { fromRole: 'olt', toRole: 'onu1', medium: 'fiber' },
       { fromRole: 'olt', toRole: 'onu2', medium: 'fiber' },
     ],
-    suggestedLayout: 'hierarchical-down',
   },
 ];

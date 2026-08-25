@@ -1,5 +1,4 @@
 import { TopologyHostIcon, TopologyLinkMedium, TopologyNodeType } from '../../types';
-import { AutoLayoutMode } from '../autoLayout/types';
 
 /** Campo exibido no card do host conforme o template. */
 export type NodeTemplateFieldKind =
@@ -74,7 +73,6 @@ export interface TopologyBlueprint {
   };
   roles: TopologyBlueprintRole[];
   links?: TopologyBlueprintLink[];
-  suggestedLayout?: AutoLayoutMode;
 }
 
 export const TEMPLATE_RULE_CONDITION_LABELS: Record<TemplateRuleCondition, string> = {

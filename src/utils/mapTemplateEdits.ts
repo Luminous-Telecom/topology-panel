@@ -54,7 +54,6 @@ export function applyTopologyBlueprint(map: TopologyMap, blueprint: TopologyBlue
       y: role.y,
       icon: role.icon,
       nodeTemplateId: role.nodeTemplateId,
-      positionMode: 'manual',
     };
     if (role.width !== undefined) {
       node.width = role.width;
