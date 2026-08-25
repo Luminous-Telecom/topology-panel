@@ -1,14 +1,18 @@
 import {
+  HostMetadataMap,
   LinkEndpointRuntimeMetrics,
   LinkRuntimeMetrics,
   LinkRuntimeMetricsMap,
   TopologyInterfaceReference,
   TopologyLink,
+  TopologyLinkPeerHost,
   TopologyMap,
   TopologyMetricReference,
   TopologyPanelOptions,
 } from '../types';
+import { collectHostLookupCandidates, resolveHostZabbixId, type HostLookupRef } from './hostLookup';
 import { linkKey } from './mapLinkEdits';
+import { findNodeById } from './topologyNodes';
 import {
   computeUtilizationPct,
   parseOperStatus,
@@ -18,7 +22,7 @@ import {
   UtilizationThresholds,
   DEFAULT_UTILIZATION_THRESHOLDS,
 } from './zabbixAdapter/formatTraffic';
-import { isNumericZabbixItemId, ZabbixItemLastValue } from './zabbixApi';
+import { isNumericZabbixItemId, zabbixHostItemKey, ZabbixItemLastValue } from './zabbixApi';
 
 function collectItemIdsFromReference(ref?: TopologyInterfaceReference): string[] {
   if (!ref?.metrics) {
@@ -96,7 +100,7 @@ export function collectLinkMetricKeys(links: TopologyLink[]): string[] {
   return [...keys];
 }
 
-/** Copia o lastvalue do itemid resolvido para a key do cabo, que é o que a leitura usa. */
+/** Copia o lastvalue do itemid resolvido para `hostid:key` (a key sozinha colide entre hosts). */
 export function aliasLastValuesByItemKey(
   lastValues: Record<string, ZabbixItemLastValue>,
   itemIdByKey: Map<string, string>
@@ -150,53 +154,118 @@ export function resolveLinkMapTrafficMetrics(
   return {};
 }
 
+function readBoundItemField(
+  items: Record<string, ZabbixItemLastValue>,
+  ref: TopologyMetricReference,
+  lookupKeys: string[],
+  field: 'lastvalue' | 'lastclock'
+): string | undefined {
+  const pick = (row?: ZabbixItemLastValue) => row?.[field];
+  const byItemId = ref.itemId ? pick(items[ref.itemId]) : undefined;
+  if (byItemId !== undefined) {
+    return byItemId;
+  }
+  if (!ref.key) {
+    return undefined;
+  }
+  for (const id of lookupKeys) {
+    const byHostKey = pick(items[zabbixHostItemKey(id, ref.key)]);
+    if (byHostKey !== undefined) {
+      return byHostKey;
+    }
+  }
+  return pick(items[ref.key]);
+}
+
 function readItemValue(
   items: Record<string, ZabbixItemLastValue>,
-  ref?: TopologyMetricReference
+  ref: TopologyMetricReference | undefined,
+  lookupKeys: string[]
 ): number | undefined {
   if (!ref) {
     return undefined;
   }
-  const raw =
-    (ref.itemId ? items[ref.itemId]?.lastvalue : undefined) ??
-    (ref.key ? items[ref.key]?.lastvalue : undefined);
-  return parseTrafficLastValue(raw);
+  return parseTrafficLastValue(readBoundItemField(items, ref, lookupKeys, 'lastvalue'));
 }
 
 function readItemClock(
   items: Record<string, ZabbixItemLastValue>,
-  ref?: TopologyMetricReference
+  ref: TopologyMetricReference | undefined,
+  lookupKeys: string[]
 ): number | undefined {
   if (!ref) {
     return undefined;
   }
-  const clock = Number(
-    (ref.itemId ? items[ref.itemId]?.lastclock : undefined) ??
-      (ref.key ? items[ref.key]?.lastclock : undefined)
-  );
+  const clock = Number(readBoundItemField(items, ref, lookupKeys, 'lastclock'));
   return Number.isFinite(clock) ? clock * 1000 : undefined;
+}
+
+function linkEndpointLookupRef(
+  map: TopologyMap,
+  nodeId: string,
+  peer: TopologyLinkPeerHost | undefined
+): HostLookupRef | undefined {
+  if (peer) {
+    return { zabbixHost: peer.zabbixHost, label: peer.label };
+  }
+  const node = findNodeById(map.nodes, nodeId);
+  if (!node) {
+    return undefined;
+  }
+  return {
+    zabbixHost: node.zabbixHost,
+    subtitle: node.subtitle,
+    zabbixHostId: node.zabbixHostId,
+    label: node.label,
+  };
+}
+
+function linkEndpointLookupKeys(
+  map: TopologyMap,
+  nodeId: string,
+  peer: TopologyLinkPeerHost | undefined,
+  hostMetadata?: HostMetadataMap
+): string[] {
+  const ref = linkEndpointLookupRef(map, nodeId, peer);
+  if (!ref) {
+    return [];
+  }
+  const keys: string[] = [];
+  const add = (value?: string) => {
+    const trimmed = value?.trim();
+    if (!trimmed || keys.includes(trimmed)) {
+      return;
+    }
+    keys.push(trimmed);
+  };
+  add(resolveHostZabbixId(ref, hostMetadata));
+  for (const candidate of collectHostLookupCandidates(ref, hostMetadata)) {
+    add(candidate);
+  }
+  return keys;
 }
 
 function buildEndpointMetrics(
   ref: TopologyInterfaceReference | undefined,
   items: Record<string, ZabbixItemLastValue>,
-  fallbackCapacityMbps?: number
+  fallbackCapacityMbps: number | undefined,
+  lookupKeys: string[]
 ): LinkEndpointRuntimeMetrics {
   if (!ref?.metrics) {
     return { capacityMbps: fallbackCapacityMbps };
   }
   const m = ref.metrics;
-  const rxBps = readItemValue(items, m.rx);
-  const txBps = readItemValue(items, m.tx);
-  const operRaw = readItemValue(items, m.operStatus);
-  const speedBps = readItemValue(items, m.speed);
+  const rxBps = readItemValue(items, m.rx, lookupKeys);
+  const txBps = readItemValue(items, m.tx, lookupKeys);
+  const operRaw = readItemValue(items, m.operStatus, lookupKeys);
+  const speedBps = readItemValue(items, m.speed, lookupKeys);
   const capacityMbps = speedBpsToMbps(speedBps) ?? fallbackCapacityMbps;
-  const errors = readItemValue(items, m.errors);
-  const drops = readItemValue(items, m.drops);
+  const errors = readItemValue(items, m.errors, lookupKeys);
+  const drops = readItemValue(items, m.drops, lookupKeys);
   const clocks = [
-    readItemClock(items, m.rx),
-    readItemClock(items, m.tx),
-    readItemClock(items, m.operStatus),
+    readItemClock(items, m.rx, lookupKeys),
+    readItemClock(items, m.tx, lookupKeys),
+    readItemClock(items, m.operStatus, lookupKeys),
   ].filter((c): c is number => c !== undefined);
   const lastUpdateMs = clocks.length ? Math.max(...clocks) : undefined;
 
@@ -245,15 +314,18 @@ function resolveLinkStatus(
 export function buildLinkRuntimeMetricsMap(
   map: TopologyMap,
   items: Record<string, ZabbixItemLastValue>,
-  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS
+  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS,
+  hostMetadata?: HostMetadataMap
 ): LinkRuntimeMetricsMap {
   const result: LinkRuntimeMetricsMap = {};
   for (const link of map.links) {
     if (!link.fromInterface?.metrics && !link.toInterface?.metrics) {
       continue;
     }
-    const from = buildEndpointMetrics(link.fromInterface, items, link.bandwidthMbps);
-    const to = buildEndpointMetrics(link.toInterface, items, link.bandwidthMbps);
+    const fromKeys = linkEndpointLookupKeys(map, link.from, link.fromPeerHost, hostMetadata);
+    const toKeys = linkEndpointLookupKeys(map, link.to, link.toPeerHost, hostMetadata);
+    const from = buildEndpointMetrics(link.fromInterface, items, link.bandwidthMbps, fromKeys);
+    const to = buildEndpointMetrics(link.toInterface, items, link.bandwidthMbps, toKeys);
     result[linkKey(link)] = {
       from,
       to,

@@ -50,6 +50,24 @@ export interface HostLookupRef {
   label?: string;
 }
 
+/** `hostid` Zabbix do nó — IP/nome via metadata; `zabbixHostId` só se ainda estiver gravado. */
+export function resolveHostZabbixId(
+  ref: HostLookupRef,
+  metadata?: HostMetadataMap
+): string | undefined {
+  const fromRef = ref.zabbixHostId?.trim();
+  if (fromRef && /^\d+$/.test(fromRef)) {
+    return fromRef;
+  }
+  for (const key of collectHostLookupCandidates(ref, metadata)) {
+    const id = metadata?.[key]?.hostid?.trim();
+    if (id) {
+      return id;
+    }
+  }
+  return undefined;
+}
+
 /** Chave primária — IP quando existir; senão nome (zabbixHost / label). */
 export function resolveHostLookupKey(
   node: HostLookupRef,

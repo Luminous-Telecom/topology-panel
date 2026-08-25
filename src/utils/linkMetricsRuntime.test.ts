@@ -5,7 +5,7 @@ import {
   collectLinkMetricKeys,
   resolveLinkMapTrafficMetrics,
 } from './linkMetricsRuntime';
-import { emptyMap } from './testMapFixtures';
+import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('buildLinkRuntimeMetricsMap', () => {
   it('calcula RX/TX e utilização por endpoint', () => {
@@ -87,6 +87,87 @@ describe('buildLinkRuntimeMetricsMap', () => {
     expect(metrics['a-b']?.from.txBps).toBe(50000000);
     // A orientação do mapa também precisa reconhecer o vínculo por key.
     expect(resolveLinkMapTrafficMetrics(map.links[0], metrics['a-b']).rxBps).toBe(250000000);
+  });
+
+  it('não mistura operStatus de dois hosts com a mesma chave de item', () => {
+    const map = {
+      ...emptyMap({
+        nodes: [
+          hostNode({ id: 'a', zabbixHost: '10.0.0.1', label: 'host-a' }),
+          hostNode({ id: 'b', x: 80, zabbixHost: '10.0.0.2', label: 'host-b' }),
+        ],
+      }),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: {
+            name: 'eth0',
+            metrics: { operStatus: { key: 'vendor.metric.status[7]' } },
+          },
+          toInterface: {
+            name: 'eth1',
+            metrics: { operStatus: { key: 'vendor.metric.status[7]' } },
+          },
+        },
+      ],
+    };
+    const metadata = {
+      '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' },
+      '10.0.0.2': { name: 'host-b', ip: '10.0.0.2', hostid: '102' },
+    };
+    const metrics = buildLinkRuntimeMetricsMap(
+      map,
+      {
+        '101:vendor.metric.status[7]': { itemid: '1', lastvalue: '1' },
+        '102:vendor.metric.status[7]': { itemid: '2', lastvalue: '2' },
+      },
+      undefined,
+      metadata
+    );
+    expect(metrics['a-b']?.from.operStatus).toBe('up');
+    expect(metrics['a-b']?.to.operStatus).toBe('down');
+    expect(metrics['a-b']?.status).toBe('down');
+  });
+
+  it('lê operStatus pelo nome do host quando o frame não tem itemid', () => {
+    const map = {
+      ...emptyMap({
+        nodes: [
+          hostNode({ id: 'a', zabbixHost: '10.0.0.1', label: 'host-a' }),
+          hostNode({ id: 'b', x: 80, zabbixHost: '10.0.0.2', label: 'host-b' }),
+        ],
+      }),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: {
+            name: 'eth0',
+            metrics: { operStatus: { key: 'vendor.metric.status[7]' } },
+          },
+          toInterface: {
+            name: 'eth1',
+            metrics: { operStatus: { key: 'vendor.metric.status[7]' } },
+          },
+        },
+      ],
+    };
+    const metadata = {
+      '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' },
+      '10.0.0.2': { name: 'host-b', ip: '10.0.0.2', hostid: '102' },
+    };
+    const metrics = buildLinkRuntimeMetricsMap(
+      map,
+      {
+        'host-a:vendor.metric.status[7]': { itemid: '', lastvalue: '1' },
+        'host-b:vendor.metric.status[7]': { itemid: '', lastvalue: '2' },
+      },
+      undefined,
+      metadata
+    );
+    expect(metrics['a-b']?.from.operStatus).toBe('up');
+    expect(metrics['a-b']?.to.operStatus).toBe('down');
   });
 
   it('usa métricas do destino quando a origem não tem RX/TX (nuvem / link externo)', () => {

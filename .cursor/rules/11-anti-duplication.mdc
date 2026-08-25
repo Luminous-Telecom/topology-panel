@@ -32,7 +32,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Lastvalue de itemids de cabo | `fetchZabbixTrafficLastValuesViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Item ID em paralelo ao status, prefixo `T`, último ponto da série) |
-| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; resolve via `resolveZabbixItemIdsByKeys` em `utils/zabbixApi.ts` |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; resolve via `resolveZabbixItemIdsByKeys` em `utils/zabbixApi.ts` (`hostid:key` — a key sozinha se repete entre hosts) |
 | Problemas Warning+ | `fetchZabbixHostProblemsViaQuery` em `utils/zabbixDatasourceQuery.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |

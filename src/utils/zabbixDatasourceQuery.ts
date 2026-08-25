@@ -25,6 +25,7 @@ import { StatusColorOptions } from './statusMapping';
 import {
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
+  zabbixHostItemKey,
   ZabbixDirectHost,
   ZabbixHostInterfaceItems,
   ZabbixInterfaceItem,
@@ -1002,7 +1003,19 @@ export function parseItemLastValuesFromFrames(
       if (itemid) {
         result[itemid] = stored;
       }
-      if (key) {
+      if (!key) {
+        continue;
+      }
+      const hostid = hostIdFromField(field);
+      const hostLabel = hostLabelFromField(field, frame.name);
+      if (hostid) {
+        result[zabbixHostItemKey(hostid, key)] = stored;
+      }
+      if (hostLabel && hostLabel !== hostid) {
+        result[zabbixHostItemKey(hostLabel, key)] = stored;
+      }
+      // Sem host no frame a key sozinha colide entre equipamentos — só indexa nesse caso.
+      if (!itemid && !hostid && !hostLabel) {
         result[key] = stored;
       }
     }

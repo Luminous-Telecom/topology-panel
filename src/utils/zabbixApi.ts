@@ -404,12 +404,19 @@ export function isNumericZabbixItemId(value: string | undefined): boolean {
   return Boolean(value && /^\d+$/.test(value.trim()));
 }
 
+/** A `key_` se repete entre hosts — lastvalue e itemid precisam do par host+chave. */
+export function zabbixHostItemKey(hostid: string, itemKey: string): string {
+  return `${hostid}:${itemKey}`;
+}
+
 /**
  * Resolve chave de item → itemid numérico (`item.get` com filtro exato).
  *
  * O DataFrame do grafana-zabbix quase nunca traz `itemid`. O cabo fica só com a `key`, e o
  * `ds.query()` Item ID recusa qualquer valor não numérico. Sem este passo o poll de tráfego
  * ignora o cabo mesmo depois de reescolher a interface.
+ *
+ * A chave do mapa é `hostid:key` — a `key_` do Zabbix se repete entre hosts (mesmo ifIndex).
  */
 export async function resolveZabbixItemIdsByKeys(
   datasourceUid: string,
@@ -425,11 +432,11 @@ export async function resolveZabbixItemIdsByKeys(
   const scopedHostIds = [
     ...new Set((hostids ?? []).map((id) => asZabbixId(id)).filter((id) => isNumericZabbixItemId(id))),
   ];
-  const rawItems = await zabbixCall<Array<{ itemid?: string; key_?: string }>>(
+  const rawItems = await zabbixCall<Array<{ itemid?: string; key_?: string; hostid?: string }>>(
     datasourceUid,
     'item.get',
     {
-      output: ['itemid', 'key_'],
+      output: ['itemid', 'key_', 'hostid'],
       filter: { key_: keys },
       ...(scopedHostIds.length ? { hostids: scopedHostIds } : {}),
     },
@@ -439,10 +446,15 @@ export async function resolveZabbixItemIdsByKeys(
   for (const item of rawItems ?? []) {
     const key = item.key_?.trim();
     const itemid = asZabbixId(item.itemid);
-    if (!key || !isNumericZabbixItemId(itemid) || resolved.has(key)) {
+    const hostid = asZabbixId(item.hostid);
+    if (!key || !isNumericZabbixItemId(itemid) || !isNumericZabbixItemId(hostid)) {
       continue;
     }
-    resolved.set(key, itemid);
+    const scoped = zabbixHostItemKey(hostid, key);
+    if (resolved.has(scoped)) {
+      continue;
+    }
+    resolved.set(scoped, itemid);
   }
   return resolved;
 }

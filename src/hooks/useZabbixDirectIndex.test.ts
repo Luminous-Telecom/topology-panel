@@ -157,7 +157,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    resolveKeys.mockResolvedValueOnce(new Map([['vendor.metric.rx[10]', '77']]));
+    resolveKeys.mockResolvedValueOnce(new Map([['1:vendor.metric.rx[10]', '77']]));
     fetchStatus.mockResolvedValueOnce({
       items: [statusItem('1')],
       hoverByHost: {},
@@ -184,6 +184,6 @@ describe('useZabbixDirectIndex', () => {
       ['1']
     );
     expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], 60, expect.any(AbortSignal));
-    expect(result.current.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+    expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
 });

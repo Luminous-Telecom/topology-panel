@@ -503,7 +503,8 @@ describe('fetchZabbixTrafficLastValuesViaQuery', () => {
     expect(trafficReq.range.to.valueOf() - trafficReq.range.from.valueOf()).toBe(
       ZABBIX_STATUS_QUERY_RANGE_SEC * 1000
     );
-    expect(lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('42');
+    expect(lastValues['host-a:vendor.metric.rx[10]']?.lastvalue).toBe('42');
+    expect(lastValues['vendor.metric.rx[10]']).toBeUndefined();
   });
 
   it('sem itemid válido não consulta o datasource', async () => {
@@ -704,7 +705,7 @@ describe('fetchZabbixStatusViaQuery-loading', () => {
 });
 
 describe('parseItemLastValuesFromFrames', () => {
-  it('indexa o último ponto por itemid do refId e pela item_key', () => {
+  it('indexa o último ponto por itemid do refId, sem colidir na item_key', () => {
     const values = parseItemLastValuesFromFrames([
       {
         refId: 'I10',
@@ -722,7 +723,7 @@ describe('parseItemLastValuesFromFrames', () => {
       },
     ]);
     expect(values['10']?.lastvalue).toBe('100');
-    expect(values['vendor.metric.rx[10]']?.lastvalue).toBe('100');
+    expect(values['vendor.metric.rx[10]']).toBeUndefined();
   });
 
   it('indexa frames de cabo (refId T) pelo itemid do campo', () => {
@@ -763,8 +764,38 @@ describe('parseItemLastValuesFromFrames', () => {
         length: 1,
       },
     ]);
-    expect(values['vendor.metric.rx[10]']?.lastvalue).toBe('42');
+    expect(values['host-a:vendor.metric.rx[10]']?.lastvalue).toBe('42');
+    expect(values['vendor.metric.rx[10]']).toBeUndefined();
     expect(values['0']).toBeUndefined();
+  });
+
+  it('não mistura lastvalue de dois hosts com a mesma item_key', () => {
+    const values = parseItemLastValuesFromFrames([
+      {
+        refId: 'T0',
+        fields: [
+          { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
+          {
+            name: 'Value',
+            type: FieldType.number,
+            values: [1],
+            labels: { host: 'host-a', item_key: 'vendor.metric.status[7]' },
+            config: {},
+          },
+          {
+            name: 'Value',
+            type: FieldType.number,
+            values: [2],
+            labels: { host: 'host-b', item_key: 'vendor.metric.status[7]' },
+            config: {},
+          },
+        ],
+        length: 1,
+      },
+    ]);
+    expect(values['host-a:vendor.metric.status[7]']?.lastvalue).toBe('1');
+    expect(values['host-b:vendor.metric.status[7]']?.lastvalue).toBe('2');
+    expect(values['vendor.metric.status[7]']).toBeUndefined();
   });
 });
 

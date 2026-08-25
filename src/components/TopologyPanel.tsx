@@ -221,7 +221,8 @@ export function TopologyPanel({
   const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
     activeStoredMap,
     resolvedOptions,
-    querySource.lastValues
+    querySource.lastValues,
+    dataMeta
   );
 
   const liveHostDisplayByRefId = useMemo(() => {

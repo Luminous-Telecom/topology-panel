@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { collectHostMetadataForMaps, enrichHostDisplayFromMap, preferHostDisplayInfo } from './hostLookup';
+import { collectHostMetadataForMaps, enrichHostDisplayFromMap, preferHostDisplayInfo, resolveHostZabbixId } from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
 import { emptyMap, hostNode } from './testMapFixtures';
 
@@ -134,5 +134,16 @@ describe('collectHostMetadataForMaps', () => {
     expect(Object.keys(subset).sort()).toEqual(['host-a', 'host-b']);
     expect(subset['host-a']?.hostid).toBe('1001');
     expect(subset['host-b']?.hostid).toBe('1002');
+  });
+});
+
+describe('resolveHostZabbixId', () => {
+  it('resolve o hostid pelo IP da metadata', () => {
+    expect(
+      resolveHostZabbixId(
+        { zabbixHost: '10.0.0.1', label: 'host-a' },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' } }
+      )
+    ).toBe('101');
   });
 });
