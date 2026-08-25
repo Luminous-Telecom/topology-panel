@@ -7,6 +7,8 @@ import {
   collectAlertHostEntries,
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
+  alertListHoverText,
+  visibleHostProblemNames,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
 
@@ -175,6 +177,38 @@ describe('topologyFilters', () => {
     );
     expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
     expect(entries[0]?.reason).toBe('alert');
+    expect(entries[0]?.problems).toEqual(['Interface down']);
+  });
+
+  it('visibleHostProblemNames recorta a lista e conta o restante', () => {
+    expect(visibleHostProblemNames(['  a  ', '', 'b'])).toEqual({ visible: ['a', 'b'], hidden: 0 });
+    const many = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    expect(visibleHostProblemNames(many)).toEqual({
+      visible: ['p1', 'p2', 'p3', 'p4', 'p5'],
+      hidden: 1,
+    });
+  });
+
+  it('alertListHoverText usa os nomes de problema, não o rótulo genérico', () => {
+    expect(
+      alertListHoverText({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'alert',
+        problems: ['Interface port-a com erros de entrada (alto)'],
+      })
+    ).toBe('Interface port-a com erros de entrada (alto)');
+    expect(
+      alertListHoverText({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'offline',
+      })
+    ).toBe('Offline');
   });
 
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {

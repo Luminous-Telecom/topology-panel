@@ -207,6 +207,41 @@ export interface HostAlertListEntry {
   mapLabel: string;
   label: string;
   reason: HostAlertListReason;
+  /** Nomes dos problemas Zabbix ativos (Warning+), o mais grave primeiro. */
+  problems?: string[];
+}
+
+/** Quantos nomes de problema cabem no hover da lista e no popover do host. */
+export const HOST_PROBLEM_NAME_LIMIT = 5;
+
+/** Recorta a lista de problemas para o hover; `hidden` é o restante. */
+export function visibleHostProblemNames(names: string[] | undefined): {
+  visible: string[];
+  hidden: number;
+} {
+  const cleaned = (names ?? []).map((name) => name.trim()).filter(Boolean);
+  if (cleaned.length <= HOST_PROBLEM_NAME_LIMIT) {
+    return { visible: cleaned, hidden: 0 };
+  }
+  return {
+    visible: cleaned.slice(0, HOST_PROBLEM_NAME_LIMIT),
+    hidden: cleaned.length - HOST_PROBLEM_NAME_LIMIT,
+  };
+}
+
+/** Texto do hover/aria da linha de alerta: problemas Zabbix, ou o motivo da lista. */
+export function alertListHoverText(entry: HostAlertListEntry): string {
+  const problems = visibleHostProblemNames(entry.problems);
+  if (problems.visible.length) {
+    if (problems.hidden > 0) {
+      return `${problems.visible.join('\n')}\ne mais ${problems.hidden}`;
+    }
+    return problems.visible.join('\n');
+  }
+  if (entry.reason === 'offline') {
+    return 'Offline';
+  }
+  return 'Alerta';
 }
 
 export interface NocHostListEntry {
@@ -254,12 +289,12 @@ function collectAlertHostEntriesForMap(
     }
 
     const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
-    const hasZabbixProblem = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
+    const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
 
     let reason: HostAlertListReason | null = null;
     if (status === 'offline') {
       reason = 'offline';
-    } else if (status === 'alert' || hasZabbixProblem) {
+    } else if (status === 'alert' || problemSummary) {
       reason = 'alert';
     }
 
@@ -267,13 +302,17 @@ function collectAlertHostEntriesForMap(
       continue;
     }
 
-    entries.push({
+    const entry: HostAlertListEntry = {
       nodeId: node.id,
       mapId,
       mapLabel,
       label: hostDisplayLabel(node),
       reason,
-    });
+    };
+    if (problemSummary?.names?.length) {
+      entry.problems = problemSummary.names;
+    }
+    entries.push(entry);
   }
 
   return entries.sort((a, b) => {

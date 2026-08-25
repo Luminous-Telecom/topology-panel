@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { overlayPortalRoot } from './overlayPortal';
+import {
+  fitOverlayBesideAnchor,
+  overlayClipBox,
+  overlayLocalPosition,
+  overlayPortalParent,
+  overlayPortalRoot,
+} from './overlayPortal';
 
 describe('overlayPortalRoot', () => {
   afterEach(() => {
@@ -15,5 +21,92 @@ describe('overlayPortalRoot', () => {
     const wrap = document.createElement('div');
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: wrap });
     expect(overlayPortalRoot()).toBe(wrap);
+  });
+});
+
+describe('fitOverlayBesideAnchor', () => {
+  const clip = { left: 0, top: 0, width: 400, height: 300 };
+
+  it('coloca o overlay acima e à direita quando cabe no recorte', () => {
+    expect(
+      fitOverlayBesideAnchor(
+        { left: 20, top: 200, width: 100, height: 28 },
+        { width: 200, height: 80 },
+        clip
+      )
+    ).toEqual({ left: 128, top: 112 });
+  });
+
+  it('vira para a esquerda quando não cabe à direita', () => {
+    expect(
+      fitOverlayBesideAnchor(
+        { left: 280, top: 200, width: 100, height: 28 },
+        { width: 200, height: 80 },
+        clip
+      )
+    ).toEqual({ left: 72, top: 112 });
+  });
+
+  it('desce quando não cabe acima', () => {
+    expect(
+      fitOverlayBesideAnchor(
+        { left: 20, top: 10, width: 100, height: 28 },
+        { width: 200, height: 80 },
+        clip
+      )
+    ).toEqual({ left: 128, top: 46 });
+  });
+
+  it('prende o overlay dentro do recorte do painel', () => {
+    expect(
+      fitOverlayBesideAnchor(
+        { left: 20, top: 270, width: 100, height: 28 },
+        { width: 200, height: 80 },
+        clip
+      )
+    ).toEqual({ left: 128, top: 182 });
+    expect(
+      fitOverlayBesideAnchor(
+        { left: 20, top: 250, width: 100, height: 28 },
+        { width: 380, height: 280 },
+        clip
+      )
+    ).toEqual({ left: 8, top: 12 });
+  });
+});
+
+describe('overlayClipBox', () => {
+  it('usa o canvas ancestral quando ele tem tamanho', () => {
+    const canvas = document.createElement('div');
+    canvas.setAttribute('data-topology-canvas', '');
+    Object.defineProperty(canvas, 'getBoundingClientRect', {
+      value: () => ({ left: 10, top: 20, width: 800, height: 400 }),
+    });
+    const child = document.createElement('button');
+    canvas.appendChild(child);
+    document.body.appendChild(canvas);
+    expect(overlayClipBox(child)).toEqual({ left: 10, top: 20, width: 800, height: 400 });
+    canvas.remove();
+  });
+});
+
+describe('overlayPortalParent', () => {
+  it('usa o canvas ancestral quando existe', () => {
+    const canvas = document.createElement('div');
+    canvas.setAttribute('data-topology-canvas', '');
+    const child = document.createElement('button');
+    canvas.appendChild(child);
+    document.body.appendChild(canvas);
+    expect(overlayPortalParent(child)).toBe(canvas);
+    canvas.remove();
+  });
+});
+
+describe('overlayLocalPosition', () => {
+  it('converte coordenada de tela para o ancestral', () => {
+    expect(overlayLocalPosition({ left: 128, top: 182 }, { left: 10, top: 20, width: 400, height: 300 })).toEqual({
+      left: 118,
+      top: 162,
+    });
   });
 });

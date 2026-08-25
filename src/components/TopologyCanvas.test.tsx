@@ -259,6 +259,37 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
   });
 
+  it('mostra o problema Zabbix ao passar o mouse na lista de alertas', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1', zabbixHost: 'host-a' })],
+    });
+    const options = { ...defaultOptions(), map, showHostAlertList: true };
+    const hostDisplayByRefId: Record<string, HostDisplayMap> = {
+      A: { 'host-a': { value: 1, status: 'online' } },
+    };
+
+    const { getByLabelText, getByRole } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={hostDisplayByRefId}
+        hostMetadata={{ 'host-a': { name: 'host-a', hostid: 'hid-a' } }}
+        hostProblems={{
+          'hid-a': { count: 1, maxSeverity: 4, names: ['Interface port-a com erros de entrada (alto)'] },
+        }}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+      />
+    );
+
+    fireEvent.mouseEnter(getByLabelText(/Interface port-a com erros de entrada/));
+    const tooltip = getByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Interface port-a com erros de entrada (alto)');
+    expect(tooltip.closest('[data-topology-canvas]')).not.toBeNull();
+  });
+
   it('mantém voltar, avançar e breadcrumb com a toolbar oculta', () => {
     const map = emptyMap({
       nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1' })],

@@ -117,6 +117,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Chrome visual de modal e overlay do mapa | `components/overlayChrome.ts` + `components/TopologyModal.tsx` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
+| Encaixar overlay ao lado da âncora sem sair do painel | `fitOverlayBesideAnchor` / `overlayClipBox` / `overlayPortalParent` em `utils/overlayPortal.ts` |
 
 ## Exceções
 

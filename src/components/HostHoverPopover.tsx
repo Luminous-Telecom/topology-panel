@@ -20,24 +20,11 @@ import {
   TopologyHoverMetric,
 } from '../utils/hostTimeSeries';
 import { resolveMappingLabel } from '../utils/statusMapping';
-import { resolveHostProblemSummary } from '../utils/noc/topologyFilters';
+import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
 import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle } from './overlayChrome';
 import { overlayPortalRoot } from '../utils/overlayPortal';
 import { resolveHostDescription } from '../utils/mapSync';
-
-const HOVER_PROBLEM_NAME_LIMIT = 5;
-
-function hoverProblemNames(names: string[] | undefined): { visible: string[]; hidden: number } {
-  const cleaned = (names ?? []).map((name) => name.trim()).filter(Boolean);
-  if (cleaned.length <= HOVER_PROBLEM_NAME_LIMIT) {
-    return { visible: cleaned, hidden: 0 };
-  }
-  return {
-    visible: cleaned.slice(0, HOVER_PROBLEM_NAME_LIMIT),
-    hidden: cleaned.length - HOVER_PROBLEM_NAME_LIMIT,
-  };
-}
 
 interface Props {
   node: TopologyNode;
@@ -204,7 +191,7 @@ export function HostHoverPopover({
     ? resolveMappingLabel(lastPoint.value, options.statusValueMappings)
     : display?.text;
   const problemSummary = resolveHostProblemSummary(node, hostMetadata, hostProblems);
-  const problems = hoverProblemNames(problemSummary?.names);
+  const problems = visibleHostProblemNames(problemSummary?.names);
 
   useLayoutEffect(() => {
     const el = popoverRef.current;

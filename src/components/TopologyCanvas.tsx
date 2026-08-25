@@ -1278,6 +1278,7 @@ export function TopologyCanvas({
   return (
     <div
       ref={wrapRef}
+      data-topology-canvas
       className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}`}
       onPointerDownCapture={(e) => {
         // Fase de captura — dispara mesmo quando um filho (nó, link, scrollbar) chama

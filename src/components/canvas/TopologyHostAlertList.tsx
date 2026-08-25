@@ -1,12 +1,32 @@
-import React, { useMemo } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { css } from '@emotion/css';
-import { HostAlertListEntry } from '../../utils/noc/topologyFilters';
+import {
+  alertListHoverText,
+  HostAlertListEntry,
+  visibleHostProblemNames,
+} from '../../utils/noc/topologyFilters';
 import { CANVAS_EDGE_GAP, minimapBottomOffset, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
 import {
   overlayPanelCompactMaxHeight,
   overlayPanelCompactWidth,
 } from './canvasOverlayStyles';
-import { overlayCardHeaderStyle, overlayCardStyle, overlayListButtonStyle, overlayListStyle } from '../overlayChrome';
+import {
+  overlayCardBodyStyle,
+  overlayCardHeaderStyle,
+  overlayCardStyle,
+  overlayListButtonStyle,
+  overlayListStyle,
+  overlayMutedStyle,
+} from '../overlayChrome';
+import {
+  fitOverlayBesideAnchor,
+  overlayBoxFromRect,
+  overlayClipBox,
+  overlayLocalPosition,
+  OverlayBox,
+  overlayPortalParent,
+} from '../../utils/overlayPortal';
 
 const panelStyle = (bottomOffset: number) => css`
   position: absolute;
@@ -64,6 +84,48 @@ function reasonLabel(entry: HostAlertListEntry): string {
   }
 }
 
+function alertRowAriaLabel(entry: HostAlertListEntry): string {
+  const mapPart = entry.mapLabel ? ` no mapa ${entry.mapLabel}` : '';
+  const hover = alertListHoverText(entry).replace(/\n/g, '; ');
+  return `Ir para ${entry.label}${mapPart} — ${reasonLabel(entry)}. ${hover}`;
+}
+
+function alertHoverHeading(entry: HostAlertListEntry): string {
+  const problems = visibleHostProblemNames(entry.problems);
+  const total = problems.visible.length + problems.hidden;
+  if (total === 1) {
+    return 'Problema ativo';
+  }
+  if (total > 1) {
+    return `Problemas ativos (${total})`;
+  }
+  return reasonLabel(entry);
+}
+
+const TOOLTIP_ESTIMATE = { width: 320, height: 72 };
+
+const tooltipStyle = css`
+  position: absolute;
+  z-index: 10000;
+  max-width: 320px;
+  pointer-events: none;
+  font-size: 12px;
+`;
+
+const tooltipProblemStyle = (color: string) => css`
+  margin-top: 2px;
+  color: ${color};
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+`;
+
+interface AlertHoverTip {
+  entry: HostAlertListEntry;
+  anchor: OverlayBox;
+  clip: OverlayBox;
+}
+
 const mapLabelStyle = css`
   flex: 0 0 auto;
   font-size: 10px;
@@ -90,6 +152,10 @@ function TopologyHostAlertListComponent({
   onFocusHost,
 }: Props) {
   const bottomOffset = minimapBottomOffset(showMinimap);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [hoverTip, setHoverTip] = useState<AlertHoverTip | undefined>(undefined);
+  const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
 
   const statusColorByEntry = useMemo(() => {
     const colors = new Map<string, string>();
@@ -99,12 +165,34 @@ function TopologyHostAlertListComponent({
     return colors;
   }, [colorAlert, colorOffline, entries]);
 
+  useLayoutEffect(() => {
+    if (!hoverTip) {
+      return;
+    }
+    const el = tooltipRef.current;
+    if (!el) {
+      return;
+    }
+    const size = el.getBoundingClientRect();
+    const next = fitOverlayBesideAnchor(
+      hoverTip.anchor,
+      { width: size.width || TOOLTIP_ESTIMATE.width, height: size.height || TOOLTIP_ESTIMATE.height },
+      hoverTip.clip
+    );
+    setTipPos((prev) => (prev.left === next.left && prev.top === next.top ? prev : next));
+  }, [hoverTip]);
+
   if (!queryReady || entries.length === 0) {
     return null;
   }
 
+  const hoverProblems = hoverTip ? visibleHostProblemNames(hoverTip.entry.problems) : undefined;
+  const tooltipOrigin = hoverTip ? overlayLocalPosition(tipPos, hoverTip.clip) : tipPos;
+
   return (
+    <>
     <div
+      ref={listRef}
       className={`${overlayCardStyle} ${panelStyle(bottomOffset)} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
       data-map-wheel-overlay
       aria-live="polite"
@@ -121,8 +209,14 @@ function TopologyHostAlertListComponent({
                 <button
                   type="button"
                   className={`${overlayListButtonStyle} ${itemButtonStyle}`}
-                  title={`Ir para ${entry.label}`}
-                  aria-label={`Ir para ${entry.label} no mapa ${entry.mapLabel} — ${reasonLabel(entry)}`}
+                  aria-label={alertRowAriaLabel(entry)}
+                  onMouseEnter={(e) => {
+                    const anchor = overlayBoxFromRect(e.currentTarget.getBoundingClientRect());
+                    const clip = overlayClipBox(e.currentTarget);
+                    setTipPos(fitOverlayBesideAnchor(anchor, TOOLTIP_ESTIMATE, clip));
+                    setHoverTip({ entry, anchor, clip });
+                  }}
+                  onMouseLeave={() => setHoverTip(undefined)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onFocusHost(entry);
@@ -142,6 +236,36 @@ function TopologyHostAlertListComponent({
           })}
       </ul>
     </div>
+    {hoverTip
+      ? createPortal(
+          <div
+            ref={tooltipRef}
+            className={`${overlayCardStyle} ${overlayCardBodyStyle} ${tooltipStyle}`}
+            style={{
+              left: tooltipOrigin.left,
+              top: tooltipOrigin.top,
+              maxHeight: Math.max(48, hoverTip.clip.height - 16),
+            }}
+            role="tooltip"
+          >
+            <div className={overlayMutedStyle}>{alertHoverHeading(hoverTip.entry)}</div>
+            {hoverProblems && hoverProblems.visible.length > 0 ? (
+              <>
+                {hoverProblems.visible.map((name, idx) => (
+                  <div key={`${idx}:${name}`} className={tooltipProblemStyle(colorAlert)}>
+                    {name}
+                  </div>
+                ))}
+                {hoverProblems.hidden > 0 ? (
+                  <div className={overlayMutedStyle}>e mais {hoverProblems.hidden}</div>
+                ) : null}
+              </>
+            ) : null}
+          </div>,
+          overlayPortalParent(listRef.current)
+        )
+      : null}
+    </>
   );
 }
 
