@@ -2,29 +2,24 @@ import { EventBusSrv } from '@grafana/data';
 import { RefreshEvent } from '@grafana/runtime';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
-import {
-  fetchZabbixStatusViaQuery,
-  fetchZabbixTrafficLastValuesViaQuery,
-} from '../utils/zabbixDatasourceQuery';
+import { fetchZabbixDirectMetadata, fetchZabbixTrafficLastValues } from '../utils/zabbixApi';
+import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 vi.mock('../utils/zabbixApi', () => ({
   fetchZabbixDirectMetadata: vi.fn(),
+  fetchZabbixTrafficLastValues: vi.fn(async () => ({ lastValues: {}, itemIdByKey: new Map() })),
   isBenignZabbixFetchError: vi.fn(() => false),
   isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
-  resolveZabbixItemIdsByKeys: vi.fn(async () => new Map()),
 }));
 
 vi.mock('../utils/zabbixDatasourceQuery', () => ({
   fetchZabbixStatusViaQuery: vi.fn(),
-  fetchZabbixTrafficLastValuesViaQuery: vi.fn(async () => ({})),
 }));
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
-const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValuesViaQuery);
-const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
+const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValues);
 
 function host(id: string, group: string) {
   return {
@@ -66,9 +61,7 @@ describe('useZabbixDirectIndex', () => {
     fetchMetadata.mockReset();
     fetchStatus.mockReset();
     fetchLastValues.mockReset();
-    fetchLastValues.mockResolvedValue({});
-    resolveKeys.mockReset();
-    resolveKeys.mockResolvedValue(new Map());
+    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map() });
   });
 
   afterEach(() => {
@@ -130,14 +123,17 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.hosts).not.toContain('host-1');
   });
 
-  it('busca o último ponto da série dos cabos em paralelo ao status', async () => {
+  it('busca o lastvalue dos cabos em paralelo ao status', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
     fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValueOnce({ '10': { itemid: '10', lastvalue: '1' } });
+    fetchLastValues.mockResolvedValueOnce({
+      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+      itemIdByKey: new Map(),
+    });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -152,7 +148,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], 60, expect.any(AbortSignal));
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], ['1']);
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
@@ -219,9 +215,14 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    resolveKeys.mockResolvedValueOnce(new Map([['1:vendor.metric.rx[10]', '77']]));
     fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValueOnce({ '77': { itemid: '77', lastvalue: '500000000' } });
+    fetchLastValues.mockResolvedValueOnce({
+      lastValues: {
+        '77': { itemid: '77', lastvalue: '500000000' },
+        '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
+      },
+      itemIdByKey: new Map([['1:vendor.metric.rx[10]', '77']]),
+    });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -235,13 +236,13 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(resolveKeys).toHaveBeenCalledWith(
+    expect(fetchLastValues).toHaveBeenCalledWith(
       'ds',
-      ['vendor.metric.rx[10]'],
+      [],
       expect.any(AbortSignal),
+      ['vendor.metric.rx[10]'],
       ['1']
     );
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], 60, expect.any(AbortSignal));
     expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
 

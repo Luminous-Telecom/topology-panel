@@ -9,7 +9,7 @@ vi.mock('@grafana/runtime', () => ({
   }),
 }));
 
-import { resolveZabbixItemIdsByKeys } from './zabbixApi';
+import { fetchZabbixTrafficLastValues, resolveZabbixItemIdsByKeys } from './zabbixApi';
 
 describe('resolveZabbixItemIdsByKeys', () => {
   beforeEach(() => {
@@ -35,7 +35,7 @@ describe('resolveZabbixItemIdsByKeys', () => {
       {
         method: 'item.get',
         params: {
-          output: ['itemid', 'key_', 'hostid'],
+          output: ['itemid', 'key_', 'hostid', 'lastvalue', 'lastclock'],
           filter: { key_: ['vendor.metric.rx[10]', 'vendor.metric.tx[10]'] },
           hostids: ['10001'],
         },
@@ -64,5 +64,74 @@ describe('resolveZabbixItemIdsByKeys', () => {
     expect(resolved.get('10001:vendor.metric.rx[10]')).toBe('10');
     expect(resolved.get('10002:vendor.metric.rx[10]')).toBe('20');
     expect(resolved.has('vendor.metric.rx[10]')).toBe(false);
+  });
+});
+
+describe('fetchZabbixTrafficLastValues', () => {
+  beforeEach(() => {
+    post.mockReset();
+  });
+
+  it('lê lastvalue pelo itemid, sem ds.query', async () => {
+    post.mockResolvedValueOnce({
+      result: [
+        {
+          itemid: '10',
+          key_: 'vendor.metric.rx[10]',
+          hostid: '10001',
+          lastvalue: '500000000',
+          lastclock: '1700',
+        },
+      ],
+    });
+
+    const { lastValues, itemIdByKey } = await fetchZabbixTrafficLastValues('ds', ['10', 'vendor.metric.rx[10]']);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        itemids: ['10'],
+        output: ['itemid', 'key_', 'hostid', 'lastvalue', 'lastclock'],
+      },
+    });
+    expect(lastValues['10']?.lastvalue).toBe('500000000');
+    expect(lastValues['10001:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+    expect(lastValues['vendor.metric.rx[10]']).toBeUndefined();
+    expect(itemIdByKey.get('10001:vendor.metric.rx[10]')).toBe('10');
+  });
+
+  it('sem itemid nem chave não consulta o Zabbix', async () => {
+    const { lastValues } = await fetchZabbixTrafficLastValues('ds', ['vendor.metric.rx[10]'], undefined, []);
+    expect(post).not.toHaveBeenCalled();
+    expect(lastValues).toEqual({});
+  });
+
+  it('busca lastvalue pela chave quando o cabo não tem itemid', async () => {
+    post.mockResolvedValueOnce({
+      result: [
+        {
+          itemid: '77',
+          key_: 'vendor.metric.rx[10]',
+          hostid: '10001',
+          lastvalue: '42',
+        },
+      ],
+    });
+
+    const { lastValues } = await fetchZabbixTrafficLastValues('ds', [], undefined, ['vendor.metric.rx[10]'], [
+      '10001',
+    ]);
+
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        output: ['itemid', 'key_', 'hostid', 'lastvalue', 'lastclock'],
+        filter: { key_: ['vendor.metric.rx[10]'] },
+        hostids: ['10001'],
+      },
+    });
+    expect(lastValues['77']?.lastvalue).toBe('42');
+    expect(lastValues['10001:vendor.metric.rx[10]']?.lastvalue).toBe('42');
   });
 });

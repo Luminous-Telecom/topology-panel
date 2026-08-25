@@ -14,7 +14,7 @@ export interface UseLinkMetricsRuntimeResult {
 
 /**
  * Métricas voláteis de links (RX/TX/utilização/status) — não persistidas no JSON.
- * Os lastvalues vêm do poll (último ponto da série em paralelo com o status); este hook só monta o mapa do cabo.
+ * Os lastvalues vêm do poll (`item.get` em paralelo com o status); este hook só monta o mapa do cabo.
  */
 export function useLinkMetricsRuntime(
   map: TopologyMap,

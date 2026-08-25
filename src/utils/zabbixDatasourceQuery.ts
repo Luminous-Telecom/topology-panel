@@ -54,10 +54,8 @@ export const ZABBIX_MFQ_GROUPS = 'group';
 export const ZABBIX_MFQ_ITEMS = 'item';
 /** Schema atual do modelo de query do grafana-zabbix. */
 export const ZABBIX_QUERY_SCHEMA = 12;
-/** Janela curta: o último ponto aproxima o lastvalue sem puxar horas de histórico. */
+/** Janela curta de fallback quando o painel não tem timeRange do dashboard. */
 export const ZABBIX_STATUS_QUERY_RANGE_SEC = 300;
-/** Lastvalue de cabo: só o ponto mais recente da série — o sparkline do hover fica na query de status. */
-export const TRAFFIC_QUERY_MAX_POINTS = 2;
 /** Inventário de interface: janela maior que o lastvalue de status — o Metrics só devolve ponto na faixa. */
 export const ZABBIX_INTERFACE_QUERY_RANGE_SEC = 3_600;
 /** grafana-zabbix `filterByRegex` casa só `name`; a key entra no parse. */
@@ -327,7 +325,7 @@ export function buildZabbixStatusQueryRequest(
   }
   /*
    * Problems no mesmo `/api/ds/query`: o grafana-zabbix aceita queryTypes mistos por target.
-   * Tráfego fica fora — janela de 5 min e 2 pontos, incompatível com o sparkline do hover.
+   * Tráfego dos cabos não entra aqui — lastvalue vem do `item.get`.
    */
   const targets = [...statusTargets, ...buildZabbixProblemsTargets(datasourceUid, groupNames)];
   const range = timeRange ?? statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC);
@@ -340,51 +338,6 @@ export function buildZabbixStatusQueryRequest(
     HOVER_SPARKLINE_MAX_POINTS,
     nowMs
   );
-}
-
-/**
- * Último ponto da série RX/TX dos cabos — o mesmo `ds.query()` Item ID de um painel Stat.
- * Janela curta e poucos pontos: o grafana-zabbix converte contador em taxa e devolve o último valor.
- */
-export function buildZabbixTrafficQueryRequest(
-  datasourceUid: string,
-  itemIds: string[],
-  refreshSec: number,
-  nowMs = Date.now()
-): DataQueryRequest<ZabbixMetricsQuery> | undefined {
-  const targets = buildZabbixStatusItemIdTargets(datasourceUid, itemIds, 'T');
-  if (!targets.length) {
-    return undefined;
-  }
-  return zabbixQueryRequest(
-    datasourceUid,
-    `topology-traffic-${datasourceUid}`,
-    targets,
-    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
-    refreshSec,
-    TRAFFIC_QUERY_MAX_POINTS,
-    nowMs
-  );
-}
-
-/** Último ponto da série dos itemids de cabo, em paralelo ao status. */
-export async function fetchZabbixTrafficLastValuesViaQuery(
-  datasourceUid: string,
-  itemIds: string[],
-  refreshSec: number,
-  abortSignal?: AbortSignal
-): Promise<Record<string, ZabbixItemLastValue>> {
-  const request = buildZabbixTrafficQueryRequest(datasourceUid, itemIds, refreshSec);
-  if (!request) {
-    return {};
-  }
-  const response = await queryZabbixWithRetry(
-    datasourceUid,
-    request,
-    abortSignal,
-    'Falha ao consultar o tráfego das interfaces no Zabbix.'
-  );
-  return parseItemLastValuesFromFrames(response.data ?? []);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

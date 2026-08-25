@@ -86,7 +86,7 @@ function collectKeysFromReference(ref?: TopologyInterfaceReference): string[] {
     if (!key) {
       continue;
     }
-    // Já tem id numérico: entra no target Item ID direto, sem resolver a key.
+    // Já tem id numérico: entra no `item.get` direto, sem resolver a key.
     if (isNumericZabbixItemId(metric?.itemId)) {
       continue;
     }
@@ -96,7 +96,7 @@ function collectKeysFromReference(ref?: TopologyInterfaceReference): string[] {
 }
 
 /**
- * Chaves dos cabos sem itemid numérico — o poll resolve via `item.get` e só então pede a série.
+ * Chaves dos cabos sem itemid numérico — o poll lê lastvalue no mesmo `item.get` que resolve o id.
  */
 export function collectLinkMetricKeys(links: TopologyLink[]): string[] {
   const keys = new Set<string>();

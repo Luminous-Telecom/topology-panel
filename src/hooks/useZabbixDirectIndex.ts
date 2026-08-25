@@ -6,17 +6,14 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   fetchZabbixDirectMetadata,
+  fetchZabbixTrafficLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
-  resolveZabbixItemIdsByKeys,
   ZabbixDirectMetadata,
   ZabbixItemLastValue,
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
-import {
-  fetchZabbixStatusViaQuery,
-  fetchZabbixTrafficLastValuesViaQuery,
-} from '../utils/zabbixDatasourceQuery';
+import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { HostProblemsMap } from '../utils/noc/types';
 import { POLL_WATCHDOG_MS, canStartRefreshEventFetch } from '../utils/pollingGate';
@@ -33,9 +30,9 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * não zera o índice: o mapa continua com o último snapshot até o novo chegar.
  *
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status/hover)
- * e Problems (Warning+) no mesmo request. O último ponto RX/TX dos cabos fica noutro
- * `ds.query()` Item ID — janela de 5 min, incompatível com o sparkline. Os dois rodam em
- * paralelo. Cabo só com `key` resolve o itemid em paralelo ao status.
+ * e Problems (Warning+) no mesmo request. O tráfego dos cabos lê o `lastvalue` do `item.get`
+ * em paralelo — o Zabbix já guarda o valor atual (preprocessing vira bps). Cabo só com `key`
+ * resolve itemid e lastvalue na mesma chamada.
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
  * o DataFrame não traz isso. O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana
  * recria o EventBus no load e isso abortava o primeiro `ds.query()` para disparar outro.
@@ -197,27 +194,40 @@ export function useZabbixDirectIndex({
       return metadata;
     };
 
-    const ensureTrafficItemIds = async (
+    const fetchTrafficLastValues = async (
       meta: ZabbixDirectMetadata,
       abortSignal: AbortSignal
-    ): Promise<string[]> => {
-      const numeric = trafficItemIdsRef.current.filter((id) => isNumericZabbixItemId(id));
+    ): Promise<Record<string, ZabbixItemLastValue>> => {
+      const numeric = [
+        ...new Set(
+          [...trafficItemIdsRef.current, ...itemIdByKey.values()].filter((id) => isNumericZabbixItemId(id))
+        ),
+      ];
       const pending = trafficKeysRef.current.filter((key) => !itemIdByKey.has(key) && !triedTrafficKeys.has(key));
-      if (pending.length) {
-        try {
-          const hostids = meta.hosts.map((host) => host.hostid);
-          const resolved = await resolveZabbixItemIdsByKeys(datasourceUid, pending, abortSignal, hostids);
-          if (resolved.size) {
-            itemIdByKey = new Map([...itemIdByKey, ...resolved]);
-          }
-          triedTrafficKeys = new Set([...triedTrafficKeys, ...pending]);
-        } catch (err) {
-          if (abortSignal.aborted) {
-            throw err;
-          }
-        }
+      if (!numeric.length && !pending.length) {
+        return EMPTY_LAST_VALUES;
       }
-      return [...new Set([...numeric, ...itemIdByKey.values()])];
+      try {
+        const fetched = await fetchZabbixTrafficLastValues(
+          datasourceUid,
+          numeric,
+          abortSignal,
+          pending,
+          meta.hosts.map((host) => host.hostid)
+        );
+        if (fetched.itemIdByKey.size) {
+          itemIdByKey = new Map([...itemIdByKey, ...fetched.itemIdByKey]);
+        }
+        if (pending.length) {
+          triedTrafficKeys = new Set([...triedTrafficKeys, ...pending]);
+        }
+        return aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey);
+      } catch (err) {
+        if (abortSignal.aborted) {
+          throw err;
+        }
+        return EMPTY_LAST_VALUES;
+      }
     };
 
     const fetchSnapshot = async () => {
@@ -256,15 +266,7 @@ export function useZabbixDirectIndex({
                 timeRange: timeRangeRef.current,
                 statusOptions: statusOptionsRef.current,
               }),
-              (async () => {
-                const resolvedTrafficIds = await ensureTrafficItemIds(meta, abortSignal);
-                return fetchZabbixTrafficLastValuesViaQuery(
-                  datasourceUid,
-                  resolvedTrafficIds,
-                  intervalSec,
-                  abortSignal
-                );
-              })(),
+              fetchTrafficLastValues(meta, abortSignal),
             ])
           : [
               {
