@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
 import {
+  fetchZabbixHostProblemsViaQuery,
   fetchZabbixStatusViaQuery,
   fetchZabbixTrafficLastValuesViaQuery,
 } from '../utils/zabbixDatasourceQuery';
@@ -19,11 +20,13 @@ vi.mock('../utils/zabbixApi', () => ({
 vi.mock('../utils/zabbixDatasourceQuery', () => ({
   fetchZabbixStatusViaQuery: vi.fn(),
   fetchZabbixTrafficLastValuesViaQuery: vi.fn(async () => ({})),
+  fetchZabbixHostProblemsViaQuery: vi.fn(async () => ({})),
 }));
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
 const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValuesViaQuery);
+const fetchProblems = vi.mocked(fetchZabbixHostProblemsViaQuery);
 const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
 
 function host(id: string, group: string) {
@@ -60,6 +63,8 @@ describe('useZabbixDirectIndex', () => {
     fetchStatus.mockReset();
     fetchLastValues.mockReset();
     fetchLastValues.mockResolvedValue({});
+    fetchProblems.mockReset();
+    fetchProblems.mockResolvedValue({});
     resolveKeys.mockReset();
     resolveKeys.mockResolvedValue(new Map());
   });
@@ -151,6 +156,74 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], 60, expect.any(AbortSignal));
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
+  });
+
+  it('busca problemas Warning+ em paralelo ao status e só fica ready quando os dois voltam', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    let finishProblems: (value: Awaited<ReturnType<typeof fetchZabbixHostProblemsViaQuery>>) => void =
+      () => undefined;
+    fetchProblems.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishProblems = resolve;
+        })
+    );
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(fetchProblems).toHaveBeenCalledWith('ds', ['1'], ['Backbone'], expect.any(AbortSignal));
+    expect(result.current.ready).toBe(false);
+    expect(result.current.problems).toEqual({});
+
+    await act(async () => {
+      finishProblems({ '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.index.hosts).toContain('host-1');
+    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
+  });
+
+  it('falha isolada da busca de problemas não impede o status dos hosts', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce({ items: [statusItem('1')], hoverByHost: {}, lastValues: {} });
+    fetchProblems.mockRejectedValueOnce(new Error('Falha ao consultar problemas no Zabbix.'));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(true);
+    expect(result.current.index.hosts).toContain('host-1');
+    expect(result.current.problems).toEqual({});
   });
 
   it('resolve chave de cabo para itemid e devolve o lastvalue pela key', async () => {

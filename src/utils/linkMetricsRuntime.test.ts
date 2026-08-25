@@ -3,6 +3,7 @@ import {
   aliasLastValuesByItemKey,
   buildLinkRuntimeMetricsMap,
   collectLinkMetricKeys,
+  collectMapsLinks,
   resolveLinkMapTrafficMetrics,
 } from './linkMetricsRuntime';
 import { emptyMap, hostNode } from './testMapFixtures';
@@ -214,6 +215,19 @@ describe('collectLinkMetricKeys', () => {
       },
     ]);
     expect(keys).toEqual(['vendor.metric.tx[10]']);
+  });
+});
+
+describe('collectMapsLinks', () => {
+  it('junta cabos da raiz e dos mapas filhos', () => {
+    const links = collectMapsLinks([
+      { width: 1, height: 1, nodes: [], links: [{ from: 'a', to: 'b' }] },
+      { width: 1, height: 1, nodes: [], links: [{ from: 'c', to: 'd' }] },
+    ]);
+    expect(links).toEqual([
+      { from: 'a', to: 'b' },
+      { from: 'c', to: 'd' },
+    ]);
   });
 });
 

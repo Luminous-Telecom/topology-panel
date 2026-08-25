@@ -14,10 +14,12 @@ import {
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
 import {
+  fetchZabbixHostProblemsViaQuery,
   fetchZabbixStatusViaQuery,
   fetchZabbixTrafficLastValuesViaQuery,
 } from '../utils/zabbixDatasourceQuery';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
+import { HostProblemsMap } from '../utils/noc/types';
 import { POLL_WATCHDOG_MS, canStartRefreshEventFetch } from '../utils/pollingGate';
 import { StatusColorOptions } from '../utils/statusMapping';
 
@@ -34,7 +36,9 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: grupo no campo group e o
  * item de status no campo item — o mesmo shape do editor, sem JSON-RPC de item.
  * O último ponto da série RX/TX dos cabos entra num `ds.query()` Item ID em paralelo.
- * Cabo só com `key` é resolvido uma vez via `item.get` — o DataFrame do inventário não traz id.
+ * Problemas Warning+ entram no mesmo `Promise.all` — a primeira pintura já traz alerta junto
+ * com status e tráfego, não numa busca depois do `ready`.
+ * Cabo só com `key` resolve o itemid em paralelo ao status (não bloqueia o restante do ciclo).
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
  * o DataFrame não traz isso. O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana
  * recria o EventBus no load e isso abortava o primeiro `ds.query()` para disparar outro.
@@ -66,6 +70,7 @@ export interface UseZabbixDirectIndexResult {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  problems: HostProblemsMap;
   /** Já houve ao menos uma resposta boa para a configuração atual. */
   ready: boolean;
   loading: boolean;
@@ -76,6 +81,7 @@ interface DirectState {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  problems: HostProblemsMap;
   ready: boolean;
   loading: boolean;
   error?: string;
@@ -83,10 +89,12 @@ interface DirectState {
 
 const EMPTY_HOVER: HostHoverSeriesMap = {};
 const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
+const EMPTY_PROBLEMS: HostProblemsMap = {};
 const IDLE_STATE: DirectState = {
   index: EMPTY_INDEX,
   hoverByHost: EMPTY_HOVER,
   lastValues: EMPTY_LAST_VALUES,
+  problems: EMPTY_PROBLEMS,
   ready: false,
   loading: false,
 };
@@ -156,6 +164,7 @@ export function useZabbixDirectIndex({
       index: prev.index,
       hoverByHost: prev.hoverByHost,
       lastValues: prev.lastValues,
+      problems: prev.problems,
       ready: prev.ready,
       loading: true,
       error: prev.error,
@@ -181,6 +190,8 @@ export function useZabbixDirectIndex({
     let triedTrafficKeys = new Set<string>();
     /** Cancela a busca anterior quando o watchdog ou o timer disparam outro ciclo. */
     let fetchAbort: AbortController | undefined;
+    /** Últimos problemas publicados nesta configuração — uma falha isolada não apaga o badge. */
+    let latestProblems: HostProblemsMap = EMPTY_PROBLEMS;
 
     const ensureMetadata = async (abortSignal: AbortSignal): Promise<ZabbixDirectMetadata> => {
       if (!metadata) {
@@ -236,8 +247,8 @@ export function useZabbixDirectIndex({
       inFlight = true;
       try {
         const meta = await ensureMetadata(abortSignal);
-        const resolvedTrafficIds = await ensureTrafficItemIds(meta, abortSignal);
-        const [snapshot, trafficLastValues] = meta.resolvedGroups.length
+        const hostIds = meta.hosts.map((host) => host.hostid);
+        const [snapshot, trafficLastValues, nextProblems] = meta.resolvedGroups.length
           ? await Promise.all([
               fetchZabbixStatusViaQuery({
                 datasourceUid,
@@ -249,27 +260,44 @@ export function useZabbixDirectIndex({
                 timeRange: timeRangeRef.current,
                 statusOptions: statusOptionsRef.current,
               }),
-              fetchZabbixTrafficLastValuesViaQuery(
+              (async () => {
+                const resolvedTrafficIds = await ensureTrafficItemIds(meta, abortSignal);
+                return fetchZabbixTrafficLastValuesViaQuery(
+                  datasourceUid,
+                  resolvedTrafficIds,
+                  intervalSec,
+                  abortSignal
+                );
+              })(),
+              fetchZabbixHostProblemsViaQuery(
                 datasourceUid,
-                resolvedTrafficIds,
-                intervalSec,
+                hostIds,
+                meta.resolvedGroups,
                 abortSignal
-              ),
+              ).catch((err: unknown) => {
+                if (abortSignal.aborted) {
+                  throw err;
+                }
+                return latestProblems;
+              }),
             ])
           : [
               { items: [], hoverByHost: EMPTY_HOVER, lastValues: EMPTY_LAST_VALUES },
               EMPTY_LAST_VALUES,
+              EMPTY_PROBLEMS,
             ];
         const lastValues = aliasLastValuesByItemKey(trafficLastValues, itemIdByKey);
         if (cancelled || generation <= lastPublishedGeneration) {
           return;
         }
         lastPublishedGeneration = generation;
+        latestProblems = nextProblems;
         if (!meta.resolvedGroups.length) {
           setState({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues,
+            problems: EMPTY_PROBLEMS,
             ready: false,
             loading: false,
             error: NO_GROUPS_ERROR,
@@ -281,6 +309,7 @@ export function useZabbixDirectIndex({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues,
+            problems: EMPTY_PROBLEMS,
             ready: false,
             loading: false,
             error: NO_STATUS_ITEMS_ERROR,
@@ -300,6 +329,7 @@ export function useZabbixDirectIndex({
           index,
           hoverByHost: snapshot.hoverByHost,
           lastValues,
+          problems: nextProblems,
           ready: true,
           loading: false,
           error: undefined,
@@ -316,6 +346,7 @@ export function useZabbixDirectIndex({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues: prev.lastValues,
+            problems: prev.problems,
             ready: false,
             // Sem isto o painel ficava sem badge nenhum: mapa cinza e nenhuma pista do motivo.
             loading: retrying,

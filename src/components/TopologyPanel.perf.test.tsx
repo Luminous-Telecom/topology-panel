@@ -98,16 +98,18 @@ const queryIndexState = vi.hoisted(() => ({
 vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const { buildQueryIndex } = await import('../services/queryIndex');
   const empty = buildQueryIndex(undefined);
+  const emptyProblems = {};
   return {
     useTopologyQueryIndex: (opts: { panelData?: import('@grafana/data').PanelData }) => {
       if (opts.panelData?.series?.length) {
         const fromData = buildQueryIndex(opts.panelData);
         if (fromData.hosts.length) {
-          return { index: fromData, ready: true, loading: false, error: undefined };
+          return { index: fromData, problems: emptyProblems, ready: true, loading: false, error: undefined };
         }
       }
       return {
         index: queryIndexState.index ?? empty,
+        problems: emptyProblems,
         ready: queryIndexState.ready,
         loading: false,
         error: queryIndexState.error,

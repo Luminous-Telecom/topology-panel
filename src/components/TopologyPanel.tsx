@@ -12,12 +12,12 @@ import {
   ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   defaultOptions,
 } from '../types';
-import { collectHostMetadataForMaps, enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
 import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
-import { collectAllSubmapGroups, collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds, zabbixGroupsFromHostMetadata } from '../utils/queryHosts';
+import { collectAllSubmapGroups, collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds } from '../utils/queryHosts';
 import { sameTopologyView } from '../utils/zoomMath';
 import {
   hostDisplayByRefIdFromIndex,
@@ -30,7 +30,6 @@ import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
-import { useZabbixHostProblems } from '../hooks/useZabbixHostProblems';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
@@ -42,7 +41,7 @@ import {
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
-import { collectLinkMetricItemIds, collectLinkMetricKeys } from '../utils/linkMetricsRuntime';
+import { collectLinkMetricItemIds, collectLinkMetricKeys, collectMapsLinks } from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
@@ -168,16 +167,14 @@ export function TopologyPanel({
     [resolvedOptions.map, resolvedOptions.childMaps]
   );
 
-  const trafficItemIds = useMemo(
-    () => collectLinkMetricItemIds(activeStoredMap.links),
-    [activeStoredMap.links]
+  const allMapLinks = useMemo(
+    () => collectMapsLinks([resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))]),
+    [resolvedOptions.map, resolvedOptions.childMaps]
   );
-  const trafficKeys = useMemo(
-    () => collectLinkMetricKeys(activeStoredMap.links),
-    [activeStoredMap.links]
-  );
+  const trafficItemIds = useMemo(() => collectLinkMetricItemIds(allMapLinks), [allMapLinks]);
+  const trafficKeys = useMemo(() => collectLinkMetricKeys(allMapLinks), [allMapLinks]);
 
-  /** Status e hover num `ds.query()`; RX/TX dos cabos noutro (último ponto da série), em paralelo no mesmo ciclo. */
+  /** Status, hover, RX/TX dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     panelData: data,
     enabled: true,
@@ -199,6 +196,7 @@ export function TopologyPanel({
   const queryReady = querySource.ready;
   const queryError = Boolean(querySource.error);
   const queryLoading = querySource.loading && !queryReady && !queryError;
+  const hostProblems = useStableIdentity(querySource.problems);
 
   const dataMetaRaw = useMemo(
     () => enrichHostMetadataFromMap(queryMeta, activeStoredMap),
@@ -350,17 +348,6 @@ export function TopologyPanel({
   }, [canPersistOptions, options, theme, onOptionsChange]);
 
 
-  const problemsHostMetadata = useMemo(() => {
-    if (!queryReady) {
-      return {};
-    }
-    const maps =
-      currentMapId === ROOT_MAP_ID
-        ? [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))]
-        : [activeStoredMap];
-    return collectHostMetadataForMaps(maps, hostMetadata);
-  }, [queryReady, resolvedOptions.map, resolvedOptions.childMaps, hostMetadata, currentMapId, activeStoredMap]);
-
   const pendingInterSubmapLinkRef = useRef<TopologyLink | undefined>();
 
   const applyActiveMap = useCallback(
@@ -390,19 +377,6 @@ export function TopologyPanel({
     },
     [commitChange]
   );
-
-  const problemGroupNames = useMemo(() => {
-    const resolved = zabbixGroupsFromHostMetadata(queryMeta);
-    return resolved.length ? resolved : statusGroupNames;
-  }, [queryMeta, statusGroupNames]);
-
-  const { problems: hostProblemsRaw } = useZabbixHostProblems(
-    queryReady ? zabbixDatasourceUid : undefined,
-    problemsHostMetadata,
-    problemGroupNames
-  );
-
-  const hostProblems = useStableIdentity(hostProblemsRaw);
 
   const handleNocModeChange = useCallback(
     (enabled: boolean) => {

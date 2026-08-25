@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { EventBus, LoadingState, PanelData, TimeRange } from '@grafana/data';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
+import { HostProblemsMap } from '../utils/noc/types';
 import { StatusColorOptions } from '../utils/statusMapping';
 import { ZabbixItemLastValue } from '../utils/zabbixApi';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
@@ -29,6 +30,7 @@ export interface UseTopologyQueryIndexResult {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  problems: HostProblemsMap;
   ready: boolean;
   loading: boolean;
   error?: string;
@@ -87,6 +89,7 @@ export function useTopologyQueryIndex({
     index,
     hoverByHost: fromPanelData ? {} : direct.hoverByHost,
     lastValues: fromPanelData ? {} : (direct.lastValues ?? {}),
+    problems: fromPanelData ? {} : direct.problems,
     ready,
     loading,
     error,

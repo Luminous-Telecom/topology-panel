@@ -806,6 +806,8 @@ describe('buildZabbixProblemsTargets', () => {
     expect(targets[0].group?.filter).toBe(zabbixGroupsFilter(['Backbone', 'Borda']));
     expect(targets[0].group?.filter).not.toBe('/.*/');
     expect(targets[0].queryType).toBe('5');
+    expect(targets[0].tags).toEqual({ filter: '' });
+    expect(targets[0].options?.acknowledged).toBeUndefined();
   });
 
   it('sem grupo não monta target', () => {
@@ -839,6 +841,47 @@ describe('parseProblemsFromFrames', () => {
     expect(summary['1001']?.count).toBe(2);
     expect(summary['1001']?.maxSeverity).toBe(4);
     expect(summary['1001']?.names).toEqual(['Interface down', 'ICMP timeout']);
+  });
+
+  it('aceita hostid no próprio problema ou no label da frame', () => {
+    const byValue = parseProblemsFromFrames(
+      [
+        {
+          name: 'problems',
+          fields: [
+            {
+              name: 'Problems',
+              type: FieldType.other,
+              values: [{ severity: 3, name: 'CPU high', hostid: '1002' }],
+              config: {},
+            },
+          ],
+          length: 1,
+        },
+      ],
+      ['1002']
+    );
+    expect(byValue['1002']?.names).toEqual(['CPU high']);
+
+    const byLabel = parseProblemsFromFrames(
+      [
+        {
+          name: 'problems',
+          fields: [
+            {
+              name: 'Problems',
+              type: FieldType.other,
+              values: [{ severity: 4, name: 'Link down' }],
+              labels: { hostid: '1003' },
+              config: {},
+            },
+          ],
+          length: 1,
+        },
+      ],
+      ['1003']
+    );
+    expect(byLabel['1003']?.names).toEqual(['Link down']);
   });
 });
 

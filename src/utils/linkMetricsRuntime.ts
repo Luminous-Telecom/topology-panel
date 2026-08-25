@@ -65,6 +65,17 @@ export function collectLinkMetricItemIds(links: TopologyLink[]): string[] {
   return [...ids];
 }
 
+/** Cabos da raiz e dos mapas filhos — o poll de tráfego não espera abrir o submapa. */
+export function collectMapsLinks(maps: readonly TopologyMap[]): TopologyLink[] {
+  const links: TopologyLink[] = [];
+  for (const map of maps) {
+    if (map.links?.length) {
+      links.push(...map.links);
+    }
+  }
+  return links;
+}
+
 function collectKeysFromReference(ref?: TopologyInterfaceReference): string[] {
   if (!ref?.metrics) {
     return [];

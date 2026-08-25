@@ -77,6 +77,7 @@ export interface ZabbixMetricsQuery extends DataQuery {
   itemids?: string;
   trigger?: { filter: string };
   proxy?: { filter: string };
+  tags?: { filter: string };
   showProblems?: string;
   functions?: unknown[];
   options?: {
@@ -1043,13 +1044,13 @@ export function buildZabbixProblemsTargets(
       itemTag: { filter: '' },
       trigger: { filter: '' },
       proxy: { filter: '' },
+      tags: { filter: '' },
       showProblems: 'problems',
       functions: [],
       options: {
         ...statusQueryOptions(),
         minSeverity: ZABBIX_PROBLEM_MIN_SEVERITY,
         limit: 1001,
-        acknowledged: 0,
         hostsInMaintenance: true,
         sortProblems: 'severity',
       },
@@ -1062,18 +1063,20 @@ function problemHostIds(value: unknown): string[] {
   if (!isRecord(value)) {
     return [];
   }
-  const hosts = value.hosts;
-  if (!Array.isArray(hosts)) {
-    return [];
-  }
   const ids: string[] = [];
-  for (const host of hosts) {
-    if (!isRecord(host)) {
-      continue;
-    }
-    const id = String(host.hostid ?? '').trim();
-    if (id) {
+  const add = (raw: unknown) => {
+    const id = String(raw ?? '').trim();
+    if (id && /^\d+$/.test(id) && !ids.includes(id)) {
       ids.push(id);
+    }
+  };
+  add(value.hostid);
+  const hosts = value.hosts;
+  if (Array.isArray(hosts)) {
+    for (const host of hosts) {
+      if (isRecord(host)) {
+        add(host.hostid);
+      }
     }
   }
   return ids;
@@ -1124,13 +1127,18 @@ export function parseProblemsFromFrames(
       continue;
     }
     for (const field of frame.fields) {
+      const labeledHostId = labelString(field.labels, 'hostid');
       for (const value of readFieldValues(field)) {
         const severity = problemSeverity(value);
         if (severity < ZABBIX_PROBLEM_MIN_SEVERITY) {
           continue;
         }
         const name = problemName(value);
-        for (const hostid of problemHostIds(value)) {
+        const hostids = problemHostIds(value);
+        if (labeledHostId && /^\d+$/.test(labeledHostId) && !hostids.includes(labeledHostId)) {
+          hostids.push(labeledHostId);
+        }
+        for (const hostid of hostids) {
           if (!wanted.has(hostid)) {
             continue;
           }
@@ -1160,7 +1168,8 @@ export function parseProblemsFromFrames(
 export async function fetchZabbixHostProblemsViaQuery(
   datasourceUid: string,
   hostIds: string[],
-  groupNames: readonly string[]
+  groupNames: readonly string[],
+  abortSignal?: AbortSignal
 ): Promise<HostProblemsMap> {
   const ids = [...new Set(hostIds.map((id) => id.trim()).filter(Boolean))];
   if (!datasourceUid || !ids.length) {
@@ -1183,7 +1192,7 @@ export async function fetchZabbixHostProblemsViaQuery(
   const response = await queryZabbixWithRetry(
     datasourceUid,
     request,
-    undefined,
+    abortSignal,
     'Falha ao consultar problemas no Zabbix.'
   );
   return parseProblemsFromFrames(response.data ?? [], ids);
