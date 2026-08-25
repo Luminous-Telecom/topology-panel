@@ -9,7 +9,9 @@ import {
   resolveLinkUtilizationLevel,
 } from '../../utils/linkFlowSpeed';
 import {
+  isLinkVisuallyDown,
   linkDegradationColor,
+  linkRuntimeColor,
   utilizationThresholdsFromOptions,
   resolveLinkMapTrafficMetrics,
 } from '../../utils/linkMetricsRuntime';
@@ -19,6 +21,7 @@ import { buildLinkPathD, computeLinkGeometry, linkLabelAnchor, LinkPoint } from 
 import { resolveLinkMedium } from '../../utils/linkMedium';
 import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../utils/zabbixAdapter/formatTraffic';
 import { NodeLayout } from '../../utils/nodeLayout';
+import { canvasStyles } from './canvasStyles';
 
 interface LinkLineProps {
   link: TopologyLink;
@@ -30,6 +33,8 @@ interface LinkLineProps {
   selected: boolean;
   hovered: boolean;
   runtimeMetrics?: LinkRuntimeMetrics;
+  fromHostOffline?: boolean;
+  toHostOffline?: boolean;
   onSelect: () => void;
   onHoverChange: (active: boolean) => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -37,7 +42,13 @@ interface LinkLineProps {
   onPathDoubleClick: (e: React.MouseEvent) => void;
 }
 
-function linkMarkerSuffix(level: ReturnType<typeof resolveLinkUtilizationLevel>): string | undefined {
+function linkMarkerSuffix(
+  linkDown: boolean,
+  level: ReturnType<typeof resolveLinkUtilizationLevel>
+): string | undefined {
+  if (linkDown) {
+    return 'offline';
+  }
   switch (level) {
     case 'attention':
       return 'attention';
@@ -60,6 +71,8 @@ function LinkLineComponent({
   selected,
   hovered,
   runtimeMetrics,
+  fromHostOffline = false,
+  toHostOffline = false,
   onSelect,
   onHoverChange,
   onContextMenu,
@@ -113,45 +126,66 @@ function LinkLineComponent({
   const titleAttr = tooltipParts.length ? tooltipParts.join('\n') : undefined;
   const thresholds = utilizationThresholdsFromOptions(options);
   const utilLevel = resolveLinkUtilizationLevel(runtimeMetrics, thresholds);
+  const interfaceDown = runtimeMetrics?.status === 'down';
+  const uploadOffline = interfaceDown || fromHostOffline;
+  const downloadOffline = interfaceDown || toHostOffline;
+  const linkDown = isLinkVisuallyDown(runtimeMetrics, fromHostOffline, toHostOffline);
+  const runtimeColor = resolvePanelColor(
+    theme,
+    linkRuntimeColor(options, runtimeMetrics, utilLevel, fromHostOffline || toHostOffline)
+  );
   const degradationColor = resolvePanelColor(theme, linkDegradationColor(options, utilLevel));
-  const markerLevel = linkMarkerSuffix(utilLevel);
-  const strokeColor = selected
-    ? '#4FC3F7'
-    : hovered
-      ? '#81D4FA'
-      : utilLevel !== 'normal'
-        ? degradationColor
-        : options.colorLink;
+  const markerLevel = linkMarkerSuffix(linkDown, utilLevel);
+  const strokeColor = linkDown
+    ? runtimeColor
+    : selected
+      ? '#4FC3F7'
+      : hovered
+        ? '#81D4FA'
+        : utilLevel !== 'normal'
+          ? runtimeColor
+          : options.colorLink;
   const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  const markerStart = selected
-    ? 'url(#link-dot-start-active)'
-    : hovered
-      ? 'url(#link-dot-start-hover)'
-      : markerLevel
-        ? `url(#link-dot-start-${markerLevel})`
-        : 'url(#link-dot-start)';
-  const markerEnd = selected
-    ? 'url(#link-arrow-end-active)'
-    : hovered
-      ? 'url(#link-arrow-end-hover)'
-      : markerLevel
-        ? `url(#link-arrow-end-${markerLevel})`
-        : 'url(#link-arrow-end)';
-  const downloadColor =
-    utilLevel !== 'normal' ? degradationColor : resolvePanelColor(theme, options.colorLinkDownload);
-  const uploadColor =
-    utilLevel !== 'normal' ? degradationColor : resolvePanelColor(theme, options.colorLinkUpload);
+  const markerStart =
+    !linkDown && selected
+      ? 'url(#link-dot-start-active)'
+      : !linkDown && hovered
+        ? 'url(#link-dot-start-hover)'
+        : markerLevel
+          ? `url(#link-dot-start-${markerLevel})`
+          : 'url(#link-dot-start)';
+  const markerEnd =
+    !linkDown && selected
+      ? 'url(#link-arrow-end-active)'
+      : !linkDown && hovered
+        ? 'url(#link-arrow-end-hover)'
+        : markerLevel
+          ? `url(#link-arrow-end-${markerLevel})`
+          : 'url(#link-arrow-end)';
+  const downloadColor = downloadOffline
+    ? runtimeColor
+    : utilLevel !== 'normal'
+      ? degradationColor
+      : resolvePanelColor(theme, options.colorLinkDownload);
+  const uploadColor = uploadOffline
+    ? runtimeColor
+    : utilLevel !== 'normal'
+      ? degradationColor
+      : resolvePanelColor(theme, options.colorLinkUpload);
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
   const flowStroke = Math.max(1.5, strokeWidth - 1);
-  const flowActive = runtimeMetrics?.status !== 'down';
   const downloadSpeed = resolveFlowLaneSpeed(displayTraffic.rxBps, runtimeMetrics, thresholds);
   const uploadSpeed = resolveFlowLaneSpeed(displayTraffic.txBps, runtimeMetrics, thresholds);
   const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
+  const downloadFlowActive = !downloadOffline && (hasMetricBinding ? downloadSpeed > 0 : true);
+  const uploadFlowActive = !uploadOffline && (hasMetricBinding ? uploadSpeed > 0 : true);
   const lk = linkKey(link);
 
   return (
     <g
+      className={linkDown ? canvasStyles.offlineBlink : undefined}
+      data-link-offline={linkDown ? 'true' : undefined}
       onContextMenu={editable ? onContextMenu : undefined}
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
@@ -209,7 +243,7 @@ function LinkLineComponent({
         data-link-flow="download"
         data-link-key={lk}
         data-link-flow-speed={String(hasMetricBinding ? downloadSpeed : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5)}
-        data-link-flow-active={flowActive && (hasMetricBinding ? downloadSpeed > 0 : true) ? 'true' : 'false'}
+        data-link-flow-active={downloadFlowActive ? 'true' : 'false'}
         stroke={downloadColor}
         strokeWidth={flowStroke}
         strokeDasharray={LINK_FLOW_DASH}
@@ -224,7 +258,7 @@ function LinkLineComponent({
         data-link-flow="upload"
         data-link-key={lk}
         data-link-flow-speed={String(hasMetricBinding ? uploadSpeed : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5)}
-        data-link-flow-active={flowActive && (hasMetricBinding ? uploadSpeed > 0 : true) ? 'true' : 'false'}
+        data-link-flow-active={uploadFlowActive ? 'true' : 'false'}
         stroke={uploadColor}
         strokeWidth={flowStroke}
         strokeDasharray={LINK_FLOW_DASH}
@@ -313,6 +347,9 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (prev.runtimeMetrics !== next.runtimeMetrics) {
     return false;
   }
+  if (prev.fromHostOffline !== next.fromHostOffline || prev.toHostOffline !== next.toHostOffline) {
+    return false;
+  }
   if (!sameWaypoints(prev.waypoints, next.waypoints)) {
     return false;
   }
@@ -331,6 +368,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   }
   return (
     prev.options.colorLink === next.options.colorLink &&
+    prev.options.colorOffline === next.options.colorOffline &&
     prev.options.colorLinkDownload === next.options.colorLinkDownload &&
     prev.options.colorLinkUpload === next.options.colorLinkUpload &&
     prev.options.colorLinkWidth === next.options.colorLinkWidth &&

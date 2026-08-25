@@ -1,7 +1,8 @@
 import React from 'react';
-import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
+import { isHostNodeOffline } from '../../utils/networkStats';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { LinkLine } from './LinkLine';
 
@@ -16,6 +17,8 @@ interface Props {
   setHoveredLinkKey: (key: string | null) => void;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
   linkMetricsByLink: Record<string, LinkRuntimeMetrics>;
+  hostDisplay?: HostDisplayMap;
+  hostMetadata?: HostMetadataMap;
   onLinkSelect: (link: TopologyLink) => void;
   onLinkContextMenu: (e: React.MouseEvent, link: TopologyLink) => void;
   beginPan: (e: React.PointerEvent, node?: TopologyNode, link?: TopologyLink) => void;
@@ -35,6 +38,8 @@ export function LinksLayer({
   setHoveredLinkKey,
   resolveLinkWaypoints,
   linkMetricsByLink,
+  hostDisplay,
+  hostMetadata,
   onLinkSelect,
   onLinkContextMenu,
   beginPan,
@@ -57,6 +62,8 @@ export function LinksLayer({
           selected={Boolean(selectedLink && linkKey(selectedLink) === lk)}
           hovered={hoveredLinkKey === lk}
           runtimeMetrics={linkMetricsByLink[lk]}
+          fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
+          toHostOffline={isHostNodeOffline(nodeLayouts.get(link.to), hostDisplay, hostMetadata)}
           onSelect={() => onLinkSelect(link)}
           onHoverChange={(active) => setHoveredLinkKey(active ? lk : null)}
           onContextMenu={(e) => onLinkContextMenu(e, link)}

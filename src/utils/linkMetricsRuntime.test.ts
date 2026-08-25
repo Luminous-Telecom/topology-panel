@@ -40,6 +40,27 @@ describe('buildLinkRuntimeMetricsMap', () => {
     expect(linkMetrics?.status).toBe('up');
   });
 
+  it('marca o cabo down quando uma interface está oper down', () => {
+    const map = {
+      ...emptyMap(),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: {
+            name: 'eth0',
+            metrics: { operStatus: { itemId: '12' } },
+          },
+        },
+      ],
+    };
+    const metrics = buildLinkRuntimeMetricsMap(map, {
+      '12': { itemid: '12', lastvalue: '2' },
+    });
+    expect(metrics['a-b']?.status).toBe('down');
+    expect(metrics['a-b']?.from.operStatus).toBe('down');
+  });
+
   it('lê o cabo vinculado só por key, sem itemid numérico', () => {
     const map = {
       ...emptyMap(),

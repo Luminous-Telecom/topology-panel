@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats, regionFillColor } from './networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats, isHostNodeOffline, mergeRegionTrafficStats, regionFillColor } from './networkStats';
 import { defaultOptions } from '../types';
 import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
-import { emptyMap } from './testMapFixtures';
+import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('formatRegionStats — submapa', () => {
   it('mostra parado/alerta/online quando há hosts', () => {
@@ -332,5 +332,15 @@ describe('computeNodeLayout — submapa com stats', () => {
     );
     expect(large.labelFontSize).toBe(24);
     expect(large.subFontSize).toBe(20);
+  });
+});
+
+describe('isHostNodeOffline', () => {
+  it('é true só quando o host está offline na Query', () => {
+    const node = hostNode({ id: 'h1', zabbixHost: 'host-a' });
+    expect(isHostNodeOffline(node, { 'host-a': { value: 0, status: 'offline' } })).toBe(true);
+    expect(isHostNodeOffline(node, { 'host-a': { value: 1, status: 'online' } })).toBe(false);
+    expect(isHostNodeOffline(node, {})).toBe(false);
+    expect(isHostNodeOffline(undefined, { 'host-a': { value: 0, status: 'offline' } })).toBe(false);
   });
 });

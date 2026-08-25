@@ -5,6 +5,7 @@ interface Props {
   colorLinkAttention: string;
   colorLinkHigh: string;
   colorLinkCongestion: string;
+  colorOffline: string;
 }
 
 /** `<defs>` com as pontas dos links: origem (bolinha) e destino (seta), nos estados normal/ativo/hover/degradação. */
@@ -13,6 +14,7 @@ export function LinkMarkers({
   colorLinkAttention,
   colorLinkHigh,
   colorLinkCongestion,
+  colorOffline,
 }: Props) {
   const arrow = (stroke: string, sw = 1.2) => (
     <path
@@ -32,7 +34,7 @@ export function LinkMarkers({
     );
 
   const degradationMarkers = (
-    level: 'attention' | 'high' | 'congested',
+    level: 'attention' | 'high' | 'congested' | 'offline',
     color: string
   ) => (
     <>
@@ -100,6 +102,7 @@ export function LinkMarkers({
       {degradationMarkers('attention', colorLinkAttention)}
       {degradationMarkers('high', colorLinkHigh)}
       {degradationMarkers('congested', colorLinkCongestion)}
+      {degradationMarkers('offline', colorOffline)}
     </defs>
   );
 }

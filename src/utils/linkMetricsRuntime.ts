@@ -290,3 +290,28 @@ export function linkDegradationColor(
       return options.colorLink;
   }
 }
+
+/** Interface down/adminDown usa a cor de offline do painel; senão, a degradação de tráfego. */
+export function linkRuntimeColor(
+  options: Pick<
+    TopologyPanelOptions,
+    'colorLink' | 'colorLinkAttention' | 'colorLinkHigh' | 'colorLinkCongestion' | 'colorOffline'
+  >,
+  metrics: LinkRuntimeMetrics | undefined,
+  level: UtilizationLevel,
+  endpointHostOffline = false
+): string {
+  if (metrics?.status === 'down' || endpointHostOffline) {
+    return options.colorOffline;
+  }
+  return linkDegradationColor(options, level);
+}
+
+/** Falha visível no cabo: interface down ou host de uma ponta offline. */
+export function isLinkVisuallyDown(
+  metrics: LinkRuntimeMetrics | undefined,
+  fromHostOffline: boolean,
+  toHostOffline: boolean
+): boolean {
+  return metrics?.status === 'down' || fromHostOffline || toHostOffline;
+}

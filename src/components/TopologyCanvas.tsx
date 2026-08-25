@@ -1412,6 +1412,7 @@ export function TopologyCanvas({
             colorLinkAttention={resolveColor(options.colorLinkAttention)}
             colorLinkHigh={resolveColor(options.colorLinkHigh)}
             colorLinkCongestion={resolveColor(options.colorLinkCongestion)}
+            colorOffline={resolveColor(options.colorOffline)}
           />
           <HostIconDefs icons={iconsInMap} />
           <CanvasGridLayer
@@ -1454,6 +1455,8 @@ export function TopologyCanvas({
             setHoveredLinkKey={setHoveredLinkKey}
             resolveLinkWaypoints={resolveLinkWaypoints}
             linkMetricsByLink={linkMetricsByLink}
+            hostDisplay={hostDisplay}
+            hostMetadata={hostMetadata}
             onLinkSelect={onLinkSelect}
             onLinkContextMenu={(e, link) => handleContextMenu(e, { link })}
             beginPan={beginPan}

@@ -46,7 +46,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`) |
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
-| Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `resolveLinkUtilizationLevel` |
+| Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `linkRuntimeColor`, `isLinkVisuallyDown`, `resolveLinkUtilizationLevel` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
 | Grupos Zabbix da árvore (query de status, estável ao navegar) | `collectAllSubmapGroups` em `utils/queryHosts.ts` |
 | Grupos gravados no nó submapa (`queryRefIds` ou `queryRefId` legado) | `submapQueryRefIds` em `utils/queryHosts.ts` |

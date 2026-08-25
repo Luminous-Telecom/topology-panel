@@ -386,6 +386,18 @@ export function resolveHostNodeStatus(
   return display.status;
 }
 
+/** Host do mapa com status offline na Query — cabos que saem dele herdam a falha. */
+export function isHostNodeOffline(
+  node: TopologyNode | undefined,
+  hostDisplay?: HostDisplayMap,
+  hostMetadata?: HostMetadataMap
+): boolean {
+  if (!node) {
+    return false;
+  }
+  return resolveHostNodeStatus(node, hostDisplay, hostMetadata) === 'offline';
+}
+
 function trafficFromLinkMetrics(link: TopologyLink, metrics?: LinkRuntimeMetrics): { rxBps?: number; txBps?: number } {
   const display = resolveLinkMapTrafficMetrics(link, metrics);
   return {
