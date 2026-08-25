@@ -6,6 +6,7 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   fetchZabbixDirectMetadata,
+  fetchZabbixItemLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
   resolveZabbixItemIdsByKeys,
@@ -30,7 +31,7 @@ import { StatusColorOptions } from '../utils/statusMapping';
  *
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: grupo no campo group e o
  * item de status no campo item — o mesmo shape do editor, sem JSON-RPC de item.
- * Itemids de RX/TX dos cabos entram num `ds.query()` Item ID em paralelo (janela curta).
+ * Lastvalue RX/TX dos cabos entra num `item.get` em paralelo (sem histórico).
  * Cabo só com `key` é resolvido uma vez via `item.get` — o DataFrame do inventário não traz id.
  * A identidade dos hosts (IP, tags, descrição) continua em `host.get` uma vez:
  * o DataFrame não traz isso.
@@ -52,7 +53,7 @@ export interface UseZabbixDirectIndexOptions {
   eventBus?: EventBus;
   timeRange?: TimeRange;
   statusOptions?: StatusColorOptions;
-  /** Itemids de RX/TX dos cabos — query Item ID em paralelo. */
+  /** Itemids de RX/TX dos cabos — `item.get` lastvalue em paralelo. */
   trafficItemIds?: string[];
   /** Chaves dos cabos sem itemid numérico — resolvidas uma vez via `item.get`. */
   trafficKeys?: string[];
@@ -227,20 +228,25 @@ export function useZabbixDirectIndex({
       try {
         const meta = await ensureMetadata(abortSignal);
         const resolvedTrafficIds = await ensureTrafficItemIds(meta, abortSignal);
-        const snapshot = meta.resolvedGroups.length
-          ? await fetchZabbixStatusViaQuery({
-              datasourceUid,
-              groupNames: meta.resolvedGroups,
-              statusItemKey: itemKey,
-              hosts: meta.hosts,
-              abortSignal,
-              refreshSec: intervalSec,
-              timeRange: timeRangeRef.current,
-              statusOptions: statusOptionsRef.current,
-              trafficItemIds: resolvedTrafficIds,
-            })
-          : { items: [], hoverByHost: EMPTY_HOVER, lastValues: EMPTY_LAST_VALUES };
-        const lastValues = aliasLastValuesByItemKey(snapshot.lastValues, itemIdByKey);
+        const [snapshot, trafficLastValues] = meta.resolvedGroups.length
+          ? await Promise.all([
+              fetchZabbixStatusViaQuery({
+                datasourceUid,
+                groupNames: meta.resolvedGroups,
+                statusItemKey: itemKey,
+                hosts: meta.hosts,
+                abortSignal,
+                refreshSec: intervalSec,
+                timeRange: timeRangeRef.current,
+                statusOptions: statusOptionsRef.current,
+              }),
+              fetchZabbixItemLastValues(datasourceUid, resolvedTrafficIds, abortSignal),
+            ])
+          : [
+              { items: [], hoverByHost: EMPTY_HOVER, lastValues: EMPTY_LAST_VALUES },
+              EMPTY_LAST_VALUES,
+            ];
+        const lastValues = aliasLastValuesByItemKey(trafficLastValues, itemIdByKey);
         if (cancelled || generation <= lastPublishedGeneration) {
           return;
         }

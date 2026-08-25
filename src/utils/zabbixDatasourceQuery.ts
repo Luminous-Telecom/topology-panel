@@ -54,8 +54,6 @@ export const ZABBIX_MFQ_ITEMS = 'item';
 export const ZABBIX_QUERY_SCHEMA = 12;
 /** Janela curta: o último ponto aproxima o lastvalue sem puxar horas de histórico. */
 export const ZABBIX_STATUS_QUERY_RANGE_SEC = 300;
-/** Lastvalue de cabo: só o ponto mais recente — o sparkline do hover fica na query de status. */
-export const TRAFFIC_QUERY_MAX_POINTS = 2;
 /** Inventário de interface: janela maior que o lastvalue de status — o Metrics só devolve ponto na faixa. */
 export const ZABBIX_INTERFACE_QUERY_RANGE_SEC = 3_600;
 /** grafana-zabbix `filterByRegex` casa só `name`; a key entra no parse. */
@@ -103,8 +101,6 @@ export interface FetchZabbixStatusViaQueryOptions {
   refreshSec: number;
   timeRange?: TimeRange;
   statusOptions?: StatusColorOptions;
-  /** Itemids de RX/TX dos cabos — `ds.query()` Item ID em paralelo, janela curta. */
-  trafficItemIds?: string[];
 }
 
 export interface ZabbixStatusQuerySnapshot {
@@ -277,8 +273,7 @@ export function buildZabbixStatusItemIdTargets(
 ): ZabbixMetricsQuery[] {
   /*
    * Só id numérico entra. Um valor não numérico faz o datasource recusar o request **inteiro**
-   * ("itemid must be a valid numeric value", HTTP 400) — e como status e tráfego dos cabos vão no
-   * mesmo `ds.query()`, uma referência de cabo salva errada apagava o status de todo o mapa.
+   * ("itemid must be a valid numeric value", HTTP 400).
    */
   const ids = [...new Set(itemIds.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id)))];
   if (!datasourceUid || !ids.length) {
@@ -325,33 +320,6 @@ export function buildZabbixStatusQueryRequest(
     range,
     refreshSec,
     HOVER_SPARKLINE_MAX_POINTS,
-    nowMs
-  );
-}
-
-/**
- * Lastvalue RX/TX dos cabos — request próprio, janela de 5 min.
- * No grafana-zabbix o backend processa Metrics e Item ID em sequência no mesmo
- * `/api/ds/query`; misturar com o timeRange do dashboard (horas de histórico) atrasava
- * o rótulo do cabo até o próximo ciclo.
- */
-export function buildZabbixTrafficQueryRequest(
-  datasourceUid: string,
-  itemIds: string[],
-  refreshSec: number,
-  nowMs = Date.now()
-): DataQueryRequest<ZabbixMetricsQuery> | undefined {
-  const targets = buildZabbixStatusItemIdTargets(datasourceUid, itemIds, 'T');
-  if (!targets.length) {
-    return undefined;
-  }
-  return zabbixQueryRequest(
-    datasourceUid,
-    `topology-traffic-${datasourceUid}`,
-    targets,
-    statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC),
-    refreshSec,
-    TRAFFIC_QUERY_MAX_POINTS,
     nowMs
   );
 }
@@ -852,7 +820,6 @@ export async function fetchZabbixStatusViaQuery(
     refreshSec,
     timeRange,
     statusOptions,
-    trafficItemIds,
   } = options;
   const nowMs = Date.now();
   const statusRequest = buildZabbixStatusQueryRequest(
@@ -864,42 +831,21 @@ export async function fetchZabbixStatusViaQuery(
     itemIds,
     timeRange
   );
-  const trafficRequest = buildZabbixTrafficQueryRequest(
-    datasourceUid,
-    trafficItemIds ?? [],
-    refreshSec,
-    nowMs
-  );
-  if (!statusRequest && !trafficRequest) {
+  if (!statusRequest) {
     return EMPTY_STATUS_SNAPSHOT;
   }
 
-  const statusPromise = statusRequest
-    ? queryZabbixWithRetry(
-        datasourceUid,
-        statusRequest,
-        abortSignal,
-        'Falha ao consultar itens de status no Zabbix.'
-      )
-    : Promise.resolve<DataQueryResponse>({ data: [] });
-  const trafficPromise = trafficRequest
-    ? queryZabbixWithRetry(
-        datasourceUid,
-        trafficRequest,
-        abortSignal,
-        'Falha ao consultar o tráfego das interfaces no Zabbix.'
-      )
-    : Promise.resolve<DataQueryResponse>({ data: [] });
-
-  const [statusResponse, trafficResponse] = await Promise.all([statusPromise, trafficPromise]);
+  const statusResponse = await queryZabbixWithRetry(
+    datasourceUid,
+    statusRequest,
+    abortSignal,
+    'Falha ao consultar itens de status no Zabbix.'
+  );
   const statusFrames = statusResponse.data ?? [];
   return {
     items: parseStatusItemsFromFrames(statusFrames, hosts, statusItemKey),
     hoverByHost: parseHoverSeriesFromFrames(statusFrames, hosts, statusItemKey, statusOptions),
-    lastValues: {
-      ...parseItemLastValuesFromFrames(statusFrames),
-      ...parseItemLastValuesFromFrames(trafficResponse.data ?? []),
-    },
+    lastValues: parseItemLastValuesFromFrames(statusFrames),
   };
 }
 

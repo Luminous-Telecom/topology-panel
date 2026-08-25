@@ -11,13 +11,10 @@ vi.mock('@grafana/runtime', () => ({
 
 import {
   STATUS_QUERY_MAX_ATTEMPTS,
-  TRAFFIC_QUERY_MAX_POINTS,
   ZABBIX_INTERFACE_ITEM_FILTER,
-  ZABBIX_STATUS_QUERY_RANGE_SEC,
   buildZabbixInterfaceTargets,
   buildZabbixProblemsTargets,
   buildZabbixStatusQueryRequest,
-  buildZabbixTrafficQueryRequest,
   fetchZabbixHostInterfaceItemsViaQuery,
   parseHoverSeriesFromFrames,
   fetchZabbixHostGroupNamesViaQuery,
@@ -124,37 +121,6 @@ describe('buildZabbixStatusQueryRequest', () => {
   it('não monta request sem grupos ou chave', () => {
     expect(buildZabbixStatusQueryRequest('ds', [], 'icmpping', 30)).toBeUndefined();
     expect(buildZabbixStatusQueryRequest('ds', ['Backbone'], '  ', 30)).toBeUndefined();
-  });
-});
-
-describe('buildZabbixTrafficQueryRequest', () => {
-  it('monta Item ID numa janela curta, sem misturar com o status', () => {
-    const nowMs = 1_700_000_000_000;
-    const request = buildZabbixTrafficQueryRequest('ds', ['10', '11'], 30, nowMs);
-    expect(request).toBeDefined();
-    expect(request?.targets).toHaveLength(1);
-    expect(request?.targets[0].queryType).toBe('3');
-    expect(request?.targets[0].refId).toBe('T0');
-    expect(request?.targets[0].itemids).toBe('10,11');
-    expect(request?.requestId).toBe('topology-traffic-ds');
-    expect(request?.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
-    const spanMs = request ? request.range.to.valueOf() - request.range.from.valueOf() : 0;
-    expect(spanMs).toBe(ZABBIX_STATUS_QUERY_RANGE_SEC * 1000);
-  });
-
-  it('descarta itemid não numérico em vez de incluir chave de item', () => {
-    const request = buildZabbixTrafficQueryRequest(
-      'ds',
-      ['10', 'vendor.metric.rx[10]', '11'],
-      30,
-      1_700_000_000_000
-    );
-    expect(request?.targets[0].itemids).toBe('10,11');
-  });
-
-  it('sem nenhum itemid válido não monta request', () => {
-    expect(buildZabbixTrafficQueryRequest('ds', ['vendor.metric.rx[10]'], 30)).toBeUndefined();
-    expect(buildZabbixTrafficQueryRequest('ds', [], 30)).toBeUndefined();
   });
 });
 
@@ -425,29 +391,9 @@ describe('fetchZabbixStatusViaQuery', () => {
     expect(items[0].lastvalue).toBe('1');
   });
 
-  it('busca tráfego dos cabos em paralelo, com janela curta e requestId próprio', async () => {
-    const query = vi.fn().mockImplementation((request: { requestId?: string }) => {
-      if (request.requestId === 'topology-traffic-ds') {
-        return of({
-          data: [
-            {
-              refId: 'T0',
-              fields: [
-                { name: 'Time', type: FieldType.time, values: [2_000_000], config: {} },
-                {
-                  name: 'Value',
-                  type: FieldType.number,
-                  values: [42],
-                  labels: { host: 'host-a', item: 'RX', item_key: 'vendor.metric.rx[10]' },
-                  config: {},
-                },
-              ],
-              length: 1,
-            },
-          ],
-        });
-      }
-      return of({
+  it('consulta só o status via Metrics, sem query de cabo', async () => {
+    const query = vi.fn().mockReturnValue(
+      of({
         data: [
           {
             fields: [
@@ -463,8 +409,8 @@ describe('fetchZabbixStatusViaQuery', () => {
             length: 1,
           },
         ],
-      });
-    });
+      })
+    );
     getMock.mockResolvedValue({ query });
 
     const snapshot = await fetchZabbixStatusViaQuery({
@@ -473,27 +419,11 @@ describe('fetchZabbixStatusViaQuery', () => {
       statusItemKey: 'icmpping',
       hosts,
       refreshSec: 30,
-      trafficItemIds: ['10', '11'],
     });
 
-    expect(query).toHaveBeenCalledTimes(2);
-    const ids = query.mock.calls.map(
-      (call) => (call[0] as { requestId?: string }).requestId
-    );
-    expect(ids).toContain('topology-status-ds');
-    expect(ids).toContain('topology-traffic-ds');
-    const trafficReq = query.mock.calls.find(
-      (call) => (call[0] as { requestId?: string }).requestId === 'topology-traffic-ds'
-    )?.[0] as {
-      maxDataPoints?: number;
-      range: { from: { valueOf: () => number }; to: { valueOf: () => number } };
-    };
-    expect(trafficReq.maxDataPoints).toBe(TRAFFIC_QUERY_MAX_POINTS);
-    expect(trafficReq.range.to.valueOf() - trafficReq.range.from.valueOf()).toBe(
-      ZABBIX_STATUS_QUERY_RANGE_SEC * 1000
-    );
+    expect(query).toHaveBeenCalledTimes(1);
+    expect((query.mock.calls[0][0] as { requestId?: string }).requestId).toBe('topology-status-ds');
     expect(snapshot.items).toHaveLength(1);
-    expect(snapshot.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('42');
   });
 
   it('ignora a emissão Loading vazia e usa o Done', async () => {

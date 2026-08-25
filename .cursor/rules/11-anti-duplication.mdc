@@ -31,7 +31,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: `zabbixGroupsFilter` + item) |
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
-| Lastvalue de itemids de cabo | `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Item ID em paralelo ao status, prefixo `T`, janela de 5 min) |
+| Lastvalue de itemids de cabo | `fetchZabbixItemLastValues` em `utils/zabbixApi.ts` (`item.get` em paralelo ao status) |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; resolve via `resolveZabbixItemIdsByKeys` em `utils/zabbixApi.ts` |
 | Problemas Warning+ | `fetchZabbixHostProblemsViaQuery` em `utils/zabbixDatasourceQuery.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |

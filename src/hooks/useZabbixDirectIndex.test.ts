@@ -1,11 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchZabbixDirectMetadata, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
+import { fetchZabbixDirectMetadata, fetchZabbixItemLastValues, resolveZabbixItemIdsByKeys } from '../utils/zabbixApi';
 import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 vi.mock('../utils/zabbixApi', () => ({
   fetchZabbixDirectMetadata: vi.fn(),
+  fetchZabbixItemLastValues: vi.fn(async () => ({})),
   isBenignZabbixFetchError: vi.fn(() => false),
   isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
   resolveZabbixItemIdsByKeys: vi.fn(async () => new Map()),
@@ -17,6 +18,7 @@ vi.mock('../utils/zabbixDatasourceQuery', () => ({
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
+const fetchLastValues = vi.mocked(fetchZabbixItemLastValues);
 const resolveKeys = vi.mocked(resolveZabbixItemIdsByKeys);
 
 function host(id: string, group: string) {
@@ -51,6 +53,8 @@ describe('useZabbixDirectIndex', () => {
     vi.useFakeTimers();
     fetchMetadata.mockReset();
     fetchStatus.mockReset();
+    fetchLastValues.mockReset();
+    fetchLastValues.mockResolvedValue({});
     resolveKeys.mockReset();
     resolveKeys.mockResolvedValue(new Map());
   });
@@ -114,7 +118,7 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.hosts).not.toContain('host-1');
   });
 
-  it('repassa os itemids de cabo na mesma busca de status', async () => {
+  it('busca lastvalue dos cabos em paralelo ao status', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -123,8 +127,9 @@ describe('useZabbixDirectIndex', () => {
     fetchStatus.mockResolvedValueOnce({
       items: [statusItem('1')],
       hoverByHost: {},
-      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+      lastValues: {},
     });
+    fetchLastValues.mockResolvedValueOnce({ '10': { itemid: '10', lastvalue: '1' } });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -139,7 +144,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchStatus.mock.calls[0][0].trafficItemIds).toEqual(['10', '11']);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal));
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
@@ -153,8 +158,9 @@ describe('useZabbixDirectIndex', () => {
     fetchStatus.mockResolvedValueOnce({
       items: [statusItem('1')],
       hoverByHost: {},
-      lastValues: { '77': { itemid: '77', lastvalue: '500000000' } },
+      lastValues: {},
     });
+    fetchLastValues.mockResolvedValueOnce({ '77': { itemid: '77', lastvalue: '500000000' } });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -174,7 +180,7 @@ describe('useZabbixDirectIndex', () => {
       expect.any(AbortSignal),
       ['1']
     );
-    expect(fetchStatus.mock.calls[0][0].trafficItemIds).toEqual(['77']);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['77'], expect.any(AbortSignal));
     expect(result.current.lastValues['vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
 });

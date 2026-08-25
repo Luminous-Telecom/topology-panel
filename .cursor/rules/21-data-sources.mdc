@@ -62,7 +62,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostProblems.ts` | `fetchZabbixHostProblemsViaQuery` (`ds.query()` Problems) |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez) e `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo para status/hover; lastvalues de cabo num Item ID em paralelo, janela de 5 min) |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` uma vez), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics a cada ciclo para status/hover) e `fetchZabbixItemLastValues` (`item.get` lastvalue dos cabos em paralelo) |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
@@ -70,8 +70,8 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
-- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e tráfego Item ID em paralelo
-  no mesmo ciclo; cabo usa janela de 5 min, não o timeRange do dashboard),
+- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e lastvalue dos cabos via
+  `item.get` em paralelo no mesmo ciclo),
   no `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
   `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
