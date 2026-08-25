@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatEndpointTrafficPair, formatLinkMapTrafficLabel, formatPluginRefreshInterval, formatRelativeUpdate } from './formatTraffic';
+import { formatEndpointTrafficPair, formatLinkMapTrafficLabel, formatPluginRefreshInterval, formatRelativeUpdate, formatSignalDbm, parseSignedLastValue } from './formatTraffic';
 
 describe('formatPluginRefreshInterval', () => {
   it('usa o intervalo do plugin, com o mínimo de 5s', () => {
@@ -37,6 +37,13 @@ describe('formatEndpointTrafficPair', () => {
       value: '10 Mbps / 20 Mbps',
     });
   });
+
+  it('aceita rótulos de sinal', () => {
+    expect(formatEndpointTrafficPair('-8.5 dBm', '-2 dBm', 'from', { from: 'Sinal TX / RX', to: 'Sinal RX / TX' })).toEqual({
+      label: 'Sinal TX / RX',
+      value: '-2 dBm / -8.5 dBm',
+    });
+  });
 });
 
 describe('formatRelativeUpdate', () => {
@@ -46,5 +53,30 @@ describe('formatRelativeUpdate', () => {
 
   it('mostra minutos a partir de 60s', () => {
     expect(formatRelativeUpdate(0, 41 * 60_000)).toBe('41 minuto(s) atrás');
+  });
+});
+
+describe('formatSignalDbm', () => {
+  it('formata potência negativa em dBm', () => {
+    expect(formatSignalDbm(-8.54)).toBe('-8.54 dBm');
+    expect(formatSignalDbm(1.2)).toBe('1.2 dBm');
+  });
+
+  it('ignora valor não finito', () => {
+    expect(formatSignalDbm(undefined)).toBeUndefined();
+    expect(formatSignalDbm(Number.NaN)).toBeUndefined();
+  });
+});
+
+describe('parseSignedLastValue', () => {
+  it('aceita lastvalue negativo de sinal', () => {
+    expect(parseSignedLastValue('-8.5')).toBe(-8.5);
+    expect(parseSignedLastValue('0')).toBe(0);
+  });
+
+  it('ignora texto vazio ou não numérico', () => {
+    expect(parseSignedLastValue(undefined)).toBeUndefined();
+    expect(parseSignedLastValue('')).toBeUndefined();
+    expect(parseSignedLastValue('n/a')).toBeUndefined();
   });
 });

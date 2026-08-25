@@ -5,6 +5,7 @@ import {
   TopologyNetworkInterface,
 } from '../../types';
 import { InterfaceMetricKind, InterfaceKeyParseOptions, parseInterfaceItemKey, snmpIndexFromToken } from './interfaceItemKeys';
+import { interfacesShareIdentity } from './bindInterfaceMetrics';
 
 export interface RawZabbixInterfaceItem {
   itemid: string;
@@ -28,6 +29,8 @@ interface InterfaceAccumulator {
   speedMbps?: number;
   adminStatus?: number;
   operStatus?: number;
+  rxPowerDbm?: number;
+  txPowerDbm?: number;
   metrics: TopologyInterfaceMetrics;
   metricCounts: Partial<Record<InterfaceMetricKind, number>>;
 }
@@ -146,6 +149,14 @@ function addMetric(
     case 'drops':
       acc.metrics.drops = ref;
       break;
+    case 'rxPower':
+      acc.metrics.rxPower = ref;
+      acc.rxPowerDbm = parseNumber(item.lastvalue);
+      break;
+    case 'txPower':
+      acc.metrics.txPower = ref;
+      acc.txPowerDbm = parseNumber(item.lastvalue);
+      break;
     default:
       break;
   }
@@ -166,6 +177,64 @@ function finalizeConfidence(acc: InterfaceAccumulator): MetricBindingConfidence 
     return 'medium';
   }
   return 'low';
+}
+
+function hasTrafficMetrics(acc: InterfaceAccumulator): boolean {
+  return Boolean(acc.metrics.rx || acc.metrics.tx);
+}
+
+function hasSignalMetrics(acc: InterfaceAccumulator): boolean {
+  return Boolean(acc.metrics.rxPower || acc.metrics.txPower);
+}
+
+function foldSignalInto(target: InterfaceAccumulator, source: InterfaceAccumulator): void {
+  if (!target.metrics.rxPower && source.metrics.rxPower) {
+    target.metrics.rxPower = source.metrics.rxPower;
+    target.rxPowerDbm = source.rxPowerDbm;
+    target.metricCounts.rxPower = source.metricCounts.rxPower;
+  }
+  if (!target.metrics.txPower && source.metrics.txPower) {
+    target.metrics.txPower = source.metrics.txPower;
+    target.txPowerDbm = source.txPowerDbm;
+    target.metricCounts.txPower = source.metricCounts.txPower;
+  }
+}
+
+/** Óptica/rádio costuma vir com outro SNMP index — junta pelo nome/porta na interface de tráfego. */
+function mergeSignalIntoTrafficGroups(groups: Map<string, InterfaceAccumulator>): InterfaceAccumulator[] {
+  const list = [...groups.values()];
+  const absorbed = new Set<InterfaceAccumulator>();
+  for (const traffic of list) {
+    if (!hasTrafficMetrics(traffic)) {
+      continue;
+    }
+    for (const other of list) {
+      if (other === traffic || absorbed.has(other) || hasTrafficMetrics(other) || !hasSignalMetrics(other)) {
+        continue;
+      }
+      if (!interfacesShareIdentity(traffic, other)) {
+        continue;
+      }
+      foldSignalInto(traffic, other);
+      absorbed.add(other);
+    }
+  }
+  for (const left of list) {
+    if (absorbed.has(left) || hasTrafficMetrics(left) || !hasSignalMetrics(left)) {
+      continue;
+    }
+    for (const right of list) {
+      if (right === left || absorbed.has(right) || hasTrafficMetrics(right) || !hasSignalMetrics(right)) {
+        continue;
+      }
+      if (!interfacesShareIdentity(left, right)) {
+        continue;
+      }
+      foldSignalInto(left, right);
+      absorbed.add(right);
+    }
+  }
+  return list.filter((acc) => !absorbed.has(acc));
 }
 
 function finalizeInterface(acc: InterfaceAccumulator): TopologyNetworkInterface {
@@ -189,6 +258,8 @@ function finalizeInterface(acc: InterfaceAccumulator): TopologyNetworkInterface 
     speedMbps: acc.speedMbps,
     adminStatus: acc.adminStatus,
     operStatus: acc.operStatus,
+    rxPowerDbm: acc.rxPowerDbm,
+    txPowerDbm: acc.txPowerDbm,
     metrics: acc.metrics,
     bindingConfidence: finalizeConfidence(acc),
   };
@@ -242,7 +313,7 @@ export function parseZabbixInterfaceItems(
     addMetric(acc, parsed.kind, item);
   }
 
-  return [...groups.values()]
+  return mergeSignalIntoTrafficGroups(groups)
     .map(finalizeInterface)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }

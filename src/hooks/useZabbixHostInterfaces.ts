@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HostMetadataMap, TopologyNetworkInterface } from '../types';
+import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
-import { InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
+import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
 import { fetchZabbixHostInterfaceItemsViaQuery } from '../utils/zabbixDatasourceQuery';
 
@@ -16,6 +16,8 @@ export interface ZabbixInterfaceKeywordOptions {
   txKeyword?: string;
   operStatusKeyword?: string;
   speedKeyword?: string;
+  rxPowerKeyword?: string;
+  txPowerKeyword?: string;
 }
 
 type InterfacesByHost = Record<string, TopologyNetworkInterface[]>;
@@ -36,10 +38,42 @@ export const NO_KEYWORDS_ERROR =
 export const NO_API_ITEMS_ERROR =
   'Nenhuma métrica de interface encontrada no Zabbix para as chaves RX/TX/status/capacidade configuradas.';
 
+export function panelInterfaceKeywords(
+  options: Pick<
+    TopologyPanelOptions,
+    | 'zabbixRxItemKeyword'
+    | 'zabbixTxItemKeyword'
+    | 'zabbixOperStatusItemKeyword'
+    | 'zabbixSpeedItemKeyword'
+    | 'zabbixRxPowerItemKeyword'
+    | 'zabbixTxPowerItemKeyword'
+  >
+): ZabbixInterfaceKeywordOptions {
+  return {
+    rxKeyword: options.zabbixRxItemKeyword,
+    txKeyword: options.zabbixTxItemKeyword,
+    operStatusKeyword: options.zabbixOperStatusItemKeyword,
+    speedKeyword: options.zabbixSpeedItemKeyword,
+    rxPowerKeyword: options.zabbixRxPowerItemKeyword,
+    txPowerKeyword: options.zabbixTxPowerItemKeyword,
+  };
+}
+
 function interfaceSearchKeys(keywords?: ZabbixInterfaceKeywordOptions): string[] {
-  return [keywords?.rxKeyword, keywords?.txKeyword, keywords?.operStatusKeyword, keywords?.speedKeyword]
+  const configured = [
+    keywords?.rxKeyword,
+    keywords?.txKeyword,
+    keywords?.operStatusKeyword,
+    keywords?.speedKeyword,
+    keywords?.rxPowerKeyword,
+    keywords?.txPowerKeyword,
+  ]
     .map((key) => key?.trim())
     .filter(Boolean) as string[];
+  if (!configured.length) {
+    return [];
+  }
+  return [...new Set([...configured, ...INTERFACE_SIGNAL_SEARCH_TERMS])];
 }
 
 function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): InterfaceKeyParseOptions | undefined {
@@ -47,10 +81,12 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
   const txKeyword = keywords?.txKeyword?.trim();
   const operStatusKeyword = keywords?.operStatusKeyword?.trim();
   const speedKeyword = keywords?.speedKeyword?.trim();
-  if (!rxKeyword && !txKeyword && !operStatusKeyword && !speedKeyword) {
+  const rxPowerKeyword = keywords?.rxPowerKeyword?.trim();
+  const txPowerKeyword = keywords?.txPowerKeyword?.trim();
+  if (!rxKeyword && !txKeyword && !operStatusKeyword && !speedKeyword && !rxPowerKeyword && !txPowerKeyword) {
     return undefined;
   }
-  return { rxKeyword, txKeyword, operStatusKeyword, speedKeyword };
+  return { rxKeyword, txKeyword, operStatusKeyword, speedKeyword, rxPowerKeyword, txPowerKeyword };
 }
 
 /**
@@ -74,12 +110,16 @@ export function useZabbixHostInterfaces(
     interfaceKeywords?.txKeyword,
     interfaceKeywords?.operStatusKeyword,
     interfaceKeywords?.speedKeyword,
+    interfaceKeywords?.rxPowerKeyword,
+    interfaceKeywords?.txPowerKeyword,
   ]);
   const keyParseOptions = useMemo(() => interfaceKeyParseOptions(interfaceKeywords), [
     interfaceKeywords?.rxKeyword,
     interfaceKeywords?.txKeyword,
     interfaceKeywords?.operStatusKeyword,
     interfaceKeywords?.speedKeyword,
+    interfaceKeywords?.rxPowerKeyword,
+    interfaceKeywords?.txPowerKeyword,
   ]);
   const metadataHostIds = useMemo(
     () => keys.map((key) => hostMetadata?.[key]?.hostid?.trim() ?? '').join('\u0001'),

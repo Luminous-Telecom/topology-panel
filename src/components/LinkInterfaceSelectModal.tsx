@@ -11,6 +11,7 @@ import {
   TopologyNode,
 } from '../types';
 import { useLinkPeerInterfaces } from '../hooks/useLinkPeerInterfaces';
+import { ZabbixInterfaceKeywordOptions } from '../hooks/useZabbixHostInterfaces';
 import { interfaceToReference, resolveLinkCapacityMbps } from '../utils/zabbixAdapter/bindInterfaceMetrics';
 import {
   innerHostLabel,
@@ -35,10 +36,7 @@ interface Props {
   hostMetadata?: HostMetadataMap;
   /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
-  zabbixRxItemKeyword?: string;
-  zabbixTxItemKeyword?: string;
-  zabbixOperStatusItemKeyword?: string;
-  zabbixSpeedItemKeyword?: string;
+  interfaceKeywords?: ZabbixInterfaceKeywordOptions;
   onSave: (
     fromInterface: TopologyInterfaceReference | undefined,
     toInterface: TopologyInterfaceReference | undefined,
@@ -61,10 +59,7 @@ export function LinkInterfaceSelectModal({
   childMaps,
   hostMetadata,
   zabbixDatasourceUid,
-  zabbixRxItemKeyword,
-  zabbixTxItemKeyword,
-  zabbixOperStatusItemKeyword,
-  zabbixSpeedItemKeyword,
+  interfaceKeywords,
   onSave,
   onClose,
 }: Props) {
@@ -91,12 +86,7 @@ export function LinkInterfaceSelectModal({
     fromPeer,
     toPeer,
     zabbixDatasourceUid,
-    {
-      rxKeyword: zabbixRxItemKeyword,
-      txKeyword: zabbixTxItemKeyword,
-      operStatusKeyword: zabbixOperStatusItemKeyword,
-      speedKeyword: zabbixSpeedItemKeyword,
-    },
+    interfaceKeywords,
     hostMetadata
   );
 

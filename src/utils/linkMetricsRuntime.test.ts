@@ -3,9 +3,12 @@ import {
   aliasLastValuesByItemKey,
   buildLinkRuntimeMetricsMap,
   collectLinkMetricKeys,
+  collectLinkSignalHostIds,
   collectMapsLinks,
+  linkSignalSearchTerms,
   resolveLinkMapTrafficMetrics,
 } from './linkMetricsRuntime';
+import { linkKey } from './mapLinkEdits';
 import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('buildLinkRuntimeMetricsMap', () => {
@@ -33,7 +36,7 @@ describe('buildLinkRuntimeMetricsMap', () => {
       '11': { itemid: '11', lastvalue: '100000000' },
       '12': { itemid: '12', lastvalue: '1' },
     });
-    const linkMetrics = metrics['a-b'];
+    const linkMetrics = metrics[linkKey(map.links[0]!)];
     expect(linkMetrics?.from.rxBps).toBe(500000000);
     expect(linkMetrics?.from.txBps).toBe(100000000);
     expect(linkMetrics?.from.rxUtilizationPct).toBe(50);
@@ -58,8 +61,8 @@ describe('buildLinkRuntimeMetricsMap', () => {
     const metrics = buildLinkRuntimeMetricsMap(map, {
       '12': { itemid: '12', lastvalue: '2' },
     });
-    expect(metrics['a-b']?.status).toBe('down');
-    expect(metrics['a-b']?.from.operStatus).toBe('down');
+    expect(metrics[linkKey(map.links[0]!)]?.status).toBe('down');
+    expect(metrics[linkKey(map.links[0]!)]?.from.operStatus).toBe('down');
   });
 
   it('lê o cabo vinculado só por key, sem itemid numérico', () => {
@@ -84,10 +87,102 @@ describe('buildLinkRuntimeMetricsMap', () => {
       'vendor.metric.rx[10]': { itemid: '', lastvalue: '250000000' },
       'vendor.metric.tx[10]': { itemid: '', lastvalue: '50000000' },
     });
-    expect(metrics['a-b']?.from.rxBps).toBe(250000000);
-    expect(metrics['a-b']?.from.txBps).toBe(50000000);
+    expect(metrics[linkKey(map.links[0]!)]?.from.rxBps).toBe(250000000);
+    expect(metrics[linkKey(map.links[0]!)]?.from.txBps).toBe(50000000);
     // A orientação do mapa também precisa reconhecer o vínculo por key.
-    expect(resolveLinkMapTrafficMetrics(map.links[0], metrics['a-b']).rxBps).toBe(250000000);
+    expect(resolveLinkMapTrafficMetrics(map.links[0], metrics[linkKey(map.links[0]!)]).rxBps).toBe(250000000);
+  });
+
+  it('lê sinal óptico negativo em dBm', () => {
+    const map = {
+      ...emptyMap(),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: {
+            name: 'eth0',
+            metrics: {
+              rxPower: { itemId: '30' },
+              txPower: { itemId: '31' },
+            },
+          },
+        },
+      ],
+    };
+    const metrics = buildLinkRuntimeMetricsMap(map, {
+      '30': { itemid: '30', lastvalue: '-8.5' },
+      '31': { itemid: '31', lastvalue: '-2' },
+    });
+    expect(metrics[linkKey(map.links[0]!)]?.from.rxPowerDbm).toBe(-8.5);
+    expect(metrics[linkKey(map.links[0]!)]?.from.txPowerDbm).toBe(-2);
+  });
+
+  it('vincula sinal descoberto no mesmo lastvalue do poll, sem gravar no JSON', () => {
+    const map = {
+      ...emptyMap({
+        nodes: [
+          hostNode({ id: 'a', zabbixHost: '10.0.0.1', label: 'host-a' }),
+          hostNode({ id: 'b', x: 80, zabbixHost: '10.0.0.2', label: 'host-b' }),
+        ],
+      }),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: {
+            name: 'port-a0/0/3',
+            metrics: {
+              rx: { itemId: '10' },
+              tx: { itemId: '11' },
+            },
+          },
+        },
+      ],
+    };
+    const metadata = {
+      '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' },
+    };
+    const metrics = buildLinkRuntimeMetricsMap(
+      map,
+      {
+        '10': { itemid: '10', lastvalue: '500000000' },
+        '11': { itemid: '11', lastvalue: '100000000' },
+        '30': { itemid: '30', lastvalue: '-8.5' },
+        '31': { itemid: '31', lastvalue: '-2.1' },
+      },
+      undefined,
+      metadata,
+      [
+        {
+          itemid: '10',
+          key_: 'vendor.metric.rx[10]',
+          name: 'port-a0/0/3',
+          hostid: '101',
+          lastvalue: '500000000',
+        },
+        {
+          itemid: '30',
+          key_: 'vendor.optical.rxpower[10]',
+          name: 'port-a0/0/3',
+          hostid: '101',
+          lastvalue: '-8.5',
+        },
+        {
+          itemid: '31',
+          key_: 'vendor.optical.txpower[10]',
+          name: 'port-a0/0/3',
+          hostid: '101',
+          lastvalue: '-2.1',
+        },
+      ]
+    );
+    expect(metrics[linkKey(map.links[0]!)]?.from.rxPowerDbm).toBe(-8.5);
+    expect(metrics[linkKey(map.links[0]!)]?.from.txPowerDbm).toBe(-2.1);
+    expect(map.links[0]?.fromInterface?.metrics).toEqual({
+      rx: { itemId: '10' },
+      tx: { itemId: '11' },
+    });
   });
 
   it('não mistura operStatus de dois hosts com a mesma chave de item', () => {
@@ -126,9 +221,9 @@ describe('buildLinkRuntimeMetricsMap', () => {
       undefined,
       metadata
     );
-    expect(metrics['a-b']?.from.operStatus).toBe('up');
-    expect(metrics['a-b']?.to.operStatus).toBe('down');
-    expect(metrics['a-b']?.status).toBe('down');
+    expect(metrics[linkKey(map.links[0]!)]?.from.operStatus).toBe('up');
+    expect(metrics[linkKey(map.links[0]!)]?.to.operStatus).toBe('down');
+    expect(metrics[linkKey(map.links[0]!)]?.status).toBe('down');
   });
 
   it('lê operStatus pelo nome do host quando o frame não tem itemid', () => {
@@ -167,8 +262,8 @@ describe('buildLinkRuntimeMetricsMap', () => {
       undefined,
       metadata
     );
-    expect(metrics['a-b']?.from.operStatus).toBe('up');
-    expect(metrics['a-b']?.to.operStatus).toBe('down');
+    expect(metrics[linkKey(map.links[0]!)]?.from.operStatus).toBe('up');
+    expect(metrics[linkKey(map.links[0]!)]?.to.operStatus).toBe('down');
   });
 
   it('usa métricas do destino quando a origem não tem RX/TX (nuvem / link externo)', () => {
@@ -192,7 +287,7 @@ describe('buildLinkRuntimeMetricsMap', () => {
       '20': { itemid: '20', lastvalue: '800000000' },
       '21': { itemid: '21', lastvalue: '200000000' },
     });
-    const runtime = metrics['cloud-sw'];
+    const runtime = metrics[linkKey(map.links[0]!)];
     const display = resolveLinkMapTrafficMetrics(map.links[0]!, runtime);
     expect(display.txBps).toBe(800000000);
     expect(display.rxBps).toBe(200000000);
@@ -210,11 +305,12 @@ describe('collectLinkMetricKeys', () => {
           metrics: {
             rx: { itemId: '10', key: 'vendor.metric.rx[10]' },
             tx: { key: 'vendor.metric.tx[10]' },
+            rxPower: { key: 'vendor.optical.rxpower[10]' },
           },
         },
       },
     ]);
-    expect(keys).toEqual(['vendor.metric.tx[10]']);
+    expect(keys).toEqual(['vendor.metric.tx[10]', 'vendor.optical.rxpower[10]']);
   });
 });
 
@@ -228,6 +324,44 @@ describe('collectMapsLinks', () => {
       { from: 'a', to: 'b' },
       { from: 'c', to: 'd' },
     ]);
+  });
+});
+
+describe('collectLinkSignalHostIds', () => {
+  it('coleta hostid dos extremos com interface', () => {
+    const map = {
+      ...emptyMap({
+        nodes: [
+          hostNode({ id: 'a', zabbixHost: '10.0.0.1', label: 'host-a' }),
+          hostNode({ id: 'b', x: 80, zabbixHost: '10.0.0.2', label: 'host-b' }),
+        ],
+      }),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: { name: 'port-a0/0/3', metrics: { rx: { itemId: '10' } } },
+        },
+      ],
+    };
+    const ids = collectLinkSignalHostIds(
+      [map],
+      {
+        '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' },
+        '10.0.0.2': { name: 'host-b', ip: '10.0.0.2', hostid: '102' },
+      }
+    );
+    expect(ids).toEqual(['101', '102']);
+  });
+});
+
+describe('linkSignalSearchTerms', () => {
+  it('junta termos genéricos com as palavras-chave do painel', () => {
+    const terms = linkSignalSearchTerms({
+      zabbixRxPowerItemKeyword: 'custom-rx',
+      zabbixTxPowerItemKeyword: 'custom-tx',
+    });
+    expect(terms).toEqual(expect.arrayContaining(['rxpower', 'optical', 'custom-rx', 'custom-tx']));
   });
 });
 

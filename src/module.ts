@@ -77,6 +77,22 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         defaultValue: '',
         category: ['Fonte de dados'],
       })
+      .addTextInput({
+        path: 'zabbixRxPowerItemKeyword',
+        name: 'Palavra-chave sinal RX (interface)',
+        description:
+          'Trecho da key Zabbix do sinal óptico/rádio de recepção. Só esse termo entra na busca.',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+      })
+      .addTextInput({
+        path: 'zabbixTxPowerItemKeyword',
+        name: 'Palavra-chave sinal TX (interface)',
+        description:
+          'Trecho da key Zabbix do sinal óptico/rádio de transmissão. Só esse termo entra na busca.',
+        defaultValue: '',
+        category: ['Fonte de dados'],
+      })
       .addNumberInput({
         path: 'zabbixRefreshSec',
         name: 'Intervalo de atualização (segundos)',

@@ -15,7 +15,7 @@ import {
 } from '../../types';
 import { addZabbixHostAt } from '../../utils/mapEdits';
 import { activeChildMaps } from '../../utils/childMapEdits';
-import { linksMatchEndpoints, updateLinkProps } from '../../utils/mapLinkEdits';
+import { linksMatchIdentity, updateLinkProps } from '../../utils/mapLinkEdits';
 import { BulkSubmapLayoutSize } from '../../utils/mapBulkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
@@ -33,6 +33,7 @@ import {
 } from '../lazyModals';
 import { BulkEditModals } from './BulkEditModals';
 import { PendingLinkEndpoints } from '../LinkInterfaceSelectModal';
+import { panelInterfaceKeywords } from '../../hooks/useZabbixHostInterfaces';
 
 export interface PingTarget {
   label: string;
@@ -203,14 +204,13 @@ export function CanvasModals({
           childMaps={activeChildMaps(options.childMaps)}
           hostMetadata={hostMetadata}
           zabbixDatasourceUid={zabbixDatasourceUid}
-          zabbixRxItemKeyword={options.zabbixRxItemKeyword}
-          zabbixTxItemKeyword={options.zabbixTxItemKeyword}
-          zabbixOperStatusItemKeyword={options.zabbixOperStatusItemKeyword}
-          zabbixSpeedItemKeyword={options.zabbixSpeedItemKeyword}
+          interfaceKeywords={panelInterfaceKeywords(options)}
           onClose={() => setEditLink(null)}
           onSave={(patch) => {
-            const next = updateLinkProps(storedMap, editLink.from, editLink.to, patch);
-            const updated = next.links.find((link) => linksMatchEndpoints(link, editLink));
+            const next = updateLinkProps(storedMap, editLink, patch);
+            const updated = next.links.find((link) =>
+              linksMatchIdentity(link, { ...editLink, ...patch })
+            );
             persist(next, updated ? { interSubmapLink: updated } : undefined);
           }}
         />
@@ -222,10 +222,7 @@ export function CanvasModals({
           childMaps={activeChildMaps(options.childMaps)}
           hostMetadata={hostMetadata}
           zabbixDatasourceUid={zabbixDatasourceUid}
-          zabbixRxItemKeyword={options.zabbixRxItemKeyword}
-          zabbixTxItemKeyword={options.zabbixTxItemKeyword}
-          zabbixOperStatusItemKeyword={options.zabbixOperStatusItemKeyword}
-          zabbixSpeedItemKeyword={options.zabbixSpeedItemKeyword}
+          interfaceKeywords={panelInterfaceKeywords(options)}
           onClose={onPendingLinkClose}
           onSave={onPendingLinkSave}
         />

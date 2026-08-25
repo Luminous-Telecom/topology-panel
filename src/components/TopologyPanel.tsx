@@ -4,6 +4,7 @@ import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
+  HostMetadataMap,
   TopologyLink,
   TopologyMap,
   TopologyPanelOptions,
@@ -41,7 +42,13 @@ import {
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
-import { collectLinkMetricItemIds, collectLinkMetricKeys, collectMapsLinks } from '../utils/linkMetricsRuntime';
+import {
+  collectLinkMetricItemIds,
+  collectLinkMetricKeys,
+  collectLinkSignalHostIds,
+  collectMapsLinks,
+  linkSignalSearchTerms,
+} from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
@@ -167,14 +174,21 @@ export function TopologyPanel({
     [resolvedOptions.map, resolvedOptions.childMaps]
   );
 
-  const allMapLinks = useMemo(
-    () => collectMapsLinks([resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))]),
+  const mapsForPoll = useMemo(
+    () => [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))],
     [resolvedOptions.map, resolvedOptions.childMaps]
   );
+  const allMapLinks = useMemo(() => collectMapsLinks(mapsForPoll), [mapsForPoll]);
   const trafficItemIds = useMemo(() => collectLinkMetricItemIds(allMapLinks), [allMapLinks]);
   const trafficKeys = useMemo(() => collectLinkMetricKeys(allMapLinks), [allMapLinks]);
+  const signalSearchTerms = useMemo(
+    () => linkSignalSearchTerms(resolvedOptions),
+    [resolvedOptions.zabbixRxPowerItemKeyword, resolvedOptions.zabbixTxPowerItemKeyword]
+  );
+  const hostMetaForSignalRef = useRef<HostMetadataMap | undefined>(undefined);
+  const signalHostIds = collectLinkSignalHostIds(mapsForPoll, hostMetaForSignalRef.current);
 
-  /** Status, hover, RX/TX dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
+  /** Status, hover, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     panelData: data,
     enabled: true,
@@ -187,6 +201,8 @@ export function TopologyPanel({
     statusOptions: statusColorOptions,
     trafficItemIds,
     trafficKeys,
+    signalHostIds,
+    signalSearchTerms,
   });
 
   const queryIndex = querySource.index;
@@ -209,6 +225,7 @@ export function TopologyPanel({
    * anterior, um refresh sem mudança nenhuma remedia todos os nós.
    */
   const dataMeta = useStableIdentity(dataMetaRaw);
+  hostMetaForSignalRef.current = dataMeta;
 
   /**
    * Fonte de dados em erro (datasource fora do ar, script quebrado, etc.) — não reaproveita o
@@ -220,7 +237,8 @@ export function TopologyPanel({
     activeStoredMap,
     resolvedOptions,
     querySource.lastValues,
-    dataMeta
+    dataMeta,
+    querySource.interfaceItems ?? []
   );
 
   const liveHostDisplayByRefId = useMemo(() => {

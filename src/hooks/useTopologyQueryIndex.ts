@@ -4,7 +4,7 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { HostProblemsMap } from '../utils/noc/types';
 import { StatusColorOptions } from '../utils/statusMapping';
-import { ZabbixItemLastValue } from '../utils/zabbixApi';
+import { ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 /**
@@ -24,12 +24,15 @@ export interface UseTopologyQueryIndexOptions {
   statusOptions?: StatusColorOptions;
   trafficItemIds?: string[];
   trafficKeys?: string[];
+  signalHostIds?: string[];
+  signalSearchTerms?: string[];
 }
 
 export interface UseTopologyQueryIndexResult {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
   ready: boolean;
   loading: boolean;
@@ -59,6 +62,8 @@ export function useTopologyQueryIndex({
   statusOptions,
   trafficItemIds,
   trafficKeys,
+  signalHostIds,
+  signalSearchTerms,
 }: UseTopologyQueryIndexOptions): UseTopologyQueryIndexResult {
   const direct = useZabbixDirectIndex({
     enabled,
@@ -71,6 +76,8 @@ export function useTopologyQueryIndex({
     statusOptions,
     trafficItemIds,
     trafficKeys,
+    signalHostIds,
+    signalSearchTerms,
   });
 
   const fromPanelData = useMemo(() => panelDataIndex(panelData), [panelData]);
@@ -89,6 +96,7 @@ export function useTopologyQueryIndex({
     index,
     hoverByHost: fromPanelData ? {} : direct.hoverByHost,
     lastValues: fromPanelData ? {} : (direct.lastValues ?? {}),
+    interfaceItems: fromPanelData ? [] : (direct.interfaceItems ?? []),
     problems: fromPanelData ? {} : direct.problems,
     ready,
     loading,

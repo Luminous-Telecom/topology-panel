@@ -59,8 +59,8 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 | Consumidor autorizado | Uso permitido |
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada ciclo), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos) em paralelo |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade/sinal filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada ciclo), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos: tráfego **e sinal** no mesmo ciclo) em paralelo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
@@ -69,19 +69,22 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
 - Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e problemas Warning+ no mesmo
-  `ds.query()`; tráfego dos cabos via `item.get` lastvalue em paralelo — itemids de **toda a
-  árvore**, não só do mapa aberto), no `zabbixRefreshSec` do painel — não no refresh do dashboard
-  nem no lastclock do item.
+  `ds.query()`; tráfego **e sinal** dos cabos via `item.get` lastvalue em paralelo — itemids de
+  **toda a árvore**, não só do mapa aberto; hostids dos extremos com interface para o sinal), no
+  `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
   `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
-  só monta o mapa de cabo a partir dos lastvalues já buscados.
+  só monta o mapa de cabo a partir dos lastvalues já buscados. O drawer de detalhes **não** consulta
+  o Zabbix — lê `runtimeMetrics` do mesmo poll.
 - Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get`,
   ou metadata para outra finalidade) exige **aprovação
   explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
 - Busca e classificação de interface usam **só** as palavras-chave das opções do painel
   (`zabbixRxItemKeyword`, `zabbixTxItemKeyword`, `zabbixOperStatusItemKeyword`,
-  `zabbixSpeedItemKeyword`). Proibido lista fixa de key, fallback `if`/`octets` ou nome de
-  template/equipamento no código. Hint da UI descreve o campo, sem exemplo de key real.
+  `zabbixSpeedItemKeyword`, `zabbixRxPowerItemKeyword`, `zabbixTxPowerItemKeyword`)
+  e, com pelo menos uma configurada, os termos genéricos de sinal em
+  `INTERFACE_SIGNAL_SEARCH_TERMS`. Proibido lista fixa de key, fallback `if`/`octets`
+  ou nome de template/equipamento no código. Hint da UI descreve o campo, sem exemplo de key real.
 
 ## APIs do Grafana
 

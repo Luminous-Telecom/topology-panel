@@ -13,6 +13,7 @@ import {
   TopologyNode,
 } from '../types';
 import { useLinkPeerInterfaces } from '../hooks/useLinkPeerInterfaces';
+import { ZabbixInterfaceKeywordOptions } from '../hooks/useZabbixHostInterfaces';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import {
   interfaceToReference,
@@ -37,10 +38,7 @@ interface Props {
   hostMetadata?: HostMetadataMap;
   /** Datasource Zabbix do inventário de interfaces. */
   zabbixDatasourceUid?: string;
-  zabbixRxItemKeyword?: string;
-  zabbixTxItemKeyword?: string;
-  zabbixOperStatusItemKeyword?: string;
-  zabbixSpeedItemKeyword?: string;
+  interfaceKeywords?: ZabbixInterfaceKeywordOptions;
   onSave: (patch: {
     medium?: TopologyLinkMedium;
     bandwidthMbps?: number;
@@ -63,10 +61,7 @@ export function LinkEditModal({
   childMaps,
   hostMetadata,
   zabbixDatasourceUid,
-  zabbixRxItemKeyword,
-  zabbixTxItemKeyword,
-  zabbixOperStatusItemKeyword,
-  zabbixSpeedItemKeyword,
+  interfaceKeywords,
   onSave,
   onClose,
 }: Props) {
@@ -101,12 +96,7 @@ export function LinkEditModal({
     fromPeer,
     toPeer,
     zabbixDatasourceUid,
-    {
-      rxKeyword: zabbixRxItemKeyword,
-      txKeyword: zabbixTxItemKeyword,
-      operStatusKeyword: zabbixOperStatusItemKeyword,
-      speedKeyword: zabbixSpeedItemKeyword,
-    },
+    interfaceKeywords,
     hostMetadata
   );
 

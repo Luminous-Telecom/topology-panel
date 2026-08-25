@@ -32,7 +32,8 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
-| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi.ts` (`item.get`, `hostid:key`) |
+| Hosts dos extremos para o sinal no mesmo `item.get` | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts` |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
 | Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
@@ -44,7 +45,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |
-| Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`) |
+| Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
 | Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `linkRuntimeColor`, `isLinkVisuallyDown`, `resolveLinkUtilizationLevel` |
 | Hosts e refIds do índice | `utils/queryHosts.ts` |
@@ -61,7 +62,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Necessidade | Já existe em |
 |---|---|
 | Add/move/update/remove de nó, travas do mapa | `utils/mapEdits.ts` |
-| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`upsertLinkWithInterfaces`) | `utils/mapLinkEdits.ts` |
+| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`linksMatchIdentity`/`upsertLinkWithInterfaces`) | `utils/mapLinkEdits.ts` |
 | Espelhar cabo entre submapas (raiz e mapa de destino) | `syncInterSubmapCounterpartLinks` em `utils/interSubmapLinks.ts` |
 | Excluir cabo entre submapas em cascata (espelhos e hops órfãos) | `removeInterSubmapCounterpartLinks` / `removeMissingInterSubmapCounterparts` em `utils/interSubmapLinks.ts` |
 | Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
@@ -74,10 +75,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Limites/bounding box do mapa | `utils/mapBounds.ts` |
 | Guias de alinhamento durante o arraste | `computeAlignGuides` em `utils/alignGuides.ts` |
 | Pan automático ao arrastar na borda | `utils/edgePan.ts` |
-| Geometria do link: path, waypoint mais próximo, âncora do rótulo | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
+| Geometria do link: path, waypoint mais próximo, âncora do rótulo, cabos paralelos | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor`, `offsetPolyline`, `parallelLinkBundleOffset` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
-| Formato de tráfego (bps, rótulo do cabo, intervalo) | `formatBitsPerSecond`, `formatLinkMapTrafficLabel`, `formatEndpointTrafficPair`, `formatPluginRefreshInterval` em `utils/zabbixAdapter/formatTraffic.ts` |
-| Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts` |
+| Formato de tráfego (bps, rótulo do cabo, intervalo) | `formatBitsPerSecond`, `formatLinkMapTrafficLabel`, `formatEndpointTrafficPair`, `formatSignalDbm`, `formatPluginRefreshInterval` em `utils/zabbixAdapter/formatTraffic.ts` |
+| Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts`; sinal no cabo via `attachSignalRefsToInterface` / `matchDiscoveredInterface` em `bindInterfaceMetrics.ts` (a partir dos itens do mesmo `item.get` do tráfego) |
 | Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
 | Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` em `utils/structuralIdentity.ts` |
 | Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |

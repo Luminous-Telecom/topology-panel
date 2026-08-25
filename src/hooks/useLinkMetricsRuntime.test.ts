@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultOptions } from '../types';
+import { linkKey } from '../utils/mapLinkEdits';
 import { emptyMap, hostNode } from '../utils/testMapFixtures';
 import { useLinkMetricsRuntime } from './useLinkMetricsRuntime';
 
@@ -28,8 +29,9 @@ describe('useLinkMetricsRuntime', () => {
       })
     );
 
-    expect(result.current.metricsByLink['a-b']?.from.rxBps).toBe(500000000);
-    expect(result.current.metricsByLink['a-b']?.from.txBps).toBe(100000000);
+    const key = linkKey(mapWithTraffic().links[0]!);
+    expect(result.current.metricsByLink[key]?.from.rxBps).toBe(500000000);
+    expect(result.current.metricsByLink[key]?.from.txBps).toBe(100000000);
   });
 
   it('sem lastvalues devolve o mapa vazio estável', () => {

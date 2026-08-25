@@ -411,11 +411,12 @@ export function zabbixHostItemKey(hostid: string, itemKey: string): string {
 
 /** grafana-zabbix recusava lista enorme em Item ID; o `item.get` também fatia o body. */
 const TRAFFIC_ITEMID_CHUNK = 200;
-const TRAFFIC_ITEM_OUTPUT = ['itemid', 'key_', 'hostid', 'lastvalue', 'lastclock'];
+const TRAFFIC_ITEM_OUTPUT = ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'];
 
 interface ZabbixTrafficItemRow {
   itemid?: string;
   key_?: string;
+  name?: string;
   hostid?: string;
   lastvalue?: string;
   lastclock?: string;
@@ -454,22 +455,6 @@ function indexTrafficItemRows(rows: ZabbixTrafficItemRow[] | undefined): {
     lastValues[scoped] = stored;
     if (!itemIdByKey.has(scoped)) {
       itemIdByKey.set(scoped, itemid);
-    }
-  }
-  return { lastValues, itemIdByKey };
-}
-
-function mergeTrafficLastValues(
-  parts: Array<{ lastValues: Record<string, ZabbixItemLastValue>; itemIdByKey: Map<string, string> }>
-): { lastValues: Record<string, ZabbixItemLastValue>; itemIdByKey: Map<string, string> } {
-  const lastValues: Record<string, ZabbixItemLastValue> = {};
-  const itemIdByKey = new Map<string, string>();
-  for (const part of parts) {
-    Object.assign(lastValues, part.lastValues);
-    for (const [key, itemid] of part.itemIdByKey) {
-      if (!itemIdByKey.has(key)) {
-        itemIdByKey.set(key, itemid);
-      }
     }
   }
   return { lastValues, itemIdByKey };
@@ -515,41 +500,119 @@ export async function resolveZabbixItemIdsByKeys(
   return indexTrafficItemRows(rows).itemIdByKey;
 }
 
+export interface ZabbixTrafficSignalSearch {
+  hostids: string[];
+  terms: string[];
+}
+
+function trafficRowsToInterfaceItems(rows: ZabbixTrafficItemRow[]): ZabbixInterfaceItem[] {
+  const items: ZabbixInterfaceItem[] = [];
+  for (const row of rows) {
+    const key_ = row.key_?.trim();
+    if (!key_) {
+      continue;
+    }
+    const hostid = asZabbixId(row.hostid);
+    const itemid = asZabbixId(row.itemid);
+    const item: ZabbixInterfaceItem = {
+      itemid: itemid || `${hostid}:${key_}`,
+      key_,
+    };
+    if (row.name?.trim()) {
+      item.name = row.name.trim();
+    }
+    if (hostid) {
+      item.hostid = hostid;
+    }
+    if (row.lastvalue !== undefined) {
+      item.lastvalue = row.lastvalue;
+    }
+    const lastclock = String(row.lastclock ?? '').trim();
+    if (lastclock) {
+      item.lastclock = lastclock;
+    }
+    items.push(item);
+  }
+  return items;
+}
+
+async function fetchTrafficItemsBySearch(
+  datasourceUid: string,
+  hostids: string[],
+  terms: string[],
+  abortSignal: AbortSignal | undefined
+): Promise<ZabbixTrafficItemRow[]> {
+  const scopedHostIds = scopedTrafficHostIds(hostids);
+  const uniqueTerms = [...new Set(terms.map((term) => term.trim()).filter(Boolean))];
+  if (!datasourceUid || !scopedHostIds.length || !uniqueTerms.length) {
+    return [];
+  }
+  const parts = await Promise.all(
+    uniqueTerms.map((term) =>
+      zabbixCall<ZabbixTrafficItemRow[]>(
+        datasourceUid,
+        'item.get',
+        {
+          output: TRAFFIC_ITEM_OUTPUT,
+          hostids: scopedHostIds,
+          search: { key_: term },
+        },
+        ZABBIX_STATUS_CALL_TIMEOUT_MS,
+        { abortSignal, requestId: `topology-traffic-signal-${datasourceUid}-${term}` }
+      )
+    )
+  );
+  return parts.flat();
+}
+
 /**
- * Lastvalue RX/TX/status dos cabos — o Zabbix já guarda o valor atual no item
- * (preprocessing "Change per second" vira bps). Sem série de 5 min.
+ * Lastvalue RX/TX/status/sinal dos cabos — o Zabbix já guarda o valor atual no item
+ * (preprocessing "Change per second" vira bps). Sem série de 5 min. Tráfego e sinal
+ * saem do mesmo `item.get` (lotes em paralelo no mesmo ciclo).
  */
 export async function fetchZabbixTrafficLastValues(
   datasourceUid: string,
   itemIds: string[],
   abortSignal?: AbortSignal,
   itemKeys?: string[],
-  hostids?: string[]
-): Promise<{ lastValues: Record<string, ZabbixItemLastValue>; itemIdByKey: Map<string, string> }> {
+  hostids?: string[],
+  signalSearch?: ZabbixTrafficSignalSearch
+): Promise<{
+  lastValues: Record<string, ZabbixItemLastValue>;
+  itemIdByKey: Map<string, string>;
+  interfaceItems: ZabbixInterfaceItem[];
+}> {
   const ids = [...new Set(itemIds.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id)))];
   const keys = [...new Set((itemKeys ?? []).map((key) => key.trim()).filter(Boolean))];
-  if (!datasourceUid || (!ids.length && !keys.length)) {
-    return { lastValues: {}, itemIdByKey: new Map() };
+  const signalHostIds = scopedTrafficHostIds(signalSearch?.hostids);
+  const signalTerms = [...new Set((signalSearch?.terms ?? []).map((term) => term.trim()).filter(Boolean))];
+  const hasSignalSearch = Boolean(signalHostIds.length && signalTerms.length);
+  if (!datasourceUid || (!ids.length && !keys.length && !hasSignalSearch)) {
+    return { lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] };
   }
 
-  const batches: Array<Promise<{ lastValues: Record<string, ZabbixItemLastValue>; itemIdByKey: Map<string, string> }>> =
-    [];
+  const rowBatches: Array<Promise<ZabbixTrafficItemRow[]>> = [];
   for (let offset = 0; offset < ids.length; offset += TRAFFIC_ITEMID_CHUNK) {
     const chunk = ids.slice(offset, offset + TRAFFIC_ITEMID_CHUNK);
-    batches.push(
+    rowBatches.push(
       zabbixCall<ZabbixTrafficItemRow[]>(
         datasourceUid,
         'item.get',
         { itemids: chunk, output: TRAFFIC_ITEM_OUTPUT },
         ZABBIX_STATUS_CALL_TIMEOUT_MS,
         { abortSignal, requestId: `topology-traffic-ids-${datasourceUid}-${offset}` }
-      ).then((rows) => indexTrafficItemRows(rows))
+      )
     );
   }
   if (keys.length) {
-    batches.push(fetchTrafficItemsByKeys(datasourceUid, keys, abortSignal, hostids).then(indexTrafficItemRows));
+    rowBatches.push(fetchTrafficItemsByKeys(datasourceUid, keys, abortSignal, hostids));
   }
-  return mergeTrafficLastValues(await Promise.all(batches));
+  if (hasSignalSearch) {
+    rowBatches.push(fetchTrafficItemsBySearch(datasourceUid, signalHostIds, signalTerms, abortSignal));
+  }
+  const allRows = (await Promise.all(rowBatches)).flat();
+  const indexed = indexTrafficItemRows(allRows);
+  return { ...indexed, interfaceItems: trafficRowsToInterfaceItems(allRows) };
 }
 
 export interface ZabbixInterfaceItem {

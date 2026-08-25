@@ -62,6 +62,27 @@ describe('interfaceItemKeys', () => {
     expect(parseInterfaceItemKey('ifHighSpeed.14')?.kind).toBe('speed');
   });
 
+  it('classifica sinal óptico/rádio e não confunde com tráfego', () => {
+    expect(parseInterfaceItemKey('vendor.optical.rxpower[10]')).toEqual({
+      kind: 'rxPower',
+      interfaceToken: '10',
+      snmpIndex: '10',
+    });
+    expect(parseInterfaceItemKey('vendor.optical.txpower[11]')?.kind).toBe('txPower');
+    expect(parseInterfaceItemKey('vendor.sinal.rx[12]')?.kind).toBe('rxPower');
+    expect(parseInterfaceItemKey('vendor.rssi[13]')?.kind).toBe('rxPower');
+    expect(parseInterfaceItemKey('vendor.metric.rx[10]')?.kind).toBe('rx');
+  });
+
+  it('usa palavras-chave de sinal configuradas quando os padrões não reconhecem a key', () => {
+    const opts = {
+      rxPowerKeyword: 'customrxpwr',
+      txPowerKeyword: 'customtxpwr',
+    };
+    expect(parseInterfaceItemKey('vendor.customrxpwr.uplink[eth0]', opts)?.kind).toBe('rxPower');
+    expect(parseInterfaceItemKey('vendor.customtxpwr.uplink[eth0]', opts)?.kind).toBe('txPower');
+  });
+
   it('usa palavras-chave configuradas quando os padrões não reconhecem a key', () => {
     const opts = {
       rxKeyword: 'customrx',

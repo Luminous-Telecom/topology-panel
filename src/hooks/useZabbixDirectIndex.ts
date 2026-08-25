@@ -10,6 +10,7 @@ import {
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
   ZabbixDirectMetadata,
+  ZabbixInterfaceItem,
   ZabbixItemLastValue,
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
@@ -30,9 +31,9 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * não zera o índice: o mapa continua com o último snapshot até o novo chegar.
  *
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status/hover)
- * e Problems (Warning+) no mesmo request. O tráfego dos cabos lê o `lastvalue` do `item.get`
- * em paralelo — o Zabbix já guarda o valor atual (preprocessing vira bps). Cabo só com `key`
- * resolve itemid e lastvalue na mesma chamada.
+ * e Problems (Warning+) no mesmo request. O tráfego e o sinal dos cabos lêem o `lastvalue` do
+ * `item.get` em paralelo nesse mesmo ciclo — o Zabbix já guarda o valor atual (preprocessing
+ * vira bps). Cabo só com `key` resolve itemid e lastvalue na mesma chamada.
  * A identidade dos hosts (IP, tags, descrição) vem de `host.get` a cada ciclo — o DataFrame
  * não traz isso, e só a lista atual de monitorados evita status fantasma de host desativado.
  * O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana recria o EventBus no load
@@ -59,12 +60,17 @@ export interface UseZabbixDirectIndexOptions {
   trafficItemIds?: string[];
   /** Chaves dos cabos sem itemid numérico — resolvidas uma vez via `item.get`. */
   trafficKeys?: string[];
+  /** Hosts dos cabos com interface — sinal óptico/rádio no mesmo `item.get`. */
+  signalHostIds?: string[];
+  /** Termos de busca de sinal (óptico/rádio) no mesmo `item.get` do tráfego. */
+  signalSearchTerms?: string[];
 }
 
 export interface UseZabbixDirectIndexResult {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
   /** Já houve ao menos uma resposta boa para a configuração atual. */
   ready: boolean;
@@ -76,6 +82,7 @@ interface DirectState {
   index: QueryIndex;
   hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
+  interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
   ready: boolean;
   loading: boolean;
@@ -84,11 +91,13 @@ interface DirectState {
 
 const EMPTY_HOVER: HostHoverSeriesMap = {};
 const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
+const EMPTY_INTERFACE_ITEMS: ZabbixInterfaceItem[] = [];
 const EMPTY_PROBLEMS: HostProblemsMap = {};
 const IDLE_STATE: DirectState = {
   index: EMPTY_INDEX,
   hoverByHost: EMPTY_HOVER,
   lastValues: EMPTY_LAST_VALUES,
+  interfaceItems: EMPTY_INTERFACE_ITEMS,
   problems: EMPTY_PROBLEMS,
   ready: false,
   loading: false,
@@ -105,6 +114,8 @@ export function useZabbixDirectIndex({
   statusOptions,
   trafficItemIds,
   trafficKeys,
+  signalHostIds,
+  signalSearchTerms,
 }: UseZabbixDirectIndexOptions): UseZabbixDirectIndexResult {
   const groups = useMemo(
     () => [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))],
@@ -120,11 +131,19 @@ export function useZabbixDirectIndex({
     () => [...new Set((trafficKeys ?? []).map((key) => key.trim()).filter(Boolean))].sort(),
     [trafficKeys]
   );
+  const signalIds = useMemo(
+    () => [...new Set((signalHostIds ?? []).map((id) => id.trim()).filter(Boolean))].sort(),
+    [signalHostIds]
+  );
+  const signalTerms = useMemo(
+    () => [...new Set((signalSearchTerms ?? []).map((term) => term.trim()).filter(Boolean))].sort(),
+    [signalSearchTerms]
+  );
   /*
    * Os grupos da árvore não mudam ao abrir um submapa. Sem as chaves/ids do mapa visível aqui,
    * o efeito não recomeça e o tráfego do APD esperava o próximo ciclo (ou o watchdog).
    */
-  const configKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}\u0000${intervalSec}\u0000${trafficIds.join('\u0001')}\u0000${trafficItemKeys.join('\u0001')}`;
+  const configKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}\u0000${intervalSec}\u0000${trafficIds.join('\u0001')}\u0000${trafficItemKeys.join('\u0001')}\u0000${signalIds.join('\u0001')}\u0000${signalTerms.join('\u0001')}`;
 
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
@@ -136,6 +155,10 @@ export function useZabbixDirectIndex({
   trafficItemIdsRef.current = trafficIds;
   const trafficKeysRef = useRef(trafficItemKeys);
   trafficKeysRef.current = trafficItemKeys;
+  const signalIdsRef = useRef(signalIds);
+  signalIdsRef.current = signalIds;
+  const signalTermsRef = useRef(signalTerms);
+  signalTermsRef.current = signalTerms;
   /**
    * O Grafana recria o EventBus no carregamento do dashboard. Se o poll depende disso, o efeito
    * aborta o primeiro `ds.query()` e dispara outro — duas buscas iguais ao recarregar.
@@ -159,6 +182,7 @@ export function useZabbixDirectIndex({
       index: prev.index,
       hoverByHost: prev.hoverByHost,
       lastValues: prev.lastValues,
+      interfaceItems: prev.interfaceItems,
       problems: prev.problems,
       ready: prev.ready,
       loading: true,
@@ -196,15 +220,23 @@ export function useZabbixDirectIndex({
     const fetchTrafficLastValues = async (
       meta: ZabbixDirectMetadata,
       abortSignal: AbortSignal
-    ): Promise<Record<string, ZabbixItemLastValue>> => {
+    ): Promise<{ lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] }> => {
       const numeric = [
         ...new Set(
           [...trafficItemIdsRef.current, ...itemIdByKey.values()].filter((id) => isNumericZabbixItemId(id))
         ),
       ];
       const pending = trafficKeysRef.current.filter((key) => !itemIdByKey.has(key) && !triedTrafficKeys.has(key));
-      if (!numeric.length && !pending.length) {
-        return EMPTY_LAST_VALUES;
+      const signalTerms = signalTermsRef.current;
+      const signalHostIds = signalIdsRef.current.length
+        ? signalIdsRef.current
+        : signalTerms.length && (numeric.length || pending.length)
+          ? meta.hosts.map((host) => host.hostid)
+          : [];
+      const signalSearch =
+        signalHostIds.length && signalTerms.length ? { hostids: signalHostIds, terms: signalTerms } : undefined;
+      if (!numeric.length && !pending.length && !signalSearch) {
+        return { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS };
       }
       try {
         const fetched = await fetchZabbixTrafficLastValues(
@@ -212,7 +244,8 @@ export function useZabbixDirectIndex({
           numeric,
           abortSignal,
           pending,
-          meta.hosts.map((host) => host.hostid)
+          meta.hosts.map((host) => host.hostid),
+          signalSearch
         );
         if (fetched.itemIdByKey.size) {
           itemIdByKey = new Map([...itemIdByKey, ...fetched.itemIdByKey]);
@@ -220,12 +253,15 @@ export function useZabbixDirectIndex({
         if (pending.length) {
           triedTrafficKeys = new Set([...triedTrafficKeys, ...pending]);
         }
-        return aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey);
+        return {
+          lastValues: aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey),
+          interfaceItems: fetched.interfaceItems,
+        };
       } catch (err) {
         if (abortSignal.aborted) {
           throw err;
         }
-        return EMPTY_LAST_VALUES;
+        return { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS };
       }
     };
 
@@ -253,7 +289,7 @@ export function useZabbixDirectIndex({
       inFlight = true;
       try {
         const meta = await ensureMetadata(abortSignal);
-        const [snapshot, trafficLastValues] = meta.resolvedGroups.length
+        const [snapshot, traffic] = meta.resolvedGroups.length
           ? await Promise.all([
               fetchZabbixStatusViaQuery({
                 datasourceUid,
@@ -274,9 +310,10 @@ export function useZabbixDirectIndex({
                 lastValues: EMPTY_LAST_VALUES,
                 problems: EMPTY_PROBLEMS,
               },
-              EMPTY_LAST_VALUES,
+              { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS },
             ];
-        const lastValues = aliasLastValuesByItemKey(trafficLastValues, itemIdByKey);
+        const lastValues = aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey);
+        const interfaceItems = traffic.interfaceItems;
         if (cancelled || generation <= lastPublishedGeneration) {
           return;
         }
@@ -289,6 +326,7 @@ export function useZabbixDirectIndex({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues,
+            interfaceItems,
             problems: EMPTY_PROBLEMS,
             ready: false,
             loading: false,
@@ -301,6 +339,7 @@ export function useZabbixDirectIndex({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues,
+            interfaceItems,
             problems: EMPTY_PROBLEMS,
             ready: false,
             loading: false,
@@ -321,6 +360,7 @@ export function useZabbixDirectIndex({
           index,
           hoverByHost: snapshot.hoverByHost,
           lastValues,
+          interfaceItems,
           problems: latestProblems,
           ready: true,
           loading: false,
@@ -338,6 +378,7 @@ export function useZabbixDirectIndex({
             index: EMPTY_INDEX,
             hoverByHost: EMPTY_HOVER,
             lastValues: prev.lastValues,
+            interfaceItems: prev.interfaceItems,
             problems: prev.problems,
             ready: false,
             // Sem isto o painel ficava sem badge nenhum: mapa cinza e nenhuma pista do motivo.

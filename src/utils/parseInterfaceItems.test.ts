@@ -135,6 +135,56 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.metrics.rx?.itemId).toBe('1');
     expect(interfaces[0]?.metrics.tx?.itemId).toBe('2');
   });
+
+  it('agrupa sinal óptico com RX/TX da mesma interface', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10008', [
+      { itemid: '1', key_: 'vendor.metric.rx[10]', hostid: '10008' },
+      { itemid: '2', key_: 'vendor.metric.tx[10]', hostid: '10008' },
+      { itemid: '3', key_: 'vendor.optical.rxpower[10]', hostid: '10008' },
+      { itemid: '4', key_: 'vendor.optical.txpower[10]', hostid: '10008' },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.metrics.rx?.itemId).toBe('1');
+    expect(interfaces[0]?.metrics.tx?.itemId).toBe('2');
+    expect(interfaces[0]?.metrics.rxPower?.itemId).toBe('3');
+    expect(interfaces[0]?.metrics.txPower?.itemId).toBe('4');
+  });
+
+  it('junta sinal com tráfego quando o SNMP index difere e o nome cita a mesma porta', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10009', [
+      {
+        itemid: '1',
+        key_: 'vendor.metric.rx[33]',
+        name: 'port-a0/0/3 - host-a',
+        hostid: '10009',
+      },
+      {
+        itemid: '2',
+        key_: 'vendor.metric.tx[33]',
+        name: 'port-a0/0/3 - host-a',
+        hostid: '10009',
+      },
+      {
+        itemid: '3',
+        key_: 'vendor.optical.rxpower[99]',
+        name: 'optical rx port-a0/0/3',
+        hostid: '10009',
+        lastvalue: '-8.5',
+      },
+      {
+        itemid: '4',
+        key_: 'vendor.optical.txpower[100]',
+        name: 'optical tx port-a0/0/3',
+        hostid: '10009',
+        lastvalue: '-2',
+      },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.metrics.rxPower?.itemId).toBe('3');
+    expect(interfaces[0]?.metrics.txPower?.itemId).toBe('4');
+    expect(interfaces[0]?.rxPowerDbm).toBe(-8.5);
+    expect(interfaces[0]?.txPowerDbm).toBe(-2);
+  });
 });
 
 describe('pickHostInterfaces', () => {

@@ -15,7 +15,7 @@ import { TopologyHostAlertList } from './canvas/TopologyHostAlertList';
 import { TopologyNocPanel } from './canvas/TopologyNocPanel';
 import { activeChildMaps } from '../utils/childMapEdits';
 import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLock } from '../utils/mapEdits';
-import { addLinkToMap, addLinkWithInterfaces, linkKey, removeLinkByEndpoints } from '../utils/mapLinkEdits';
+import { addLinkToMap, linkKey, removeLink, upsertLinkWithInterfaces } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
@@ -370,7 +370,7 @@ export function TopologyCanvas({
     positions?: Record<string, { x: number; y: number }>;
     width?: number;
     height?: number;
-    linkWaypoints?: { from: string; to: string; waypoints: LinkPoint[] };
+    linkWaypoints?: { key: string; waypoints: LinkPoint[] };
   } | null>(null);
   const [alignGuides, setAlignGuides] = useState<AlignGuideLine[]>([]);
   const [pingTarget, setPingTarget] = useState<{
@@ -828,7 +828,7 @@ export function TopologyCanvas({
       if (!pendingLink) {
         return;
       }
-      const next = addLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
+      const next = upsertLinkWithInterfaces(storedMap, pendingLink.from, pendingLink.to, {
         fromInterface,
         toInterface,
         fromPeerHost,
@@ -1109,7 +1109,7 @@ export function TopologyCanvas({
     if (!selectedLink) {
       return;
     }
-    persist(removeLinkByEndpoints(storedMap, selectedLink.from, selectedLink.to));
+    persist(removeLink(storedMap, selectedLink));
     setSelectedLink(null);
   }, [persist, selectedLink, setSelectedLink, storedMap]);
 

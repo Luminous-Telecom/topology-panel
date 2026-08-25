@@ -8,6 +8,7 @@ import {
   TopologyLinkPeerHost,
   TopologyMap,
   TopologyMetricReference,
+  TopologyNetworkInterface,
   TopologyPanelOptions,
 } from '../types';
 import { collectHostLookupCandidates, resolveHostZabbixId, type HostLookupRef } from './hostLookup';
@@ -17,36 +18,27 @@ import {
   computeUtilizationPct,
   parseOperStatus,
   parseTrafficLastValue,
+  parseSignedLastValue,
   speedBpsToMbps,
   UtilizationLevel,
   UtilizationThresholds,
   DEFAULT_UTILIZATION_THRESHOLDS,
 } from './zabbixAdapter/formatTraffic';
-import { isNumericZabbixItemId, zabbixHostItemKey, ZabbixItemLastValue } from './zabbixApi';
+import { attachSignalRefsToInterface } from './zabbixAdapter/bindInterfaceMetrics';
+import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from './zabbixAdapter/interfaceItemKeys';
+import { groupInterfacesByHost, pickHostInterfaces } from './zabbixAdapter/parseInterfaceItems';
+import { isNumericZabbixItemId, zabbixHostItemKey, ZabbixInterfaceItem, ZabbixItemLastValue } from './zabbixApi';
 
 function collectItemIdsFromReference(ref?: TopologyInterfaceReference): string[] {
   if (!ref?.metrics) {
     return [];
   }
   const ids: string[] = [];
-  const m = ref.metrics;
-  if (m.rx?.itemId) {
-    ids.push(m.rx.itemId);
-  }
-  if (m.tx?.itemId) {
-    ids.push(m.tx.itemId);
-  }
-  if (m.operStatus?.itemId) {
-    ids.push(m.operStatus.itemId);
-  }
-  if (m.speed?.itemId) {
-    ids.push(m.speed.itemId);
-  }
-  if (m.errors?.itemId) {
-    ids.push(m.errors.itemId);
-  }
-  if (m.drops?.itemId) {
-    ids.push(m.drops.itemId);
+  for (const metric of Object.values(ref.metrics)) {
+    const itemId = metric?.itemId?.trim();
+    if (itemId) {
+      ids.push(itemId);
+    }
   }
   return ids;
 }
@@ -199,6 +191,17 @@ function readItemValue(
   return parseTrafficLastValue(readBoundItemField(items, ref, lookupKeys, 'lastvalue'));
 }
 
+function readSignedItemValue(
+  items: Record<string, ZabbixItemLastValue>,
+  ref: TopologyMetricReference | undefined,
+  lookupKeys: string[]
+): number | undefined {
+  if (!ref) {
+    return undefined;
+  }
+  return parseSignedLastValue(readBoundItemField(items, ref, lookupKeys, 'lastvalue'));
+}
+
 function readItemClock(
   items: Record<string, ZabbixItemLastValue>,
   ref: TopologyMetricReference | undefined,
@@ -273,10 +276,14 @@ function buildEndpointMetrics(
   const capacityMbps = speedBpsToMbps(speedBps) ?? fallbackCapacityMbps;
   const errors = readItemValue(items, m.errors, lookupKeys);
   const drops = readItemValue(items, m.drops, lookupKeys);
+  const rxPowerDbm = readSignedItemValue(items, m.rxPower, lookupKeys);
+  const txPowerDbm = readSignedItemValue(items, m.txPower, lookupKeys);
   const clocks = [
     readItemClock(items, m.rx, lookupKeys),
     readItemClock(items, m.tx, lookupKeys),
     readItemClock(items, m.operStatus, lookupKeys),
+    readItemClock(items, m.rxPower, lookupKeys),
+    readItemClock(items, m.txPower, lookupKeys),
   ].filter((c): c is number => c !== undefined);
   const lastUpdateMs = clocks.length ? Math.max(...clocks) : undefined;
 
@@ -289,6 +296,8 @@ function buildEndpointMetrics(
     capacityMbps,
     errors,
     drops,
+    rxPowerDbm,
+    txPowerDbm,
     lastUpdateMs,
   };
 }
@@ -321,18 +330,98 @@ function resolveLinkStatus(
   return 'noData';
 }
 
+/** Hostids Zabbix dos extremos com interface — o mesmo `item.get` busca o sinal. */
+export function collectLinkSignalHostIds(
+  maps: readonly TopologyMap[],
+  hostMetadata?: HostMetadataMap
+): string[] {
+  const ids = new Set<string>();
+  for (const map of maps) {
+    for (const link of map.links ?? []) {
+      if (!link.fromInterface && !link.toInterface) {
+        continue;
+      }
+      const fromRef = linkEndpointLookupRef(map, link.from, link.fromPeerHost);
+      const toRef = linkEndpointLookupRef(map, link.to, link.toPeerHost);
+      const fromId = fromRef ? resolveHostZabbixId(fromRef, hostMetadata) : undefined;
+      const toId = toRef ? resolveHostZabbixId(toRef, hostMetadata) : undefined;
+      if (fromId) {
+        ids.add(fromId);
+      }
+      if (toId) {
+        ids.add(toId);
+      }
+    }
+  }
+  return [...ids];
+}
+
+/** Termos de busca de sinal no mesmo `item.get` do tráfego. */
+export function linkSignalSearchTerms(
+  options?: Pick<TopologyPanelOptions, 'zabbixRxPowerItemKeyword' | 'zabbixTxPowerItemKeyword'>
+): string[] {
+  const extra = [options?.zabbixRxPowerItemKeyword, options?.zabbixTxPowerItemKeyword]
+    .map((term) => term?.trim())
+    .filter((term): term is string => Boolean(term));
+  return [...new Set([...INTERFACE_SIGNAL_SEARCH_TERMS, ...extra])];
+}
+
+function groupPolledInterfaceItems(
+  items: ZabbixInterfaceItem[],
+  keyParseOptions?: InterfaceKeyParseOptions
+): Record<string, TopologyNetworkInterface[]> {
+  const byHost = new Map<string, ZabbixInterfaceItem[]>();
+  for (const item of items) {
+    const hostid = item.hostid?.trim();
+    if (!hostid) {
+      continue;
+    }
+    const list = byHost.get(hostid) ?? [];
+    list.push(item);
+    byHost.set(hostid, list);
+  }
+  return groupInterfacesByHost(
+    [...byHost.entries()].map(([hostid, hostItems]) => ({ hostKey: hostid, hostid, items: hostItems })),
+    keyParseOptions
+  );
+}
+
+function enrichLinkWithPolledSignal(
+  map: TopologyMap,
+  link: TopologyLink,
+  byHost: Record<string, TopologyNetworkInterface[]>,
+  hostMetadata?: HostMetadataMap
+): TopologyLink {
+  const fromInterface = attachSignalRefsToInterface(
+    link.fromInterface,
+    pickHostInterfaces(byHost, linkEndpointLookupKeys(map, link.from, link.fromPeerHost, hostMetadata))
+  );
+  const toInterface = attachSignalRefsToInterface(
+    link.toInterface,
+    pickHostInterfaces(byHost, linkEndpointLookupKeys(map, link.to, link.toPeerHost, hostMetadata))
+  );
+  if (fromInterface === link.fromInterface && toInterface === link.toInterface) {
+    return link;
+  }
+  return { ...link, fromInterface, toInterface };
+}
+
 /** Monta mapa de métricas runtime a partir dos lastvalues Zabbix. */
 export function buildLinkRuntimeMetricsMap(
   map: TopologyMap,
   items: Record<string, ZabbixItemLastValue>,
   thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS,
-  hostMetadata?: HostMetadataMap
+  hostMetadata?: HostMetadataMap,
+  interfaceItems: ZabbixInterfaceItem[] = [],
+  keyParseOptions?: InterfaceKeyParseOptions
 ): LinkRuntimeMetricsMap {
   const result: LinkRuntimeMetricsMap = {};
-  for (const link of map.links) {
-    if (!link.fromInterface?.metrics && !link.toInterface?.metrics) {
+  const byHost = interfaceItems.length ? groupPolledInterfaceItems(interfaceItems, keyParseOptions) : {};
+  for (const raw of map.links) {
+    if (!raw.fromInterface?.metrics && !raw.toInterface?.metrics) {
       continue;
     }
+    const link = Object.keys(byHost).length ? enrichLinkWithPolledSignal(map, raw, byHost, hostMetadata) : raw;
     const fromKeys = linkEndpointLookupKeys(map, link.from, link.fromPeerHost, hostMetadata);
     const toKeys = linkEndpointLookupKeys(map, link.to, link.toPeerHost, hostMetadata);
     const from = buildEndpointMetrics(link.fromInterface, items, link.bandwidthMbps, fromKeys);

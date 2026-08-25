@@ -46,7 +46,7 @@ export function useLinkPeerInterfaces(
   fromPeer: TopologyNode | undefined,
   toPeer: TopologyNode | undefined,
   datasourceUid: string | undefined,
-  keywords: ZabbixInterfaceKeywordOptions,
+  keywords: ZabbixInterfaceKeywordOptions | undefined,
   hostMetadata?: HostMetadataMap
 ): UseLinkPeerInterfacesResult {
   const fromKeys = useMemo(

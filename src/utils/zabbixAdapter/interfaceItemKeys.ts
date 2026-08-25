@@ -7,7 +7,9 @@ export type InterfaceMetricKind =
   | 'adminStatus'
   | 'speed'
   | 'errors'
-  | 'drops';
+  | 'drops'
+  | 'rxPower'
+  | 'txPower';
 
 export interface ParsedInterfaceKey {
   kind: InterfaceMetricKind;
@@ -20,7 +22,12 @@ export interface InterfaceKeyParseOptions {
   txKeyword?: string;
   operStatusKeyword?: string;
   speedKeyword?: string;
+  rxPowerKeyword?: string;
+  txPowerKeyword?: string;
 }
+
+/** Termos genéricos para não descartar itens de sinal óptico/rádio na busca. */
+export const INTERFACE_SIGNAL_SEARCH_TERMS = ['rxpower', 'txpower', 'optical', 'rssi', 'sinal'];
 
 const RX_PATTERNS = [
   /^net\.if\.in\[/i,
@@ -66,10 +73,18 @@ function classifyByCustomKeywords(
   opts?: InterfaceKeyParseOptions
 ): InterfaceMetricKind | undefined {
   const lower = key.toLowerCase();
+  const rxPower = opts?.rxPowerKeyword?.trim().toLowerCase();
+  const txPower = opts?.txPowerKeyword?.trim().toLowerCase();
   const rx = opts?.rxKeyword?.trim().toLowerCase();
   const tx = opts?.txKeyword?.trim().toLowerCase();
   const operStatus = opts?.operStatusKeyword?.trim().toLowerCase();
   const speed = opts?.speedKeyword?.trim().toLowerCase();
+  if (rxPower && lower.includes(rxPower)) {
+    return 'rxPower';
+  }
+  if (txPower && lower.includes(txPower)) {
+    return 'txPower';
+  }
   if (rx && lower.includes(rx)) {
     return 'rx';
   }
@@ -120,16 +135,42 @@ function baseKeyFromItemKey(key: string): string | undefined {
   return base || undefined;
 }
 
+/** Sinal óptico/rádio — antes do tráfego, para `rxpower` não virar RX de octets. */
+function classifySignalBaseKey(k: string): InterfaceMetricKind | undefined {
+  if (
+    k.includes('rxpower') ||
+    k.includes('rx_power') ||
+    k.includes('rx-power') ||
+    k.includes('rssi')
+  ) {
+    return 'rxPower';
+  }
+  if (k.includes('txpower') || k.includes('tx_power') || k.includes('tx-power')) {
+    return 'txPower';
+  }
+  if (!k.includes('optical') && !k.includes('sinal') && !k.includes('signalstrength')) {
+    return undefined;
+  }
+  if (k.includes('rx') || k.includes('.in') || /(?:^|[._-])in(?:[._-]|$)/.test(k)) {
+    return 'rxPower';
+  }
+  if (k.includes('tx') || k.includes('.out') || /(?:^|[._-])out(?:[._-]|$)/.test(k)) {
+    return 'txPower';
+  }
+  return undefined;
+}
+
 /** Heurística genérica sobre a parte da key antes de `[`. */
 function classifyGenericBaseKey(baseKey: string): InterfaceMetricKind | undefined {
   const k = baseKey.toLowerCase();
+  const signal = classifySignalBaseKey(k);
+  if (signal) {
+    return signal;
+  }
 
   if (
     k.includes('percentile') ||
     k.includes('percentil') ||
-    k.includes('optical') ||
-    k.includes('rxpower') ||
-    k.includes('txpower') ||
     k.includes('temperature') ||
     k.includes('bgp') ||
     k.includes('icmpping')

@@ -104,12 +104,14 @@ vi.mock('../hooks/useTopologyQueryIndex', async () => {
       if (opts.panelData?.series?.length) {
         const fromData = buildQueryIndex(opts.panelData);
         if (fromData.hosts.length) {
-          return { index: fromData, problems: emptyProblems, ready: true, loading: false, error: undefined };
+          return { index: fromData, problems: emptyProblems, lastValues: {}, interfaceItems: [], ready: true, loading: false, error: undefined };
         }
       }
       return {
         index: queryIndexState.index ?? empty,
         problems: emptyProblems,
+        lastValues: {},
+        interfaceItems: [],
         ready: queryIndexState.ready,
         loading: false,
         error: queryIndexState.error,

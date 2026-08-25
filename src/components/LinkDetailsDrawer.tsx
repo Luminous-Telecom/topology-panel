@@ -1,18 +1,14 @@
 import React, { useMemo } from 'react';
 import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
-import {
-  LinkRuntimeMetrics,
-  TopologyLink,
-  TopologyMap,
-  TopologyPanelOptions,
-} from '../types';
+import { LinkRuntimeMetrics, TopologyLink, TopologyMap, TopologyPanelOptions } from '../types';
 import { findNodeById } from '../utils/topologyNodes';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
 import { linkKey } from '../utils/mapLinkEdits';
 import {
   formatBitsPerSecond,
   formatEndpointTrafficPair,
+  formatSignalDbm,
   linkStatusLabel,
   operStatusLabel,
 } from '../utils/zabbixAdapter/formatTraffic';
@@ -153,6 +149,12 @@ function EndpointBlock({
   const util = formatEndpointTrafficPair(rxUtil, txUtil, role);
   const errors = metrics?.errors !== undefined ? String(Math.round(metrics.errors)) : 'N/A';
   const drops = metrics?.drops !== undefined ? String(Math.round(metrics.drops)) : 'N/A';
+  const rxSignal = formatSignalDbm(metrics?.rxPowerDbm) ?? 'N/A';
+  const txSignal = formatSignalDbm(metrics?.txPowerDbm) ?? 'N/A';
+  const signal = formatEndpointTrafficPair(rxSignal, txSignal, role, {
+    from: 'Sinal TX / RX',
+    to: 'Sinal RX / TX',
+  });
 
   return (
     <div>
@@ -164,6 +166,7 @@ function EndpointBlock({
       <MetricRow label={`Util. ${util.label}`} value={util.value} />
       <MetricRow label="Status oper." value={operStatusLabel(metrics?.operStatus)} />
       <MetricRow label="Erros / Drops" value={`${errors} / ${drops}`} />
+      <MetricRow label={signal.label} value={signal.value} />
     </div>
   );
 }

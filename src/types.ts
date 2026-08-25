@@ -151,6 +151,8 @@ export interface TopologyInterfaceMetrics {
   speed?: TopologyMetricReference;
   errors?: TopologyMetricReference;
   drops?: TopologyMetricReference;
+  rxPower?: TopologyMetricReference;
+  txPower?: TopologyMetricReference;
 }
 
 /** Interface persistida em um endpoint de link. */
@@ -226,6 +228,8 @@ export interface TopologyNetworkInterface {
   speedMbps?: number;
   adminStatus?: number;
   operStatus?: number;
+  rxPowerDbm?: number;
+  txPowerDbm?: number;
   metrics: TopologyInterfaceMetrics;
   bindingConfidence: MetricBindingConfidence;
 }
@@ -240,6 +244,8 @@ export interface LinkEndpointRuntimeMetrics {
   capacityMbps?: number;
   errors?: number;
   drops?: number;
+  rxPowerDbm?: number;
+  txPowerDbm?: number;
   lastUpdateMs?: number;
 }
 
@@ -409,6 +415,14 @@ export interface TopologyPanelOptions {
    * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
    */
   zabbixSpeedItemKeyword?: string;
+  /**
+   * Trecho da key Zabbix usado na busca do sinal RX (óptico/rádio) da interface.
+   */
+  zabbixRxPowerItemKeyword?: string;
+  /**
+   * Trecho da key Zabbix usado na busca do sinal TX (óptico/rádio) da interface.
+   */
+  zabbixTxPowerItemKeyword?: string;
   /** Frequência de busca de status e tráfego, em segundos. */
   zabbixRefreshSec?: number;
   /**

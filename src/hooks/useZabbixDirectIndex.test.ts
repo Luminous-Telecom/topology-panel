@@ -8,7 +8,7 @@ import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 vi.mock('../utils/zabbixApi', () => ({
   fetchZabbixDirectMetadata: vi.fn(),
-  fetchZabbixTrafficLastValues: vi.fn(async () => ({ lastValues: {}, itemIdByKey: new Map() })),
+  fetchZabbixTrafficLastValues: vi.fn(async () => ({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] })),
   isBenignZabbixFetchError: vi.fn(() => false),
   isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
 }));
@@ -61,7 +61,7 @@ describe('useZabbixDirectIndex', () => {
     fetchMetadata.mockReset();
     fetchStatus.mockReset();
     fetchLastValues.mockReset();
-    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map() });
+    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
   });
 
   afterEach(() => {
@@ -133,6 +133,7 @@ describe('useZabbixDirectIndex', () => {
     fetchLastValues.mockResolvedValueOnce({
       lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
+      interfaceItems: [],
     });
 
     const { result } = renderHook(() =>
@@ -148,7 +149,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], ['1']);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], ['1'], undefined);
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
@@ -222,6 +223,7 @@ describe('useZabbixDirectIndex', () => {
         '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
       },
       itemIdByKey: new Map([['1:vendor.metric.rx[10]', '77']]),
+      interfaceItems: [],
     });
 
     const { result } = renderHook(() =>
@@ -241,7 +243,8 @@ describe('useZabbixDirectIndex', () => {
       [],
       expect.any(AbortSignal),
       ['vendor.metric.rx[10]'],
-      ['1']
+      ['1'],
+      undefined
     );
     expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
@@ -349,5 +352,63 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchMetadata).toHaveBeenCalledTimes(2);
     expect(result.current.index.hosts).not.toContain('host-1');
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.has('host-1')).toBe(false);
+  });
+
+  it('busca sinal óptico no mesmo item.get do tráfego', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
+    fetchLastValues.mockResolvedValueOnce({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '30': { itemid: '30', lastvalue: '-8.5' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [
+        {
+          itemid: '30',
+          key_: 'vendor.optical.rxpower[10]',
+          name: 'port-a',
+          hostid: '1',
+          lastvalue: '-8.5',
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+        signalHostIds: ['1'],
+        signalSearchTerms: ['optical'],
+      })
+    );
+
+    await flush();
+    expect(fetchLastValues).toHaveBeenCalledWith(
+      'ds',
+      ['10'],
+      expect.any(AbortSignal),
+      [],
+      ['1'],
+      { hostids: ['1'], terms: ['optical'] }
+    );
+    expect(result.current.lastValues['30']?.lastvalue).toBe('-8.5');
+    expect(result.current.interfaceItems).toEqual([
+      {
+        itemid: '30',
+        key_: 'vendor.optical.rxpower[10]',
+        name: 'port-a',
+        hostid: '1',
+        lastvalue: '-8.5',
+      },
+    ]);
   });
 });

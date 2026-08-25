@@ -42,12 +42,13 @@ export function formatLinkMapTrafficLabel(
 export function formatEndpointTrafficPair(
   rx: string,
   tx: string,
-  role: 'from' | 'to'
+  role: 'from' | 'to',
+  labels: { from: string; to: string } = { from: 'TX / RX', to: 'RX / TX' }
 ): { label: string; value: string } {
   if (role === 'from') {
-    return { label: 'TX / RX', value: `${tx} / ${rx}` };
+    return { label: labels.from, value: `${tx} / ${rx}` };
   }
-  return { label: 'RX / TX', value: `${rx} / ${tx}` };
+  return { label: labels.to, value: `${rx} / ${tx}` };
 }
 
 export function computeUtilizationPct(trafficBps: number | undefined, capacityMbps: number | undefined): number | undefined {
@@ -111,6 +112,24 @@ export function parseTrafficLastValue(raw: string | undefined): number | undefin
     return undefined;
   }
   return n;
+}
+
+/** Lastvalue numérico com sinal — potência óptica/RSSI pode ser negativa (dBm). */
+export function parseSignedLastValue(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === '') {
+    return undefined;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Potência de sinal em dBm. */
+export function formatSignalDbm(value: number | undefined): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const rounded = Math.round(value * 100) / 100;
+  return `${rounded} dBm`;
 }
 
 /** Zabbix ifOperStatus: 1=up, 2=down, etc. */
