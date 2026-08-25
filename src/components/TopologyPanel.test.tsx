@@ -125,8 +125,12 @@ describe('TopologyPanel — inicialização de mapas', () => {
       links: [{ from: 'host-1', to: 'submapa-1' }],
     };
     renderTopologyPanel(options);
-    expect(screen.getByText('Sala 1')).toBeInTheDocument();
+    const networkName = screen.getByText('Sala 1');
+    expect(networkName).toBeInTheDocument();
     expect(screen.getByText('RB-01')).toBeInTheDocument();
     expect(screen.getByText('Filial')).toBeInTheDocument();
+    const cable = document.querySelector('[data-link-key]');
+    expect(cable).toBeTruthy();
+    expect(networkName.compareDocumentPosition(cable as Node) & Node.DOCUMENT_POSITION_PRECEDING).not.toBe(0);
   });
 });

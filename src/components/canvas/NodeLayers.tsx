@@ -12,7 +12,7 @@ import { RegionHostStats } from '../../utils/networkStats';
 import { ColorResolver } from '../../utils/nodeFillColors';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { HostNodeShape } from './HostNodeShape';
-import { NetworkNodeShape } from './NetworkNodeShape';
+import { NetworkNodeShape, NetworkNodeTitle } from './NetworkNodeShape';
 
 /** Array compartilhado: identidade estável para o `React.memo` do nó sem badge. */
 const NO_BADGES: HostNodeBadge[] = [];
@@ -95,6 +95,51 @@ function NetworkNodesLayerComponent({
 
 /** Pan, zoom, hover e seleção de cabo não mexem nas caixas de rede — não redesenha a camada. */
 export const NetworkNodesLayer = React.memo(NetworkNodesLayerComponent);
+
+interface NetworkLabelsLayerProps {
+  nodes: TopologyNode[];
+  nodeLayouts: Map<string, NodeLayout & TopologyNode>;
+  options: TopologyPanelOptions;
+  resolveColor: ColorResolver;
+  selectedNodeIds: string[];
+}
+
+/** Nomes das redes, acima dos cabos para o título não ficar tapado. */
+function NetworkLabelsLayerComponent({
+  nodes,
+  nodeLayouts,
+  options,
+  resolveColor,
+  selectedNodeIds,
+}: NetworkLabelsLayerProps) {
+  const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+
+  return (
+    <>
+      {nodes.map((node) => {
+        if (node.type !== 'network') {
+          return null;
+        }
+        const layout = nodeLayouts.get(node.id);
+        if (!layout) {
+          return null;
+        }
+        return (
+          <NetworkNodeTitle
+            key={node.id}
+            layout={layout}
+            options={options}
+            resolveColor={resolveColor}
+            isSelected={selectedIdSet.has(node.id)}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** Pan, zoom, hover e seleção de cabo não mexem nos títulos de rede — não redesenha a camada. */
+export const NetworkLabelsLayer = React.memo(NetworkLabelsLayerComponent);
 
 interface HostNodesLayerProps extends CommonProps {
   hostDisplay?: HostDisplayMap;

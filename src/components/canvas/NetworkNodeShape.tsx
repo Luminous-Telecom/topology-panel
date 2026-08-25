@@ -30,7 +30,14 @@ interface NetworkNodeShapeProps {
   onResizePointerUp: (e: React.PointerEvent) => void;
 }
 
-/** Caixa de rede: retângulo da região, título centralizado e contagem agregada de hosts. */
+interface NetworkNodeTitleProps {
+  layout: NodeLayout & TopologyNode;
+  options: TopologyPanelOptions;
+  resolveColor: ColorResolver;
+  isSelected: boolean;
+}
+
+/** Caixa de rede: retângulo da região e contagem agregada de hosts. O título fica em `NetworkNodeTitle`. */
 function NetworkNodeShapeComponent({
   node,
   layout,
@@ -48,7 +55,7 @@ function NetworkNodeShapeComponent({
   onResizePointerDown,
   onResizePointerUp,
 }: NetworkNodeShapeProps) {
-  const { w, h, label, x, y } = layout;
+  const { w, h, x, y } = layout;
   const fill = resolveNetworkFill(node, stats, options, queryReady, resolveColor);
   const networkOffline = regionHasOfflineHosts(stats, queryReady);
   const stroke = resolveColor(regionStrokeColor(stats, options, queryReady, node.borderColor));
@@ -57,17 +64,6 @@ function NetworkNodeShapeComponent({
   const networkFontSize = resolveNetworkFontSize(options);
   const statsFontSize = Math.max(9, networkFontSize - 1);
   const statsY = statsLabel ? y + h - statsPad - statsFontSize / 2 : undefined;
-
-  const titleFs = networkFontSize;
-  const titlePadX = 8;
-  const titlePadY = 4;
-  const titleMargin = 8;
-  const titleH = Math.ceil(titleFs + titlePadY * 2);
-  const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs, true) + titlePadX * 2));
-  const titleX = x + (w - titleW) / 2;
-  const titleY = y + titleMargin;
-  const titleFill = resolveColor(options.colorStatic);
-  const titleText = textOnBackground(titleFill);
 
   return (
     <g
@@ -99,31 +95,6 @@ function NetworkNodeShapeComponent({
         strokeWidth={isSelected ? 3 : 1.5}
         strokeOpacity={isSelected ? 1 : 0.85}
       />
-      <rect
-        x={titleX}
-        y={titleY}
-        width={titleW}
-        height={titleH}
-        rx={4}
-        ry={4}
-        fill={titleFill}
-        stroke={isSelected ? '#4FC3F7' : 'rgba(255,255,255,0.35)'}
-        strokeWidth={isSelected ? 2 : 1}
-        pointerEvents="none"
-      />
-      <text
-        x={titleX + titleW / 2}
-        y={titleY + titleH / 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill={titleText}
-        fontSize={titleFs}
-        fontWeight={700}
-        fontFamily="Inter, Helvetica, Arial, sans-serif"
-        pointerEvents="none"
-      >
-        {label}
-      </text>
       {statsLabel && statsY !== undefined && (
         <text
           x={x + 8}
@@ -158,3 +129,49 @@ function NetworkNodeShapeComponent({
 
 /** Só redesenha quando a caixa, o status agregado ou a seleção mudam — não a cada pan/zoom. */
 export const NetworkNodeShape = React.memo(NetworkNodeShapeComponent);
+
+/** Título da rede, desenhado acima dos cabos para o nome não ficar tapado. */
+function NetworkNodeTitleComponent({ layout, options, resolveColor, isSelected }: NetworkNodeTitleProps) {
+  const { w, label, x, y } = layout;
+  const titleFs = resolveNetworkFontSize(options);
+  const titlePadX = 8;
+  const titlePadY = 4;
+  const titleMargin = 8;
+  const titleH = Math.ceil(titleFs + titlePadY * 2);
+  const titleW = Math.max(48, Math.ceil(measureTextWidth(label, titleFs, true) + titlePadX * 2));
+  const titleX = x + (w - titleW) / 2;
+  const titleY = y + titleMargin;
+  const titleFill = resolveColor(options.colorStatic);
+  const titleText = textOnBackground(titleFill);
+
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={titleX}
+        y={titleY}
+        width={titleW}
+        height={titleH}
+        rx={4}
+        ry={4}
+        fill={titleFill}
+        stroke={isSelected ? '#4FC3F7' : 'rgba(255,255,255,0.35)'}
+        strokeWidth={isSelected ? 2 : 1}
+      />
+      <text
+        x={titleX + titleW / 2}
+        y={titleY + titleH / 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill={titleText}
+        fontSize={titleFs}
+        fontWeight={700}
+        fontFamily="Inter, Helvetica, Arial, sans-serif"
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/** Pan, zoom e hover de cabo não mexem no título — não redesenha a cada gesto. */
+export const NetworkNodeTitle = React.memo(NetworkNodeTitleComponent);

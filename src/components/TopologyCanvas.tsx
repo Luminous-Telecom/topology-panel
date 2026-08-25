@@ -43,7 +43,7 @@ import { CanvasHudOverlay } from './canvas/CanvasHudOverlay';
 import { CanvasModals } from './canvas/CanvasModals';
 import { CanvasSelectionShapes } from './canvas/CanvasSelectionShapes';
 import { LinksLayer } from './canvas/LinksLayer';
-import { HostNodesLayer, NetworkNodesLayer } from './canvas/NodeLayers';
+import { HostNodesLayer, NetworkLabelsLayer, NetworkNodesLayer } from './canvas/NodeLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
@@ -1465,6 +1465,14 @@ export function TopologyCanvas({
           />
 
           <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
+
+          <NetworkLabelsLayer
+            nodes={visibleNodes}
+            nodeLayouts={nodeLayouts}
+            options={options}
+            resolveColor={resolveColor}
+            selectedNodeIds={selectedNodeIds}
+          />
 
           <HostNodesLayer
             nodes={visibleNodes}
