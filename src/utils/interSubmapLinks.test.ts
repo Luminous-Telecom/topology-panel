@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions, defaultOptions } from '../types';
-import { syncInterSubmapCounterpartLinks } from './interSubmapLinks';
+import {
+  removeInterSubmapCounterpartLinks,
+  removeMissingInterSubmapCounterparts,
+  syncInterSubmapCounterpartLinks,
+} from './interSubmapLinks';
 import { emptyMap, hostNode } from './testMapFixtures';
-import { ROOT_MAP_ID } from './topologyMapNavigation';
-import { linksMatchEndpoints } from './mapLinkEdits';
+import { applyTopologyMapToPanelOptions, ROOT_MAP_ID } from './topologyMapNavigation';
+import { linksMatchEndpoints, removeLinkByEndpoints } from './mapLinkEdits';
+import { removeNodeFromMap } from './mapEdits';
 
 function submapBox(id: string, childMapId: string, label: string): TopologyNode {
   return { id, type: 'submap', x: 0, y: 0, submapChildMapId: childMapId, label };
@@ -328,6 +333,279 @@ describe('syncInterSubmapCounterpartLinks', () => {
       withoutBackBox.childMaps!['map-a']!.links[0]!
     );
     expect(findLink(next.map, 'box-a', 'box-b')).toBeDefined();
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+});
+
+function fullySyncedFromOrigin(): TopologyPanelOptions {
+  const options = mapsWithBoxes();
+  const withLink = {
+    ...options,
+    childMaps: {
+      ...options.childMaps,
+      'map-a': {
+        ...options.childMaps!['map-a']!,
+        links: [
+          {
+            from: 'ha',
+            to: 'to-b',
+            fromInterface: ifaceA,
+            toInterface: ifaceB,
+            toPeerHost: peerB,
+          },
+        ],
+      },
+    },
+  };
+  return syncInterSubmapCounterpartLinks(withLink, 'map-a', withLink.childMaps!['map-a']!.links[0]!);
+}
+
+function currentMapOf(options: TopologyPanelOptions, mapId: string): TopologyMap | undefined {
+  if (mapId === ROOT_MAP_ID) {
+    return options.map;
+  }
+  return options.childMaps?.[mapId];
+}
+
+function deleteLinkOnMap(
+  options: TopologyPanelOptions,
+  mapId: string,
+  from: string,
+  to: string
+): TopologyPanelOptions {
+  const current = currentMapOf(options, mapId);
+  if (!current) {
+    throw new Error(`mapa ausente: ${mapId}`);
+  }
+  const link = findLink(current, from, to);
+  if (!link) {
+    throw new Error(`cabo ausente: ${from}-${to}`);
+  }
+  const without = removeLinkByEndpoints(current, from, to);
+  const base = applyTopologyMapToPanelOptions(options, mapId, without);
+  return removeInterSubmapCounterpartLinks(base, mapId, link);
+}
+
+describe('removeInterSubmapCounterpartLinks', () => {
+  it('ao excluir o hop de origem, remove o cabo da raiz e o hop no mapa de destino', () => {
+    const next = deleteLinkOnMap(fullySyncedFromOrigin(), 'map-a', 'ha', 'to-b');
+
+    expect(next.childMaps?.['map-a']?.links).toEqual([]);
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeUndefined();
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+
+  it('ao excluir o hop de destino, remove o cabo da raiz e o hop no mapa de origem', () => {
+    const next = deleteLinkOnMap(fullySyncedFromOrigin(), 'map-b', 'to-a', 'hb');
+
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeUndefined();
+    expect(next.childMaps?.['map-a']?.links).toEqual([]);
+  });
+
+  it('ao excluir o cabo na raiz, remove os hops internos nos dois submapas', () => {
+    const next = deleteLinkOnMap(fullySyncedFromOrigin(), ROOT_MAP_ID, 'box-a', 'box-b');
+
+    expect(next.map.links).toEqual([]);
+    expect(next.childMaps?.['map-a']?.links).toEqual([]);
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+
+  it('host para host no mesmo mapa não remove cabos dos outros mapas', () => {
+    const options = mapsWithBoxes();
+    const withLocal = {
+      ...options,
+      map: {
+        ...options.map,
+        links: [
+          {
+            from: 'box-a',
+            to: 'box-b',
+            fromPeerHost: peerA,
+            toPeerHost: peerB,
+            fromInterface: ifaceA,
+            toInterface: ifaceB,
+          },
+        ],
+      },
+      childMaps: {
+        ...options.childMaps,
+        'map-a': {
+          ...options.childMaps!['map-a']!,
+          nodes: [hostA, host('hc', '10.0.0.3', 'host-c')],
+          links: [{ from: 'ha', to: 'hc' }],
+        },
+      },
+    };
+
+    const next = deleteLinkOnMap(withLocal, 'map-a', 'ha', 'hc');
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeDefined();
+    expect(next.childMaps?.['map-a']?.links).toEqual([]);
+  });
+
+  it('não remove hop de outro host entre os mesmos submapas', () => {
+    const hostC = host('hc', '10.0.0.3', 'host-c');
+    const hostD = host('hd', '10.0.0.4', 'host-d');
+    const peerC = { nodeId: 'hc', zabbixHost: '10.0.0.3', label: 'host-c' };
+    const peerD = { nodeId: 'hd', zabbixHost: '10.0.0.4', label: 'host-d' };
+    const ifaceC = { name: 'eth-c' };
+    const ifaceD = { name: 'eth-d' };
+    const synced = fullySyncedFromOrigin();
+    const withSecond = {
+      ...synced,
+      childMaps: {
+        ...synced.childMaps,
+        'map-a': {
+          ...synced.childMaps!['map-a']!,
+          nodes: [...synced.childMaps!['map-a']!.nodes, hostC],
+          links: [
+            ...synced.childMaps!['map-a']!.links,
+            {
+              from: 'hc',
+              to: 'to-b',
+              fromInterface: ifaceC,
+              toInterface: ifaceD,
+              toPeerHost: peerD,
+            },
+          ],
+        },
+        'map-b': {
+          ...synced.childMaps!['map-b']!,
+          nodes: [...synced.childMaps!['map-b']!.nodes, hostD],
+          links: [
+            ...synced.childMaps!['map-b']!.links,
+            {
+              from: 'to-a',
+              to: 'hd',
+              fromInterface: ifaceC,
+              toInterface: ifaceD,
+              fromPeerHost: peerC,
+            },
+          ],
+        },
+      },
+    };
+
+    const next = deleteLinkOnMap(withSecond, 'map-a', 'ha', 'to-b');
+    expect(findLink(next.childMaps?.['map-a'], 'hc', 'to-b')).toBeDefined();
+    expect(findLink(next.childMaps?.['map-b'], 'hd', 'to-a')).toBeDefined();
+    expect(findLink(next.childMaps?.['map-b'], 'hb', 'to-a')).toBeUndefined();
+  });
+
+  it('remove hop órfão no destino mesmo sem interface gravada', () => {
+    const options = mapsWithBoxes();
+    const withOrphan = {
+      ...options,
+      childMaps: {
+        ...options.childMaps,
+        'map-a': {
+          ...options.childMaps!['map-a']!,
+          links: [
+            {
+              from: 'ha',
+              to: 'to-b',
+              fromInterface: ifaceA,
+              toInterface: ifaceB,
+              toPeerHost: peerB,
+            },
+          ],
+        },
+        'map-b': {
+          ...options.childMaps!['map-b']!,
+          links: [{ from: 'to-a', to: 'hb' }],
+        },
+      },
+    };
+
+    const next = deleteLinkOnMap(withOrphan, 'map-a', 'ha', 'to-b');
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+
+  it('remove hop invertido no destino que aponta para a mesma interface', () => {
+    const options = mapsWithBoxes();
+    const inverted = {
+      ...options,
+      childMaps: {
+        ...options.childMaps,
+        'map-a': {
+          ...options.childMaps!['map-a']!,
+          links: [
+            {
+              from: 'ha',
+              to: 'to-b',
+              fromInterface: ifaceA,
+              toInterface: ifaceB,
+              toPeerHost: peerB,
+            },
+          ],
+        },
+        'map-b': {
+          ...options.childMaps!['map-b']!,
+          links: [
+            {
+              from: 'hb',
+              to: 'to-a',
+              fromInterface: ifaceB,
+              toInterface: ifaceA,
+              toPeerHost: peerA,
+            },
+          ],
+        },
+      },
+    };
+
+    const next = deleteLinkOnMap(inverted, 'map-a', 'ha', 'to-b');
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+
+  it('depois da exclusão nenhum cabo restante referencia as interfaces da conexão', () => {
+    const next = deleteLinkOnMap(fullySyncedFromOrigin(), 'map-a', 'ha', 'to-b');
+    const remaining = [
+      ...(next.map.links ?? []),
+      ...(next.childMaps?.['map-a']?.links ?? []),
+      ...(next.childMaps?.['map-b']?.links ?? []),
+    ];
+    expect(
+      remaining.some(
+        (link) =>
+          link.fromInterface?.name === ifaceA.name ||
+          link.toInterface?.name === ifaceA.name ||
+          link.fromInterface?.name === ifaceB.name ||
+          link.toInterface?.name === ifaceB.name
+      )
+    ).toBe(false);
+  });
+});
+
+describe('removeMissingInterSubmapCounterparts', () => {
+  it('detecta o cabo removido do mapa ativo e limpa os espelhos', () => {
+    const synced = fullySyncedFromOrigin();
+    const previous = synced.childMaps!['map-a']!;
+    const current = removeLinkByEndpoints(previous, 'ha', 'to-b');
+    const base = applyTopologyMapToPanelOptions(synced, 'map-a', current);
+    const next = removeMissingInterSubmapCounterparts(base, 'map-a', previous, current);
+
+    expect(next.childMaps?.['map-a']?.links).toEqual([]);
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeUndefined();
+    expect(next.childMaps?.['map-b']?.links).toEqual([]);
+  });
+
+  it('não altera os outros mapas quando o cabo ainda existe', () => {
+    const synced = fullySyncedFromOrigin();
+    const current = synced.childMaps!['map-a']!;
+    const next = removeMissingInterSubmapCounterparts(synced, 'map-a', current, current);
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeDefined();
+    expect(findLink(next.childMaps?.['map-b'], 'hb', 'to-a')).toBeDefined();
+  });
+
+  it('ao excluir o host de origem, limpa o cabo da raiz e o hop no destino', () => {
+    const synced = fullySyncedFromOrigin();
+    const previous = synced.childMaps!['map-a']!;
+    const current = removeNodeFromMap(previous, 'ha');
+    const base = applyTopologyMapToPanelOptions(synced, 'map-a', current);
+    const next = removeMissingInterSubmapCounterparts(base, 'map-a', previous, current);
+
+    expect(findLink(next.map, 'box-a', 'box-b')).toBeUndefined();
     expect(next.childMaps?.['map-b']?.links).toEqual([]);
   });
 });

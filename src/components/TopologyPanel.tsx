@@ -43,7 +43,7 @@ import {
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
 import { collectLinkMetricItemIds, collectLinkMetricKeys } from '../utils/linkMetricsRuntime';
-import { syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
+import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -367,10 +367,15 @@ export function TopologyPanel({
       if (!canPersistOptions || !onOptionsChange) {
         return;
       }
+      const previous = resolveTopologyMapById(latestOptionsRef.current, currentMapId);
       const base = applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map);
       const hop = pendingInterSubmapLinkRef.current;
       pendingInterSubmapLinkRef.current = undefined;
-      onOptionsChange(hop ? syncInterSubmapCounterpartLinks(base, currentMapId, hop) : base);
+      let next = hop ? syncInterSubmapCounterpartLinks(base, currentMapId, hop) : base;
+      if (previous) {
+        next = removeMissingInterSubmapCounterparts(next, currentMapId, previous, map);
+      }
+      onOptionsChange(next);
     },
     [canPersistOptions, currentMapId, onOptionsChange]
   );
