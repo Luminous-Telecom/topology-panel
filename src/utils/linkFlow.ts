@@ -3,8 +3,37 @@
  *
  * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
  */
-export const LINK_FLOW_DASH = '2 28';
-const LINK_FLOW_PERIOD = 30;
+export const LINK_FLOW_DASH = '7 11';
+const LINK_FLOW_PERIOD = 18;
+
+/** Seta que corre pelo cabo: anda por `offset-path`, não por dash. */
+const FLOW_ARROW_ATTR = 'data-link-flow-arrow';
+
+/**
+ * `offset-path` move o glifo ao longo do cabo e `offset-rotate: auto` o gira na tangente. Sem
+ * suporte, as setas empilhariam na origem — nesse caso o canvas desenha os pacotes por dash.
+ */
+export const supportsFlowArrows =
+  typeof CSS !== 'undefined' &&
+  typeof CSS.supports === 'function' &&
+  CSS.supports('offset-path', "path('M 0 0 L 1 1')");
+
+function readNumberAttribute(el: Element, name: string): number {
+  const raw = el.getAttribute(name);
+  if (!raw) {
+    return 0;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Dash fecha o ciclo no padrão; seta fecha no comprimento do próprio cabo. */
+function flowPeriod(el: Element): number {
+  if (!el.hasAttribute(FLOW_ARROW_ATTR)) {
+    return LINK_FLOW_PERIOD;
+  }
+  return readNumberAttribute(el, 'data-link-flow-length');
+}
 
 export type LinkFlowController = {
   stop: () => void;
@@ -32,8 +61,21 @@ const flowOffsets = new WeakMap<Element, number>();
 const FLOW_QUERY_INTERVAL_MS = 250;
 
 function writeFlowOffset(el: Element, offset: number): void {
-  const normalized = ((offset % LINK_FLOW_PERIOD) + LINK_FLOW_PERIOD) % LINK_FLOW_PERIOD;
+  const period = flowPeriod(el);
+  if (period <= 0) {
+    return;
+  }
+  const normalized = ((offset % period) + period) % period;
   flowOffsets.set(el, normalized);
+  if (el.hasAttribute(FLOW_ARROW_ATTR)) {
+    // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
+    const phase = readNumberAttribute(el, 'data-link-flow-phase');
+    const distance = (normalized + phase) % period;
+    if (el instanceof SVGElement || el instanceof HTMLElement) {
+      el.style.setProperty('offset-distance', `${distance}px`);
+    }
+    return;
+  }
   const direction = el.getAttribute('data-link-flow');
   const signed = direction === 'upload' ? -normalized : normalized;
   el.setAttribute('stroke-dashoffset', String(signed));

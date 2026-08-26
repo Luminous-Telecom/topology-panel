@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { parallelLinkBundleOffset } from './linkGeometry';
+import { parallelLinkBundleOffset, polylineLength } from './linkGeometry';
 import { TopologyLink } from '../types';
+
+describe('polylineLength', () => {
+  it('soma os segmentos de uma polilinha com cotovelo', () => {
+    expect(polylineLength([{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 40 }])).toBe(70);
+  });
+
+  it('ponto único não tem comprimento', () => {
+    expect(polylineLength([{ x: 5, y: 5 }])).toBe(0);
+  });
+});
 
 describe('parallelLinkBundleOffset', () => {
   it('um cabo sozinho fica na linha original', () => {

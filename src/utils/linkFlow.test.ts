@@ -29,10 +29,46 @@ describe('startLinkFlowAnimation', () => {
     root.remove();
   });
 
-  it('o padrão de cápsula fecha o ciclo da animação (soma 30)', () => {
+  it('o padrão de cápsula fecha o ciclo da animação (soma 18)', () => {
     const parts = LINK_FLOW_DASH.split(' ').map(Number);
     expect(parts).toHaveLength(2);
-    expect(parts.reduce((sum, n) => sum + n, 0)).toBe(30);
+    expect(parts.reduce((sum, n) => sum + n, 0)).toBe(18);
+  });
+
+  it('seta de tráfego anda pelo cabo em px, com a defasagem da própria seta', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('data-link-flow', 'download');
+    el.setAttribute('data-link-flow-arrow', 'true');
+    el.setAttribute('data-link-flow-active', 'true');
+    el.setAttribute('data-link-flow-speed', '2');
+    el.setAttribute('data-link-flow-length', '100');
+    el.setAttribute('data-link-flow-phase', '50');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+
+    vi.advanceTimersByTime(100);
+
+    const distance = Number(el.style.getPropertyValue('offset-distance').replace('px', ''));
+    expect(distance).toBeGreaterThan(50);
+    expect(distance).toBeLessThan(100);
+    expect(el.getAttribute('stroke-dashoffset')).toBeNull();
+    controller.stop();
+  });
+
+  it('seta sem comprimento de cabo não é animada', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('data-link-flow', 'upload');
+    el.setAttribute('data-link-flow-arrow', 'true');
+    el.setAttribute('data-link-flow-active', 'true');
+    el.setAttribute('data-link-flow-speed', '2');
+    el.setAttribute('data-link-flow-length', '0');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+
+    vi.advanceTimersByTime(100);
+
+    expect(el.style.getPropertyValue('offset-distance')).toBe('');
+    controller.stop();
   });
 
   it('avança o deslocamento das faixas com tráfego', () => {

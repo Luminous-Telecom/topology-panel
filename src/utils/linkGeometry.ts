@@ -207,6 +207,15 @@ export function buildLinkPathD(
   return hasWaypoints ? pathToRoundedD(pts, linkCornerRadius(gridStep)) : pathToD(pts);
 }
 
+/** Comprimento da polilinha — período de repetição das setas que correm no cabo. */
+export function polylineLength(points: LinkPoint[]): number {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    total += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+  }
+  return total;
+}
+
 function segmentAngle(a: LinkPoint, b: LinkPoint): number {
   let angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
   if (angle > 90 || angle < -90) {
