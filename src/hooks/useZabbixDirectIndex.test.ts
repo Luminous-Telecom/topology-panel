@@ -411,4 +411,128 @@ describe('useZabbixDirectIndex', () => {
       },
     ]);
   });
+
+  it('entre releituras de identidade o ciclo não repete host.get nem os problemas', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus
+      .mockResolvedValueOnce(
+        statusSnapshot('1', { '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } })
+      )
+      .mockResolvedValue({
+        items: [statusItem('1')],
+        hoverByHost: {},
+        lastValues: {},
+        problems: {},
+        problemsUnavailable: true,
+      });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 10,
+      })
+    );
+
+    await flush();
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    expect(fetchStatus.mock.calls[0]?.[0].includeProblems).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    expect(fetchStatus.mock.calls[1]?.[0].includeProblems).toBe(false);
+    // O badge do ciclo anterior continua: pular problemas não pode apagar alerta.
+    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
+  });
+
+  it('passa os grupos já resolvidos adiante para não repetir o hostgroup.get', async () => {
+    const meta = { hosts: [host('1', 'Backbone')], resolvedGroups: ['Backbone'], groupIds: ['10'] };
+    fetchMetadata.mockResolvedValue(meta);
+    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 10,
+      })
+    );
+
+    await flush();
+    expect(fetchMetadata.mock.calls[0]?.[3]).toBeUndefined();
+
+    for (let cycle = 0; cycle < 6; cycle++) {
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+
+    expect(fetchMetadata).toHaveBeenCalledTimes(2);
+    expect(fetchMetadata.mock.calls[1]?.[3]).toBe(meta);
+  });
+
+  it('no ciclo seguinte relê só o sinal em uso, sem varrer o inventário de novo', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: { '30': { itemid: '30', lastvalue: '-8.5' } },
+      itemIdByKey: new Map(),
+      interfaceItems: [
+        { itemid: '30', key_: 'vendor.optical.rxpower[10]', name: 'port-a', hostid: '1', lastvalue: '-8.5' },
+        { itemid: '99', key_: 'vendor.optical.rxpower[99]', name: 'port-z', hostid: '1', lastvalue: '-20' },
+      ],
+    });
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+        signalHostIds: ['1'],
+        signalSearchTerms: ['optical'],
+        selectSignalItemIds: (items) =>
+          items.filter((item) => item.itemid === '30').map((item) => item.itemid),
+      })
+    );
+
+    await flush();
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    expect(fetchLastValues).toHaveBeenLastCalledWith(
+      'ds',
+      ['10', '30'],
+      expect.any(AbortSignal),
+      [],
+      ['1'],
+      undefined
+    );
+  });
 });

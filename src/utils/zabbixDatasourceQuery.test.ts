@@ -123,6 +123,19 @@ describe('buildZabbixStatusQueryRequest', () => {
 
   it('não monta request sem grupos ou chave', () => {
     expect(buildZabbixStatusQueryRequest('ds', [], 'icmpping', 30)).toBeUndefined();
+    // Sem o target de problemas o datasource não dispara `problem.get` nem `trigger.get`.
+    const semProblemas = buildZabbixStatusQueryRequest(
+      'ds',
+      ['Backbone'],
+      'icmpping',
+      30,
+      1_700_000_000_000,
+      undefined,
+      undefined,
+      false
+    );
+    expect(semProblemas?.targets).toHaveLength(1);
+    expect(semProblemas?.targets[0].queryType).toBe('0');
     expect(buildZabbixStatusQueryRequest('ds', ['Backbone'], '  ', 30)).toBeUndefined();
   });
 });

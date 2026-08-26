@@ -32,6 +32,8 @@ import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
+import { panelInterfaceKeywords } from '../hooks/useZabbixHostInterfaces';
+import { ZabbixInterfaceItem } from '../utils/zabbixApi';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
 import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
@@ -47,6 +49,7 @@ import {
   collectLinkMetricKeys,
   collectLinkSignalHostIds,
   collectMapsLinks,
+  collectPolledSignalItemIds,
   linkSignalSearchTerms,
 } from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
@@ -187,6 +190,21 @@ export function TopologyPanel({
   );
   const hostMetaForSignalRef = useRef<HostMetadataMap | undefined>(undefined);
   const signalHostIds = collectLinkSignalHostIds(mapsForPoll, hostMetaForSignalRef.current);
+  const signalKeywordsRef = useRef(panelInterfaceKeywords(resolvedOptions));
+  signalKeywordsRef.current = panelInterfaceKeywords(resolvedOptions);
+  const mapsForPollRef = useRef(mapsForPoll);
+  mapsForPollRef.current = mapsForPoll;
+  /** Da varredura periódica de sinal o poll guarda só as portas ligadas a algum cabo. */
+  const selectSignalItemIds = useCallback(
+    (items: ZabbixInterfaceItem[]) =>
+      collectPolledSignalItemIds(
+        mapsForPollRef.current,
+        items,
+        hostMetaForSignalRef.current,
+        signalKeywordsRef.current
+      ),
+    []
+  );
 
   /** Status, hover, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
@@ -203,6 +221,7 @@ export function TopologyPanel({
     trafficKeys,
     signalHostIds,
     signalSearchTerms,
+    selectSignalItemIds,
   });
 
   const queryIndex = querySource.index;

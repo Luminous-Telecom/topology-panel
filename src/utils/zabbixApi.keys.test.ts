@@ -177,12 +177,71 @@ describe('fetchZabbixTrafficLastValues', () => {
       params: {
         output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
         hostids: ['10001'],
-        search: { key_: 'optical' },
+        search: { key_: ['optical'] },
+        searchByAny: true,
       },
     });
     expect(lastValues['10']?.lastvalue).toBe('500000000');
     expect(lastValues['30']?.lastvalue).toBe('-8.5');
     expect(interfaceItems.some((item) => item.itemid === '30' && item.lastvalue === '-8.5')).toBe(true);
+  });
+
+  it('manda a lista inteira de itemids num item.get só, sem fatiar', async () => {
+    const ids = Array.from({ length: 750 }, (_, index) => String(1000 + index));
+    post.mockResolvedValueOnce({ result: [] });
+
+    await fetchZabbixTrafficLastValues('ds', ids);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        itemids: ids,
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+      },
+    });
+  });
+
+  it('busca todos os termos de sinal num único item.get', async () => {
+    post.mockResolvedValueOnce({ result: [] });
+
+    await fetchZabbixTrafficLastValues('ds', [], undefined, [], undefined, {
+      hostids: ['10001'],
+      terms: ['rxpower', 'txpower', 'optical'],
+    });
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toMatchObject({
+      method: 'item.get',
+      params: { search: { key_: ['rxpower', 'txpower', 'optical'] }, searchByAny: true },
+    });
+  });
+
+  it('não reaproveita como itemid o que veio da busca de sinal', async () => {
+    post.mockResolvedValueOnce({
+      result: [
+        {
+          itemid: '30',
+          key_: 'vendor.optical.rxpower[10]',
+          hostid: '10001',
+          lastvalue: '-8.5',
+        },
+      ],
+    });
+
+    const { lastValues, itemIdByKey } = await fetchZabbixTrafficLastValues(
+      'ds',
+      [],
+      undefined,
+      [],
+      undefined,
+      { hostids: ['10001'], terms: ['rxpower'] }
+    );
+
+    expect(lastValues['30']?.lastvalue).toBe('-8.5');
+    expect(lastValues['10001:vendor.optical.rxpower[10]']?.lastvalue).toBe('-8.5');
+    // Sem isto o ciclo seguinte relê por itemid cada porta óptica devolvida pela busca.
+    expect(itemIdByKey.size).toBe(0);
   });
 
   it('consulta sinal mesmo sem itemid de tráfego', async () => {

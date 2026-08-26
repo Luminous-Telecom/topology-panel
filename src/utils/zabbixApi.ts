@@ -409,8 +409,6 @@ export function zabbixHostItemKey(hostid: string, itemKey: string): string {
   return `${hostid}:${itemKey}`;
 }
 
-/** grafana-zabbix recusava lista enorme em Item ID; o `item.get` também fatia o body. */
-const TRAFFIC_ITEMID_CHUNK = 200;
 const TRAFFIC_ITEM_OUTPUT = ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'];
 
 interface ZabbixTrafficItemRow {
@@ -547,22 +545,19 @@ async function fetchTrafficItemsBySearch(
   if (!datasourceUid || !scopedHostIds.length || !uniqueTerms.length) {
     return [];
   }
-  const parts = await Promise.all(
-    uniqueTerms.map((term) =>
-      zabbixCall<ZabbixTrafficItemRow[]>(
-        datasourceUid,
-        'item.get',
-        {
-          output: TRAFFIC_ITEM_OUTPUT,
-          hostids: scopedHostIds,
-          search: { key_: term },
-        },
-        ZABBIX_STATUS_CALL_TIMEOUT_MS,
-        { abortSignal, requestId: `topology-traffic-signal-${datasourceUid}-${term}` }
-      )
-    )
+  return zabbixCall<ZabbixTrafficItemRow[]>(
+    datasourceUid,
+    'item.get',
+    {
+      output: TRAFFIC_ITEM_OUTPUT,
+      hostids: scopedHostIds,
+      search: { key_: uniqueTerms },
+      // `search` com lista casa todos os termos por padrão; sem isto nenhum item volta.
+      searchByAny: true,
+    },
+    ZABBIX_STATUS_CALL_TIMEOUT_MS,
+    { abortSignal, requestId: `topology-traffic-signal-${datasourceUid}` }
   );
-  return parts.flat();
 }
 
 /**
@@ -592,27 +587,43 @@ export async function fetchZabbixTrafficLastValues(
   }
 
   const rowBatches: Array<Promise<ZabbixTrafficItemRow[]>> = [];
-  for (let offset = 0; offset < ids.length; offset += TRAFFIC_ITEMID_CHUNK) {
-    const chunk = ids.slice(offset, offset + TRAFFIC_ITEMID_CHUNK);
+  if (ids.length) {
+    /*
+     * Lista inteira num `item.get` só, sem fatiar: a resposta depende de quantos itens existem,
+     * não do tamanho da lista enviada. Fatiar fazia o número de requisições crescer junto com o
+     * ambiente — 50 mil ids num POST passam sem problema.
+     */
     rowBatches.push(
       zabbixCall<ZabbixTrafficItemRow[]>(
         datasourceUid,
         'item.get',
-        { itemids: chunk, output: TRAFFIC_ITEM_OUTPUT },
+        { itemids: ids, output: TRAFFIC_ITEM_OUTPUT },
         ZABBIX_STATUS_CALL_TIMEOUT_MS,
-        { abortSignal, requestId: `topology-traffic-ids-${datasourceUid}-${offset}` }
+        { abortSignal, requestId: `topology-traffic-ids-${datasourceUid}` }
       )
     );
   }
   if (keys.length) {
     rowBatches.push(fetchTrafficItemsByKeys(datasourceUid, keys, abortSignal, hostids));
   }
-  if (hasSignalSearch) {
-    rowBatches.push(fetchTrafficItemsBySearch(datasourceUid, signalHostIds, signalTerms, abortSignal));
-  }
-  const allRows = (await Promise.all(rowBatches)).flat();
-  const indexed = indexTrafficItemRows(allRows);
-  return { ...indexed, interfaceItems: trafficRowsToInterfaceItems(allRows) };
+  const [requestedRows, signalRows] = await Promise.all([
+    Promise.all(rowBatches).then((parts) => parts.flat()),
+    hasSignalSearch
+      ? fetchTrafficItemsBySearch(datasourceUid, signalHostIds, signalTerms, abortSignal)
+      : Promise.resolve<ZabbixTrafficItemRow[]>([]),
+  ]);
+  const requested = indexTrafficItemRows(requestedRows);
+  const signal = indexTrafficItemRows(signalRows);
+  return {
+    lastValues: { ...signal.lastValues, ...requested.lastValues },
+    /*
+     * Só a chave que o cabo pediu vira itemid reaproveitado. O `search` de sinal devolve todas as
+     * portas ópticas do host — numa OLT são milhares — e o ciclo seguinte relia todas por itemid,
+     * fatiadas de 200 em 200. Era isso que fazia o número de requisições crescer sem parar.
+     */
+    itemIdByKey: requested.itemIdByKey,
+    interfaceItems: trafficRowsToInterfaceItems([...requestedRows, ...signalRows]),
+  };
 }
 
 export interface ZabbixInterfaceItem {
@@ -662,6 +673,9 @@ export interface ZabbixDirectMetadata {
   /** groupids resolvidos, reaproveitados pela descoberta única dos itemids de status. */
   groupIds: string[];
 }
+
+/** Grupos já resolvidos num ciclo anterior — dispensa repetir o `hostgroup.get`. */
+export type ZabbixResolvedGroups = Pick<ZabbixDirectMetadata, 'resolvedGroups' | 'groupIds'>;
 
 async function fetchGroupIdsByName(
   datasourceUid: string,
@@ -749,7 +763,8 @@ async function fetchMonitoredHostsInGroups(
 export async function fetchZabbixDirectMetadata(
   datasourceUid: string,
   groupNames: string[],
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  resolved?: ZabbixResolvedGroups
 ): Promise<ZabbixDirectMetadata> {
   const wanted = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
   if (!datasourceUid || !wanted.length) {
@@ -761,10 +776,12 @@ export async function fetchZabbixDirectMetadata(
     requestId: `topology-metadata-${datasourceUid}`,
   };
 
-  const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted, callOptions);
+  /** Grupo não muda de id entre ciclos; reaproveitar tira um `hostgroup.get` de cada busca. */
+  const cached = resolved?.groupIds.length ? resolved : undefined;
+  const groupIdByName = cached ? undefined : await fetchGroupIdsByName(datasourceUid, wanted, callOptions);
   /** Nomes no casing do Zabbix — o `queryRefId` legado grava o grupo em maiúsculas. */
-  const resolvedGroups = [...groupIdByName.keys()];
-  const groupIds = [...groupIdByName.values()];
+  const resolvedGroups = cached ? cached.resolvedGroups : [...(groupIdByName?.keys() ?? [])];
+  const groupIds = cached ? cached.groupIds : [...(groupIdByName?.values() ?? [])];
   if (!resolvedGroups.length) {
     return { hosts: [], resolvedGroups, groupIds };
   }

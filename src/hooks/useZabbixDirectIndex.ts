@@ -64,6 +64,8 @@ export interface UseZabbixDirectIndexOptions {
   signalHostIds?: string[];
   /** Termos de busca de sinal (óptico/rádio) no mesmo `item.get` do tráfego. */
   signalSearchTerms?: string[];
+  /** Reduz o inventário de sinal recém-descoberto aos itens que os cabos realmente usam. */
+  selectSignalItemIds?: (items: ZabbixInterfaceItem[]) => string[];
 }
 
 export interface UseZabbixDirectIndexResult {
@@ -93,6 +95,16 @@ const EMPTY_HOVER: HostHoverSeriesMap = {};
 const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
 const EMPTY_INTERFACE_ITEMS: ZabbixInterfaceItem[] = [];
 const EMPTY_PROBLEMS: HostProblemsMap = {};
+/**
+ * Intervalo entre varreduras do inventário de sinal. Porta nova só aparece na próxima varredura;
+ * editar a interface do cabo muda a configuração do poll e já força uma imediata.
+ */
+const SIGNAL_REDISCOVERY_MS = 10 * 60_000;
+/**
+ * Intervalo da releitura de identidade (`hostgroup.get` + `host.get`) e dos problemas. Host novo,
+ * host desativado e badge de alerta aparecem dentro desta janela, não a cada refresh.
+ */
+const IDENTITY_REFRESH_MS = 60_000;
 const IDLE_STATE: DirectState = {
   index: EMPTY_INDEX,
   hoverByHost: EMPTY_HOVER,
@@ -116,6 +128,7 @@ export function useZabbixDirectIndex({
   trafficKeys,
   signalHostIds,
   signalSearchTerms,
+  selectSignalItemIds,
 }: UseZabbixDirectIndexOptions): UseZabbixDirectIndexResult {
   const groups = useMemo(
     () => [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))],
@@ -159,6 +172,8 @@ export function useZabbixDirectIndex({
   signalIdsRef.current = signalIds;
   const signalTermsRef = useRef(signalTerms);
   signalTermsRef.current = signalTerms;
+  const selectSignalItemIdsRef = useRef(selectSignalItemIds);
+  selectSignalItemIdsRef.current = selectSignalItemIds;
   /**
    * O Grafana recria o EventBus no carregamento do dashboard. Se o poll depende disso, o efeito
    * aborta o primeiro `ds.query()` e dispara outro — duas buscas iguais ao recarregar.
@@ -211,9 +226,25 @@ export function useZabbixDirectIndex({
     let fetchAbort: AbortController | undefined;
     /** Últimos problemas publicados nesta configuração — uma falha isolada não apaga o badge. */
     let latestProblems: HostProblemsMap = EMPTY_PROBLEMS;
+    /** Itemids de sinal em uso pelos cabos; relidos por id enquanto não há redescoberta. */
+    let knownSignalItemIds: string[] = [];
+    /** Quando o inventário de sinal foi varrido pela última vez (0 = ainda não). */
+    let lastSignalSearchMs = 0;
+    /** Quando identidade e problemas foram relidos pela última vez (0 = ainda não). */
+    let lastIdentityMs = 0;
 
-    const ensureMetadata = async (abortSignal: AbortSignal): Promise<ZabbixDirectMetadata> => {
-      metadata = await fetchZabbixDirectMetadata(datasourceUid, groupsRef.current, abortSignal);
+    /*
+     * Identidade (host novo, host desativado) e problemas mudam em minutos, não a cada refresh.
+     * Fora da janela o ciclo fica só com `ds.query` de status e um `item.get` — duas requisições.
+     */
+    const isIdentityCycle = (): boolean => !metadata || Date.now() - lastIdentityMs >= IDENTITY_REFRESH_MS;
+
+    const ensureMetadata = async (abortSignal: AbortSignal, identityCycle: boolean): Promise<ZabbixDirectMetadata> => {
+      if (metadata && !identityCycle) {
+        return metadata;
+      }
+      metadata = await fetchZabbixDirectMetadata(datasourceUid, groupsRef.current, abortSignal, metadata);
+      lastIdentityMs = Date.now();
       return metadata;
     };
 
@@ -221,7 +252,7 @@ export function useZabbixDirectIndex({
       meta: ZabbixDirectMetadata,
       abortSignal: AbortSignal
     ): Promise<{ lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] }> => {
-      const numeric = [
+      const trafficNumeric = [
         ...new Set(
           [...trafficItemIdsRef.current, ...itemIdByKey.values()].filter((id) => isNumericZabbixItemId(id))
         ),
@@ -230,11 +261,20 @@ export function useZabbixDirectIndex({
       const signalTerms = signalTermsRef.current;
       const signalHostIds = signalIdsRef.current.length
         ? signalIdsRef.current
-        : signalTerms.length && (numeric.length || pending.length)
+        : signalTerms.length && (trafficNumeric.length || pending.length)
           ? meta.hosts.map((host) => host.hostid)
           : [];
-      const signalSearch =
-        signalHostIds.length && signalTerms.length ? { hostids: signalHostIds, terms: signalTerms } : undefined;
+      /*
+       * A varredura de sinal traz toda porta óptica do host — resposta de centenas de KB. Ela roda
+       * na primeira busca e em intervalos longos; nos demais ciclos só os ids em uso são relidos.
+       */
+      const rediscoverSignal =
+        Boolean(signalHostIds.length && signalTerms.length) &&
+        Date.now() - lastSignalSearchMs >= SIGNAL_REDISCOVERY_MS;
+      const signalSearch = rediscoverSignal ? { hostids: signalHostIds, terms: signalTerms } : undefined;
+      const numeric = rediscoverSignal
+        ? trafficNumeric
+        : [...new Set([...trafficNumeric, ...knownSignalItemIds])];
       if (!numeric.length && !pending.length && !signalSearch) {
         return { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS };
       }
@@ -252,6 +292,12 @@ export function useZabbixDirectIndex({
         }
         if (pending.length) {
           triedTrafficKeys = new Set([...triedTrafficKeys, ...pending]);
+        }
+        if (rediscoverSignal) {
+          lastSignalSearchMs = Date.now();
+          knownSignalItemIds = (selectSignalItemIdsRef.current?.(fetched.interfaceItems) ?? []).filter((id) =>
+            isNumericZabbixItemId(id)
+          );
         }
         return {
           lastValues: aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey),
@@ -288,7 +334,8 @@ export function useZabbixDirectIndex({
       const abortSignal = fetchAbort.signal;
       inFlight = true;
       try {
-        const meta = await ensureMetadata(abortSignal);
+        const identityCycle = isIdentityCycle();
+        const meta = await ensureMetadata(abortSignal, identityCycle);
         const [snapshot, traffic] = meta.resolvedGroups.length
           ? await Promise.all([
               fetchZabbixStatusViaQuery({
@@ -300,6 +347,7 @@ export function useZabbixDirectIndex({
                 refreshSec: intervalSec,
                 timeRange: timeRangeRef.current,
                 statusOptions: statusOptionsRef.current,
+                includeProblems: identityCycle,
               }),
               fetchTrafficLastValues(meta, abortSignal),
             ])

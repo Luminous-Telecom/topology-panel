@@ -105,6 +105,8 @@ export interface FetchZabbixStatusViaQueryOptions {
   refreshSec: number;
   timeRange?: TimeRange;
   statusOptions?: StatusColorOptions;
+  /** Problemas fora deste ciclo: o snapshot volta com `problemsUnavailable` e o badge anterior fica. */
+  includeProblems?: boolean;
 }
 
 export interface ZabbixStatusQuerySnapshot {
@@ -315,7 +317,8 @@ export function buildZabbixStatusQueryRequest(
   refreshSec: number,
   nowMs = Date.now(),
   itemIds?: string[],
-  timeRange?: TimeRange
+  timeRange?: TimeRange,
+  includeProblems = true
 ): DataQueryRequest<ZabbixMetricsQuery> | undefined {
   const statusTargets =
     itemIds !== undefined
@@ -326,9 +329,12 @@ export function buildZabbixStatusQueryRequest(
   }
   /*
    * Problems no mesmo `/api/ds/query`: o grafana-zabbix aceita queryTypes mistos por target.
-   * Tráfego dos cabos não entra aqui — lastvalue vem do `item.get`.
+   * Tráfego dos cabos não entra aqui — lastvalue vem do `item.get`. Sem o target de problemas
+   * o datasource também deixa de disparar `problem.get` e `trigger.get`: duas requisições a menos.
    */
-  const targets = [...statusTargets, ...buildZabbixProblemsTargets(datasourceUid, groupNames)];
+  const targets = includeProblems
+    ? [...statusTargets, ...buildZabbixProblemsTargets(datasourceUid, groupNames)]
+    : statusTargets;
   const range = timeRange ?? statusQueryTimeRange(nowMs, ZABBIX_STATUS_QUERY_RANGE_SEC);
   return zabbixQueryRequest(
     datasourceUid,
@@ -879,6 +885,7 @@ export async function fetchZabbixStatusViaQuery(
     refreshSec,
     timeRange,
     statusOptions,
+    includeProblems = true,
   } = options;
   const nowMs = Date.now();
   const statusRequest = buildZabbixStatusQueryRequest(
@@ -888,7 +895,8 @@ export async function fetchZabbixStatusViaQuery(
     refreshSec,
     nowMs,
     itemIds,
-    timeRange
+    timeRange,
+    includeProblems
   );
   if (!statusRequest) {
     return EMPTY_STATUS_SNAPSHOT;
@@ -905,10 +913,11 @@ export async function fetchZabbixStatusViaQuery(
     statusResponse.data ?? []
   );
   const problemsUnavailable =
-    !problemFrames.length &&
-    (statusResponse.state === LoadingState.Error ||
-      Boolean(statusResponse.error) ||
-      Boolean(statusResponse.errors?.length));
+    !includeProblems ||
+    (!problemFrames.length &&
+      (statusResponse.state === LoadingState.Error ||
+        Boolean(statusResponse.error) ||
+        Boolean(statusResponse.errors?.length)));
   return {
     items: parseStatusItemsFromFrames(statusFrames, hosts, statusItemKey),
     hoverByHost: parseHoverSeriesFromFrames(statusFrames, hosts, statusItemKey, statusOptions),

@@ -5,6 +5,7 @@ import {
   collectLinkMetricKeys,
   collectLinkSignalHostIds,
   collectMapsLinks,
+  collectPolledSignalItemIds,
   linkSignalSearchTerms,
   resolveLinkMapTrafficMetrics,
 } from './linkMetricsRuntime';
@@ -291,6 +292,59 @@ describe('buildLinkRuntimeMetricsMap', () => {
     const display = resolveLinkMapTrafficMetrics(map.links[0]!, runtime);
     expect(display.txBps).toBe(800000000);
     expect(display.rxBps).toBe(200000000);
+  });
+});
+
+describe('collectPolledSignalItemIds', () => {
+  const signalMap = {
+    ...emptyMap({
+      nodes: [
+        hostNode({ id: 'a', zabbixHost: '10.0.0.1', label: 'host-a' }),
+        hostNode({ id: 'b', x: 80, zabbixHost: '10.0.0.2', label: 'host-b' }),
+      ],
+    }),
+    links: [
+      {
+        from: 'a',
+        to: 'b',
+        fromInterface: {
+          name: 'port-a0/0/3',
+          metrics: { rx: { itemId: '10' }, tx: { itemId: '11' } },
+        },
+      },
+    ],
+  };
+  const metadata = { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' } };
+  const usedPort = [
+    { itemid: '10', key_: 'vendor.metric.rx[10]', name: 'port-a0/0/3', hostid: '101' },
+    { itemid: '30', key_: 'vendor.optical.rxpower[10]', name: 'port-a0/0/3', hostid: '101', lastvalue: '-8.5' },
+    { itemid: '31', key_: 'vendor.optical.txpower[10]', name: 'port-a0/0/3', hostid: '101', lastvalue: '-2.1' },
+  ];
+  const otherPorts = Array.from({ length: 40 }, (_, index) => ({
+    itemid: `${9000 + index}`,
+    key_: `vendor.optical.rxpower[${900 + index}]`,
+    name: `port-a0/1/${index}`,
+    hostid: '101',
+    lastvalue: '-20',
+  }));
+
+  it('devolve só o sinal da porta que algum cabo usa', () => {
+    const ids = collectPolledSignalItemIds([signalMap], [...usedPort, ...otherPorts], metadata);
+    expect(ids.sort()).toEqual(['30', '31']);
+  });
+
+  /*
+   * O poll só varre o inventário completo de tempos em tempos; entre varreduras ele relê apenas
+   * estes ids. Se a seleção não fosse estável, o sinal sumiria no ciclo seguinte.
+   */
+  it('mantém a mesma seleção sem as portas que nenhum cabo usa', () => {
+    const ids = collectPolledSignalItemIds([signalMap], [...usedPort, ...otherPorts], metadata);
+    const semRuido = usedPort.filter((item) => ids.includes(item.itemid) || item.itemid === '10');
+    expect(collectPolledSignalItemIds([signalMap], semRuido, metadata).sort()).toEqual(ids.sort());
+  });
+
+  it('sem inventário não devolve id', () => {
+    expect(collectPolledSignalItemIds([signalMap], [], metadata)).toEqual([]);
   });
 });
 

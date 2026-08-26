@@ -26,6 +26,7 @@ export interface UseTopologyQueryIndexOptions {
   trafficKeys?: string[];
   signalHostIds?: string[];
   signalSearchTerms?: string[];
+  selectSignalItemIds?: (items: ZabbixInterfaceItem[]) => string[];
 }
 
 export interface UseTopologyQueryIndexResult {
@@ -64,6 +65,7 @@ export function useTopologyQueryIndex({
   trafficKeys,
   signalHostIds,
   signalSearchTerms,
+  selectSignalItemIds,
 }: UseTopologyQueryIndexOptions): UseTopologyQueryIndexResult {
   const direct = useZabbixDirectIndex({
     enabled,
@@ -78,6 +80,7 @@ export function useTopologyQueryIndex({
     trafficKeys,
     signalHostIds,
     signalSearchTerms,
+    selectSignalItemIds,
   });
 
   const fromPanelData = useMemo(() => panelDataIndex(panelData), [panelData]);

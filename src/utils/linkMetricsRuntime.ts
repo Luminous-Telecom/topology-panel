@@ -406,6 +406,42 @@ function enrichLinkWithPolledSignal(
   return { ...link, fromInterface, toInterface };
 }
 
+/**
+ * Itemids de sinal que os cabos de fato usam, a partir do inventário recém-descoberto.
+ *
+ * A busca por `rxpower`/`txpower`/... devolve toda porta óptica do host — numa OLT são milhares.
+ * O poll guarda só estes ids e relê apenas eles até a próxima redescoberta.
+ */
+export function collectPolledSignalItemIds(
+  maps: readonly TopologyMap[],
+  interfaceItems: ZabbixInterfaceItem[],
+  hostMetadata?: HostMetadataMap,
+  keyParseOptions?: InterfaceKeyParseOptions
+): string[] {
+  if (!interfaceItems.length) {
+    return [];
+  }
+  const byHost = groupPolledInterfaceItems(interfaceItems, keyParseOptions);
+  if (!Object.keys(byHost).length) {
+    return [];
+  }
+  const ids = new Set<string>();
+  for (const map of maps) {
+    for (const link of map.links ?? []) {
+      const enriched = enrichLinkWithPolledSignal(map, link, byHost, hostMetadata);
+      for (const ref of [enriched.fromInterface, enriched.toInterface]) {
+        for (const metric of [ref?.metrics?.rxPower, ref?.metrics?.txPower]) {
+          const itemId = metric?.itemId?.trim();
+          if (itemId && isNumericZabbixItemId(itemId)) {
+            ids.add(itemId);
+          }
+        }
+      }
+    }
+  }
+  return [...ids];
+}
+
 /** Monta mapa de métricas runtime a partir dos lastvalues Zabbix. */
 export function buildLinkRuntimeMetricsMap(
   map: TopologyMap,
