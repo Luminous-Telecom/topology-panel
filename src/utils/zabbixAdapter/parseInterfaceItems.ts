@@ -21,6 +21,8 @@ interface InterfaceAccumulator {
   hostKey: string;
   hostid?: string;
   name: string;
+  /** Nome veio de item de link (tráfego/status/capacidade), não de sinal óptico. */
+  nameFromLink: boolean;
   snmpIndex?: string;
   alias?: string;
   description?: string;
@@ -33,6 +35,10 @@ interface InterfaceAccumulator {
   txPowerDbm?: number;
   metrics: TopologyInterfaceMetrics;
   metricCounts: Partial<Record<InterfaceMetricKind, number>>;
+}
+
+function isSignalMetricKind(kind: InterfaceMetricKind): boolean {
+  return kind === 'rxPower' || kind === 'txPower';
 }
 
 function readTag(tags: RawZabbixInterfaceItem['tags'], tagName: string): string | undefined {
@@ -59,6 +65,30 @@ function preferInterfaceName(current: string, candidate: string): string {
     return next;
   }
   return current;
+}
+
+/** Sinal óptico não rotula o select — o cabo escolhe a porta de tráfego. */
+function assignInterfaceName(
+  acc: InterfaceAccumulator,
+  candidate: string,
+  kind: InterfaceMetricKind
+): void {
+  const next = candidate.trim();
+  if (!next) {
+    return;
+  }
+  if (isSignalMetricKind(kind)) {
+    if (!acc.nameFromLink) {
+      acc.name = preferInterfaceName(acc.name, next);
+    }
+    return;
+  }
+  if (acc.nameFromLink) {
+    acc.name = preferInterfaceName(acc.name, next);
+  } else {
+    acc.name = next;
+  }
+  acc.nameFromLink = true;
 }
 
 /** Nome do item no Zabbix, sem recorte. Token da key só se o item não tiver name. */
@@ -305,7 +335,8 @@ export function parseZabbixInterfaceItems(
       acc = {
         hostKey,
         hostid,
-        name: ifName,
+        name: '',
+        nameFromLink: false,
         snmpIndex,
         alias: readTag(item.tags, 'ifalias'),
         description: readTag(item.tags, 'ifdescr'),
@@ -315,14 +346,14 @@ export function parseZabbixInterfaceItems(
         metricCounts: {},
       };
       groups.set(groupKey, acc);
-    } else {
-      acc.name = preferInterfaceName(acc.name, ifName);
     }
 
+    assignInterfaceName(acc, ifName, parsed.kind);
     addMetric(acc, parsed.kind, item);
   }
 
   return mergeSignalIntoTrafficGroups(groups)
+    .filter(hasTrafficMetrics)
     .map(finalizeInterface)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }

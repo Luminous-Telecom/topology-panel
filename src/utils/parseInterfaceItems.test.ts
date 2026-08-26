@@ -11,6 +11,7 @@ describe('parseZabbixInterfaceItems', () => {
       { itemid: '2', key_: 'net.if.out[port-a]', hostid: '10001' },
       { itemid: '3', key_: 'net.if.status[ifOperStatus.10]', hostid: '10001', lastvalue: '1' },
       { itemid: '4', key_: 'net.if.speed[ifSpeed.10]', hostid: '10001', lastvalue: '10000000000' },
+      { itemid: '5', key_: 'net.if.in[ifHCInOctets.10]', hostid: '10001' },
     ]);
     expect(interfaces).toHaveLength(2);
     const portA = interfaces.find((i: TopologyNetworkInterface) => i.name === 'port-a');
@@ -92,6 +93,12 @@ describe('parseZabbixInterfaceItems', () => {
   it('converte lastvalue de velocidade em speedMbps', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10004', [
       {
+        itemid: '19',
+        key_: 'vendor.metric.rx[10]',
+        name: 'item-name-rx-a',
+        hostid: '10004',
+      },
+      {
         itemid: '20',
         key_: 'modulacao[10]',
         name: 'item-name-speed-a',
@@ -99,7 +106,7 @@ describe('parseZabbixInterfaceItems', () => {
         lastvalue: '10000000000',
       },
     ]);
-    expect(interfaces[0]?.name).toBe('item-name-speed-a');
+    expect(interfaces).toHaveLength(1);
     expect(interfaces[0]?.speedMbps).toBe(10000);
   });
 
@@ -205,6 +212,49 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.metrics.txPower?.itemId).toBe('4');
     expect(interfaces[0]?.rxPowerDbm).toBe(-8.5);
     expect(interfaces[0]?.txPowerDbm).toBe(-2);
+    expect(interfaces[0]?.name).toBe('port-a0/0/3 - host-a');
+  });
+
+  it('não lista item só de sinal óptico no select de cabo', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10011', [
+      {
+        itemid: '1',
+        key_: 'vendor.optical.txpower[10]',
+        name: 'item-name-txpower-pon-a',
+        hostid: '10011',
+      },
+      {
+        itemid: '2',
+        key_: 'vendor.metric.rx[11]',
+        name: 'item-name-rx-port-a',
+        hostid: '10011',
+      },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.name).toBe('item-name-rx-port-a');
+    expect(interfaces[0]?.metrics.rx?.itemId).toBe('2');
+    expect(interfaces[0]?.metrics.txPower).toBeUndefined();
+  });
+
+  it('mantém o nome de tráfego quando o sinal compartilha o mesmo index', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10012', [
+      {
+        itemid: '1',
+        key_: 'vendor.optical.txpower[10]',
+        name: 'item-name-txpower-pon-a extra',
+        hostid: '10012',
+      },
+      {
+        itemid: '2',
+        key_: 'vendor.metric.rx[10]',
+        name: 'item-name-rx-pon-a',
+        hostid: '10012',
+      },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.name).toBe('item-name-rx-pon-a');
+    expect(interfaces[0]?.metrics.rx?.itemId).toBe('2');
+    expect(interfaces[0]?.metrics.txPower?.itemId).toBe('1');
   });
 });
 
