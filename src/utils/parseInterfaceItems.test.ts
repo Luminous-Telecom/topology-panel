@@ -150,6 +150,27 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.metrics.txPower?.itemId).toBe('4');
   });
 
+  it('agrupa RX e TX pontilhados da mesma porta mesmo com nomes de item diferentes', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10010', [
+      {
+        itemid: '1',
+        key_: 'rx.port.19.1',
+        name: 'item-name-rx-port-a',
+        hostid: '10010',
+      },
+      {
+        itemid: '2',
+        key_: 'tx.port.19.1',
+        name: 'item-name-tx-port-a',
+        hostid: '10010',
+      },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.metrics.rx?.itemId).toBe('1');
+    expect(interfaces[0]?.metrics.tx?.itemId).toBe('2');
+    expect(interfaces[0]?.bindingConfidence).toBe('high');
+  });
+
   it('junta sinal com tráfego quando o SNMP index difere e o nome cita a mesma porta', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10009', [
       {

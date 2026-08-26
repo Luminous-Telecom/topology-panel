@@ -1012,6 +1012,31 @@ describe('parseInterfaceItemsFromFrames', () => {
     expect(entries[0].items[0].itemid).toBe('21');
     expect(entries[0].items[0].lastvalue).toBeUndefined();
   });
+
+  it('inclui tráfego pontilhado mesmo quando a palavra-chave não aparece na key', () => {
+    const entries = parseInterfaceItemsFromFrames(
+      [
+        {
+          fields: [
+            {
+              name: 'Value',
+              type: FieldType.number,
+              values: [10],
+              labels: { host: 'host-a', item_key: 'rx.port.19.1', item: 'item-name-rx-port-a', itemid: '31' },
+              config: {},
+            },
+          ],
+          length: 1,
+        },
+      ],
+      ['host-a'],
+      ['vendor.metric.rx', 'sinal'],
+      { 'host-a': { name: 'host-a', hostid: '10001' } }
+    );
+    expect(entries[0].items).toHaveLength(1);
+    expect(entries[0].items[0].key_).toBe('rx.port.19.1');
+    expect(entries[0].items[0].itemid).toBe('31');
+  });
 });
 
 describe('fetchZabbixHostInterfaceItemsViaQuery', () => {

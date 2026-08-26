@@ -22,6 +22,7 @@ import {
 } from './hostTimeSeries';
 import { HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './noc/types';
 import { StatusColorOptions } from './statusMapping';
+import { isDottedDirectionalInterfaceKey } from './zabbixAdapter/interfaceItemKeys';
 import {
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
@@ -1272,6 +1273,9 @@ export function buildZabbixInterfaceTargets(
 }
 
 function matchesInterfaceKeyword(key_: string, name: string | undefined, keywords: string[]): boolean {
+  if (isDottedDirectionalInterfaceKey(key_)) {
+    return true;
+  }
   const hay = `${key_} ${name ?? ''}`.toLowerCase();
   return keywords.some((keyword) => hay.includes(keyword.toLowerCase()));
 }

@@ -168,6 +168,13 @@ function classifyGenericBaseKey(baseKey: string): InterfaceMetricKind | undefine
     return signal;
   }
 
+  if (/^rx\./.test(k)) {
+    return 'rx';
+  }
+  if (/^tx\./.test(k)) {
+    return 'tx';
+  }
+
   if (
     k.includes('percentile') ||
     k.includes('percentil') ||
@@ -274,33 +281,68 @@ function parseDottedSnmpKey(key: string): ParsedInterfaceKey | undefined {
   return { kind, interfaceToken: match[2], snmpIndex: match[2] };
 }
 
+/** Prefixos `rx.` / `tx.` sem colchetes (`rx.port.1.1`). Não casa `rxpower.`. */
+export function isDottedDirectionalInterfaceKey(key: string): boolean {
+  return /^(rx|tx)\.[^\s[\]]+$/i.test(key.trim());
+}
+
+function stripDirectionalPrefix(key: string, kind: 'rx' | 'tx'): string | undefined {
+  const match = key.match(kind === 'rx' ? /^rx\./i : /^tx\./i);
+  if (!match) {
+    return undefined;
+  }
+  const token = key.slice(match[0].length).trim();
+  return token || undefined;
+}
+
+/** Tráfego em key pontilhada sem colchetes (`rx.port.1.1`, `tx.port.1.1`). */
+function parseDottedDirectionalKey(
+  key: string,
+  opts?: InterfaceKeyParseOptions
+): ParsedInterfaceKey | undefined {
+  const kind = classifyGenericBaseKey(key) ?? classifyByCustomKeywords(key, opts);
+  if (kind !== 'rx' && kind !== 'tx') {
+    return undefined;
+  }
+  const interfaceToken = stripDirectionalPrefix(key, kind);
+  if (!interfaceToken || isDiscoveryPrototype(interfaceToken)) {
+    return undefined;
+  }
+  return {
+    kind,
+    interfaceToken,
+    snmpIndex: snmpIndexFromToken(interfaceToken),
+  };
+}
+
 /** Classifica uma key Zabbix e extrai identificador da interface. */
 export function parseInterfaceItemKey(
   key: string,
   opts?: InterfaceKeyParseOptions
 ): ParsedInterfaceKey | undefined {
   const trimmed = key.trim();
-  const dotted = parseDottedSnmpKey(trimmed);
-  if (dotted) {
-    return dotted;
+  const dottedSnmp = parseDottedSnmpKey(trimmed);
+  if (dottedSnmp) {
+    return dottedSnmp;
   }
   const interfaceToken = extractInterfaceTokenFromKey(trimmed);
-  if (!interfaceToken || isDiscoveryPrototype(interfaceToken)) {
-    return undefined;
+  if (interfaceToken) {
+    if (isDiscoveryPrototype(interfaceToken)) {
+      return undefined;
+    }
+    const baseKey = baseKeyFromItemKey(trimmed);
+    const kind =
+      classifyByPatterns(trimmed) ??
+      (baseKey ? classifyGenericBaseKey(baseKey) : undefined) ??
+      classifyByCustomKeywords(trimmed, opts);
+    if (!kind) {
+      return undefined;
+    }
+    return {
+      kind,
+      interfaceToken,
+      snmpIndex: snmpIndexFromToken(interfaceToken),
+    };
   }
-
-  const baseKey = baseKeyFromItemKey(trimmed);
-  const kind =
-    classifyByPatterns(trimmed) ??
-    (baseKey ? classifyGenericBaseKey(baseKey) : undefined) ??
-    classifyByCustomKeywords(trimmed, opts);
-  if (!kind) {
-    return undefined;
-  }
-
-  return {
-    kind,
-    interfaceToken,
-    snmpIndex: snmpIndexFromToken(interfaceToken),
-  };
+  return parseDottedDirectionalKey(trimmed, opts);
 }

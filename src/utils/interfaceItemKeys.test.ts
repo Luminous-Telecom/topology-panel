@@ -62,6 +62,19 @@ describe('interfaceItemKeys', () => {
     expect(parseInterfaceItemKey('ifHighSpeed.14')?.kind).toBe('speed');
   });
 
+  it('classifica tráfego em key pontilhada sem colchetes', () => {
+    expect(parseInterfaceItemKey('rx.port.19.1')).toEqual({
+      kind: 'rx',
+      interfaceToken: 'port.19.1',
+    });
+    expect(parseInterfaceItemKey('tx.port.20.1')).toEqual({
+      kind: 'tx',
+      interfaceToken: 'port.20.1',
+    });
+    expect(parseInterfaceItemKey('rxpower.port.1')).toBeUndefined();
+    expect(parseInterfaceItemKey('cpu.slot.1')).toBeUndefined();
+  });
+
   it('classifica sinal óptico/rádio e não confunde com tráfego', () => {
     expect(parseInterfaceItemKey('vendor.optical.rxpower[10]')).toEqual({
       kind: 'rxPower',

@@ -82,9 +82,18 @@ function parseNumber(value?: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function interfaceGroupKey(hostKey: string, name: string, snmpIndex?: string): string {
+function interfaceGroupKey(
+  hostKey: string,
+  name: string,
+  snmpIndex?: string,
+  interfaceToken?: string
+): string {
   if (snmpIndex) {
     return `${hostKey}\u0000idx:${snmpIndex}`;
+  }
+  const token = interfaceToken?.trim().toLowerCase();
+  if (token) {
+    return `${hostKey}\u0000token:${token}`;
   }
   return `${hostKey}\u0000name:${name.toLowerCase()}`;
 }
@@ -289,7 +298,7 @@ export function parseZabbixInterfaceItems(
 
     const ifName = interfaceDisplayName(item.name, parsed.interfaceToken);
     const snmpIndex = parsed.snmpIndex ?? snmpIndexFromToken(parsed.interfaceToken);
-    const groupKey = interfaceGroupKey(hostKey, ifName, snmpIndex);
+    const groupKey = interfaceGroupKey(hostKey, ifName, snmpIndex, parsed.interfaceToken);
 
     let acc = groups.get(groupKey);
     if (!acc) {
