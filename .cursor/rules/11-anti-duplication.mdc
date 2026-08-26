@@ -89,7 +89,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Undo/redo | `hooks/useMapHistory.ts` |
 | Toque no host (peek ICMP / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
-| Medida do painel, tela cheia e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useCanvasZoomGestures.ts` |
+| Medida do painel, tela cheia, chrome ocioso e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useIdleHide.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
 | Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |

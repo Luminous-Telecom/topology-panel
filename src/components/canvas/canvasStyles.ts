@@ -21,6 +21,18 @@ export const canvasStyles = {
       height: 100vh;
       background: #111217;
     }
+    [data-topology-chrome] {
+      transition: opacity 0.3s ease, visibility 0s linear;
+    }
+  `,
+  /** Tela cheia ociosa: some só a toolbar e a navegação até o mouse mexer. */
+  chromeIdle: css`
+    [data-topology-chrome] {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+    }
   `,
   scrollPane: css`
     position: absolute;

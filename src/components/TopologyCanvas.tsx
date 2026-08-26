@@ -69,6 +69,7 @@ import { useBulkEditModals } from '../hooks/useBulkEditModals';
 import { nodeSupportsProperties, NODE_DOUBLE_TAP_MS, useNodePropertiesModals } from '../hooks/useNodePropertiesModals';
 import { useTopologyClipboardActions } from '../hooks/useTopologyClipboardActions';
 import { useTopologyViewport } from '../hooks/useTopologyViewport';
+import { FULLSCREEN_CHROME_IDLE_MS, useIdleHide } from '../hooks/useIdleHide';
 import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
@@ -300,6 +301,12 @@ export function TopologyCanvas({
     onPinchStart,
     onFullscreenChange,
     showToast,
+  });
+  const chromeIdleHidden = useIdleHide({
+    enabled: isFullscreen,
+    wrapRef,
+    idleMs: FULLSCREEN_CHROME_IDLE_MS,
+    paused: searchOpen,
   });
   const {
     selectedNodeIds,
@@ -1279,7 +1286,9 @@ export function TopologyCanvas({
     <div
       ref={wrapRef}
       data-topology-canvas
-      className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}`}
+      className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}${
+        isFullscreen && chromeIdleHidden ? ` ${canvasStyles.chromeIdle}` : ''
+      }`}
       onPointerDownCapture={(e) => {
         // Fase de captura — dispara mesmo quando um filho (nó, link, scrollbar) chama
         // stopPropagation() no pointerdown. Congela os dados do painel (useFrozenCanvasData)

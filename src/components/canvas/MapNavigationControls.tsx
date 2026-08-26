@@ -149,6 +149,7 @@ export function MapNavigationControls({
   return (
     <div
       className={compactBelowToolbar ? `${barStyle} ${barBelowToolbarStyle}` : barStyle}
+      data-topology-chrome
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >

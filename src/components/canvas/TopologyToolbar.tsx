@@ -125,7 +125,7 @@ export function TopologyToolbar({
   });
 
   return (
-    <div className={toolbarStyle}>
+    <div className={toolbarStyle} data-topology-chrome>
       <div className={toolbarToolGroupStyle}>
         <button
           type="button"
