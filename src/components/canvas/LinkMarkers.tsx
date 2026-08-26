@@ -8,7 +8,7 @@ interface Props {
   colorOffline: string;
 }
 
-/** `<defs>` com as pontas dos links: origem (bolinha) e destino (seta), nos estados normal/ativo/hover/degradação. */
+/** `<defs>` com as pontas dos links: origem (conector) e destino (seta preenchida). */
 export function LinkMarkers({
   colorLink,
   colorLinkAttention,
@@ -16,89 +16,61 @@ export function LinkMarkers({
   colorLinkCongestion,
   colorOffline,
 }: Props) {
-  const arrow = (stroke: string, sw = 1.2) => (
+  const arrow = (fill: string) => (
     <path
-      d="M1,1 L7,4 L1,7"
-      fill="none"
-      stroke={stroke}
-      strokeWidth={sw}
-      strokeLinecap="round"
+      d="M1.2,1.15 L7.15,4 L1.2,6.85 Z"
+      fill={fill}
+      stroke={fill}
+      strokeWidth={0.55}
       strokeLinejoin="round"
+      strokeLinecap="round"
     />
   );
-  const origin = (stroke: string, filled = false, sw = 1) =>
-    filled ? (
-      <circle cx="3" cy="3" r="1.4" fill={stroke} />
-    ) : (
-      <circle cx="3" cy="3" r="1.5" fill="none" stroke={stroke} strokeWidth={sw} />
-    );
+  const origin = (color: string, emphasized = false) => (
+    <g>
+      <circle cx="3" cy="3" r="2.2" fill="none" stroke={color} strokeWidth={emphasized ? 1.15 : 0.95} />
+      <circle cx="3" cy="3" r={emphasized ? 1.05 : 0.72} fill={color} />
+    </g>
+  );
+
+  const startMarker = (id: string, color: string, emphasized: boolean, size: number) => (
+    <marker
+      id={id}
+      viewBox="0 0 6 6"
+      refX="3"
+      refY="3"
+      markerWidth={size}
+      markerHeight={size}
+      orient="auto"
+    >
+      {origin(color, emphasized)}
+    </marker>
+  );
+
+  const endMarker = (id: string, color: string, size: number) => (
+    <marker id={id} viewBox="0 0 8 8" refX="7" refY="4" markerWidth={size} markerHeight={size} orient="auto">
+      {arrow(color)}
+    </marker>
+  );
 
   const degradationMarkers = (
     level: 'attention' | 'high' | 'congested' | 'offline',
     color: string
   ) => (
     <>
-      <marker
-        id={`link-dot-start-${level}`}
-        viewBox="0 0 6 6"
-        refX="3"
-        refY="3"
-        markerWidth="3.5"
-        markerHeight="3.5"
-        orient="auto"
-      >
-        {origin(color, true)}
-      </marker>
-      <marker
-        id={`link-arrow-end-${level}`}
-        viewBox="0 0 8 8"
-        refX="6.5"
-        refY="4"
-        markerWidth="4"
-        markerHeight="4"
-        orient="auto"
-      >
-        {arrow(color, 1.3)}
-      </marker>
+      {startMarker(`link-dot-start-${level}`, color, true, 4)}
+      {endMarker(`link-arrow-end-${level}`, color, 5)}
     </>
   );
 
   return (
     <defs>
-      <marker id="link-dot-start" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
-        {origin(colorLink)}
-      </marker>
-      <marker id="link-arrow-end" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
-        {arrow(colorLink)}
-      </marker>
-      <marker
-        id="link-dot-start-active"
-        viewBox="0 0 6 6"
-        refX="3"
-        refY="3"
-        markerWidth="4"
-        markerHeight="4"
-        orient="auto"
-      >
-        {origin('#4FC3F7', true)}
-      </marker>
-      <marker
-        id="link-arrow-end-active"
-        viewBox="0 0 8 8"
-        refX="6.5"
-        refY="4"
-        markerWidth="4.5"
-        markerHeight="4.5"
-        orient="auto"
-      >
-        {arrow('#4FC3F7', 1.5)}
-      </marker>
-      <marker id="link-dot-start-hover" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto">
-        {origin('#81D4FA', true)}
-      </marker>
-      <marker id="link-arrow-end-hover" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="4" markerHeight="4" orient="auto">
-        {arrow('#81D4FA', 1.3)}
-      </marker>
+      {startMarker('link-dot-start', colorLink, false, 4)}
+      {endMarker('link-arrow-end', colorLink, 5)}
+      {startMarker('link-dot-start-active', '#4FC3F7', true, 4.5)}
+      {endMarker('link-arrow-end-active', '#4FC3F7', 5.5)}
+      {startMarker('link-dot-start-hover', '#81D4FA', true, 4.2)}
+      {endMarker('link-arrow-end-hover', '#81D4FA', 5.2)}
       {degradationMarkers('attention', colorLinkAttention)}
       {degradationMarkers('high', colorLinkHigh)}
       {degradationMarkers('congested', colorLinkCongestion)}

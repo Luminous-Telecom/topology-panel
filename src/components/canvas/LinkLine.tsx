@@ -23,6 +23,12 @@ import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../utils/zabb
 import { NodeLayout } from '../../utils/nodeLayout';
 import { canvasStyles } from './canvasStyles';
 
+const LINK_RADIO_DASH = '10 6';
+const LINK_SELECT_COLOR = '#4FC3F7';
+const LINK_HOVER_COLOR = '#81D4FA';
+const LINK_HALO_COLOR = '#05070a';
+const LINK_LINE_CAP = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+
 interface LinkLineProps {
   link: TopologyLink;
   waypoints: LinkPoint[];
@@ -62,6 +68,117 @@ function linkMarkerSuffix(
   }
 }
 
+function resolveLinkStrokeColor(args: {
+  linkDown: boolean;
+  selected: boolean;
+  hovered: boolean;
+  utilLevel: ReturnType<typeof resolveLinkUtilizationLevel>;
+  runtimeColor: string;
+  linkColor: string;
+}): string {
+  if (args.linkDown) {
+    return args.runtimeColor;
+  }
+  if (args.selected) {
+    return LINK_SELECT_COLOR;
+  }
+  if (args.hovered) {
+    return LINK_HOVER_COLOR;
+  }
+  if (args.utilLevel !== 'normal') {
+    return args.runtimeColor;
+  }
+  return args.linkColor;
+}
+
+function linkMarkerUrl(
+  kind: 'start' | 'end',
+  selected: boolean,
+  hovered: boolean,
+  markerLevel: string | undefined,
+  linkDown: boolean
+): string {
+  const prefix = kind === 'start' ? 'link-dot-start' : 'link-arrow-end';
+  if (!linkDown && selected) {
+    return `url(#${prefix}-active)`;
+  }
+  if (!linkDown && hovered) {
+    return `url(#${prefix}-hover)`;
+  }
+  if (markerLevel) {
+    return `url(#${prefix}-${markerLevel})`;
+  }
+  return `url(#${prefix})`;
+}
+
+function flowLaneOpacity(selected: boolean, hovered: boolean): number {
+  if (selected) {
+    return 1;
+  }
+  if (hovered) {
+    return 0.92;
+  }
+  return 0.78;
+}
+
+function resolveLaneColor(args: {
+  offline: boolean;
+  utilLevel: ReturnType<typeof resolveLinkUtilizationLevel>;
+  runtimeColor: string;
+  degradationColor: string;
+  configuredColor: string;
+}): string {
+  if (args.offline) {
+    return args.runtimeColor;
+  }
+  if (args.utilLevel !== 'normal') {
+    return args.degradationColor;
+  }
+  return args.configuredColor;
+}
+
+interface TrafficLabelProps {
+  x: number;
+  y: number;
+  labelText: string;
+  txLabel?: string;
+  rxLabel?: string;
+  uploadColor: string;
+  downloadColor: string;
+}
+
+function LinkTrafficLabel({ x, y, labelText, txLabel, rxLabel, uploadColor, downloadColor }: TrafficLabelProps) {
+  const width = labelText.length * 5.7 + 18;
+  return (
+    <g transform={`translate(${x}, ${y})`} pointerEvents="none">
+      <rect
+        x={-width / 2}
+        y={-9}
+        width={width}
+        height={18}
+        rx={9}
+        fill="rgba(10,12,16,0.92)"
+        stroke="rgba(255,255,255,0.2)"
+        strokeWidth={0.6}
+      />
+      <text
+        x={0}
+        y={0}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={9}
+        fontFamily="Inter, Helvetica, Arial, sans-serif"
+        fontWeight={600}
+        letterSpacing={0.15}
+      >
+        {txLabel ? <tspan fill={uploadColor}>↑{txLabel}</tspan> : null}
+        {txLabel && rxLabel ? <tspan fill="rgba(227,242,253,0.32)"> · </tspan> : null}
+        {rxLabel ? <tspan fill={downloadColor}>↓{rxLabel}</tspan> : null}
+      </text>
+    </g>
+  );
+}
+
 function LinkLineComponent({
   link,
   waypoints,
@@ -95,9 +212,9 @@ function LinkLineComponent({
   const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
   const active = selected || hovered;
   const medium = resolveLinkMedium(link);
-  const dashArray = medium === 'radio' ? '10 6' : undefined;
+  const dashArray = medium === 'radio' ? LINK_RADIO_DASH : undefined;
   const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
-  const laneOffset = Math.max(2, strokeWidth * 0.75);
+  const laneOffset = Math.max(1.8, strokeWidth * 0.68);
   const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset + laneOffset);
   const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset - laneOffset);
   const displayTraffic = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
@@ -109,9 +226,8 @@ function LinkLineComponent({
   const labelText = formatLinkMapTrafficLabel(displayTraffic.txBps, displayTraffic.rxBps);
   const drawnPoints = bundleOffset === 0 ? pathPoints : offsetPolyline(pathPoints, bundleOffset);
   const mid = linkLabelAnchor(drawnPoints, from, to);
-  const labelWidth = labelText ? labelText.length * 5.2 + 10 : 0;
   const labelRad = (mid.angle * Math.PI) / 180;
-  const labelOffset = 9;
+  const labelOffset = 12;
   const tooltipParts = [
     from?.label || link.from,
     to?.label || link.to,
@@ -140,51 +256,42 @@ function LinkLineComponent({
   );
   const degradationColor = resolvePanelColor(theme, linkDegradationColor(options, utilLevel));
   const markerLevel = linkMarkerSuffix(linkDown, utilLevel);
-  const strokeColor = linkDown
-    ? runtimeColor
-    : selected
-      ? '#4FC3F7'
-      : hovered
-        ? '#81D4FA'
-        : utilLevel !== 'normal'
-          ? runtimeColor
-          : options.colorLink;
-  const lineCap = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  const markerStart =
-    !linkDown && selected
-      ? 'url(#link-dot-start-active)'
-      : !linkDown && hovered
-        ? 'url(#link-dot-start-hover)'
-        : markerLevel
-          ? `url(#link-dot-start-${markerLevel})`
-          : 'url(#link-dot-start)';
-  const markerEnd =
-    !linkDown && selected
-      ? 'url(#link-arrow-end-active)'
-      : !linkDown && hovered
-        ? 'url(#link-arrow-end-hover)'
-        : markerLevel
-          ? `url(#link-arrow-end-${markerLevel})`
-          : 'url(#link-arrow-end)';
-  const downloadColor = downloadOffline
-    ? runtimeColor
-    : utilLevel !== 'normal'
-      ? degradationColor
-      : resolvePanelColor(theme, options.colorLinkDownload);
-  const uploadColor = uploadOffline
-    ? runtimeColor
-    : utilLevel !== 'normal'
-      ? degradationColor
-      : resolvePanelColor(theme, options.colorLinkUpload);
+  const linkColor = resolvePanelColor(theme, options.colorLink);
+  const strokeColor = resolveLinkStrokeColor({
+    linkDown,
+    selected,
+    hovered,
+    utilLevel,
+    runtimeColor,
+    linkColor,
+  });
+  const markerStart = linkMarkerUrl('start', selected, hovered, markerLevel, linkDown);
+  const markerEnd = linkMarkerUrl('end', selected, hovered, markerLevel, linkDown);
+  const downloadColor = resolveLaneColor({
+    offline: downloadOffline,
+    utilLevel,
+    runtimeColor,
+    degradationColor,
+    configuredColor: resolvePanelColor(theme, options.colorLinkDownload),
+  });
+  const uploadColor = resolveLaneColor({
+    offline: uploadOffline,
+    utilLevel,
+    runtimeColor,
+    degradationColor,
+    configuredColor: resolvePanelColor(theme, options.colorLinkUpload),
+  });
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
-  const flowStroke = Math.max(1.5, strokeWidth - 1);
+  const flowStroke = Math.max(1.15, strokeWidth * 0.55);
   const downloadSpeed = resolveFlowLaneSpeed(displayTraffic.rxBps, runtimeMetrics, thresholds);
   const uploadSpeed = resolveFlowLaneSpeed(displayTraffic.txBps, runtimeMetrics, thresholds);
   const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
   const downloadFlowActive = !downloadOffline && (hasMetricBinding ? downloadSpeed > 0 : true);
   const uploadFlowActive = !uploadOffline && (hasMetricBinding ? uploadSpeed > 0 : true);
   const lk = linkKey(link);
+  const laneOpacity = flowLaneOpacity(selected, hovered);
+  const glowColor = selected ? LINK_SELECT_COLOR : LINK_HOVER_COLOR;
 
   return (
     <g
@@ -220,27 +327,50 @@ function LinkLineComponent({
         }}
       />
       {active && (
-        <path
-          d={d}
-          stroke="#4FC3F7"
-          strokeWidth={strokeWidth + 8}
-          strokeOpacity={selected ? 0.35 : 0.2}
-          strokeDasharray={dashArray}
-          fill="none"
-          pointerEvents="none"
-          {...lineCap}
-        />
+        <>
+          <path
+            d={d}
+            stroke={glowColor}
+            strokeWidth={strokeWidth + 14}
+            strokeOpacity={selected ? 0.14 : 0.08}
+            strokeDasharray={dashArray}
+            fill="none"
+            pointerEvents="none"
+            {...LINK_LINE_CAP}
+          />
+          <path
+            d={d}
+            stroke={glowColor}
+            strokeWidth={strokeWidth + 7}
+            strokeOpacity={selected ? 0.28 : 0.16}
+            strokeDasharray={dashArray}
+            fill="none"
+            pointerEvents="none"
+            {...LINK_LINE_CAP}
+          />
+        </>
       )}
+      <path
+        d={d}
+        stroke={LINK_HALO_COLOR}
+        strokeWidth={strokeWidth + 2.4}
+        strokeOpacity={0.55}
+        strokeDasharray={dashArray}
+        fill="none"
+        pointerEvents="none"
+        {...LINK_LINE_CAP}
+      />
       <path
         d={d}
         stroke={strokeColor}
         strokeWidth={strokeWidth}
+        strokeOpacity={linkDown ? 1 : 0.92}
         strokeDasharray={dashArray}
         markerStart={markerStart}
         markerEnd={markerEnd}
         fill="none"
         pointerEvents="none"
-        {...lineCap}
+        {...LINK_LINE_CAP}
       />
       <path
         d={downloadD}
@@ -254,8 +384,8 @@ function LinkLineComponent({
         strokeDashoffset="0"
         fill="none"
         pointerEvents="none"
-        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
-        {...lineCap}
+        opacity={laneOpacity}
+        {...LINK_LINE_CAP}
       />
       <path
         d={uploadD}
@@ -269,38 +399,19 @@ function LinkLineComponent({
         strokeDashoffset="0"
         fill="none"
         pointerEvents="none"
-        opacity={selected ? 0.95 : hovered ? 0.9 : 0.82}
-        {...lineCap}
+        opacity={laneOpacity}
+        {...LINK_LINE_CAP}
       />
       {labelText ? (
-        <g
-          transform={`translate(${mid.x - Math.sin(labelRad) * labelOffset}, ${mid.y + Math.cos(labelRad) * labelOffset})`}
-          pointerEvents="none"
-        >
-          <rect
-            x={-labelWidth / 2}
-            y={-7}
-            width={labelWidth}
-            height={14}
-            rx={7}
-            fill="rgba(18,18,20,0.88)"
-            stroke="rgba(255,255,255,0.16)"
-            strokeWidth={0.5}
-          />
-          <text
-            x={0}
-            y={0}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize={8}
-            fontFamily="Inter, Helvetica, Arial, sans-serif"
-            fontWeight={600}
-          >
-            {txLabel ? <tspan fill={uploadLabelColor}>↑{txLabel}</tspan> : null}
-            {txLabel && rxLabel ? <tspan fill="rgba(227,242,253,0.45)"> </tspan> : null}
-            {rxLabel ? <tspan fill={downloadLabelColor}>↓{rxLabel}</tspan> : null}
-          </text>
-        </g>
+        <LinkTrafficLabel
+          x={mid.x - Math.sin(labelRad) * labelOffset}
+          y={mid.y + Math.cos(labelRad) * labelOffset}
+          labelText={labelText}
+          txLabel={txLabel}
+          rxLabel={rxLabel}
+          uploadColor={uploadLabelColor}
+          downloadColor={downloadLabelColor}
+        />
       ) : null}
     </g>
   );

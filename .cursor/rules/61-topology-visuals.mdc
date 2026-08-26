@@ -1,6 +1,6 @@
 ---
 description: Identidade visual do mapa — links, redes, grade, cores e ícones (não alterar sem pedido)
-globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
+globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/components/canvas/LinkLine.tsx,src/components/canvas/LinkMarkers.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
 alwaysApply: false
 ---
 
@@ -20,8 +20,9 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 - Linha **reta** (não ortogonal/Manhattan).
 - Saída no **centro** do host de origem; chegada na **borda** do host de destino, com seta visível.
 - Fibra: linha contínua. Rádio: tracejada (`10 6`).
-- Marcadores SVG pequenos (chevron, e anel na origem).
-- Seleção: destaque azul e hint `Origem → Destino`.
+- Cabo em camadas: halo escuro, núcleo colorido, faixas RX/TX em cápsulas animadas (`2 28`).
+- Marcadores SVG: conector (anel + ponto) na origem; seta preenchida no destino.
+- Seleção: brilho azul em duas camadas.
 
 ## Redes e grade
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLinkFlowAnimation } from './linkFlow';
+import { LINK_FLOW_DASH, startLinkFlowAnimation } from './linkFlow';
 
 /** Faixa de fluxo como o canvas desenha: direção, estado e velocidade em data-attributes. */
 function lane(root: HTMLElement, opts: { active: boolean; speed: number }): Element {
@@ -27,6 +27,12 @@ describe('startLinkFlowAnimation', () => {
   afterEach(() => {
     vi.useRealTimers();
     root.remove();
+  });
+
+  it('o padrão de cápsula fecha o ciclo da animação (soma 30)', () => {
+    const parts = LINK_FLOW_DASH.split(' ').map(Number);
+    expect(parts).toHaveLength(2);
+    expect(parts.reduce((sum, n) => sum + n, 0)).toBe(30);
   });
 
   it('avança o deslocamento das faixas com tráfego', () => {

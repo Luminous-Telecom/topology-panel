@@ -212,8 +212,9 @@ export function TopologyMinimap({
               x2={b.x}
               y2={b.y}
               stroke={linkColor}
-              strokeWidth={0.75}
-              strokeOpacity={0.55}
+              strokeWidth={1}
+              strokeOpacity={0.72}
+              strokeLinecap="round"
             />
           );
         })}

@@ -1,5 +1,9 @@
-/** Animação contínua das faixas RX/TX — velocidade por elemento via data-link-flow-speed. */
-export const LINK_FLOW_DASH = '8 22';
+/**
+ * Animação contínua das faixas RX/TX — velocidade por elemento via data-link-flow-speed.
+ *
+ * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
+ */
+export const LINK_FLOW_DASH = '2 28';
 const LINK_FLOW_PERIOD = 30;
 
 export type LinkFlowController = {
