@@ -498,11 +498,6 @@ export async function resolveZabbixItemIdsByKeys(
   return indexTrafficItemRows(rows).itemIdByKey;
 }
 
-export interface ZabbixTrafficSignalSearch {
-  hostids: string[];
-  terms: string[];
-}
-
 function trafficRowsToInterfaceItems(rows: ZabbixTrafficItemRow[]): ZabbixInterfaceItem[] {
   const items: ZabbixInterfaceItem[] = [];
   for (const row of rows) {
@@ -545,33 +540,57 @@ async function fetchTrafficItemsBySearch(
   if (!datasourceUid || !scopedHostIds.length || !uniqueTerms.length) {
     return [];
   }
-  return zabbixCall<ZabbixTrafficItemRow[]>(
-    datasourceUid,
-    'item.get',
-    {
-      output: TRAFFIC_ITEM_OUTPUT,
-      hostids: scopedHostIds,
-      search: { key_: uniqueTerms },
-      // `search` com lista casa todos os termos por padrão; sem isto nenhum item volta.
-      searchByAny: true,
-    },
-    ZABBIX_STATUS_CALL_TIMEOUT_MS,
-    { abortSignal, requestId: `topology-traffic-signal-${datasourceUid}` }
+  /*
+   * Um `item.get` por termo, em paralelo. Juntar tudo num `search` com `searchByAny` parece mais
+   * econômico, mas o Zabbix resolve os `LIKE` em série dentro da mesma consulta: medido em 7 s
+   * contra 3 s do paralelo, para as mesmas linhas. A varredura é rara, o tempo é que pesa.
+   */
+  const parts = await Promise.all(
+    uniqueTerms.map((term) =>
+      zabbixCall<ZabbixTrafficItemRow[]>(
+        datasourceUid,
+        'item.get',
+        {
+          output: TRAFFIC_ITEM_OUTPUT,
+          hostids: scopedHostIds,
+          search: { key_: term },
+        },
+        ZABBIX_STATUS_CALL_TIMEOUT_MS,
+        { abortSignal, requestId: `topology-traffic-signal-${datasourceUid}-${term}` }
+      )
+    )
   );
+  return parts.flat();
+}
+
+/**
+ * Inventário de sinal (óptico/rádio) dos hosts que os cabos usam.
+ *
+ * Fora do ciclo de status: a varredura devolve toda porta óptica do host e demora segundos, então
+ * bloquear o mapa nela atrasava a primeira carga inteira. Daqui saem só os itens; o valor de cada
+ * um chega no `item.get` por itemid do ciclo seguinte.
+ */
+export async function fetchZabbixSignalInventory(
+  datasourceUid: string,
+  hostids: string[],
+  terms: string[],
+  abortSignal?: AbortSignal
+): Promise<ZabbixInterfaceItem[]> {
+  const rows = await fetchTrafficItemsBySearch(datasourceUid, hostids, terms, abortSignal);
+  return trafficRowsToInterfaceItems(rows);
 }
 
 /**
  * Lastvalue RX/TX/status/sinal dos cabos — o Zabbix já guarda o valor atual no item
- * (preprocessing "Change per second" vira bps). Sem série de 5 min. Tráfego e sinal
- * saem do mesmo `item.get` (lotes em paralelo no mesmo ciclo).
+ * (preprocessing "Change per second" vira bps). Sem série de 5 min. Os itens de sinal entram
+ * aqui por itemid, junto com o tráfego; quem os descobre é `fetchZabbixSignalInventory`.
  */
 export async function fetchZabbixTrafficLastValues(
   datasourceUid: string,
   itemIds: string[],
   abortSignal?: AbortSignal,
   itemKeys?: string[],
-  hostids?: string[],
-  signalSearch?: ZabbixTrafficSignalSearch
+  hostids?: string[]
 ): Promise<{
   lastValues: Record<string, ZabbixItemLastValue>;
   itemIdByKey: Map<string, string>;
@@ -579,10 +598,7 @@ export async function fetchZabbixTrafficLastValues(
 }> {
   const ids = [...new Set(itemIds.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id)))];
   const keys = [...new Set((itemKeys ?? []).map((key) => key.trim()).filter(Boolean))];
-  const signalHostIds = scopedTrafficHostIds(signalSearch?.hostids);
-  const signalTerms = [...new Set((signalSearch?.terms ?? []).map((term) => term.trim()).filter(Boolean))];
-  const hasSignalSearch = Boolean(signalHostIds.length && signalTerms.length);
-  if (!datasourceUid || (!ids.length && !keys.length && !hasSignalSearch)) {
+  if (!datasourceUid || (!ids.length && !keys.length)) {
     return { lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] };
   }
 
@@ -606,24 +622,9 @@ export async function fetchZabbixTrafficLastValues(
   if (keys.length) {
     rowBatches.push(fetchTrafficItemsByKeys(datasourceUid, keys, abortSignal, hostids));
   }
-  const [requestedRows, signalRows] = await Promise.all([
-    Promise.all(rowBatches).then((parts) => parts.flat()),
-    hasSignalSearch
-      ? fetchTrafficItemsBySearch(datasourceUid, signalHostIds, signalTerms, abortSignal)
-      : Promise.resolve<ZabbixTrafficItemRow[]>([]),
-  ]);
-  const requested = indexTrafficItemRows(requestedRows);
-  const signal = indexTrafficItemRows(signalRows);
-  return {
-    lastValues: { ...signal.lastValues, ...requested.lastValues },
-    /*
-     * Só a chave que o cabo pediu vira itemid reaproveitado. O `search` de sinal devolve todas as
-     * portas ópticas do host — numa OLT são milhares — e o ciclo seguinte relia todas por itemid,
-     * fatiadas de 200 em 200. Era isso que fazia o número de requisições crescer sem parar.
-     */
-    itemIdByKey: requested.itemIdByKey,
-    interfaceItems: trafficRowsToInterfaceItems([...requestedRows, ...signalRows]),
-  };
+  const rows = (await Promise.all(rowBatches)).flat();
+  const indexed = indexTrafficItemRows(rows);
+  return { ...indexed, interfaceItems: trafficRowsToInterfaceItems(rows) };
 }
 
 export interface ZabbixInterfaceItem {

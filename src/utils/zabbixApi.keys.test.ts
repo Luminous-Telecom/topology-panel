@@ -9,7 +9,7 @@ vi.mock('@grafana/runtime', () => ({
   }),
 }));
 
-import { fetchZabbixTrafficLastValues, resolveZabbixItemIdsByKeys } from './zabbixApi';
+import { fetchZabbixSignalInventory, fetchZabbixTrafficLastValues, resolveZabbixItemIdsByKeys } from './zabbixApi';
 
 describe('resolveZabbixItemIdsByKeys', () => {
   beforeEach(() => {
@@ -135,57 +135,6 @@ describe('fetchZabbixTrafficLastValues', () => {
     expect(lastValues['10001:vendor.metric.rx[10]']?.lastvalue).toBe('42');
   });
 
-  it('busca sinal no mesmo ciclo do tráfego e devolve os itens para o cabo', async () => {
-    post
-      .mockResolvedValueOnce({
-        result: [
-          {
-            itemid: '10',
-            key_: 'vendor.metric.rx[10]',
-            name: 'port-a',
-            hostid: '10001',
-            lastvalue: '500000000',
-            lastclock: '1700',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        result: [
-          {
-            itemid: '30',
-            key_: 'vendor.optical.rxpower[10]',
-            name: 'port-a',
-            hostid: '10001',
-            lastvalue: '-8.5',
-            lastclock: '1700',
-          },
-        ],
-      });
-
-    const { lastValues, interfaceItems } = await fetchZabbixTrafficLastValues(
-      'ds',
-      ['10'],
-      undefined,
-      [],
-      undefined,
-      { hostids: ['10001'], terms: ['optical'] }
-    );
-
-    expect(post).toHaveBeenCalledTimes(2);
-    expect(post.mock.calls[1][1]).toEqual({
-      method: 'item.get',
-      params: {
-        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
-        hostids: ['10001'],
-        search: { key_: ['optical'] },
-        searchByAny: true,
-      },
-    });
-    expect(lastValues['10']?.lastvalue).toBe('500000000');
-    expect(lastValues['30']?.lastvalue).toBe('-8.5');
-    expect(interfaceItems.some((item) => item.itemid === '30' && item.lastvalue === '-8.5')).toBe(true);
-  });
-
   it('manda a lista inteira de itemids num item.get só, sem fatiar', async () => {
     const ids = Array.from({ length: 750 }, (_, index) => String(1000 + index));
     post.mockResolvedValueOnce({ result: [] });
@@ -202,49 +151,40 @@ describe('fetchZabbixTrafficLastValues', () => {
     });
   });
 
-  it('busca todos os termos de sinal num único item.get', async () => {
+  it('não mistura sinal no item.get de tráfego', async () => {
     post.mockResolvedValueOnce({ result: [] });
 
-    await fetchZabbixTrafficLastValues('ds', [], undefined, [], undefined, {
-      hostids: ['10001'],
-      terms: ['rxpower', 'txpower', 'optical'],
-    });
+    await fetchZabbixTrafficLastValues('ds', ['10'], undefined, [], ['10001']);
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0][1]).toMatchObject({
+    expect(post.mock.calls[0][1]).toMatchObject({ method: 'item.get', params: { itemids: ['10'] } });
+  });
+});
+
+describe('fetchZabbixSignalInventory', () => {
+  beforeEach(() => {
+    post.mockReset();
+  });
+
+  it('faz um item.get por termo, em paralelo', async () => {
+    post.mockResolvedValue({ result: [] });
+
+    await fetchZabbixSignalInventory('ds', ['10001'], ['rxpower', 'txpower', 'optical']);
+
+    // Um `search` só com os três termos leva mais que o dobro do tempo no Zabbix.
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(post.mock.calls.map((call) => call[1].params.search.key_)).toEqual(['rxpower', 'txpower', 'optical']);
+    expect(post.mock.calls[0][1]).toEqual({
       method: 'item.get',
-      params: { search: { key_: ['rxpower', 'txpower', 'optical'] }, searchByAny: true },
+      params: {
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+        hostids: ['10001'],
+        search: { key_: 'rxpower' },
+      },
     });
   });
 
-  it('não reaproveita como itemid o que veio da busca de sinal', async () => {
-    post.mockResolvedValueOnce({
-      result: [
-        {
-          itemid: '30',
-          key_: 'vendor.optical.rxpower[10]',
-          hostid: '10001',
-          lastvalue: '-8.5',
-        },
-      ],
-    });
-
-    const { lastValues, itemIdByKey } = await fetchZabbixTrafficLastValues(
-      'ds',
-      [],
-      undefined,
-      [],
-      undefined,
-      { hostids: ['10001'], terms: ['rxpower'] }
-    );
-
-    expect(lastValues['30']?.lastvalue).toBe('-8.5');
-    expect(lastValues['10001:vendor.optical.rxpower[10]']?.lastvalue).toBe('-8.5');
-    // Sem isto o ciclo seguinte relê por itemid cada porta óptica devolvida pela busca.
-    expect(itemIdByKey.size).toBe(0);
-  });
-
-  it('consulta sinal mesmo sem itemid de tráfego', async () => {
+  it('devolve os itens encontrados para o cabo escolher', async () => {
     post.mockResolvedValueOnce({
       result: [
         {
@@ -253,21 +193,21 @@ describe('fetchZabbixTrafficLastValues', () => {
           name: 'port-a',
           hostid: '10001',
           lastvalue: '-8.5',
+          lastclock: '1700',
         },
       ],
     });
 
-    const { lastValues, interfaceItems } = await fetchZabbixTrafficLastValues(
-      'ds',
-      [],
-      undefined,
-      [],
-      undefined,
-      { hostids: ['10001'], terms: ['rssi'] }
-    );
+    const items = await fetchZabbixSignalInventory('ds', ['10001'], ['rxpower']);
 
-    expect(post).toHaveBeenCalledTimes(1);
-    expect(lastValues['30']?.lastvalue).toBe('-8.5');
-    expect(interfaceItems[0]?.itemid).toBe('30');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.itemid).toBe('30');
+    expect(items[0]?.lastvalue).toBe('-8.5');
+  });
+
+  it('não chama a API sem host ou sem termo', async () => {
+    expect(await fetchZabbixSignalInventory('ds', [], ['rxpower'])).toEqual([]);
+    expect(await fetchZabbixSignalInventory('ds', ['10001'], [])).toEqual([]);
+    expect(post).not.toHaveBeenCalled();
   });
 });

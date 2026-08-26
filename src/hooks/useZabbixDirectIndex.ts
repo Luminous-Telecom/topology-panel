@@ -6,6 +6,7 @@ import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   fetchZabbixDirectMetadata,
+  fetchZabbixSignalInventory,
   fetchZabbixTrafficLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
@@ -230,6 +231,9 @@ export function useZabbixDirectIndex({
     let knownSignalItemIds: string[] = [];
     /** Quando o inventário de sinal foi varrido pela última vez (0 = ainda não). */
     let lastSignalSearchMs = 0;
+    /** A varredura de sinal não usa o abort do ciclo: ela sobrevive às trocas de ciclo. */
+    let signalAbort: AbortController | undefined;
+    let signalInFlight = false;
     /** Quando identidade e problemas foram relidos pela última vez (0 = ainda não). */
     let lastIdentityMs = 0;
 
@@ -248,6 +252,41 @@ export function useZabbixDirectIndex({
       return metadata;
     };
 
+    /**
+     * Varredura do inventário de sinal — fora do caminho crítico, de propósito.
+     *
+     * Ela devolve toda porta óptica dos hosts dos cabos e leva segundos. Esperar por ela atrasava
+     * a primeira pintura do mapa, e o ciclo seguinte ainda abortava a busca no meio. Aqui ela roda
+     * solta, com abort próprio, e o que descobre entra por itemid no ciclo seguinte.
+     */
+    const startSignalDiscovery = (meta: ZabbixDirectMetadata): void => {
+      const terms = signalTermsRef.current;
+      const hostIds = signalIdsRef.current.length
+        ? signalIdsRef.current
+        : terms.length
+          ? meta.hosts.map((host) => host.hostid)
+          : [];
+      const due = Date.now() - lastSignalSearchMs >= SIGNAL_REDISCOVERY_MS;
+      if (signalInFlight || !due || !hostIds.length || !terms.length) {
+        return;
+      }
+      signalInFlight = true;
+      signalAbort = new AbortController();
+      fetchZabbixSignalInventory(datasourceUid, hostIds, terms, signalAbort.signal)
+        .then((items) => {
+          lastSignalSearchMs = Date.now();
+          knownSignalItemIds = (selectSignalItemIdsRef.current?.(items) ?? []).filter((id) =>
+            isNumericZabbixItemId(id)
+          );
+        })
+        .catch(() => {
+          // Falhou: mantém os ids anteriores e tenta de novo no próximo ciclo, sem travar o mapa.
+        })
+        .finally(() => {
+          signalInFlight = false;
+        });
+    };
+
     const fetchTrafficLastValues = async (
       meta: ZabbixDirectMetadata,
       abortSignal: AbortSignal
@@ -258,24 +297,9 @@ export function useZabbixDirectIndex({
         ),
       ];
       const pending = trafficKeysRef.current.filter((key) => !itemIdByKey.has(key) && !triedTrafficKeys.has(key));
-      const signalTerms = signalTermsRef.current;
-      const signalHostIds = signalIdsRef.current.length
-        ? signalIdsRef.current
-        : signalTerms.length && (trafficNumeric.length || pending.length)
-          ? meta.hosts.map((host) => host.hostid)
-          : [];
-      /*
-       * A varredura de sinal traz toda porta óptica do host — resposta de centenas de KB. Ela roda
-       * na primeira busca e em intervalos longos; nos demais ciclos só os ids em uso são relidos.
-       */
-      const rediscoverSignal =
-        Boolean(signalHostIds.length && signalTerms.length) &&
-        Date.now() - lastSignalSearchMs >= SIGNAL_REDISCOVERY_MS;
-      const signalSearch = rediscoverSignal ? { hostids: signalHostIds, terms: signalTerms } : undefined;
-      const numeric = rediscoverSignal
-        ? trafficNumeric
-        : [...new Set([...trafficNumeric, ...knownSignalItemIds])];
-      if (!numeric.length && !pending.length && !signalSearch) {
+      startSignalDiscovery(meta);
+      const numeric = [...new Set([...trafficNumeric, ...knownSignalItemIds])];
+      if (!numeric.length && !pending.length) {
         return { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS };
       }
       try {
@@ -284,20 +308,13 @@ export function useZabbixDirectIndex({
           numeric,
           abortSignal,
           pending,
-          meta.hosts.map((host) => host.hostid),
-          signalSearch
+          meta.hosts.map((host) => host.hostid)
         );
         if (fetched.itemIdByKey.size) {
           itemIdByKey = new Map([...itemIdByKey, ...fetched.itemIdByKey]);
         }
         if (pending.length) {
           triedTrafficKeys = new Set([...triedTrafficKeys, ...pending]);
-        }
-        if (rediscoverSignal) {
-          lastSignalSearchMs = Date.now();
-          knownSignalItemIds = (selectSignalItemIdsRef.current?.(fetched.interfaceItems) ?? []).filter((id) =>
-            isNumericZabbixItemId(id)
-          );
         }
         return {
           lastValues: aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey),
@@ -460,6 +477,7 @@ export function useZabbixDirectIndex({
       cancelled = true;
       fetchSnapshotRef.current = () => undefined;
       fetchAbort?.abort();
+      signalAbort?.abort();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };

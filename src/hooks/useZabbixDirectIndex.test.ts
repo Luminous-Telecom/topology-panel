@@ -2,12 +2,17 @@ import { EventBusSrv } from '@grafana/data';
 import { RefreshEvent } from '@grafana/runtime';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchZabbixDirectMetadata, fetchZabbixTrafficLastValues } from '../utils/zabbixApi';
+import {
+  fetchZabbixDirectMetadata,
+  fetchZabbixSignalInventory,
+  fetchZabbixTrafficLastValues,
+} from '../utils/zabbixApi';
 import { fetchZabbixStatusViaQuery } from '../utils/zabbixDatasourceQuery';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 vi.mock('../utils/zabbixApi', () => ({
   fetchZabbixDirectMetadata: vi.fn(),
+  fetchZabbixSignalInventory: vi.fn(async () => []),
   fetchZabbixTrafficLastValues: vi.fn(async () => ({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] })),
   isBenignZabbixFetchError: vi.fn(() => false),
   isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
@@ -20,6 +25,7 @@ vi.mock('../utils/zabbixDatasourceQuery', () => ({
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
 const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
 const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValues);
+const fetchSignalInventory = vi.mocked(fetchZabbixSignalInventory);
 
 function host(id: string, group: string) {
   return {
@@ -62,6 +68,8 @@ describe('useZabbixDirectIndex', () => {
     fetchStatus.mockReset();
     fetchLastValues.mockReset();
     fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
+    fetchSignalInventory.mockReset();
+    fetchSignalInventory.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -149,7 +157,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], ['1'], undefined);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], ['1']);
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
@@ -238,14 +246,7 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(fetchLastValues).toHaveBeenCalledWith(
-      'ds',
-      [],
-      expect.any(AbortSignal),
-      ['vendor.metric.rx[10]'],
-      ['1'],
-      undefined
-    );
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', [], expect.any(AbortSignal), ['vendor.metric.rx[10]'], ['1']);
     expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
   });
 
@@ -354,7 +355,7 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.has('host-1')).toBe(false);
   });
 
-  it('busca sinal óptico no mesmo item.get do tráfego', async () => {
+  it('publica o mapa sem esperar a varredura de sinal terminar', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -362,21 +363,12 @@ describe('useZabbixDirectIndex', () => {
     });
     fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
     fetchLastValues.mockResolvedValueOnce({
-      lastValues: {
-        '10': { itemid: '10', lastvalue: '1' },
-        '30': { itemid: '30', lastvalue: '-8.5' },
-      },
+      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
-      interfaceItems: [
-        {
-          itemid: '30',
-          key_: 'vendor.optical.rxpower[10]',
-          name: 'port-a',
-          hostid: '1',
-          lastvalue: '-8.5',
-        },
-      ],
+      interfaceItems: [],
     });
+    // Varredura lenta: antes ela ficava no mesmo `await` do ciclo e segurava a primeira pintura.
+    fetchSignalInventory.mockReturnValueOnce(new Promise(() => undefined));
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -392,24 +384,54 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(fetchLastValues).toHaveBeenCalledWith(
-      'ds',
-      ['10'],
-      expect.any(AbortSignal),
-      [],
-      ['1'],
-      { hostids: ['1'], terms: ['optical'] }
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10'], expect.any(AbortSignal), [], ['1']);
+    expect(fetchSignalInventory).toHaveBeenCalledWith('ds', ['1'], ['optical'], expect.any(AbortSignal));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.lastValues['10']?.lastvalue).toBe('1');
+  });
+
+  it('a varredura de sinal não usa o abort do ciclo', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    let cycleSignal: AbortSignal | undefined;
+    fetchLastValues.mockImplementation(async (_uid, _ids, abortSignal) => {
+      cycleSignal = abortSignal;
+      return { lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] };
+    });
+    let signalSignal: AbortSignal | undefined;
+    fetchSignalInventory.mockImplementation(async (_uid, _hosts, _terms, abortSignal) => {
+      signalSignal = abortSignal;
+      return [];
+    });
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 10,
+        trafficItemIds: ['10'],
+        signalHostIds: ['1'],
+        signalSearchTerms: ['optical'],
+      })
     );
-    expect(result.current.lastValues['30']?.lastvalue).toBe('-8.5');
-    expect(result.current.interfaceItems).toEqual([
-      {
-        itemid: '30',
-        key_: 'vendor.optical.rxpower[10]',
-        name: 'port-a',
-        hostid: '1',
-        lastvalue: '-8.5',
-      },
-    ]);
+
+    await flush();
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(signalSignal).toBeDefined();
+    expect(signalSignal).not.toBe(cycleSignal);
+    // O ciclo seguinte aborta o anterior; se a varredura viajasse nesse mesmo sinal, morreria no meio.
+    expect(signalSignal?.aborted).toBe(false);
   });
 
   it('entre releituras de identidade o ciclo não repete host.get nem os problemas', async () => {
@@ -487,7 +509,7 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchMetadata.mock.calls[1]?.[3]).toBe(meta);
   });
 
-  it('no ciclo seguinte relê só o sinal em uso, sem varrer o inventário de novo', async () => {
+  it('no ciclo seguinte relê por itemid só o sinal em uso, sem varrer o inventário de novo', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -497,11 +519,12 @@ describe('useZabbixDirectIndex', () => {
     fetchLastValues.mockResolvedValue({
       lastValues: { '30': { itemid: '30', lastvalue: '-8.5' } },
       itemIdByKey: new Map(),
-      interfaceItems: [
-        { itemid: '30', key_: 'vendor.optical.rxpower[10]', name: 'port-a', hostid: '1', lastvalue: '-8.5' },
-        { itemid: '99', key_: 'vendor.optical.rxpower[99]', name: 'port-z', hostid: '1', lastvalue: '-20' },
-      ],
+      interfaceItems: [],
     });
+    fetchSignalInventory.mockResolvedValue([
+      { itemid: '30', key_: 'vendor.optical.rxpower[10]', name: 'port-a', hostid: '1', lastvalue: '-8.5' },
+      { itemid: '99', key_: 'vendor.optical.rxpower[99]', name: 'port-z', hostid: '1', lastvalue: '-20' },
+    ]);
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -525,14 +548,9 @@ describe('useZabbixDirectIndex', () => {
       await Promise.resolve();
     });
 
+    expect(fetchSignalInventory).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenCalledTimes(2);
-    expect(fetchLastValues).toHaveBeenLastCalledWith(
-      'ds',
-      ['10', '30'],
-      expect.any(AbortSignal),
-      [],
-      ['1'],
-      undefined
-    );
+    // Só a porta que o cabo usa entra na releitura; a `99` fica de fora.
+    expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['10', '30'], expect.any(AbortSignal), [], ['1']);
   });
 });

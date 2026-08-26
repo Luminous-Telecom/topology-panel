@@ -60,7 +60,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade/sinal filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos: tráfego **e sinal** no mesmo ciclo) em paralelo |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos, tráfego e sinal por itemid) em paralelo, mais `fetchZabbixSignalInventory` fora do ciclo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
@@ -69,7 +69,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
   problemas ou polling.
 - Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e problemas Warning+ no mesmo
-  `ds.query()`; tráfego **e sinal** dos cabos via `item.get` lastvalue em paralelo — itemids de
+  `ds.query()`; tráfego e sinal dos cabos via `item.get` lastvalue em paralelo — itemids de
   **toda a árvore**, não só do mapa aberto; hostids dos extremos com interface para o sinal), no
   `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
   O ciclo em regime são **duas** requisições: o `ds.query()` de status e um `item.get` só, com a
@@ -79,11 +79,15 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
   `IDENTITY_REFRESH_MS`: os groupids voltam ao `fetchZabbixDirectMetadata` para não repetir o
   `hostgroup.get`, e sem o target Problems o datasource deixa de disparar `problem.get` +
   `trigger.get`. Ciclo sem problemas devolve `problemsUnavailable` — o badge anterior fica.
-  A varredura de inventário de sinal (`search` pelos termos) roda na primeira busca e a cada
-  `SIGNAL_REDISCOVERY_MS`, **nunca** todo ciclo: ela devolve toda porta óptica do host (milhares
-  numa OLT). Entre varreduras o poll relê por itemid só o que `collectPolledSignalItemIds`
-  apontou como em uso por algum cabo. Também não devolva ao ciclo seguinte, como itemid a reler,
-  o que veio dessa varredura — foi o que fez o número de requisições crescer sem parar.
+  A varredura de inventário de sinal é `fetchZabbixSignalInventory`, e ela roda **fora** do ciclo:
+  na primeira busca e a cada `SIGNAL_REDISCOVERY_MS`, com `AbortController` próprio, sem `await` no
+  caminho que publica o snapshot. Ela devolve toda porta óptica do host (milhares numa OLT) e leva
+  segundos; esperar por ela atrasava a primeira pintura do mapa e o ciclo seguinte ainda a abortava
+  no meio. Um `item.get` por termo, em paralelo — um `search` só com todos os termos (`searchByAny`)
+  leva mais que o dobro do tempo, porque o Zabbix resolve os `LIKE` em série na mesma consulta.
+  O que ela descobre entra por itemid no ciclo seguinte, filtrado por `collectPolledSignalItemIds`
+  (só o que algum cabo usa). Não devolva ao ciclo, como itemid a reler, tudo o que a varredura
+  achou — foi o que fez o número de requisições crescer sem parar.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
   `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
   só monta o mapa de cabo a partir dos lastvalues já buscados. O drawer de detalhes **não** consulta
