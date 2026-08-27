@@ -22,7 +22,7 @@ describe('cancelamento de requisições Zabbix', () => {
     expect(post).toHaveBeenCalledTimes(1);
     const [, , options] = post.mock.calls[0] as [string, unknown, { abortSignal?: AbortSignal; requestId?: string }];
     expect(options.abortSignal).toBeInstanceOf(AbortSignal);
-    expect(options.requestId).toBe('topology-metadata-ds');
+    expect(options.requestId).toBe('topology-groups-ds');
   });
 
   it('interrompe a chamada quando o AbortSignal externo dispara', async () => {

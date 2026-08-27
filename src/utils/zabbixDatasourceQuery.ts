@@ -872,6 +872,16 @@ function throwIfStatusPollFailed(response: DataQueryResponse): void {
   throwIfQueryFailed(response);
 }
 
+/** Começa a carregar o plugin Zabbix sem esperar o `host.get` — o `ds.query()` precisa dele. */
+export function prefetchZabbixDatasource(datasourceUid: string): void {
+  if (!datasourceUid) {
+    return;
+  }
+  void getDataSourceSrv()
+    .get(datasourceUid)
+    .catch(() => undefined);
+}
+
 export async function fetchZabbixStatusViaQuery(
   options: FetchZabbixStatusViaQueryOptions
 ): Promise<ZabbixStatusQuerySnapshot> {

@@ -69,6 +69,8 @@ export function LinkEditModal({
   const [medium, setMedium] = useState<TopologyLinkMedium>(link.medium === 'radio' ? 'radio' : 'fiber');
   const [fromIface, setFromIface] = useState<TopologyNetworkInterface | undefined>();
   const [toIface, setToIface] = useState<TopologyNetworkInterface | undefined>();
+  const [fromTouched, setFromTouched] = useState(false);
+  const [toTouched, setToTouched] = useState(false);
 
   const fromNode = findNodeById(storedMap.nodes, link.from);
   const toNode = findNodeById(storedMap.nodes, link.to);
@@ -148,6 +150,7 @@ export function LinkEditModal({
               onSelect={(node) => {
                 setFromPeer(node);
                 setFromIface(undefined);
+                setFromTouched(true);
               }}
             />
           ) : null}
@@ -158,7 +161,10 @@ export function LinkEditModal({
             interfaces={fromInterfaces}
             loading={fromLoading}
             value={fromSelectValue}
-            onChange={setFromIface}
+            onChange={(iface) => {
+              setFromTouched(true);
+              setFromIface(iface);
+            }}
           />
           {toInnerHosts.length > 0 ? (
             <LinkPeerHostField
@@ -169,6 +175,7 @@ export function LinkEditModal({
               onSelect={(node) => {
                 setToPeer(node);
                 setToIface(undefined);
+                setToTouched(true);
               }}
             />
           ) : null}
@@ -179,7 +186,10 @@ export function LinkEditModal({
             interfaces={toInterfaces}
             loading={toLoading}
             value={toSelectValue}
-            onChange={setToIface}
+            onChange={(iface) => {
+              setToTouched(true);
+              setToIface(iface);
+            }}
           />
         </>
       ) : (
@@ -219,10 +229,14 @@ export function LinkEditModal({
             if (mbps && mbps > 0) {
               patch.bandwidthMbps = mbps;
             }
-            if (fromIface) {
+            if (fromTouched) {
+              patch.fromInterface = fromIface ? interfaceToReference(fromIface) : undefined;
+            } else if (fromIface) {
               patch.fromInterface = interfaceToReference(fromIface);
             }
-            if (toIface) {
+            if (toTouched) {
+              patch.toInterface = toIface ? interfaceToReference(toIface) : undefined;
+            } else if (toIface) {
               patch.toInterface = interfaceToReference(toIface);
             }
             if (fromInnerHosts.length > 0) {

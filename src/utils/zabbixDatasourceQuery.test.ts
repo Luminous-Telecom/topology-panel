@@ -32,6 +32,7 @@ import {
   zabbixItemNameFilter,
   zabbixMetricsItemFilter,
   zabbixStatusItemFilter,
+  prefetchZabbixDatasource,
 } from './zabbixDatasourceQuery';
 
 function host(overrides: Partial<ZabbixDirectHost> & { hostid: string; name: string }): ZabbixDirectHost {
@@ -1190,5 +1191,19 @@ describe('fetchZabbixItemNamesViaQuery', () => {
       item: '/.*/',
     });
     expect(names).toEqual(['ICMP ping', 'Status item']);
+  });
+});
+
+describe('prefetchZabbixDatasource', () => {
+  beforeEach(() => {
+    getMock.mockReset();
+    getMock.mockResolvedValue({ query: vi.fn() });
+  });
+
+  it('começa a carregar o plugin sem esperar o resultado', async () => {
+    prefetchZabbixDatasource('ds');
+    expect(getMock).toHaveBeenCalledWith('ds');
+    prefetchZabbixDatasource('');
+    expect(getMock).toHaveBeenCalledTimes(1);
   });
 });

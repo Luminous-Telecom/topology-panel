@@ -9,7 +9,12 @@ vi.mock('@grafana/runtime', () => ({
   }),
 }));
 
-import { fetchZabbixSignalInventory, fetchZabbixTrafficLastValues, resolveZabbixItemIdsByKeys } from './zabbixApi';
+import {
+  fetchZabbixSignalInventory,
+  fetchZabbixStatusLastValues,
+  fetchZabbixTrafficLastValues,
+  resolveZabbixItemIdsByKeys,
+} from './zabbixApi';
 
 describe('resolveZabbixItemIdsByKeys', () => {
   beforeEach(() => {
@@ -208,6 +213,52 @@ describe('fetchZabbixSignalInventory', () => {
   it('não chama a API sem host ou sem termo', async () => {
     expect(await fetchZabbixSignalInventory('ds', [], ['rxpower'])).toEqual([]);
     expect(await fetchZabbixSignalInventory('ds', ['10001'], [])).toEqual([]);
+    expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchZabbixStatusLastValues', () => {
+  beforeEach(() => {
+    post.mockReset();
+  });
+
+  it('busca o lastvalue do item de status num item.get só', async () => {
+    post.mockResolvedValueOnce({
+      result: [{ itemid: '5', key_: 'icmpping', name: 'ICMP ping', hostid: '1', lastvalue: '1', lastclock: '1700' }],
+    });
+
+    const items = await fetchZabbixStatusLastValues('ds', 'icmpping', ['1']);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+        hostids: ['1'],
+        search: { key_: 'icmpping' },
+      },
+    });
+    expect(items[0]?.lastvalue).toBe('1');
+  });
+
+  it('busca status por groupid quando ainda não há hostid', async () => {
+    post.mockResolvedValueOnce({ result: [] });
+
+    await fetchZabbixStatusLastValues('ds', 'icmpping', [], undefined, ['10']);
+
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+        groupids: ['10'],
+        search: { key_: 'icmpping' },
+      },
+    });
+  });
+
+  it('não chama a API sem host ou sem chave', async () => {
+    expect(await fetchZabbixStatusLastValues('ds', 'icmpping', [])).toEqual([]);
+    expect(await fetchZabbixStatusLastValues('ds', '', ['1'])).toEqual([]);
     expect(post).not.toHaveBeenCalled();
   });
 });

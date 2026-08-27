@@ -200,6 +200,22 @@ describe('removeLink / updateLinkProps', () => {
     expect(next.links[1]?.medium).toBeUndefined();
   });
 
+  it('apagar a interface no patch remove do cabo, sem zerar o outro extremo', () => {
+    const link = {
+      from: 'a',
+      to: 'b',
+      fromInterface: { name: 'eth-a' },
+      toInterface: { name: 'eth-b' },
+    };
+    const map = emptyMap({
+      nodes: [hostNode(), hostNode({ id: 'b' })],
+      links: [link],
+    });
+    const next = updateLinkProps(map, link, { fromInterface: undefined });
+    expect(next.links[0]?.fromInterface).toBeUndefined();
+    expect(next.links[0]?.toInterface).toEqual({ name: 'eth-b' });
+  });
+
   it('linksMatchIdentity considera a direção invertida com interfaces trocadas', () => {
     expect(
       linksMatchIdentity(

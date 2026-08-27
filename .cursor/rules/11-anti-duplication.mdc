@@ -28,7 +28,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 |---|---|
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems no mesmo request: `zabbixGroupsFilter` + item + P0) |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems: sparkline e badge). Não faça `item.get` de status por `groupids` — em produção isso varre todos os CPE do grupo. |
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |

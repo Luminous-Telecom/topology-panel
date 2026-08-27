@@ -346,6 +346,12 @@ export function updateLinkProps(
       if (Object.prototype.hasOwnProperty.call(patch, 'toPeerHost') && !patch.toPeerHost) {
         delete next.toPeerHost;
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'fromInterface') && !patch.fromInterface) {
+        delete next.fromInterface;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'toInterface') && !patch.toInterface) {
+        delete next.toInterface;
+      }
       return next;
     }),
   };

@@ -581,6 +581,39 @@ export async function fetchZabbixSignalInventory(
 }
 
 /**
+ * Lastvalue do item de status, sem série histórica.
+ *
+ * Aceita `groupids` para não esperar o `host.get`: no recarregar a frio o inventário de hosts
+ * leva segundos, e o mapa precisa da cor antes disso. Sem grupo, cai nos `hostids`.
+ */
+export async function fetchZabbixStatusLastValues(
+  datasourceUid: string,
+  statusItemKey: string,
+  hostids: string[],
+  abortSignal?: AbortSignal,
+  groupids?: string[]
+): Promise<ZabbixInterfaceItem[]> {
+  const key = statusItemKey.trim();
+  const scopedGroups = scopedTrafficHostIds(groupids);
+  const scopedHostIds = scopedTrafficHostIds(hostids);
+  if (!datasourceUid || !key || (!scopedGroups.length && !scopedHostIds.length)) {
+    return [];
+  }
+  const rows = await zabbixCall<ZabbixTrafficItemRow[]>(
+    datasourceUid,
+    'item.get',
+    {
+      output: TRAFFIC_ITEM_OUTPUT,
+      ...(scopedGroups.length ? { groupids: scopedGroups } : { hostids: scopedHostIds }),
+      search: { key_: key },
+    },
+    ZABBIX_STATUS_CALL_TIMEOUT_MS,
+    { abortSignal, requestId: `topology-status-last-${datasourceUid}` }
+  );
+  return trafficRowsToInterfaceItems(rows);
+}
+
+/**
  * Lastvalue RX/TX/status/sinal dos cabos — o Zabbix já guarda o valor atual no item
  * (preprocessing "Change per second" vira bps). Sem série de 5 min. Os itens de sinal entram
  * aqui por itemid, junto com o tráfego; quem os descobre é `fetchZabbixSignalInventory`.
@@ -678,6 +711,33 @@ export interface ZabbixDirectMetadata {
 /** Grupos já resolvidos num ciclo anterior — dispensa repetir o `hostgroup.get`. */
 export type ZabbixResolvedGroups = Pick<ZabbixDirectMetadata, 'resolvedGroups' | 'groupIds'>;
 
+/**
+ * Só os groupids. O `host.get` é pesado (interfaces/tags de todos os monitorados) e não precisa
+ * bloquear o `item.get` de status — os dois correm em paralelo na primeira carga.
+ */
+export async function fetchZabbixResolvedGroups(
+  datasourceUid: string,
+  groupNames: string[],
+  abortSignal?: AbortSignal,
+  resolved?: ZabbixResolvedGroups
+): Promise<ZabbixResolvedGroups> {
+  const wanted = [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))];
+  if (!datasourceUid || !wanted.length) {
+    return { resolvedGroups: [], groupIds: [] };
+  }
+  if (resolved?.groupIds.length) {
+    return { resolvedGroups: resolved.resolvedGroups, groupIds: resolved.groupIds };
+  }
+  const groupIdByName = await fetchGroupIdsByName(datasourceUid, wanted, {
+    abortSignal,
+    requestId: `topology-groups-${datasourceUid}`,
+  });
+  return {
+    resolvedGroups: [...groupIdByName.keys()],
+    groupIds: [...groupIdByName.values()],
+  };
+}
+
 async function fetchGroupIdsByName(
   datasourceUid: string,
   groupNames: string[],
@@ -759,7 +819,8 @@ async function fetchMonitoredHostsInGroups(
  *
  * `host.get` filtra só monitorados (`status: 0` + `monitored_hosts`). O hook relê isso a cada
  * ciclo — sem isso, host desativado no Zabbix continua no índice e o Metrics devolve o último
- * icmpping (0 = offline). O valor de status vem só de `ds.query()`.
+ * icmpping (0 = offline). A primeira pintura lê o lastvalue por `item.get`; sparkline e
+ * problemas continuam no `ds.query()`.
  */
 export async function fetchZabbixDirectMetadata(
   datasourceUid: string,
@@ -777,21 +838,16 @@ export async function fetchZabbixDirectMetadata(
     requestId: `topology-metadata-${datasourceUid}`,
   };
 
-  /** Grupo não muda de id entre ciclos; reaproveitar tira um `hostgroup.get` de cada busca. */
-  const cached = resolved?.groupIds.length ? resolved : undefined;
-  const groupIdByName = cached ? undefined : await fetchGroupIdsByName(datasourceUid, wanted, callOptions);
-  /** Nomes no casing do Zabbix — o `queryRefId` legado grava o grupo em maiúsculas. */
-  const resolvedGroups = cached ? cached.resolvedGroups : [...(groupIdByName?.keys() ?? [])];
-  const groupIds = cached ? cached.groupIds : [...(groupIdByName?.values() ?? [])];
-  if (!resolvedGroups.length) {
-    return { hosts: [], resolvedGroups, groupIds };
+  const groups = await fetchZabbixResolvedGroups(datasourceUid, wanted, abortSignal, resolved);
+  if (!groups.resolvedGroups.length) {
+    return { hosts: [], resolvedGroups: groups.resolvedGroups, groupIds: groups.groupIds };
   }
 
   const hosts = await fetchMonitoredHostsInGroups(
     datasourceUid,
-    groupIds,
-    new Set(resolvedGroups),
+    groups.groupIds,
+    new Set(groups.resolvedGroups),
     callOptions
   );
-  return { hosts, resolvedGroups, groupIds };
+  return { hosts, resolvedGroups: groups.resolvedGroups, groupIds: groups.groupIds };
 }

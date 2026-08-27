@@ -60,7 +60,7 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade/sinal filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixDirectMetadata` (`hostgroup.get` + `host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems no mesmo request) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos, tráfego e sinal por itemid) em paralelo, mais `fetchZabbixSignalInventory` fora do ciclo |
+| `hooks/useZabbixDirectIndex.ts` | `prefetchZabbixDatasource` (carrega o plugin em paralelo), `fetchZabbixResolvedGroups` (`hostgroup.get`), `fetchZabbixDirectMetadata` (`host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems **depois** da primeira pintura) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos, sai na hora pelos itemids do mapa), mais `fetchZabbixSignalInventory` fora do ciclo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
@@ -72,6 +72,14 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
   `ds.query()`; tráfego e sinal dos cabos via `item.get` lastvalue em paralelo — itemids de
   **toda a árvore**, não só do mapa aberto; hostids dos extremos com interface para o sinal), no
   `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
+  A primeira pintura **não** espera o `ds.query()` nem um `item.get` de status por grupo: em
+  produção esse `item.get` devolve icmpping de todos os CPE do grupo (megabytes, dezenas de
+  segundos) e o mapa ficava em “Consultando status…”. `prefetchZabbixDatasource` começa na hora,
+  o `item.get` dos cabos sai pelos itemids do mapa, e assim que o `host.get` volta o índice pinta
+  a estrutura (caixas cinza). A cor chega no `ds.query()` em seguida. A varredura de sinal só
+  começa depois dessa pintura completa. Itemids/chaves de cabo **não** entram na chave do efeito
+  do poll: apagar a interface de um cabo só relê o `item.get` de tráfego. Remontar o poll fazia
+  a pintura rápida sair sem status e o mapa inteiro ficava cinza.
   O ciclo em regime são **duas** requisições: o `ds.query()` de status e um `item.get` só, com a
   lista inteira de itemids — não fatie por lote, senão o número de requisições cresce junto com o
   ambiente (a resposta depende de quantos itens existem, não do tamanho da lista enviada).
@@ -88,6 +96,9 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
   O que ela descobre entra por itemid no ciclo seguinte, filtrado por `collectPolledSignalItemIds`
   (só o que algum cabo usa). Não devolva ao ciclo, como itemid a reler, tudo o que a varredura
   achou — foi o que fez o número de requisições crescer sem parar.
+  A busca usa **somente** `signalHostIds` (extremos dos cabos). Sem esses ids, não varre: o
+  fallback para `meta.hosts` puxava item óptico de todo o grupo (CPE + OLT) e gerava o
+  `item.get` de ~5 MB da primeira carga. Sem ids ainda, o ciclo seguinte tenta de novo.
   Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
   `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
   só monta o mapa de cabo a partir dos lastvalues já buscados. O drawer de detalhes **não** consulta
