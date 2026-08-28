@@ -1,5 +1,4 @@
 import { MutableRefObject, useMemo } from 'react';
-import { PanelData } from '@grafana/data';
 import { HostDisplayMap, HostMetadataMap, TopologyMap } from '../types';
 import { useDeferredDuringGesture } from './useDeferredDuringGesture';
 
@@ -11,7 +10,6 @@ export interface CanvasData {
   queryError?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts: Record<string, string[] | null | undefined>;
-  queryData?: PanelData;
 }
 
 /**
@@ -27,7 +25,7 @@ export function useFrozenCanvasData(
   const stable = useMemo(
     () => live,
     [live.map, live.hostDisplay, live.hostDisplayByRefId, live.queryReady,
-     live.queryError, live.hostMetadata, live.submapHosts, live.queryData]
+     live.queryError, live.hostMetadata, live.submapHosts]
   );
   return useDeferredDuringGesture(stable, isGestureActiveRef);
 }

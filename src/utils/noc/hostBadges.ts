@@ -1,8 +1,8 @@
 import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode } from '../../types';
-import { resolveHostIp } from '../hostLookup';
 import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
-import { HostNodeBadge, HostProblemsMap, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
+import { resolveHostProblemSummary } from './topologyFilters';
+import { HostNodeBadge, HostProblemsMap } from './types';
 
 const SEVERITY_COLORS: Record<number, string> = {
   5: '#e53935',
@@ -12,16 +12,6 @@ const SEVERITY_COLORS: Record<number, string> = {
   1: '#42a5f5',
   0: '#9e9e9e',
 };
-
-function problemKeyForNode(node: TopologyNode, hostMetadata?: HostMetadataMap): string | undefined {
-  const ip = resolveHostIp(node, hostMetadata);
-  const name = node.zabbixHost?.trim();
-  const meta =
-    (ip && hostMetadata?.[ip]) ||
-    (name && hostMetadata?.[name]) ||
-    undefined;
-  return meta?.hostid ?? name ?? ip;
-}
 
 export function resolveHostNodeBadges(params: {
   node: TopologyNode;
@@ -38,9 +28,8 @@ export function resolveHostNodeBadges(params: {
   const badges: HostNodeBadge[] = [];
 
   if (showProblems !== false && hostProblems) {
-    const key = problemKeyForNode(node, hostMetadata);
-    const summary = key ? hostProblems[key] : undefined;
-    if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
+    const summary = resolveHostProblemSummary(node, hostMetadata, hostProblems);
+    if (summary) {
       badges.push({
         kind: 'problems',
         label: String(summary.count),

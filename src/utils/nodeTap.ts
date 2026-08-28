@@ -20,7 +20,7 @@ export type NodeTapStamp = { nodeId: string; time: number };
 export type HostTouchTapKind = 'peek' | 'tools';
 
 /**
- * Toque no host (mobile): 1 toque = popover ICMP/falhas; 2 toques no mesmo nó = Tools.
+ * Toque no host (mobile): 1 toque = popover de status/falhas; 2 toques no mesmo nó = Tools.
  */
 export function resolveHostTouchTap(
   last: NodeTapStamp | null,

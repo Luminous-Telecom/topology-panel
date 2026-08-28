@@ -259,6 +259,61 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
   });
 
+  it('mostra host com alerta de mapa filho mesmo no Início', () => {
+    const root = emptyMap({
+      nodes: [
+        {
+          id: 'sm1',
+          type: 'submap',
+          x: 80,
+          y: 80,
+          label: 'Filial',
+          submapChildMapId: 'filial',
+        },
+      ],
+    });
+    const child = emptyMap({
+      nodes: [
+        hostNode({
+          id: 'h1',
+          x: 120,
+          y: 140,
+          label: 'host-b',
+          zabbixHost: 'CPE-01',
+          subtitle: '10.0.0.2',
+        }),
+      ],
+    });
+    const options = {
+      ...defaultOptions(),
+      map: root,
+      childMaps: { filial: child },
+      showHostAlertList: true,
+    };
+    const hostDisplayByRefId: Record<string, HostDisplayMap> = {
+      A: { 'host-b': { value: 1, status: 'online' } },
+    };
+
+    const { getByText, getByLabelText } = render(
+      <TopologyCanvas
+        map={root}
+        storedMap={root}
+        options={options}
+        queryReady
+        hostDisplayByRefId={hostDisplayByRefId}
+        hostMetadata={{ 'host-b': { name: 'host-b', hostid: '1002' } }}
+        hostProblems={{
+          '1002': { count: 1, maxSeverity: 4, names: ['Interface down'] },
+        }}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+      />
+    );
+
+    expect(getByText('Hosts com alerta (1)')).toBeInTheDocument();
+    expect(getByLabelText(/Ir para host-b no mapa Filial/)).toBeInTheDocument();
+  });
+
   it('mostra o problema Zabbix ao passar o mouse na lista de alertas', () => {
     const map = emptyMap({
       nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1', zabbixHost: 'host-a' })],

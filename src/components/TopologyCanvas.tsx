@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PanelData } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
@@ -18,7 +17,6 @@ import { areNetworksLocked, removeNodesFromMap, toggleMapLock, toggleNetworksLoc
 import { addLinkToMap, linkKey, removeLink, upsertLinkWithInterfaces } from '../utils/mapLinkEdits';
 import { clamp, snapToGrid } from '../utils/mapCoords';
 import { QueryHostOption } from '../utils/queryHostPicker';
-import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { isHostNode, findNodeById, submapHasChildMapId } from '../utils/topologyNodes';
 import { resolveHostDoubleClickAction } from '../utils/nodeTap';
@@ -104,12 +102,8 @@ interface Props {
    * senão a query seguinte dispara com o cronômetro ainda no meio.
    */
   refreshIntervalSec?: number | null;
-  /** `PanelData` com o timeRange do seletor do dashboard, para o hover ICMP. */
-  queryData?: PanelData;
   /** UID do datasource Zabbix — ping e interfaces. */
   zabbixDatasourceUid?: string;
-  /** Série ICMP do poll de status — o hover só lê, não consulta. */
-  hoverByHost?: HostHoverSeriesMap;
   /** Métricas voláteis de links (RX/TX/utilização) */
   linkMetricsByLink?: LinkRuntimeMetricsMap;
   /** Problemas Zabbix para badges NOC */
@@ -148,7 +142,6 @@ const NO_QUERY_HOST_OPTIONS: QueryHostOption[] = [];
 const NO_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
 const NO_SUBMAP_HOSTS: Record<string, string[] | null | undefined> = {};
 const NO_LINK_METRICS: LinkRuntimeMetricsMap = {};
-const NO_HOVER_BY_HOST: HostHoverSeriesMap = {};
 
 export function TopologyCanvas({
   map: liveMap,
@@ -163,9 +156,7 @@ export function TopologyCanvas({
   hostMetadata: liveHostMetadata,
   submapHosts: liveSubmapHosts = NO_SUBMAP_HOSTS,
   refreshIntervalSec = null,
-  queryData: liveQueryData,
   zabbixDatasourceUid,
-  hoverByHost = NO_HOVER_BY_HOST,
   linkMetricsByLink = NO_LINK_METRICS,
   hostProblems,
   onNocModeChange,
@@ -204,7 +195,6 @@ export function TopologyCanvas({
       queryError: liveQueryError,
       hostMetadata: liveHostMetadata,
       submapHosts: liveSubmapHosts,
-      queryData: liveQueryData,
     },
     isGestureActiveRef
   );
@@ -216,7 +206,6 @@ export function TopologyCanvas({
     queryError,
     hostMetadata,
     submapHosts,
-    queryData,
   } = frozenData;
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1558,8 +1547,6 @@ export function TopologyCanvas({
         bulk={bulk}
         queryHostOptions={queryHostOptions}
         zabbixDatasourceUid={zabbixDatasourceUid}
-        queryData={queryData}
-        hoverByHost={hoverByHost}
         hostMetadata={hostMetadata}
         hostDisplay={hostDisplay}
         hostProblems={hostProblems}

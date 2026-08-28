@@ -186,7 +186,7 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
   return out;
 }
 
-/** Propaga IP do mapa para o metadata da Query (indexa por IP quando o nome ainda casa). */
+/** Propaga IP/label/`zabbixHost` do mapa para o metadata da Query. */
 export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMap): HostMetadataMap {
   if (!Object.keys(meta).length || !map.nodes.length) {
     return meta;
@@ -198,14 +198,13 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
     if (!isHostNode(node)) {
       continue;
     }
-    const ip = resolveHostIp(node);
-    if (!ip) {
-      continue;
-    }
-
+    const ip = resolveHostIp(node, result);
     const nameKeys = [node.label?.trim(), node.zabbixHost?.trim()].filter(
       (value): value is string => Boolean(value && !isIpv4(value))
     );
+    if (!ip && nameKeys.length === 0) {
+      continue;
+    }
 
     const entry = findMetadataEntry(result, ip, nameKeys);
     if (!entry) {
@@ -216,7 +215,9 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
       ...entry,
       ip: entry.ip && isIpv4(entry.ip) ? entry.ip : ip,
     };
-    result[ip] = next;
+    if (ip) {
+      result[ip] = next;
+    }
     if (next.name?.trim()) {
       result[next.name.trim()] = next;
     }
@@ -228,15 +229,29 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
   return result;
 }
 
+/** Mesma propagação em raiz + mapas filhos — a lista de alertas não depende do mapa aberto. */
+export function enrichHostMetadataFromMaps(
+  meta: HostMetadataMap,
+  maps: readonly TopologyMap[]
+): HostMetadataMap {
+  let result = meta;
+  for (const map of maps) {
+    result = enrichHostMetadataFromMap(result, map);
+  }
+  return result;
+}
+
 /** Entrada de metadata por IP, por chave de nome, ou por `name` de qualquer entrada. */
 function findMetadataEntry(
   metadata: HostMetadataMap,
-  ip: string,
+  ip: string | undefined,
   nameKeys: string[]
 ): HostMetadata | undefined {
-  const byIp = metadata[ip];
-  if (byIp) {
-    return byIp;
+  if (ip) {
+    const byIp = metadata[ip];
+    if (byIp) {
+      return byIp;
+    }
   }
   for (const key of nameKeys) {
     const byName = metadata[key];
@@ -316,6 +331,19 @@ export function enrichHostDisplayFromMap(
     result[ip] = result[ip] ? preferHostDisplayInfo(result[ip], alias) : alias;
   }
 
+  return result;
+}
+
+/** Indexa status da Query pelos IPs de todos os mapas (raiz + filhos). */
+export function enrichHostDisplayFromMaps(
+  display: HostDisplayMap,
+  maps: readonly TopologyMap[],
+  metadata?: HostMetadataMap
+): HostDisplayMap {
+  let result = display;
+  for (const map of maps) {
+    result = enrichHostDisplayFromMap(result, map, metadata);
+  }
   return result;
 }
 

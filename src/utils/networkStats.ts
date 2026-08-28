@@ -57,13 +57,11 @@ export function formatRegionStats(
     if (stats.loadPending) {
       return 'Carregando…';
     }
-    if (!queryReady) {
+    const classified = stats.offline + stats.alert + stats.online;
+    if (!queryReady || classified === 0) {
       if (stats.total > 0) {
         return `${stats.total} hosts`;
       }
-      return '0 / 0 / 0';
-    }
-    if (stats.total === 0) {
       return '0 / 0 / 0';
     }
     return `${stats.offline} / ${stats.alert} / ${stats.online}`;

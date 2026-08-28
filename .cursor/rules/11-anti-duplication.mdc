@@ -29,26 +29,24 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems: sparkline e badge). Não faça `item.get` de status por `groupids` — em produção isso varre todos os CPE do grupo. |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems: lastvalue e badge). Não faça `item.get` de status por `groupids` — em produção isso varre todos os CPE do grupo. |
 | Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
 | Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
 | Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Último snapshot Zabbix ao reabrir o dashboard | `services/zabbixSnapshotCache.ts` (`readZabbixSnapshot` / `writeZabbixSnapshot`, TTL 30 min) |
+| Último snapshot Zabbix ao reabrir o dashboard | `services/zabbixSnapshotCache.ts` (`readZabbixSnapshot` / `writeZabbixSnapshot`, TTL 30 min; localStorage v2 sem NUL, payload compacto) |
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no mesmo `item.get` | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts` |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts` |
+| Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts`; casar nó↔problema via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
-| Série temporal do gráfico de hover | `parseHoverSeriesFromFrames` + `lookupHostHoverSeries` (poll de status, sem query no hover) |
-| Relógio do dashboard no hover (`skipDataQuery` ignora `data.timeRange`) | `panelDataWithDashboardTimeRange` em `utils/hostTimeSeries.ts` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
-| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `collectHostMetadataForMaps` para problemas) |
+| Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
 | Limiares/cores de degradação do cabo | `utilizationThresholdsFromOptions`, `linkDegradationColor`, `linkRuntimeColor`, `isLinkVisuallyDown`, `resolveLinkUtilizationLevel` |
@@ -92,7 +90,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` |
-| Toque no host (peek ICMP / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
+| Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Medida do painel, tela cheia, chrome ocioso e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useIdleHide.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |

@@ -1,8 +1,6 @@
-import { EventBus, TimeRange } from '@grafana/data';
+import { EventBus } from '@grafana/data';
 import { QueryIndex } from '../services/queryIndex';
-import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { HostProblemsMap } from '../utils/noc/types';
-import { StatusColorOptions } from '../utils/statusMapping';
 import { ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
@@ -20,8 +18,6 @@ export interface UseTopologyQueryIndexOptions {
   statusItemKey: string;
   refreshSec: number;
   eventBus?: EventBus;
-  timeRange?: TimeRange;
-  statusOptions?: StatusColorOptions;
   trafficItemIds?: string[];
   trafficKeys?: string[];
   signalHostIds?: string[];
@@ -31,7 +27,6 @@ export interface UseTopologyQueryIndexOptions {
 
 export interface UseTopologyQueryIndexResult {
   index: QueryIndex;
-  hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
   interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
@@ -47,8 +42,6 @@ export function useTopologyQueryIndex({
   statusItemKey,
   refreshSec,
   eventBus,
-  timeRange,
-  statusOptions,
   trafficItemIds,
   trafficKeys,
   signalHostIds,
@@ -62,8 +55,6 @@ export function useTopologyQueryIndex({
     statusItemKey,
     refreshSec,
     eventBus,
-    timeRange,
-    statusOptions,
     trafficItemIds,
     trafficKeys,
     signalHostIds,

@@ -6,7 +6,12 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
-import { enrichHostDisplayFromMap, resolveHostIp } from '../hostLookup';
+import {
+  collectHostLookupCandidates,
+  enrichHostDisplayFromMap,
+  enrichHostMetadataFromMap,
+  resolveHostZabbixId,
+} from '../hostLookup';
 import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
@@ -22,13 +27,6 @@ export interface TopologyFilterContext {
   options: Pick<TopologyPanelOptions, 'linkUtilThresholdHigh'>;
 }
 
-function hostProblemKey(node: TopologyNode, hostMetadata?: HostMetadataMap): string | undefined {
-  const meta = hostMetadata && node.zabbixHost
-    ? hostMetadata[node.zabbixHost] ?? hostMetadata[resolveHostIp(node, hostMetadata) ?? '']
-    : undefined;
-  return meta?.hostid ?? node.zabbixHost?.trim() ?? resolveHostIp(node, hostMetadata);
-}
-
 /** Severidade mínima (Warning+) para contar problema na UI. */
 export { ZABBIX_PROBLEM_MIN_SEVERITY };
 
@@ -40,19 +38,34 @@ export function resolveHostProblemSummary(
   if (!hostProblems) {
     return undefined;
   }
-  const key = hostProblemKey(node, hostMetadata);
-  if (!key) {
-    return undefined;
-  }
-  const summary = hostProblems[key] ?? hostProblems[node.zabbixHost?.trim() ?? ''];
-  if (
-    summary &&
-    summary.count > 0 &&
-    summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY
-  ) {
-    return summary;
+  const ref = {
+    zabbixHost: node.zabbixHost,
+    subtitle: node.subtitle,
+    label: node.label,
+    zabbixHostId: node.zabbixHostId,
+  };
+  const keys = [resolveHostZabbixId(ref, hostMetadata), ...collectHostLookupCandidates(ref, hostMetadata)];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const summary = hostProblems[key];
+    if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
+      return summary;
+    }
   }
   return undefined;
+}
+
+function contextForMap(
+  map: TopologyMap,
+  baseCtx: Omit<TopologyFilterContext, 'map'>
+): TopologyFilterContext {
+  const hostMetadata = enrichHostMetadataFromMap(baseCtx.hostMetadata ?? {}, map);
+  const hostDisplay = enrichHostDisplayFromMap(baseCtx.hostDisplay ?? {}, map, hostMetadata);
+  return { ...baseCtx, map, hostDisplay, hostMetadata };
 }
 
 function nodeMatchesSingleFilter(
@@ -339,13 +352,7 @@ export function collectAlertHostEntriesFromMaps(
   const entries: HostAlertListEntry[] = [];
 
   for (const { mapId, mapLabel, map } of maps) {
-    const hostDisplay = enrichHostDisplayFromMap(
-      baseCtx.hostDisplay ?? {},
-      map,
-      baseCtx.hostMetadata
-    );
-    const ctx: TopologyFilterContext = { ...baseCtx, map, hostDisplay };
-    entries.push(...collectAlertHostEntriesForMap(mapId, mapLabel, ctx));
+    entries.push(...collectAlertHostEntriesForMap(mapId, mapLabel, contextForMap(map, baseCtx)));
   }
 
   return entries.sort((a, b) => {
@@ -410,12 +417,7 @@ export function collectNocHostEntries(
   const entries: NocHostListEntry[] = [];
 
   for (const { mapId, mapLabel, map } of maps) {
-    const hostDisplay = enrichHostDisplayFromMap(
-      baseCtx.hostDisplay ?? {},
-      map,
-      baseCtx.hostMetadata
-    );
-    const ctx: TopologyFilterContext = { ...baseCtx, map, hostDisplay };
+    const ctx = contextForMap(map, baseCtx);
     for (const node of map.nodes) {
       if (!isHostNode(node)) {
         continue;

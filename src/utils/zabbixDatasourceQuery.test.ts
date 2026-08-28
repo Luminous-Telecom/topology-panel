@@ -15,7 +15,6 @@ import {
   buildZabbixInterfaceTargets,
   buildZabbixProblemsTargets,
   buildZabbixStatusQueryRequest,
-  parseHoverSeriesFromFrames,
   fetchZabbixHostGroupNamesViaQuery,
   fetchZabbixHostInterfaceItemsViaQuery,
   fetchZabbixItemNamesViaQuery,
@@ -103,7 +102,8 @@ describe('buildZabbixStatusQueryRequest', () => {
     expect(request?.skipQueryCache).toBe(true);
     expect(request?.queryCachingTTL).toBe(0);
     expect(request?.requestId).toBe('topology-status-ds');
-    expect(request?.maxDataPoints).toBe(240);
+    expect(request?.maxDataPoints).toBe(1);
+    expect(request?.range.raw).toEqual({ from: 'now-300s', to: 'now' });
   });
 
   it('com itemids monta target Item ID, sem filtro por nome', () => {
@@ -131,7 +131,6 @@ describe('buildZabbixStatusQueryRequest', () => {
       'icmpping',
       30,
       1_700_000_000_000,
-      undefined,
       undefined,
       false
     );
@@ -1099,42 +1098,6 @@ describe('fetchZabbixHostInterfaceItemsViaQuery', () => {
     const first = query.mock.calls[0][0] as { requestId: string };
     const second = query.mock.calls[1][0] as { requestId: string };
     expect(first.requestId).not.toBe(second.requestId);
-  });
-});
-
-describe('parseHoverSeriesFromFrames', () => {
-  it('indexa a série do poll pelo hostid e pelo nome', () => {
-    const byHost = parseHoverSeriesFromFrames(
-      [
-        {
-          fields: [
-            { name: 'Time', type: FieldType.time, values: [1_000_000, 2_000_000], config: {} },
-            {
-              name: 'Value',
-              type: FieldType.number,
-              values: [0.012, 0.014],
-              labels: { host: 'host-a', item_key: 'icmppingsec', item: 'Status item' },
-              config: {},
-            },
-          ],
-          length: 2,
-        },
-      ],
-      [host({ hostid: '10', name: 'host-a' })],
-      'Status item',
-      {
-        colorOnline: '#0f0',
-        colorOffline: '#f00',
-        colorAlert: '#fa0',
-        statusValueMappings: [
-          { value: 0, status: 'offline', label: 'Down' },
-          { from: 0, status: 'online', label: 'Up' },
-        ],
-      }
-    );
-
-    expect(byHost['10']?.points).toHaveLength(2);
-    expect(byHost['host-a']?.points).toHaveLength(2);
   });
 });
 

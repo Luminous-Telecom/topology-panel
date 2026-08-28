@@ -1,5 +1,4 @@
 import React from 'react';
-import { PanelData } from '@grafana/data';
 import { BulkEditModalsState } from '../../hooks/useBulkEditModals';
 import { HostHoverTarget } from '../../hooks/useHostHoverTarget';
 import { NodePropertiesModalsState } from '../../hooks/useNodePropertiesModals';
@@ -19,7 +18,6 @@ import { linksMatchIdentity, updateLinkProps } from '../../utils/mapLinkEdits';
 import { BulkSubmapLayoutSize } from '../../utils/mapBulkEdits';
 import { applyNodeEditSave } from '../../utils/nodeEditSave';
 import { QueryHostOption } from '../../utils/queryHostPicker';
-import { HostHoverSeriesMap } from '../../utils/hostTimeSeries';
 import { HostProblemsMap } from '../../utils/noc/types';
 import { DashboardPickerModal, openDashboardUrl } from '../DashboardPickerModal';
 import { HostHoverPopover } from '../HostHoverPopover';
@@ -51,8 +49,6 @@ interface CanvasModalsProps {
   bulk: BulkEditModalsState;
   queryHostOptions: QueryHostOption[];
   zabbixDatasourceUid?: string;
-  queryData?: PanelData;
-  hoverByHost?: HostHoverSeriesMap;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
   hostProblems?: HostProblemsMap;
@@ -88,8 +84,6 @@ export function CanvasModals({
   bulk,
   queryHostOptions,
   zabbixDatasourceUid,
-  queryData,
-  hoverByHost,
   hostMetadata,
   hostDisplay,
   hostProblems,
@@ -187,8 +181,6 @@ export function CanvasModals({
           node={hostHover.node}
           screenX={hostHover.screenX}
           screenY={hostHover.screenY}
-          queryData={queryData}
-          hoverByHost={hoverByHost}
           hostMetadata={hostMetadata}
           hostDisplay={hostDisplay}
           hostProblems={hostProblems}

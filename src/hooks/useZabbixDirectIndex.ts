@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { EventBus, TimeRange } from '@grafana/data';
+import { EventBus } from '@grafana/data';
 import { RefreshEvent } from '@grafana/runtime';
 import { ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
@@ -24,10 +24,8 @@ import {
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey, coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
 import { fetchZabbixStatusViaQuery, prefetchZabbixDatasource } from '../utils/zabbixDatasourceQuery';
-import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { HostProblemsMap } from '../utils/noc/types';
 import { POLL_WATCHDOG_MS, canStartRefreshEventFetch } from '../utils/pollingGate';
-import { StatusColorOptions } from '../utils/statusMapping';
 
 /**
  * Busca periódica do último valor no Zabbix.
@@ -42,8 +40,8 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * não zera o índice: o mapa continua com o último snapshot até o novo chegar. Mudar interface de
  * cabo também não remonta o poll — senão a pintura rápida sai sem status e todos os nós ficam cinza.
  *
- * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status/hover)
- * e Problems (Warning+) no mesmo request — isso preenche sparkline e badge, depois da primeira
+ * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status)
+ * e Problems (Warning+) no mesmo request — lastvalue e badge, depois da primeira
  * pintura. O tráfego e o sinal dos cabos lêem o `lastvalue` do `item.get` em paralelo, mas só
  * publicam no mesmo snapshot do status.
  * O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana recria o EventBus no load
@@ -64,8 +62,6 @@ export interface UseZabbixDirectIndexOptions {
   statusItemKey: string;
   refreshSec: number;
   eventBus?: EventBus;
-  timeRange?: TimeRange;
-  statusOptions?: StatusColorOptions;
   /** Itemids de RX/TX dos cabos — último ponto da série em paralelo. */
   trafficItemIds?: string[];
   /** Chaves dos cabos sem itemid numérico — resolvidas uma vez via `item.get`. */
@@ -80,7 +76,6 @@ export interface UseZabbixDirectIndexOptions {
 
 export interface UseZabbixDirectIndexResult {
   index: QueryIndex;
-  hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
   interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
@@ -92,7 +87,6 @@ export interface UseZabbixDirectIndexResult {
 
 interface DirectState {
   index: QueryIndex;
-  hoverByHost: HostHoverSeriesMap;
   lastValues: Record<string, ZabbixItemLastValue>;
   interfaceItems: ZabbixInterfaceItem[];
   problems: HostProblemsMap;
@@ -101,7 +95,6 @@ interface DirectState {
   error?: string;
 }
 
-const EMPTY_HOVER: HostHoverSeriesMap = {};
 const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
 const EMPTY_INTERFACE_ITEMS: ZabbixInterfaceItem[] = [];
 const EMPTY_PROBLEMS: HostProblemsMap = {};
@@ -117,7 +110,6 @@ const SIGNAL_REDISCOVERY_MS = 10 * 60_000;
 const IDENTITY_REFRESH_MS = 60_000;
 const IDLE_STATE: DirectState = {
   index: EMPTY_INDEX,
-  hoverByHost: EMPTY_HOVER,
   lastValues: EMPTY_LAST_VALUES,
   interfaceItems: EMPTY_INTERFACE_ITEMS,
   problems: EMPTY_PROBLEMS,
@@ -134,7 +126,6 @@ function hydrateFromSnapshot(cached: ZabbixSnapshotPayload): DirectState {
       hosts: cached.hosts,
       statusItems: cached.statusItems,
     }),
-    hoverByHost: cached.hoverByHost ?? EMPTY_HOVER,
     lastValues: cached.lastValues,
     interfaceItems: cached.interfaceItems,
     problems: cached.problems,
@@ -150,8 +141,6 @@ export function useZabbixDirectIndex({
   statusItemKey,
   refreshSec,
   eventBus,
-  timeRange,
-  statusOptions,
   trafficItemIds,
   trafficKeys,
   signalHostIds,
@@ -191,10 +180,6 @@ export function useZabbixDirectIndex({
 
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
-  const timeRangeRef = useRef(timeRange);
-  timeRangeRef.current = timeRange;
-  const statusOptionsRef = useRef(statusOptions);
-  statusOptionsRef.current = statusOptions;
   const trafficItemIdsRef = useRef(trafficIds);
   trafficItemIdsRef.current = trafficIds;
   const trafficKeysRef = useRef(trafficItemKeys);
@@ -239,7 +224,6 @@ export function useZabbixDirectIndex({
       }
       return {
         index: prev.index,
-        hoverByHost: prev.hoverByHost,
         lastValues: prev.lastValues,
         interfaceItems: prev.interfaceItems,
         problems: prev.problems,
@@ -447,7 +431,6 @@ export function useZabbixDirectIndex({
       const commitSnapshot = (
         meta: ZabbixDirectMetadata,
         statusItems: ZabbixInterfaceItem[],
-        hoverByHost: HostHoverSeriesMap,
         lastValues: Record<string, ZabbixItemLastValue>,
         interfaceItems: ZabbixInterfaceItem[],
         problems: HostProblemsMap,
@@ -455,8 +438,8 @@ export function useZabbixDirectIndex({
         kind: 'fast' | 'full'
       ): boolean => {
         /*
-         * Mesma geração pode pintar duas vezes: lastvalue primeiro, `ds.query()` depois (sparkline
-         * e problemas). O caminho rápido não pode sobrescrever o completo se ele chegou antes.
+         * Mesma geração pode pintar duas vezes: lastvalue primeiro, `ds.query()` depois
+         * (status e problemas). O caminho rápido não pode sobrescrever o completo se ele chegou antes.
          */
         if (cancelled || generation < lastPublishedGeneration) {
           return false;
@@ -472,7 +455,6 @@ export function useZabbixDirectIndex({
           publishedKind = kind;
           setState({
             index: EMPTY_INDEX,
-            hoverByHost: EMPTY_HOVER,
             lastValues,
             interfaceItems,
             problems: EMPTY_PROBLEMS,
@@ -487,7 +469,6 @@ export function useZabbixDirectIndex({
           publishedKind = kind;
           setState({
             index: EMPTY_INDEX,
-            hoverByHost: EMPTY_HOVER,
             lastValues,
             interfaceItems,
             problems: EMPTY_PROBLEMS,
@@ -505,12 +486,6 @@ export function useZabbixDirectIndex({
         setState((prev) => {
           const keepStatus =
             kind === 'fast' && !statusItems.length && prev.ready && prev.index.hosts.length > 0;
-          const hover =
-            kind === 'fast' &&
-            Object.keys(hoverByHost).length === 0 &&
-            Object.keys(prev.hoverByHost).length > 0
-              ? prev.hoverByHost
-              : hoverByHost;
           return {
             index: keepStatus
               ? prev.index
@@ -521,7 +496,6 @@ export function useZabbixDirectIndex({
                   hosts: meta.hosts,
                   statusItems,
                 }),
-            hoverByHost: hover,
             lastValues: traffic.lastValues,
             interfaceItems: traffic.interfaceItems,
             problems: latestProblems,
@@ -542,7 +516,6 @@ export function useZabbixDirectIndex({
               lastValues: traffic.lastValues,
               interfaceItems: traffic.interfaceItems,
               problems: latestProblems,
-              hoverByHost,
             });
           }
         }
@@ -567,7 +540,6 @@ export function useZabbixDirectIndex({
           commitSnapshot(
             { hosts: [], ...groups },
             [],
-            EMPTY_HOVER,
             aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey),
             traffic.interfaceItems,
             EMPTY_PROBLEMS,
@@ -589,7 +561,6 @@ export function useZabbixDirectIndex({
           commitSnapshot(
             meta,
             [],
-            EMPTY_HOVER,
             EMPTY_LAST_VALUES,
             EMPTY_INTERFACE_ITEMS,
             latestProblems,
@@ -599,7 +570,7 @@ export function useZabbixDirectIndex({
         }
 
         /*
-         * Sparkline + problemas só depois da primeira pintura. A frio o `ds.query()` leva
+         * Status + problemas só depois da primeira pintura. A frio o `ds.query()` leva
          * segundos; esperar por ele atrasava a estrutura. O `item.get` dos cabos já saiu em
          * paralelo, mas só entra no estado no `commitSnapshot('full')` — junto com a cor.
          */
@@ -610,8 +581,6 @@ export function useZabbixDirectIndex({
           hosts: meta.hosts,
           abortSignal,
           refreshSec: intervalSec,
-          timeRange: timeRangeRef.current,
-          statusOptions: statusOptionsRef.current,
           includeProblems: identityCycle,
         });
         const [snapshot, traffic] = await Promise.all([
@@ -624,7 +593,6 @@ export function useZabbixDirectIndex({
         commitSnapshot(
           meta,
           snapshot.items,
-          snapshot.hoverByHost,
           aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey),
           traffic.interfaceItems,
           snapshot.problems,
@@ -641,7 +609,6 @@ export function useZabbixDirectIndex({
           const retrying = isBenignZabbixFetchError(err) && consecutiveFailures < 2;
           setState((prev) => ({
             index: EMPTY_INDEX,
-            hoverByHost: EMPTY_HOVER,
             lastValues: prev.lastValues,
             interfaceItems: prev.interfaceItems,
             problems: prev.problems,

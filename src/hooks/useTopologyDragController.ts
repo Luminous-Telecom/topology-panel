@@ -66,7 +66,7 @@ interface UseTopologyDragControllerParams {
   closeContextMenu: () => void;
   /** Toque sustentado no host — abre o menu de contexto no mobile. */
   onNodeLongPress: (clientX: number, clientY: number, node: TopologyNode) => void;
-  /** Toque curto no host (mobile): popover ICMP / falhas. */
+  /** Toque curto no host (mobile): popover de status / falhas. */
   onHostPeek: (node: TopologyNode, clientX: number, clientY: number) => void;
   /** Dois toques no host (mobile): menu Tools. */
   onHostOpenTools: (node: TopologyNode, clientX: number, clientY: number) => void;
@@ -797,7 +797,7 @@ export function useTopologyDragController({
 
   /**
    * Toque curto com a mão (sem arrastar). O pointer capture no wrap mata o `click` nativo, então
-   * abrir submapa, seletor, cabo, peek ICMP e Tools acontece aqui.
+   * abrir submapa, seletor, cabo, peek de status e Tools acontece aqui.
    * Devolve `true` quando o toque já foi tratado.
    */
   const handlePanTap = useCallback(

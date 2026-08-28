@@ -13,7 +13,7 @@ import {
   ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   defaultOptions,
 } from '../types';
-import { enrichHostDisplayFromMap, enrichHostMetadataFromMap } from '../utils/hostLookup';
+import { enrichHostDisplayFromMaps, enrichHostMetadataFromMaps } from '../utils/hostLookup';
 import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts } from '../utils/mapSync';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
@@ -43,7 +43,6 @@ import {
   resolveTopologyMapById,
 } from '../utils/topologyMapNavigation';
 import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
-import { panelDataWithDashboardTimeRange } from '../utils/hostTimeSeries';
 import {
   collectLinkMetricItemIds,
   collectLinkMetricKeys,
@@ -58,9 +57,6 @@ export interface Props extends PanelProps<TopologyPanelOptions> {}
 
 export function TopologyPanel({
   options,
-  data,
-  timeRange,
-  timeZone,
   width,
   height,
   eventBus,
@@ -101,12 +97,6 @@ export function TopologyPanel({
       ...colored,
     };
   }, [options, theme, mapValidationErrors]);
-
-  /** Relógio do dashboard — `data.timeRange` com skipDataQuery fica preso em now-6h. */
-  const queryData = useMemo(
-    () => panelDataWithDashboardTimeRange(data, timeRange),
-    [data, timeRange]
-  );
 
   const handlePersistNavView = useCallback(
     (mapId: string, view: TopologyView) => {
@@ -206,7 +196,7 @@ export function TopologyPanel({
     []
   );
 
-  /** Status, hover, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
+  /** Status, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
@@ -214,8 +204,6 @@ export function TopologyPanel({
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
     eventBus,
-    timeRange,
-    statusOptions: statusColorOptions,
     trafficItemIds,
     trafficKeys,
     signalHostIds,
@@ -224,7 +212,6 @@ export function TopologyPanel({
   });
 
   const queryIndex = querySource.index;
-  const hoverByHost = querySource.hoverByHost;
   const queryMeta = queryIndex.metadata;
   const zabbixDatasourceUid = resolvedOptions.zabbixDatasourceUid;
   const queryReady = querySource.ready;
@@ -233,8 +220,8 @@ export function TopologyPanel({
   const hostProblems = useStableIdentity(querySource.problems);
 
   const dataMetaRaw = useMemo(
-    () => enrichHostMetadataFromMap(queryMeta, activeStoredMap),
-    [queryMeta, activeStoredMap]
+    () => enrichHostMetadataFromMaps(queryMeta, mapsForPoll),
+    [queryMeta, mapsForPoll]
   );
 
   /**
@@ -263,10 +250,10 @@ export function TopologyPanel({
     const byRef = hostDisplayByRefIdFromIndex(queryIndex, statusColorOptions);
     const enriched: Record<string, HostDisplayMap> = {};
     for (const [refId, bucket] of Object.entries(byRef)) {
-      enriched[refId] = enrichHostDisplayFromMap(bucket, activeStoredMap, dataMeta);
+      enriched[refId] = enrichHostDisplayFromMaps(bucket, mapsForPoll, dataMeta);
     }
     return enriched;
-  }, [queryIndex, statusColorOptions, activeStoredMap, dataMeta]);
+  }, [queryIndex, statusColorOptions, mapsForPoll, dataMeta]);
 
   const hostDisplayByRefIdRaw = useMemo(() => {
     if (queryError || !querySource.ready) {
@@ -284,12 +271,12 @@ export function TopologyPanel({
 
   const hostDisplayRaw = useMemo(
     () =>
-      enrichHostDisplayFromMap(
+      enrichHostDisplayFromMaps(
         flattenHostDisplayByRefId(hostDisplayByRefId),
-        activeStoredMap,
+        mapsForPoll,
         dataMeta
       ),
-    [hostDisplayByRefId, activeStoredMap, dataMeta]
+    [hostDisplayByRefId, mapsForPoll, dataMeta]
   );
 
   const hostDisplay = useStableIdentity(hostDisplayRaw);
@@ -543,8 +530,6 @@ export function TopologyPanel({
         hostMetadata={hostMetadata}
         submapHosts={submapHosts}
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
-        queryData={queryData}
-        hoverByHost={hoverByHost}
         zabbixDatasourceUid={zabbixDatasourceUid}
         linkMetricsByLink={linkMetricsByLink}
         hostProblems={hostProblems}

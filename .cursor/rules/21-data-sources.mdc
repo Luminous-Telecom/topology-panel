@@ -36,12 +36,10 @@ painel não existe — o grupo fica no submapa.
   (`directRefId`), então `displayQueryRefIds` e o campo de grupo do submapa seguem valendo.
 - Cor e rótulo de status saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`), a partir dos
   thresholds e value mappings configurados nas opções do painel.
-- Série do gráfico de hover: sai da mesma `fetchZabbixStatusViaQuery` do poll (`parseHoverSeriesFromFrames`).
-  O hover só lê `hoverByHost` — proibido `ds.query()` ao passar o mouse.
-- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics). A mesma
-  resposta alimenta o sparkline do hover (`maxDataPoints` do gráfico). O target preenche `group`
-  com o filtro dos grupos visíveis e `item` com o valor configurado no painel. Sem `item.get`.
-  `skipDataQuery` permanece true.
+- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics, `maxDataPoints: 1`).
+  O hover lê o mesmo lastvalue via `hostDisplay` — proibido `ds.query()` ao passar o mouse. O target
+  preenche `group` com o filtro dos grupos visíveis e `item` com o valor configurado no painel. Sem
+  `item.get`. `skipDataQuery` permanece true.
 - Problemas Zabbix (Warning+, via `useZabbixDirectIndex` / `ds.query()` Problems no **mesmo**
   `/api/ds/query` do status: target P0 junto do Metrics G0) usam os grupos já resolvidos da
   metadata (`resolvedGroups`). Nunca `/.*/`. Pintam o host com `colorAlert` e entram na lista
@@ -66,9 +64,9 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
 
 - Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
-- Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor, histórico,
+- Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor,
   problemas ou polling.
-- Polling do mapa: `useZabbixDirectIndex.ts` (status/hover Metrics e problemas Warning+ no mesmo
+- Polling do mapa: `useZabbixDirectIndex.ts` (status Metrics e problemas Warning+ no mesmo
   `ds.query()`; tráfego e sinal dos cabos via `item.get` lastvalue em paralelo — itemids de
   **toda a árvore**, não só do mapa aberto; hostids dos extremos com interface para o sinal), no
   `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
@@ -76,8 +74,11 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
   produção esse `item.get` devolve icmpping de todos os CPE do grupo (megabytes, dezenas de
   segundos) e o mapa ficava em “Consultando status…”. `prefetchZabbixDatasource` começa na hora,
   o `item.get` dos cabos sai pelos itemids do mapa, e assim que o `host.get` volta o índice pinta
-  a estrutura (caixas cinza). Cor e tráfego entram juntos no snapshot seguinte (`ds.query()` +
-  `item.get` dos cabos). A varredura de sinal só começa depois dessa pintura completa. Itemids/chaves
+  a estrutura (caixas cinza, texto `N hosts` — não `0 / 0 / 0`). Cor e tráfego entram juntos no
+  snapshot seguinte (`ds.query()` + `item.get` dos cabos). O último snapshot completo fica em
+  `zabbixSnapshotCache` (memória + localStorage, chave sem NUL, payload compacto) para o F5 e o
+  restart do Grafana no deploy pintarem status na hora. A varredura de sinal só começa depois
+  dessa pintura completa. Itemids/chaves
   de cabo **não** entram na chave do efeito do poll: apagar a interface de um cabo só relê o
   `item.get` de tráfego. Remontar o poll fazia a pintura rápida sair sem status e o mapa inteiro
   ficava cinza.
@@ -118,9 +119,9 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 
 - Toda leitura de dado do Grafana passa por `getBackendSrv()` (`@grafana/runtime`) — nunca `fetch`
   ou `XMLHttpRequest` direto, que perdem header de auth e roteamento do proxy.
-- Tempo do hover vem de `PanelProps.timeRange` (seletor do dashboard), via
-  `panelDataWithDashboardTimeRange`. Com `skipDataQuery`, `data.timeRange` é o default `now-6h` —
-  não use. Nunca crie um `TimeRange` com números crus.
+- O painel não usa o seletor de tempo do dashboard: status e cabos são lastvalue. A query Metrics
+  usa `ZABBIX_STATUS_QUERY_RANGE_SEC` para o plugin devolver o último ponto. Nunca crie um
+  `TimeRange` com números crus.
 - Navegação entre dashboards só por `openDashboardUrl` (`DashboardPickerModal.tsx`), que valida uid e
   encoda slug. Não implemente outro caminho com `window.location.href`.
 - Proibido percorrer o DOM fora do próprio painel (`document.querySelector` no chrome do Grafana ou

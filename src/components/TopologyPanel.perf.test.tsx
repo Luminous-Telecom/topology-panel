@@ -321,7 +321,7 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     expect(mounted.host).toBeGreaterThan(0);
 
     resetCounts();
-    // Poll do Zabbix: mesmo índice, PanelData novo (timeRange do dashboard).
+    // Poll do Zabbix: mesmo índice, PanelData novo.
     rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     // eslint-disable-next-line no-console
@@ -362,11 +362,10 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     );
 
     /**
-     * `queryData` é o `PanelData` novo (timeRange) e os `on*` são callbacks do painel — os dois
-     * fazem o canvas renderizar de novo, o que é barato. O que não pode mudar é o dado que desce
-     * para as camadas, porque aí o custo é por nó.
+     * Os `on*` são callbacks do painel — fazem o canvas renderizar de novo, o que é barato.
+     * O que não pode mudar é o dado que desce para as camadas, porque aí o custo é por nó.
      */
-    const dataProps = changed.filter((key) => key !== 'queryData' && !key.startsWith('on'));
+    const dataProps = changed.filter((key) => !key.startsWith('on'));
     expect(dataProps).toEqual([]);
     // Nenhuma prop da camada de hosts muda: o `React.memo` dela segura o poll inteiro.
     expect(layerChanged).toEqual([]);

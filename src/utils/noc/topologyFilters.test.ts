@@ -7,6 +7,7 @@ import {
   collectAlertHostEntries,
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
+  resolveHostProblemSummary,
   alertListHoverText,
   visibleHostProblemNames,
 } from './topologyFilters';
@@ -179,6 +180,59 @@ describe('topologyFilters', () => {
     expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['apodi:sw1']);
     expect(entries[0]?.reason).toBe('alert');
     expect(entries[0]?.problems).toEqual(['Interface down']);
+  });
+
+  it('lista de alertas casa problema do mapa filho por alias do nó (label/IP) fora do mapa aberto', () => {
+    const child: TopologyMap = {
+      width: 800,
+      height: 600,
+      nodes: [
+        {
+          id: 'sw1',
+          type: 'host',
+          icon: 'switch_managed',
+          label: 'host-b',
+          zabbixHost: 'CPE-01',
+          subtitle: '10.0.0.2',
+          x: 0,
+          y: 0,
+        },
+      ],
+      links: [],
+    };
+    const ctx = {
+      hostDisplay: { 'host-b': { value: 1, status: 'online' as const } },
+      hostMetadata: { 'host-b': { name: 'host-b', hostid: '1002' } },
+      hostProblems: { '1002': { count: 1, maxSeverity: 2, names: ['Interface down'] } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntriesFromMaps(
+      [
+        { mapId: ROOT_MAP_ID, mapLabel: 'Início', map },
+        { mapId: 'filial', mapLabel: 'Filial', map: child },
+      ],
+      ctx
+    );
+    expect(entries.map((e) => `${e.mapId}:${e.nodeId}`)).toEqual(['filial:sw1']);
+    expect(entries[0]?.reason).toBe('alert');
+    expect(entries[0]?.problems).toEqual(['Interface down']);
+  });
+
+  it('resolveHostProblemSummary encontra hostid pelo label quando zabbixHost é alias', () => {
+    const summary = resolveHostProblemSummary(
+      {
+        id: 'sw1',
+        type: 'host',
+        label: 'host-b',
+        zabbixHost: 'CPE-01',
+        subtitle: '10.0.0.2',
+        x: 0,
+        y: 0,
+      },
+      { 'host-b': { name: 'host-b', hostid: '1002' } },
+      { '1002': { count: 1, maxSeverity: 3, names: ['ICMP timeout'] } }
+    );
+    expect(summary).toEqual({ count: 1, maxSeverity: 3, names: ['ICMP timeout'] });
   });
 
   it('visibleHostProblemNames recorta a lista e conta o restante', () => {

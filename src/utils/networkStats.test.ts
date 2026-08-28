@@ -34,6 +34,15 @@ describe('formatRegionStats — submapa', () => {
     expect(text).toBe('12 hosts');
   });
 
+  it('não mostra 0 / 0 / 0 quando a estrutura já chegou e o status ainda não', () => {
+    const text = formatRegionStats(
+      { total: 12, offline: 0, alert: 0, online: 0, unknown: 12 },
+      true,
+      'submap'
+    );
+    expect(text).toBe('12 hosts');
+  });
+
   it('não anexa tráfego ao texto do submapa — já aparece nas interfaces', () => {
     const text = formatRegionStats(
       { total: 3, offline: 0, alert: 0, online: 3, unknown: 0, rxBps: 1_200_000_000, txBps: 800_000_000 },

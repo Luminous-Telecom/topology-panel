@@ -3,7 +3,7 @@ import { NODE_DOUBLE_TAP_MS, resolveHostDoubleClickAction, resolveHostTouchTap }
 import { hostNode } from './testMapFixtures';
 
 describe('resolveHostTouchTap', () => {
-  it('primeiro toque no host é peek (ICMP / falhas)', () => {
+  it('primeiro toque no host é peek (status / falhas)', () => {
     expect(resolveHostTouchTap(null, 'host-a', 1000)).toEqual({
       kind: 'peek',
       next: { nodeId: 'host-a', time: 1000 },

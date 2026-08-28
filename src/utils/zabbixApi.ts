@@ -819,8 +819,7 @@ async function fetchMonitoredHostsInGroups(
  *
  * `host.get` filtra só monitorados (`status: 0` + `monitored_hosts`). O hook relê isso a cada
  * ciclo — sem isso, host desativado no Zabbix continua no índice e o Metrics devolve o último
- * icmpping (0 = offline). A primeira pintura lê o lastvalue por `item.get`; sparkline e
- * problemas continuam no `ds.query()`.
+ * icmpping (0 = offline). A primeira pintura lê o lastvalue; problemas continuam no `ds.query()`.
  */
 export async function fetchZabbixDirectMetadata(
   datasourceUid: string,

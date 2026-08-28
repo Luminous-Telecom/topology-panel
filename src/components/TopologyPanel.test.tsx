@@ -16,7 +16,6 @@ vi.mock('../hooks/useTopologyQueryIndex', async () => {
   return {
     useTopologyQueryIndex: () => ({
       index: empty,
-      hoverByHost: {},
       lastValues: {},
       interfaceItems: [],
       problems: {},

@@ -57,7 +57,7 @@ function statusSnapshot(
   hostid: string,
   problems: Record<string, { count: number; maxSeverity: number; names?: string[] }> = {}
 ) {
-  return { items: [statusItem(hostid)], hoverByHost: {}, lastValues: {}, problems };
+  return { items: [statusItem(hostid)], lastValues: {}, problems };
 }
 
 async function flush() {
@@ -249,7 +249,6 @@ describe('useZabbixDirectIndex', () => {
     });
     fetchStatus.mockResolvedValueOnce({
       items: [statusItem('1')],
-      hoverByHost: {},
       lastValues: {},
       problems: {},
       problemsUnavailable: true,
@@ -378,7 +377,6 @@ describe('useZabbixDirectIndex', () => {
       });
     fetchStatus.mockResolvedValue({
       items: [statusItem('1', '0')],
-      hoverByHost: {},
       lastValues: {},
       problems: {},
     });
@@ -744,7 +742,6 @@ describe('useZabbixDirectIndex', () => {
       )
       .mockResolvedValue({
         items: [statusItem('1')],
-        hoverByHost: {},
         lastValues: {},
         problems: {},
         problemsUnavailable: true,

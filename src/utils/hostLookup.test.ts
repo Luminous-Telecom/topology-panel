@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { collectHostMetadataForMaps, enrichHostDisplayFromMap, preferHostDisplayInfo, resolveHostZabbixId } from './hostLookup';
+import { collectHostMetadataForMaps, enrichHostDisplayFromMap, enrichHostMetadataFromMaps, preferHostDisplayInfo, resolveHostZabbixId } from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
 import { emptyMap, hostNode } from './testMapFixtures';
 
@@ -134,6 +134,31 @@ describe('collectHostMetadataForMaps', () => {
     expect(Object.keys(subset).sort()).toEqual(['host-a', 'host-b']);
     expect(subset['host-a']?.hostid).toBe('1001');
     expect(subset['host-b']?.hostid).toBe('1002');
+  });
+});
+
+describe('enrichHostMetadataFromMaps', () => {
+  it('indexa alias de host do mapa filho mesmo quando o mapa aberto é a raiz', () => {
+    const root = emptyMap({
+      nodes: [hostNode({ id: 'h1', zabbixHost: 'host-a' })],
+    });
+    const child = emptyMap({
+      nodes: [
+        hostNode({
+          id: 'h2',
+          label: 'host-b',
+          zabbixHost: 'CPE-01',
+          subtitle: '10.0.0.2',
+        }),
+      ],
+    });
+    const metadata = {
+      'host-a': { name: 'host-a', hostid: '1001' },
+      'host-b': { name: 'host-b', ip: '10.0.0.2', hostid: '1002' },
+    };
+    const enriched = enrichHostMetadataFromMaps(metadata, [root, child]);
+    expect(enriched['CPE-01']?.hostid).toBe('1002');
+    expect(enriched['10.0.0.2']?.hostid).toBe('1002');
   });
 });
 
