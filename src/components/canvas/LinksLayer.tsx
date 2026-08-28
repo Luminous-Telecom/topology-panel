@@ -27,7 +27,7 @@ interface Props {
 }
 
 /** Todos os cabos do mapa, já filtrados e ordenados por `useRenderLinks`. */
-export function LinksLayer({
+function LinksLayerComponent({
   renderLinks,
   nodeLayouts,
   options,
@@ -46,6 +46,9 @@ export function LinksLayer({
   beginWaypointDragFromPath,
   removeWaypointNearPointer,
 }: Props) {
+  // Fora do laço: `linkKey` monta e concatena seis campos, e a chave do selecionado não muda de
+  // um cabo para o outro.
+  const selectedKey = selectedLink ? linkKey(selectedLink) : null;
   return (
     <>
       {renderLinks.map(({ link, key, bundleOffset }) => {
@@ -60,7 +63,7 @@ export function LinksLayer({
           options={options}
           editable={editable}
           panTool={panTool}
-          selected={Boolean(selectedLink && linkKey(selectedLink) === lk)}
+          selected={selectedKey === lk}
           hovered={hoveredLinkKey === lk}
           runtimeMetrics={linkMetricsByLink[lk]}
           fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
@@ -93,3 +96,10 @@ export function LinksLayer({
     </>
   );
 }
+
+/**
+ * Memoizado por comparação rasa: durante pan, zoom ou arraste de um nó sem cabo, nenhuma prop muda
+ * e a camada inteira é pulada. Para isso valer, os handlers precisam chegar com identidade fixa
+ * (`useStableCallback` em `TopologyCanvas`) — prop de função recriada no pai anula o memo.
+ */
+export const LinksLayer = React.memo(LinksLayerComponent);

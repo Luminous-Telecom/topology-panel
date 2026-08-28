@@ -4,7 +4,7 @@ import { TopologyMap } from '../types';
 const MAX_HISTORY = 50;
 
 function cloneMap(map: TopologyMap): TopologyMap {
-  return JSON.parse(JSON.stringify(map)) as TopologyMap;
+  return structuredClone(map);
 }
 
 /** Desfazer / refazer alterações do mapa (Ctrl+Z / Ctrl+Shift+Z). */

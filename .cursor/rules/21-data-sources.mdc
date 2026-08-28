@@ -76,10 +76,11 @@ Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
   produção esse `item.get` devolve icmpping de todos os CPE do grupo (megabytes, dezenas de
   segundos) e o mapa ficava em “Consultando status…”. `prefetchZabbixDatasource` começa na hora,
   o `item.get` dos cabos sai pelos itemids do mapa, e assim que o `host.get` volta o índice pinta
-  a estrutura (caixas cinza). A cor chega no `ds.query()` em seguida. A varredura de sinal só
-  começa depois dessa pintura completa. Itemids/chaves de cabo **não** entram na chave do efeito
-  do poll: apagar a interface de um cabo só relê o `item.get` de tráfego. Remontar o poll fazia
-  a pintura rápida sair sem status e o mapa inteiro ficava cinza.
+  a estrutura (caixas cinza). Cor e tráfego entram juntos no snapshot seguinte (`ds.query()` +
+  `item.get` dos cabos). A varredura de sinal só começa depois dessa pintura completa. Itemids/chaves
+  de cabo **não** entram na chave do efeito do poll: apagar a interface de um cabo só relê o
+  `item.get` de tráfego. Remontar o poll fazia a pintura rápida sair sem status e o mapa inteiro
+  ficava cinza.
   O ciclo em regime são **duas** requisições: o `ds.query()` de status e um `item.get` só, com a
   lista inteira de itemids — não fatie por lote, senão o número de requisições cresce junto com o
   ambiente (a resposta depende de quantos itens existem, não do tamanho da lista enviada).

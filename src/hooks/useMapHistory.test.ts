@@ -123,4 +123,18 @@ describe('useMapHistory', () => {
     expect(result.current.canUndo).toBe(false);
     expect(result.current.canRedo).toBe(false);
   });
+
+  it('o histórico guarda um clone: mutar o mapa anterior não altera o undo', () => {
+    const initial = map({ nodes: [{ id: 'a', type: 'host', x: 0, y: 0 }] });
+    const { result, applyMap } = renderMapHistory(initial);
+    act(() => {
+      result.current.commitChange(map({ nodes: [{ id: 'a', type: 'host', x: 1, y: 1 }] }));
+    });
+    initial.nodes[0].x = 50;
+    act(() => {
+      result.current.undo();
+    });
+    const restored = applyMap.mock.calls[applyMap.mock.calls.length - 1][0] as TopologyMap;
+    expect(restored.nodes[0].x).toBe(0);
+  });
 });

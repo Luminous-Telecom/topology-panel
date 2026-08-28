@@ -5,6 +5,12 @@ import { ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
+  readZabbixSnapshot,
+  writeZabbixSnapshot,
+  zabbixSnapshotCacheKey,
+  ZabbixSnapshotPayload,
+} from '../services/zabbixSnapshotCache';
+import {
   fetchZabbixDirectMetadata,
   fetchZabbixResolvedGroups,
   fetchZabbixSignalInventory,
@@ -16,7 +22,7 @@ import {
   ZabbixItemLastValue,
   ZabbixResolvedGroups,
 } from '../utils/zabbixApi';
-import { aliasLastValuesByItemKey } from '../utils/linkMetricsRuntime';
+import { aliasLastValuesByItemKey, coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
 import { fetchZabbixStatusViaQuery, prefetchZabbixDatasource } from '../utils/zabbixDatasourceQuery';
 import { HostHoverSeriesMap } from '../utils/hostTimeSeries';
 import { HostProblemsMap } from '../utils/noc/types';
@@ -30,14 +36,16 @@ import { StatusColorOptions } from '../utils/statusMapping';
  * não sobrepõe buscas rápidas e retoma o ciclo se a busca anterior não voltou (watchdog) —
  * senão o mapa fica preso no primeiro snapshot.
  *
- * A primeira pintura usa o lastvalue do `item.get` (status + tráfego) e não espera o `ds.query()`.
- * Trocar grupos (abrir submapa, editar) não zera o índice: o mapa continua com o último snapshot
- * até o novo chegar. Mudar interface de cabo também não remonta o poll — senão a pintura rápida
- * sai sem status e todos os nós ficam cinza.
+ * A primeira pintura é só estrutura (`host.get`): caixas cinza, sem cor e sem tráfego — a menos
+ * que exista snapshot em cache (abrir o dashboard de novo pinta status e cabos na hora). Cor e
+ * cabos novos entram juntos no `commitSnapshot('full')`. Trocar grupos (abrir submapa, editar)
+ * não zera o índice: o mapa continua com o último snapshot até o novo chegar. Mudar interface de
+ * cabo também não remonta o poll — senão a pintura rápida sai sem status e todos os nós ficam cinza.
  *
  * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status/hover)
  * e Problems (Warning+) no mesmo request — isso preenche sparkline e badge, depois da primeira
- * pintura. O tráfego e o sinal dos cabos lêem o `lastvalue` do `item.get` em paralelo.
+ * pintura. O tráfego e o sinal dos cabos lêem o `lastvalue` do `item.get` em paralelo, mas só
+ * publicam no mesmo snapshot do status.
  * O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana recria o EventBus no load
  * e isso abortava o primeiro `ds.query()` para disparar outro.
  */
@@ -117,6 +125,24 @@ const IDLE_STATE: DirectState = {
   loading: false,
 };
 
+function hydrateFromSnapshot(cached: ZabbixSnapshotPayload): DirectState {
+  return {
+    index: buildZabbixDirectIndex({
+      datasourceUid: cached.datasourceUid,
+      groupNames: cached.groupNames,
+      statusItemKey: cached.statusItemKey,
+      hosts: cached.hosts,
+      statusItems: cached.statusItems,
+    }),
+    hoverByHost: cached.hoverByHost ?? EMPTY_HOVER,
+    lastValues: cached.lastValues,
+    interfaceItems: cached.interfaceItems,
+    problems: cached.problems,
+    ready: true,
+    loading: false,
+  };
+}
+
 export function useZabbixDirectIndex({
   enabled,
   datasourceUid,
@@ -160,6 +186,7 @@ export function useZabbixDirectIndex({
    * sai sem status e o mapa inteiro fica cinza.
    */
   const configKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}\u0000${intervalSec}`;
+  const snapshotKey = zabbixSnapshotCacheKey(datasourceUid ?? '', groups, itemKey);
   const trafficConfigKey = `${trafficIds.join('\u0001')}\u0000${trafficItemKeys.join('\u0001')}\u0000${signalIds.join('\u0001')}\u0000${signalTerms.join('\u0001')}`;
 
   const groupsRef = useRef(groups);
@@ -186,11 +213,13 @@ export function useZabbixDirectIndex({
   const fetchTrafficRef = useRef<() => void>(() => undefined);
   const seenTrafficConfigKey = useRef(trafficConfigKey);
 
-  const [state, setState] = useState<DirectState>(() =>
-    !enabled || !datasourceUid || !groups.length || !itemKey
-      ? IDLE_STATE
-      : { ...IDLE_STATE, loading: true }
-  );
+  const [state, setState] = useState<DirectState>(() => {
+    if (!enabled || !datasourceUid || !groups.length || !itemKey) {
+      return IDLE_STATE;
+    }
+    const cached = readZabbixSnapshot(snapshotKey);
+    return cached ? hydrateFromSnapshot(cached) : { ...IDLE_STATE, loading: true };
+  });
 
   useLayoutEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
@@ -200,18 +229,25 @@ export function useZabbixDirectIndex({
       return;
     }
 
-    setState((prev) => ({
-      index: prev.index,
-      hoverByHost: prev.hoverByHost,
-      lastValues: prev.lastValues,
-      interfaceItems: prev.interfaceItems,
-      problems: prev.problems,
-      ready: prev.ready,
-      loading: true,
-      error: prev.error,
-    }));
-
     prefetchZabbixDatasource(datasourceUid);
+
+    const warmSnapshot = readZabbixSnapshot(snapshotKey);
+    setState((prev) => {
+      if (warmSnapshot) {
+        const hydrated = hydrateFromSnapshot(warmSnapshot);
+        return { ...hydrated, loading: false };
+      }
+      return {
+        index: prev.index,
+        hoverByHost: prev.hoverByHost,
+        lastValues: prev.lastValues,
+        interfaceItems: prev.interfaceItems,
+        problems: prev.problems,
+        ready: prev.ready,
+        loading: true,
+        error: prev.error,
+      };
+    });
 
     let cancelled = false;
     let inFlight = false;
@@ -233,8 +269,15 @@ export function useZabbixDirectIndex({
     let triedTrafficKeys = new Set<string>();
     /** Cancela a busca anterior quando o watchdog ou o timer disparam outro ciclo. */
     let fetchAbort: AbortController | undefined;
+    /** `item.get` isolado (troca de cabo) — abort próprio, senão sobrevive ao unmount. */
+    let trafficAbort: AbortController | undefined;
     /** Últimos problemas publicados nesta configuração — uma falha isolada não apaga o badge. */
-    let latestProblems: HostProblemsMap = EMPTY_PROBLEMS;
+    let latestProblems: HostProblemsMap = warmSnapshot?.problems ?? EMPTY_PROBLEMS;
+    /** Tráfego já pintado — ciclo vazio (timeout/`item.get` falho) não apaga os cabos. */
+    let lastTraffic = {
+      lastValues: warmSnapshot?.lastValues ?? EMPTY_LAST_VALUES,
+      interfaceItems: warmSnapshot?.interfaceItems ?? EMPTY_INTERFACE_ITEMS,
+    };
     /** Itemids de sinal em uso pelos cabos; relidos por id enquanto não há redescoberta. */
     let knownSignalItemIds: string[] = [];
     /** Quando o inventário de sinal foi varrido pela última vez (0 = ainda não). */
@@ -352,10 +395,12 @@ export function useZabbixDirectIndex({
       if (cancelled) {
         return;
       }
+      const merged = coalesceLinkTraffic(traffic, lastTraffic);
+      lastTraffic = merged;
       setState((prev) => ({
         ...prev,
-        lastValues: aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey),
-        interfaceItems: traffic.interfaceItems,
+        lastValues: aliasLastValuesByItemKey(merged.lastValues, itemIdByKey),
+        interfaceItems: merged.interfaceItems,
       }));
     };
 
@@ -363,8 +408,17 @@ export function useZabbixDirectIndex({
       if (cancelled) {
         return;
       }
-      const ac = new AbortController();
-      void fetchTrafficLastValues(metadata, ac.signal).then(publishTraffic).catch(() => undefined);
+      trafficAbort?.abort();
+      trafficAbort = new AbortController();
+      const signal = trafficAbort.signal;
+      void fetchTrafficLastValues(metadata, signal)
+        .then((traffic) => {
+          if (cancelled || signal.aborted) {
+            return;
+          }
+          publishTraffic(traffic);
+        })
+        .catch(() => undefined);
     };
 
     const fetchSnapshot = async () => {
@@ -446,9 +500,17 @@ export function useZabbixDirectIndex({
         lastPublishedGeneration = generation;
         publishedKind = kind;
         consecutiveFailures = 0;
+        const traffic = coalesceLinkTraffic({ lastValues, interfaceItems }, lastTraffic);
+        lastTraffic = traffic;
         setState((prev) => {
           const keepStatus =
             kind === 'fast' && !statusItems.length && prev.ready && prev.index.hosts.length > 0;
+          const hover =
+            kind === 'fast' &&
+            Object.keys(hoverByHost).length === 0 &&
+            Object.keys(prev.hoverByHost).length > 0
+              ? prev.hoverByHost
+              : hoverByHost;
           return {
             index: keepStatus
               ? prev.index
@@ -459,16 +521,9 @@ export function useZabbixDirectIndex({
                   hosts: meta.hosts,
                   statusItems,
                 }),
-            hoverByHost:
-              kind === 'fast' &&
-              Object.keys(hoverByHost).length === 0 &&
-              Object.keys(prev.hoverByHost).length > 0
-                ? prev.hoverByHost
-                : hoverByHost,
-            lastValues:
-              kind === 'fast' && !Object.keys(lastValues).length ? prev.lastValues : lastValues,
-            interfaceItems:
-              kind === 'fast' && interfaceItems.length === 0 ? prev.interfaceItems : interfaceItems,
+            hoverByHost: hover,
+            lastValues: traffic.lastValues,
+            interfaceItems: traffic.interfaceItems,
             problems: latestProblems,
             ready: true,
             loading: false,
@@ -477,6 +532,19 @@ export function useZabbixDirectIndex({
         });
         if (kind === 'full') {
           startSignalDiscovery(meta);
+          if (statusItems.length && meta.hosts.length) {
+            writeZabbixSnapshot(snapshotKey, {
+              datasourceUid,
+              groupNames: groupsRef.current,
+              statusItemKey: itemKey,
+              hosts: meta.hosts,
+              statusItems,
+              lastValues: traffic.lastValues,
+              interfaceItems: traffic.interfaceItems,
+              problems: latestProblems,
+              hoverByHost,
+            });
+          }
         }
         return true;
       };
@@ -486,14 +554,6 @@ export function useZabbixDirectIndex({
          * No recarregar a frio o inventário de hosts leva segundos; o tráfego não precisa.
          */
         const trafficPromise = fetchTrafficLastValues(metadata, abortSignal);
-        void trafficPromise
-          .then((traffic) => {
-            if (cancelled || generation < lastPublishedGeneration) {
-              return;
-            }
-            publishTraffic(traffic);
-          })
-          .catch(() => undefined);
 
         const identityCycle = isIdentityCycle();
         const groups = await fetchZabbixResolvedGroups(
@@ -519,11 +579,12 @@ export function useZabbixDirectIndex({
 
         const firstPaint = lastPublishedGeneration === 0;
         const meta = await ensureMetadata(abortSignal, identityCycle, groups);
-        if (firstPaint) {
+        if (firstPaint && !warmSnapshot) {
           /*
            * Em produção um `item.get` de status por groupid puxa icmpping de todos os hosts do
            * grupo (milhares de CPE) — 5 MB e dezenas de segundos. O mapa pinta a estrutura assim
-           * que o `host.get` volta; a cor chega no `ds.query()` em seguida.
+           * que o `host.get` volta; a cor chega no `ds.query()` em seguida. Com snapshot em
+           * cache essa pintura cinza não roda — o dashboard já abre com status e tráfego.
            */
           commitSnapshot(
             meta,
@@ -538,9 +599,9 @@ export function useZabbixDirectIndex({
         }
 
         /*
-         * Sparkline + problemas só depois da primeira pintura. A frio o `ds.query()` e o `item.get`
-         * dos cabos levam muitos segundos; se a pintura esperar os dois, o recarregar fica parado.
-         * O tráfego já saiu no começo e entra no estado quando voltar.
+         * Sparkline + problemas só depois da primeira pintura. A frio o `ds.query()` leva
+         * segundos; esperar por ele atrasava a estrutura. O `item.get` dos cabos já saiu em
+         * paralelo, mas só entra no estado no `commitSnapshot('full')` — junto com a cor.
          */
         const snapshotPromise = fetchZabbixStatusViaQuery({
           datasourceUid,
@@ -617,6 +678,7 @@ export function useZabbixDirectIndex({
       fetchSnapshotRef.current = () => undefined;
       fetchTrafficRef.current = () => undefined;
       fetchAbort?.abort();
+      trafficAbort?.abort();
       signalAbort?.abort();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);

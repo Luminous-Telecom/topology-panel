@@ -1280,6 +1280,19 @@ export function TopologyCanvas({
   const stableResizePointerDown = useStableCallback(onResizePointerDown);
   const stableResizePointerUp = useStableCallback(onPointerUp);
 
+  /**
+   * Mesma razão para a camada de cabos: `beginPan` depende de `view.x`/`view.y` e trocava de
+   * identidade a cada frame de pan, o que invalidava o `React.memo` de `LinksLayer` justamente
+   * durante o gesto em que nenhum cabo precisa ser redesenhado.
+   */
+  const stableLinkSelect = useStableCallback(onLinkSelect);
+  const stableLinkContextMenu = useStableCallback((e: React.MouseEvent, link: TopologyLink) =>
+    handleContextMenu(e, { link })
+  );
+  const stableBeginPan = useStableCallback(beginPan);
+  const stableBeginWaypointDragFromPath = useStableCallback(beginWaypointDragFromPath);
+  const stableRemoveWaypointNearPointer = useStableCallback(removeWaypointNearPointer);
+
   const canvasClient = mapCanvasClientSize(viewport.w, viewport.h);
 
   return (
@@ -1466,11 +1479,11 @@ export function TopologyCanvas({
             linkMetricsByLink={linkMetricsByLink}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
-            onLinkSelect={onLinkSelect}
-            onLinkContextMenu={(e, link) => handleContextMenu(e, { link })}
-            beginPan={beginPan}
-            beginWaypointDragFromPath={beginWaypointDragFromPath}
-            removeWaypointNearPointer={removeWaypointNearPointer}
+            onLinkSelect={stableLinkSelect}
+            onLinkContextMenu={stableLinkContextMenu}
+            beginPan={stableBeginPan}
+            beginWaypointDragFromPath={stableBeginWaypointDragFromPath}
+            removeWaypointNearPointer={stableRemoveWaypointNearPointer}
           />
 
           <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />

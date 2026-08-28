@@ -19,8 +19,8 @@ import {
 /**
  * Formato do índice de status do mapa (`QueryIndex`).
  *
- * A origem de produção é `buildZabbixDirectIndex`. `buildQueryIndex` ainda parseia `PanelData`
- * (índice vazio e testes). O índice guarda só fatos crus — nada que dependa das opções do painel.
+ * A origem de produção é `buildZabbixDirectIndex`. `buildQueryIndex` monta o índice vazio e
+ * atende os testes que fabricam frames — o painel em runtime não lê `PanelData`.
  * Cores e textos de status são aplicados depois, em `hostDisplayByRefIdFromIndex`.
  */
 

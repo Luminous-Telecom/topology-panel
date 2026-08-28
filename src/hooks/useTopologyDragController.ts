@@ -32,6 +32,7 @@ import {
 import { computeGroupPositions, computeGuideBounds, guideReferenceNodes } from '../utils/dragMove';
 import { nodesInMarquee, normalizeRect } from '../utils/marqueeSelection';
 import { useEdgePanLoop } from './useEdgePanLoop';
+import { useGestureFrame } from './useGestureFrame';
 import { useLinkWaypointGestures } from './useLinkWaypointGestures';
 
 interface UseTopologyDragControllerParams {
@@ -164,6 +165,8 @@ export function useTopologyDragController({
   } | null>(null);
   const applyNodeDragMoveRef = useRef<(clientX: number, clientY: number) => void>(() => {});
   const lastHostTouchTapRef = useRef<NodeTapStamp | null>(null);
+  /** Um commit de preview por frame — compartilhado porque só existe um gesto por vez no canvas. */
+  const gestureFrame = useGestureFrame();
 
   const edgePan = useEdgePanLoop({
     wrapRef,
@@ -195,6 +198,7 @@ export function useTopologyDragController({
       if ((d?.kind === 'pan' || d?.kind === 'node') && d.moved) {
         return;
       }
+      gestureFrame.cancel();
       dragRef.current = null;
       edgePan.stop();
       edgePan.pointerRef.current = null;
@@ -212,7 +216,7 @@ export function useTopologyDragController({
       closeContextMenu();
       onNodeLongPress(clientX, clientY, pending.node);
     },
-    [clearHostHover, closeContextMenu, edgePan, onNodeLongPress, wrapRef]
+    [clearHostHover, closeContextMenu, edgePan, gestureFrame, onNodeLongPress, wrapRef]
   );
 
   const scheduleHostLongPress = useCallback(
@@ -318,6 +322,7 @@ export function useTopologyDragController({
   } = useLinkWaypointGestures({
     wrapRef,
     dragRef,
+    gestureFrame,
     storedMap,
     nodeLayouts,
     editable,
@@ -413,33 +418,36 @@ export function useTopologyDragController({
       }
 
       dragPositionsRef.current = positions;
-      setDragPreview({ positions });
-
-      const draggedIds = new Set(Object.keys(positions));
-      const bounds = computeGuideBounds({
-        mapWidth: map.width,
-        mapHeight: map.height,
-        view: currentView,
-        viewport: viewportRef.current,
-        gridStep,
+      // As guias custam O(nós) e o preview redesenha o canvas: os dois entram no frame, não no
+      // evento. Quem fecha o gesto lê `dragPositionsRef`, que já está atualizado aqui.
+      gestureFrame.schedule(() => {
+        setDragPreview({ positions });
+        const draggedIds = new Set(Object.keys(positions));
+        const bounds = computeGuideBounds({
+          mapWidth: map.width,
+          mapHeight: map.height,
+          view: currentView,
+          viewport: viewportRef.current,
+          gridStep,
+        });
+        const others = guideReferenceNodes(map.nodes, draggedIds, nodeLayouts);
+        setAlignGuides(
+          computeAlignGuides({
+            dragged: {
+              id: primary.id,
+              x: primaryPos.x,
+              y: primaryPos.y,
+              w: primary.startW,
+              h: primary.startH,
+            },
+            others,
+            bounds,
+            threshold: Math.max(6, gridStep * 0.5),
+          })
+        );
       });
-      const others = guideReferenceNodes(map.nodes, draggedIds, nodeLayouts);
-      setAlignGuides(
-        computeAlignGuides({
-          dragged: {
-            id: primary.id,
-            x: primaryPos.x,
-            y: primaryPos.y,
-            w: primary.startW,
-            h: primary.startH,
-          },
-          others,
-          bounds,
-          threshold: Math.max(6, gridStep * 0.5),
-        })
-      );
     },
-    [edgePan, enablePan, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
+    [edgePan, enablePan, gestureFrame, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
   );
 
   applyNodeDragMoveRef.current = applyNodeDragMove;
@@ -506,9 +514,10 @@ export function useTopologyDragController({
       const width = Math.max(gridStep * 2, snapCoord(d.startW + dw));
       const height = Math.max(gridStep * 2, snapCoord(d.startH + dh));
       resizePreviewRef.current = { width, height };
-      setDragPreview({ nodeId: d.node.id, width, height });
+      const nodeId = d.node.id;
+      gestureFrame.schedule(() => setDragPreview({ nodeId, width, height }));
     },
-    [gridStep, setDragPreview, snapCoord, viewRef]
+    [gestureFrame, gridStep, setDragPreview, snapCoord, viewRef]
   );
 
   const onResizePointerDown = useCallback(
@@ -702,7 +711,8 @@ export function useTopologyDragController({
         if (!point) {
           return;
         }
-        setMarqueeRect({ x0: d.mapX0, y0: d.mapY0, x1: point.x, y1: point.y });
+        const rect = { x0: d.mapX0, y0: d.mapY0, x1: point.x, y1: point.y };
+        gestureFrame.schedule(() => setMarqueeRect(rect));
       }
     },
     [
@@ -713,6 +723,7 @@ export function useTopologyDragController({
       clientToMap,
       commitView,
       edgePan,
+      gestureFrame,
       moveLinkWaypoint,
       pinchActiveRef,
       setMarqueeRect,
@@ -724,16 +735,20 @@ export function useTopologyDragController({
   }, [setAlignGuides]);
 
   const clearNodeDragUi = useCallback(() => {
+    gestureFrame.cancel();
     dragPositionsRef.current = null;
     resizePreviewRef.current = null;
     setDragPreview(null);
     clearDragUi();
-  }, [clearDragUi, setDragPreview]);
+  }, [clearDragUi, gestureFrame, setDragPreview]);
 
   /** Encerra o gesto: solta refs, para o pan de borda e aplica o pan pendente. */
   const endGestureBookkeeping = useCallback(
     (drag: DragState, e: React.PointerEvent) => {
       cancelHostLongPress();
+      // Descarta o preview do frame: daqui em diante quem manda é o ref do gesto, e um commit
+      // atrasado repintaria o nó na posição antiga depois do mapa já ter sido gravado.
+      gestureFrame.cancel();
       dragRef.current = null;
       edgePan.pointerRef.current = null;
       edgePan.stop();
@@ -752,7 +767,7 @@ export function useTopologyDragController({
         /* already released */
       }
     },
-    [cancelHostLongPress, commitView, edgePan, wrapRef]
+    [cancelHostLongPress, commitView, edgePan, gestureFrame, wrapRef]
   );
 
   const applyHostTouchTap = useCallback(
@@ -955,6 +970,7 @@ export function useTopologyDragController({
 
   const cancelActiveDrag = useCallback(() => {
     cancelHostLongPress();
+    gestureFrame.cancel();
     dragRef.current = null;
     edgePan.stop();
     edgePan.pointerRef.current = null;
@@ -963,7 +979,7 @@ export function useTopologyDragController({
       panRafRef.current = null;
     }
     panPendingRef.current = null;
-  }, [cancelHostLongPress, edgePan]);
+  }, [cancelHostLongPress, edgePan, gestureFrame]);
 
   return {
     dragRef,

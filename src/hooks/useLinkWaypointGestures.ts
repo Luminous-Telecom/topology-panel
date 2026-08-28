@@ -1,4 +1,4 @@
-import React, { Dispatch, MutableRefObject, RefObject, SetStateAction, useCallback } from 'react';
+import React, { Dispatch, MutableRefObject, RefObject, SetStateAction, useCallback, useMemo } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { DragPreview, DragState } from '../utils/dragState';
 import {
@@ -11,10 +11,13 @@ import {
 } from '../utils/linkGeometry';
 import { linkKey, updateLinkProps } from '../utils/mapLinkEdits';
 import { NodeLayout } from '../utils/nodeLayout';
+import { GestureFrame } from './useGestureFrame';
 
 export interface LinkWaypointGesturesParams {
   wrapRef: RefObject<HTMLDivElement>;
   dragRef: MutableRefObject<DragState | null>;
+  /** Coalescedor do canvas — o mesmo do arraste de nó, porque só há um gesto por vez. */
+  gestureFrame: GestureFrame;
   storedMap: TopologyMap;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   editable: boolean;
@@ -60,6 +63,7 @@ const WAYPOINT_DRAG_THRESHOLD_PX = 10;
 export function useLinkWaypointGestures({
   wrapRef,
   dragRef,
+  gestureFrame,
   storedMap,
   nodeLayouts,
   editable,
@@ -73,16 +77,30 @@ export function useLinkWaypointGestures({
   persist,
   clientToMap,
 }: LinkWaypointGesturesParams): LinkWaypointGesturesApi {
+  /**
+   * Rota gravada por chave de cabo.
+   *
+   * `LinksLayer` resolve os waypoints de cada cabo dentro do `.map()`: com `find()` aqui, uma
+   * passagem custava O(cabos²) — e cada comparação ainda montava a chave string dos dois lados.
+   */
+  const storedWaypointsByKey = useMemo(() => {
+    const byKey = new Map<string, LinkPoint[] | undefined>();
+    for (const stored of storedMap.links) {
+      byKey.set(linkKey(stored), stored.waypoints);
+    }
+    return byKey;
+  }, [storedMap.links]);
+
   const resolveLinkWaypoints = useCallback(
     (link: TopologyLink): LinkPoint[] => {
+      const key = linkKey(link);
       const preview = dragPreview?.linkWaypoints;
-      if (preview && preview.key === linkKey(link)) {
+      if (preview && preview.key === key) {
         return preview.waypoints;
       }
-      const stored = storedMap.links.find((l) => linkKey(l) === linkKey(link));
-      return stored?.waypoints ?? link.waypoints ?? [];
+      return storedWaypointsByKey.get(key) ?? link.waypoints ?? [];
     },
-    [dragPreview?.linkWaypoints, storedMap.links]
+    [dragPreview?.linkWaypoints, storedWaypointsByKey]
   );
 
   const beginLinkWaypointDrag = useCallback(
@@ -180,9 +198,11 @@ export function useLinkWaypointGestures({
         i === d.waypointIndex ? { x: snapCoord(point.x), y: snapCoord(point.y) } : wp
       );
       d.waypoints = waypoints;
-      setDragPreview({ linkWaypoints: { key: linkKey(d.link), waypoints } });
+      // `d.waypoints` acima é o que `commitLinkWaypoint` grava; o preview pode esperar o frame.
+      const key = linkKey(d.link);
+      gestureFrame.schedule(() => setDragPreview({ linkWaypoints: { key, waypoints } }));
     },
-    [clientToMap, setDragPreview, snapCoord]
+    [clientToMap, gestureFrame, setDragPreview, snapCoord]
   );
 
   /** Arraste começando em cima do cabo (não num waypoint existente): converte o ponto e delega. */

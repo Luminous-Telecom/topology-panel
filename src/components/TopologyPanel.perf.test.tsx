@@ -100,13 +100,7 @@ vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const empty = buildQueryIndex(undefined);
   const emptyProblems = {};
   return {
-    useTopologyQueryIndex: (opts: { panelData?: import('@grafana/data').PanelData }) => {
-      if (opts.panelData?.series?.length) {
-        const fromData = buildQueryIndex(opts.panelData);
-        if (fromData.hosts.length) {
-          return { index: fromData, problems: emptyProblems, lastValues: {}, interfaceItems: [], ready: true, loading: false, error: undefined };
-        }
-      }
+    useTopologyQueryIndex: () => {
       return {
         index: queryIndexState.index ?? empty,
         problems: emptyProblems,
@@ -384,6 +378,7 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     const { rerender } = render(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
 
     resetCounts();
+    queryIndexState.index = buildDirectIndex(HOST_COUNT, new Set([7]));
     rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT, new Set([7])))} />);
 
     // eslint-disable-next-line no-console

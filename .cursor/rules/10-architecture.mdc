@@ -26,7 +26,7 @@ Qualquer arquivo em `src/`.
 | Toolbar, busca, legenda, toast e badge do canvas | `components/canvas/*` (um arquivo por peça) |
 | Modal de propriedades do nó | `components/NodeEditModal.tsx` + campos por tipo em `components/nodeEdit/*` |
 | Opções do painel e wiring do Grafana | `components/TopologyPanel.tsx`, `module.ts` |
-| Editor de JSON, nós e links | `editor/TopologyEditor.tsx` + seções em `editor/sections/*` |
+| Editor de JSON, nós e links | seções em `editor/sections/*`, registradas via `editor/lazyPanelEditors.tsx` |
 | Leitura única do índice de status (`QueryIndex`) | `services/queryIndex.ts` + `services/zabbixDirectIndex.ts` |
 | Mutações do `TopologyMap` | `utils/mapEdits.ts` (nós e travas), `utils/mapLinkEdits.ts` (cabos), `utils/mapBulkEdits.ts` (lote) |
 | Lógica pura, sem estado | `utils/*` (um módulo por tema) |

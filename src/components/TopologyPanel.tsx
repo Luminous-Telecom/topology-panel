@@ -208,7 +208,6 @@ export function TopologyPanel({
 
   /** Status, hover, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
-    panelData: data,
     enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: statusGroupNames,

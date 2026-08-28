@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aliasLastValuesByItemKey,
   buildLinkRuntimeMetricsMap,
+  coalesceLinkTraffic,
   collectLinkMetricKeys,
   collectLinkSignalHostIds,
   collectMapsLinks,
@@ -426,5 +427,29 @@ describe('aliasLastValuesByItemKey', () => {
       new Map([['vendor.metric.rx[10]', '77']])
     );
     expect(aliased['vendor.metric.rx[10]']?.lastvalue).toBe('9');
+  });
+});
+
+describe('coalesceLinkTraffic', () => {
+  it('mantém o lastvalue anterior quando o ciclo volta vazio', () => {
+    const previous = {
+      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+      interfaceItems: [{ itemid: '10', hostid: '1', key_: 'vendor.metric.rx[10]', lastvalue: '1' }],
+    };
+    const next = coalesceLinkTraffic({ lastValues: {}, interfaceItems: [] }, previous);
+    expect(next.lastValues['10']?.lastvalue).toBe('1');
+    expect(next.interfaceItems).toHaveLength(1);
+  });
+
+  it('usa o valor novo quando o ciclo devolve tráfego', () => {
+    const previous = {
+      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+      interfaceItems: [],
+    };
+    const next = coalesceLinkTraffic(
+      { lastValues: { '10': { itemid: '10', lastvalue: '9' } }, interfaceItems: [] },
+      previous
+    );
+    expect(next.lastValues['10']?.lastvalue).toBe('9');
   });
 });

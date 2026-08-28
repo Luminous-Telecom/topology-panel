@@ -523,3 +523,23 @@ export function isLinkVisuallyDown(
 ): boolean {
   return metrics?.status === 'down' || fromHostOffline || toHostOffline;
 }
+
+/**
+ * Um ciclo sem lastvalue (timeout, abort recuperado, lista de itemids ainda vazia) não pode
+ * apagar o tráfego que já está no mapa — senão os cabos param e só voltam no ciclo seguinte.
+ */
+export function coalesceLinkTraffic(
+  incoming: { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] },
+  previous: { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] }
+): { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] } {
+  const keepValues =
+    Object.keys(incoming.lastValues).length === 0 && Object.keys(previous.lastValues).length > 0;
+  const keepIfaces = incoming.interfaceItems.length === 0 && previous.interfaceItems.length > 0;
+  if (!keepValues && !keepIfaces) {
+    return incoming;
+  }
+  return {
+    lastValues: keepValues ? previous.lastValues : incoming.lastValues,
+    interfaceItems: keepIfaces ? previous.interfaceItems : incoming.interfaceItems,
+  };
+}
