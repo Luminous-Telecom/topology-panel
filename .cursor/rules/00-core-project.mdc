@@ -30,6 +30,10 @@ de topologia de rede com status vindo do Zabbix.
 - Inventário do ambiente (key Zabbix de RX/TX/status/capacidade, nome de host, interface,
   equipamento, hostid, IP) **não entra no código**, rule, teste nem commit — só opções do painel e
   API. Ver `20-security.mdc`.
+- Atualização automática do Zabbix é **sempre um único POST** (`item.get` pelos itemids, em
+  `useZabbixDirectIndex`). O grafana-zabbix aceita um método por requisição: não acrescente
+  `problem.get`, `trigger.get`, `host.get` nem segundo `item.get` no intervalo. Descoberta (primeira
+  carga) e clique do usuário (modal, editor) são as únicas outras chamadas — ver `21-data-sources.mdc`.
 - Faça o **menor diff possível**: não refatore, renomeie nem reformate fora do escopo pedido.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).

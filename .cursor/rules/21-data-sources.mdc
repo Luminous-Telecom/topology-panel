@@ -30,13 +30,10 @@ submapa. Atalho interno herda os grupos do nó dono; o rótulo curto sozinho nã
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
 - Cor e rótulo saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`).
 - O hover lê o mesmo lastvalue via `hostDisplay` — proibido JSON-RPC ao passar o mouse.
-- Problemas Warning+ (`fetchZabbixProblems` / `problem.get` pelos groupids + `trigger.get` só
-  para casar objectid→hostid) pintam `colorAlert` e entram na lista de alertas. Só na descoberta
-  — o intervalo é um `item.get` e o grafana-zabbix não aceita batch. Só problemas atuais não
-  suprimidos (`recent: false`, `suppressed: false`) de trigger **habilitado** (`trigger.get`
-  `filter.status: 0`) — o mesmo recorte da tela Problems do Zabbix. Casa o nó pelo `hostid`
-  resolvido, não por alias. `problem.get` **não** aceita `selectHosts` — o proxy do grafana-zabbix
-  vira HTTP 500. Offline do índice vence. Falha do `problem.get` mantém o resumo anterior.
+- Problemas Warning+ (`fetchZabbixProblems`) pintam `colorAlert` e entram na lista de alertas.
+  **Só na descoberta** — o intervalo não relê. `problem.get` pelos groupids + `trigger.get` para
+  casar objectid→hostid (`filter.status: 0`, `recent: false`, `suppressed: false`). `problem.get`
+  **não** aceita `selectHosts` (HTTP 500). Casa o nó pelo `hostid` resolvido. Falha mantém o resumo.
 - O painel declara `skipDataQuery` em `plugin.json`: não há aba Query nem `DataSourceApi.query()`.
 
 `utils/zabbixApi/` e `utils/zabbixApi.ts` (poll + catalog + problems, **sem** ping) são o **único**
@@ -59,8 +56,10 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
   por itemid depois do `host.get`. Com chave de cabo ainda sem id: `item.get` por key no mesmo
   ciclo, sem misturar `itemids` e `key_` no mesmo POST. Itemids de cabo **não** entram na chave
   do efeito.
-  Ciclo em regime: **um** POST (`item.get` pelos itemids). Sem `host.get`, `problem.get`,
-  `trigger.get` nem inventário de sinal no intervalo.
+  Ciclo em regime: **exatamente um** `zabbixCall` — `item.get` pelos itemids. Sem segundo POST
+  (`host.get`, `problem.get`, `trigger.get`, `item.get` por key, inventário de sinal, `Promise.all`
+  de métodos). O grafana-zabbix não faz batch: dois métodos = dois POSTs. Recover de alerta não
+  justifica POST extra no intervalo.
   `item.get` de status por hostids só na descoberta (primeira carga sem catálogo, host novo).
   Relógio do poll em `utils/pollingGate.ts` (sobrevive à remontagem do painel). Sem fetch extra
   ao trocar cabo. Drawer lê `runtimeMetrics` do mesmo poll.
@@ -69,7 +68,7 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
   índice de hosts; lastvalue de status novo reconstrói o índice.
 - Ampliar a superfície (`trend.get`, `history.get`, metadata nova) exige **aprovação explícita**.
   `problem.get` e o `trigger.get` de join (só em `zabbixApi/problems.ts`, `selectHosts: hostid`)
-  já estão autorizados.
+  estão autorizados **só na descoberta** — nunca no intervalo.
 - Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`. Sem lista
   fixa de key no código.
 
@@ -86,14 +85,15 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
 ## Faça / Não faça
 
 ```typescript
-// ❌ BAD — helper novo lendo PanelData: o mapa não usa a aba Query
-function hostsNoMapa(data: PanelData) {
-  return data.series.flatMap((frame) => frame.fields.map((f) => f.labels?.host));
+// ❌ BAD — segundo POST no intervalo (grafana-zabbix = um método por request)
+if (metadata && (await publishByItemIds(metadata, pending))) {
+  await loadProblems(metadata, abortSignal); // problem.get + trigger.get
+  return;
 }
 
-// ✅ GOOD — recebe o índice montado pelo snapshot Zabbix
-function hostsNoMapa(index: QueryIndex) {
-  return index.hosts;
+// ✅ GOOD — regime é um item.get; problemas ficam na descoberta
+if (metadata && (await publishByItemIds(metadata, pending))) {
+  return;
 }
 ```
 
