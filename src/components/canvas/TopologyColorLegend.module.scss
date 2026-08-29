@@ -1,0 +1,83 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.legend {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: $z-modal;
+  pointer-events: none;
+  min-width: 148px;
+  max-width: calc(100% - #{$gap * 2});
+
+  @include medium {
+    top: auto;
+    bottom: $gap;
+    right: $gap;
+    transform: none;
+    min-width: 0;
+    max-width: min(220px, calc(100% - #{$gap * 2}));
+  }
+
+  @include compact {
+    top: 96px;
+    bottom: auto;
+    right: $gap;
+    max-width: calc(100% - #{$gap * 2});
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  @include compact {
+    gap: 5px;
+    padding: $space-2 10px;
+  }
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: $font-sm;
+  color: #fff;
+  line-height: 1.2;
+  white-space: nowrap;
+
+  @include compact {
+    font-size: $font-xs;
+    gap: $space-2;
+    white-space: normal;
+  }
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-sizing: border-box;
+}
+
+.countdown {
+  margin-top: $space-1;
+  padding-top: $space-2;
+  border-top: $overlay-divider;
+  white-space: nowrap;
+
+  @include compact {
+    white-space: normal;
+    font-size: 10px;
+  }
+}
+
+.countdownSolo {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}

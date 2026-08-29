@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
 import { StandardEditorProps } from '@grafana/data';
-import { css } from '@emotion/css';
 import { Button, IconButton, Input, Select, Stack, useTheme2 } from '@grafana/ui';
-import { TopologyHostStatus, TopologyPanelOptions, TopologyStatusValueMapping } from '../types';
+import { TopologyHostStatus, TopologyPanelOptions, TopologyStatusValueMapping } from '../../types';
+import styles from './StatusValueMappingsEditor.module.scss';
 
 type Props = StandardEditorProps<TopologyStatusValueMapping[], TopologyPanelOptions>;
 
@@ -70,42 +70,25 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
     [mappings, onChange]
   );
 
-  const rowStyle = css`
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: end;
-    padding: 8px 0;
-    border-bottom: 1px solid ${theme.colors.border.weak};
-  `;
-
-  const headerStyle = css`
-    font-size: 11px;
-    font-weight: 600;
-    color: ${theme.colors.text.secondary};
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  `;
-
   return (
     <Stack direction="column" gap={1}>
-      <div style={{ fontSize: 12, color: theme.colors.text.secondary, lineHeight: 1.4 }}>
+      <div className={styles.hint} style={{ color: theme.colors.text.secondary }}>
         Valores da Query Zabbix: 0 = offline; acima de 0 = online; alerta via regra própria.
         A primeira regra que bater define a cor — offline (valor exato 0) deve vir antes do intervalo online.
       </div>
 
       {mappings.length > 0 ? (
         <div>
-          <div className={rowStyle}>
-            <span className={headerStyle}>Valor / De</span>
-            <span className={headerStyle}>Até</span>
-            <span className={headerStyle}>Status</span>
+          <div className={styles.row} style={{ borderBottom: `1px solid ${theme.colors.border.weak}` }}>
+            <span className={styles.header} style={{ color: theme.colors.text.secondary }}>Valor / De</span>
+            <span className={styles.header} style={{ color: theme.colors.text.secondary }}>Até</span>
+            <span className={styles.header} style={{ color: theme.colors.text.secondary }}>Status</span>
             <span />
           </div>
           {mappings.map((entry, index) => {
             const mode = mappingMode(entry);
             return (
-              <div key={index} className={rowStyle}>
+              <div key={index} className={styles.row} style={{ borderBottom: `1px solid ${theme.colors.border.weak}` }}>
                 {mode === 'value' ? (
                   <Input
                     type="number"
@@ -135,7 +118,7 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
                   />
                 )}
                 {mode === 'value' ? (
-                  <span style={{ fontSize: 12, color: theme.colors.text.secondary, padding: '8px 0' }}>
+                  <span className={styles.hint} style={{ color: theme.colors.text.secondary, padding: '8px 0' }}>
                     —
                   </span>
                 ) : (
@@ -175,7 +158,7 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
           })}
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: theme.colors.text.secondary }}>
+        <div className={styles.hint} style={{ color: theme.colors.text.secondary }}>
           Nenhuma regra — hosts sem mapeamento ficam na cor &quot;Sem dados&quot;.
         </div>
       )}

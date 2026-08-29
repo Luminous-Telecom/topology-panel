@@ -1,7 +1,7 @@
 import React, { useId, useMemo, useState } from 'react';
 import { Button, Select, Stack } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
-import { modalHintStyle } from './overlayChrome';
+import { modalHintStyle } from './chrome/overlayChrome';
 import { TopologyBlueprint } from '../types';
 import { resolvePanelTemplates } from '../utils/topologyTemplates/resolveTemplates';
 import { TopologyPanelOptions } from '../types';

@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { StandardEditorProps } from '@grafana/data';
-import { css } from '@emotion/css';
 import { Checkbox, Icon, Stack, useTheme2 } from '@grafana/ui';
-import { TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
-import { resolvePanelQueryRefInfos } from '../services/zabbixDirectIndex';
-import { collectAllSubmapGroups, collectSubmapQueryRefIds } from '../utils/queryHosts';
-import { queryRefBadgeLabel, queryRefRowTitle } from '../utils/queryRefLabel';
+import { TopologyPanelOptions, TopologyQueryRefInfo } from '../../types';
+import { resolvePanelQueryRefInfos } from '../../services/zabbixDirectIndex';
+import { collectAllSubmapGroups, collectSubmapQueryRefIds } from '../../utils/queryHosts';
+import { queryRefBadgeLabel, queryRefRowTitle } from '../../utils/queryRefLabel';
+import styles from './QueryDisplayRefIdsEditor.module.scss';
 
 type Props = StandardEditorProps<string[] | undefined, TopologyPanelOptions>;
 
@@ -40,45 +40,6 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
     [context.options.map]
   );
 
-  const rowStyle = css`
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    padding: 6px 0;
-  `;
-
-  const badgeStyle = css`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 36px;
-    height: 28px;
-    padding: 0 4px;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 12px;
-    line-height: 1;
-    color: ${theme.colors.text.primary};
-    background: ${theme.colors.background.secondary};
-    border: 1px solid ${theme.colors.border.weak};
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `;
-
-  const lockedStyle = css`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    color: ${theme.colors.text.secondary};
-    pointer-events: none;
-  `;
-
   const commitSelection = (next: Set<string>) => {
     // Nunca persistir refIds reservados a submapa (evita toggle “fantasma”).
     for (const reserved of submapRefIds) {
@@ -89,11 +50,7 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   };
 
   if (!queryRefs.length) {
-    return (
-      <span style={{ fontSize: 12, opacity: 0.75 }}>
-        Configure o grupo Zabbix em um submapa.
-      </span>
-    );
+    return <span className={styles.hint}>Configure o grupo Zabbix em um submapa.</span>;
   }
 
   return (
@@ -103,24 +60,23 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
         const checked = !reservedForSubmap && selected.has(refId);
 
         return (
-          <div key={refId} className={rowStyle}>
-            <span className={badgeStyle} title={refId}>
+          <div key={refId} className={styles.row}>
+            <span
+              className={styles.badge}
+              title={refId}
+              style={{
+                color: theme.colors.text.primary,
+                background: theme.colors.background.secondary,
+                border: `1px solid ${theme.colors.border.weak}`,
+              }}
+            >
               {queryRefBadgeLabel(refId)}
             </span>
-            <div style={{ minWidth: 0, overflow: 'hidden' }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={queryRefRowTitle(refId, hint)}
-              >
+            <div className={styles.clip}>
+              <div className={styles.title} title={queryRefRowTitle(refId, hint)}>
                 {queryRefRowTitle(refId, hint)}
               </div>
-              <div style={{ fontSize: 11, color: theme.colors.text.secondary, lineHeight: 1.35 }}>
+              <div className={styles.subtitle} style={{ color: theme.colors.text.secondary }}>
                 {reservedForSubmap
                   ? 'Reservada a submapa — não importa hosts no mapa pai'
                   : hint || 'Mostrar hosts deste grupo no mapa'}
@@ -128,7 +84,8 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
             </div>
             {reservedForSubmap ? (
               <span
-                className={lockedStyle}
+                className={styles.locked}
+                style={{ color: theme.colors.text.secondary }}
                 title="Reservada a submapa"
                 aria-label={`Grupo ${refId} reservado a submapa`}
               >

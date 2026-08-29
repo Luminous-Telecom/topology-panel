@@ -1,14 +1,14 @@
 import React, { useCallback } from 'react';
 import { StandardEditorProps } from '@grafana/data';
-import { css } from '@emotion/css';
 import { ColorPickerInput, Stack, useTheme2 } from '@grafana/ui';
-import { TopologyHostIcon, TopologyPanelOptions } from '../types';
+import { TopologyHostIcon, TopologyPanelOptions } from '../../types';
 import {
   HOST_ICON_LABELS,
   HOST_ICON_ORDER,
   HostIconImage,
   hostIconRenderDimensions,
-} from '../utils/hostIcons';
+} from '../../utils/hostIcons';
+import styles from './HostTypeColorsEditor.module.scss';
 
 type HostTypeColors = NonNullable<TopologyPanelOptions['hostTypeColors']>;
 
@@ -33,38 +33,23 @@ export function HostTypeColorsEditor({ value, onChange }: Props) {
     [colors, onChange]
   );
 
-  const rowStyle = css`
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(120px, 1.2fr);
-    gap: 10px;
-    align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid ${theme.colors.border.weak};
-  `;
-
-  const labelStyle = css`
-    font-size: ${theme.typography.bodySmall.fontSize};
-    color: ${theme.colors.text.primary};
-  `;
-
-  const hintStyle = css`
-    font-size: ${theme.typography.bodySmall.fontSize};
-    color: ${theme.colors.text.secondary};
-    margin-bottom: 8px;
-  `;
-
   return (
     <Stack direction="column" gap={1}>
-      <div className={hintStyle}>
+      <div className={styles.hint} style={{ color: theme.colors.text.secondary, fontSize: theme.typography.bodySmall.fontSize }}>
         Vale só para hosts online. Offline, alerta e sem dado usam as cores globais do painel.
         Vazio = cor online do painel.
       </div>
       {HOST_ICON_ORDER.map((icon) => {
         const { h } = hostIconRenderDimensions(icon, 22);
         return (
-          <div key={icon} className={rowStyle}>
+          <div key={icon} className={styles.row} style={{ borderBottom: `1px solid ${theme.colors.border.weak}` }}>
             <HostIconImage icon={icon} size={h} />
-            <span className={labelStyle}>{HOST_ICON_LABELS[icon]}</span>
+            <span
+              className={styles.label}
+              style={{ fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.primary }}
+            >
+              {HOST_ICON_LABELS[icon]}
+            </span>
             <ColorPickerInput
               value={colors[icon] ?? ''}
               onChange={(c) => setColor(icon, c)}

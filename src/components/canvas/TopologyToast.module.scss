@@ -1,0 +1,16 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.toast {
+  @include overlay-card;
+  position: fixed;
+  bottom: $space-5;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: $z-toast;
+  padding: $space-2 14px;
+  font-size: $font-sm;
+  pointer-events: none;
+  max-width: 90%;
+  text-align: center;
+}

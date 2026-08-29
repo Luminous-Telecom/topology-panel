@@ -1,0 +1,60 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.hint {
+  font-size: $font-sm;
+  opacity: 0.75;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 36px;
+  height: 28px;
+  padding: 0 $space-1;
+  border-radius: $space-1;
+  font-weight: 700;
+  font-size: $font-sm;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  font-size: $font-xs;
+  line-height: 1.35;
+}
+
+.locked {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+
+.clip {
+  min-width: 0;
+  overflow: hidden;
+}

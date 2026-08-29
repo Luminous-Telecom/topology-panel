@@ -1,0 +1,73 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.grafanaModal.grafanaModal {
+  width: 500px;
+  max-width: min(500px, 94vw);
+  border-radius: $radius;
+  overflow: hidden;
+}
+
+.grafanaModalContent.grafanaModalContent {
+  padding: $space-3 $space-4 $space-2;
+}
+
+.modalHint {
+  @include type-hint;
+  margin: 0 0 10px;
+}
+
+.modalError {
+  color: var(--error-text);
+  margin-bottom: $space-2;
+  font-size: $font-sm;
+}
+
+.card {
+  @include overlay-card;
+}
+
+.cardBar {
+  @include overlay-bar;
+}
+
+.cardHeader {
+  @include overlay-header;
+}
+
+.cardBody {
+  @include overlay-body;
+}
+
+.cardFooter {
+  @include overlay-footer;
+}
+
+.muted {
+  @include type-xs-muted;
+}
+
+.stackedItem {
+  @include overlay-stacked-item;
+}
+
+.metricRow {
+  @include overlay-metric-row;
+}
+
+.metricLabel {
+  opacity: 0.7;
+}
+
+.metricValue {
+  font-weight: 500;
+  text-align: right;
+}
+
+.list {
+  @include overlay-list;
+}
+
+.listButton {
+  @include overlay-list-button;
+}

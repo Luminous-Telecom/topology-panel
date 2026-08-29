@@ -1,12 +1,11 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { css } from '@emotion/css';
 import {
   alertListHoverText,
   HostAlertListEntry,
   visibleHostProblemNames,
 } from '../../utils/noc/topologyFilters';
-import { CANVAS_EDGE_GAP, minimapBottomOffset, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
+import { minimapBottomOffset } from '../../utils/canvasOverlayLayout';
 import {
   overlayPanelCompactMaxHeight,
   overlayPanelCompactWidth,
@@ -19,7 +18,7 @@ import {
   overlayListStyle,
   overlayMutedStyle,
   overlayStackedItemStyle,
-} from '../overlayChrome';
+} from '../chrome/overlayChrome';
 import {
   fitOverlayBesideAnchor,
   overlayBoxFromRect,
@@ -28,53 +27,7 @@ import {
   OverlayBox,
   overlayPortalParent,
 } from '../../utils/overlayPortal';
-
-const panelStyle = (bottomOffset: number) => css`
-  position: absolute;
-  bottom: ${bottomOffset}px;
-  left: ${CANVAS_EDGE_GAP}px;
-  z-index: 4;
-  max-height: 200px;
-  display: flex;
-  flex-direction: column;
-  pointer-events: auto;
-`;
-
-const itemButtonStyle = css`
-  font-size: 11px;
-  line-height: 1.15;
-  padding: 5px 10px;
-  gap: 6px;
-
-  ${MEDIA_COMPACT} {
-    padding: 6px 10px;
-    min-height: 28px;
-  }
-`;
-
-const dotStyle = (color: string) => css`
-  flex: 0 0 7px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: ${color};
-`;
-
-const hostNameStyle = css`
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const statusStyle = css`
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-`;
+import styles from './TopologyHostAlertList.module.scss';
 
 function reasonLabel(entry: HostAlertListEntry): string {
   switch (entry.reason) {
@@ -105,34 +58,11 @@ function alertHoverHeading(entry: HostAlertListEntry): string {
 
 const TOOLTIP_ESTIMATE = { width: 320, height: 72 };
 
-const tooltipStyle = css`
-  position: absolute;
-  z-index: 10000;
-  max-width: 320px;
-  pointer-events: none;
-  font-size: 12px;
-`;
-
-const tooltipProblemStyle = (color: string) => css`
-  margin-top: 2px;
-  color: ${color};
-  font-size: 11px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-`;
-
 interface AlertHoverTip {
   entry: HostAlertListEntry;
   anchor: OverlayBox;
   clip: OverlayBox;
 }
-
-const mapLabelStyle = css`
-  flex: 0 0 auto;
-  font-size: 10px;
-  opacity: 0.65;
-  white-space: nowrap;
-`;
 
 interface Props {
   entries: HostAlertListEntry[];
@@ -194,7 +124,8 @@ function TopologyHostAlertListComponent({
     <>
     <div
       ref={listRef}
-      className={`${overlayCardStyle} ${panelStyle(bottomOffset)} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
+      className={`${overlayCardStyle} ${styles.panel} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
+      style={{ ['--overlay-bottom' as string]: `${bottomOffset}px` }}
       data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
@@ -209,7 +140,7 @@ function TopologyHostAlertListComponent({
               <li key={entryKey}>
                 <button
                   type="button"
-                  className={`${overlayListButtonStyle} ${itemButtonStyle}`}
+                  className={`${overlayListButtonStyle} ${styles.itemButton}`}
                   aria-label={alertRowAriaLabel(entry)}
                   onMouseEnter={(e) => {
                     const anchor = overlayBoxFromRect(e.currentTarget.getBoundingClientRect());
@@ -223,12 +154,12 @@ function TopologyHostAlertListComponent({
                     onFocusHost(entry);
                   }}
                 >
-                  <span className={dotStyle(statusColor)} aria-hidden="true" />
-                  <span className={hostNameStyle}>{entry.label}</span>
+                  <span className={styles.dot} style={{ background: statusColor }} aria-hidden="true" />
+                  <span className={styles.hostName}>{entry.label}</span>
                   {entry.mapLabel ? (
-                    <span className={mapLabelStyle}>{entry.mapLabel}</span>
+                    <span className={styles.mapLabel}>{entry.mapLabel}</span>
                   ) : null}
-                  <span className={statusStyle} style={{ color: statusColor }}>
+                  <span className={styles.status} style={{ color: statusColor }}>
                     {reasonLabel(entry)}
                   </span>
                 </button>
@@ -241,7 +172,7 @@ function TopologyHostAlertListComponent({
       ? createPortal(
           <div
             ref={tooltipRef}
-            className={`${overlayCardStyle} ${overlayCardBodyStyle} ${tooltipStyle}`}
+            className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.tooltip}`}
             style={{
               left: tooltipOrigin.left,
               top: tooltipOrigin.top,
@@ -255,7 +186,8 @@ function TopologyHostAlertListComponent({
                 {hoverProblems.visible.map((name, idx) => (
                   <div
                     key={`${idx}:${name}`}
-                    className={`${tooltipProblemStyle(colorAlert)} ${overlayStackedItemStyle}`}
+                    className={`${styles.tooltipProblem} ${overlayStackedItemStyle}`}
+                    style={{ color: colorAlert }}
                   >
                     {name}
                   </div>

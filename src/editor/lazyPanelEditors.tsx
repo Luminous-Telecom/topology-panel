@@ -27,15 +27,15 @@ const LazyTopologyLinksEditor = lazy(() =>
   import('./TopologyLinksEditor').then((m) => ({ default: m.TopologyLinksEditor }))
 );
 const LazyQueryDisplayRefIdsEditor = lazy(() =>
-  import('../components/QueryDisplayRefIdsEditor').then((m) => ({
+  import('../components/editors/QueryDisplayRefIdsEditor').then((m) => ({
     default: m.QueryDisplayRefIdsEditor,
   }))
 );
 const LazyHostTypeColorsEditor = lazy(() =>
-  import('../components/HostTypeColorsEditor').then((m) => ({ default: m.HostTypeColorsEditor }))
+  import('../components/editors/HostTypeColorsEditor').then((m) => ({ default: m.HostTypeColorsEditor }))
 );
 const LazyStatusValueMappingsEditor = lazy(() =>
-  import('../components/StatusValueMappingsEditor').then((m) => ({
+  import('../components/editors/StatusValueMappingsEditor').then((m) => ({
     default: m.StatusValueMappingsEditor,
   }))
 );

@@ -1,25 +1,17 @@
 import React, { useId } from 'react';
-import { css } from '@emotion/css';
 import { Button, Field, Input } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
-import { modalHintStyle } from './overlayChrome';
+import { modalHintStyle } from './chrome/overlayChrome';
 import { HostMetadataMap, TopologyNode } from '../types';
 import { resolveHostIp } from '../utils/hostLookup';
 import { resolveHostDescription, resolveHostVisibleName } from '../utils/mapSync';
+import styles from './HostInfoModal.module.scss';
 
 interface Props {
   node: TopologyNode;
   hostMetadata?: HostMetadataMap;
   onClose: () => void;
 }
-
-/** Cursor em I (texto) no campo só leitura — o Grafana usa default no `readOnly`. */
-const readOnlyInputStyle = css`
-  &&,
-  && input {
-    cursor: text;
-  }
-`;
 
 function ReadOnlyField({
   id,
@@ -36,7 +28,7 @@ function ReadOnlyField({
         id={id}
         value={value}
         readOnly
-        className={readOnlyInputStyle}
+        className={styles.input}
         onChange={() => undefined}
       />
     </Field>

@@ -1,0 +1,8 @@
+@use 'tokens' as *;
+
+[data-topology-canvas] {
+  --topology-gap: #{$gap};
+  --topology-radius: #{$radius};
+  --topology-scrollbar: #{$scrollbar};
+  --topology-touch-min: #{$touch-min};
+}

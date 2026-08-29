@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Button, Field, Select } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
-import { modalErrorStyle } from './overlayChrome';
+import { modalErrorStyle } from './chrome/overlayChrome';
 import {
   HostMetadataMap,
   TopologyInterfaceReference,

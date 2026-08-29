@@ -1,0 +1,119 @@
+@forward 'tokens';
+@use 'tokens' as *;
+
+@mixin overlay-card {
+  border-radius: var(--topology-radius, #{$radius});
+  background: $overlay-bg;
+  border: $overlay-border;
+  box-shadow: $overlay-shadow;
+  color: $overlay-text;
+  overflow: hidden;
+}
+
+@mixin overlay-header {
+  padding: $space-2 $space-3;
+  border-bottom: $overlay-divider;
+  font-size: $font-xs;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: $overlay-muted;
+  line-height: 1.3;
+}
+
+@mixin type-xs-muted {
+  font-size: $font-xs;
+  line-height: 1.35;
+  color: $overlay-muted;
+}
+
+@mixin type-hint {
+  font-size: $font-sm;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+@mixin compact {
+  @media (max-width: $bp-compact) {
+    @content;
+  }
+}
+
+@mixin medium {
+  @media (max-width: $bp-medium) {
+    @content;
+  }
+}
+
+@mixin touch-target {
+  @include compact {
+    min-height: var(--topology-touch-min, #{$touch-min});
+    min-width: var(--topology-touch-min, #{$touch-min});
+  }
+}
+
+@mixin overlay-bar {
+  padding: $space-2 $space-3;
+  border-bottom: $overlay-divider;
+}
+
+@mixin overlay-body {
+  padding: 10px $space-3;
+}
+
+@mixin overlay-footer {
+  padding: $space-2 $space-3;
+  border-top: $overlay-divider;
+}
+
+@mixin overlay-list {
+  margin: 0;
+  padding: $space-1 0;
+  list-style: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@mixin overlay-stacked-item {
+  & + & {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: $overlay-divider;
+  }
+}
+
+@mixin overlay-metric-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: $font-xs;
+  line-height: 1.5;
+}
+
+@mixin overlay-list-button {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  width: 100%;
+  padding: 6px $space-3;
+  border: 0;
+  background: transparent;
+  color: $overlay-text;
+  font-size: $font-sm;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: $overlay-hover;
+  }
+}
+
+@mixin map-scrollbar {
+  scrollbar-gutter: stable;
+
+  &::-webkit-scrollbar {
+    width: var(--topology-scrollbar, #{$scrollbar});
+    height: var(--topology-scrollbar, #{$scrollbar});
+  }
+}

@@ -1,0 +1,33 @@
+@use '../styles/mixins' as *;
+@use '../styles/tokens' as *;
+
+.panel {
+  position: fixed;
+  z-index: 10000;
+  width: 240px;
+  pointer-events: none;
+  font-size: $font-sm;
+}
+
+.wrapAnywhere {
+  overflow-wrap: anywhere;
+}
+
+.metricGap {
+  margin-top: $space-2;
+}
+
+.collected {
+  margin-top: $space-1;
+}
+
+.problemsWrap {
+  margin-top: $space-2;
+}
+
+.problemName {
+  margin-top: 2px;
+  font-size: $font-xs;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}

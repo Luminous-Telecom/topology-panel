@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal } from '@grafana/ui';
-import { grafanaModalClass, grafanaModalContentClass } from './overlayChrome';
+import { grafanaModalClass, grafanaModalContentClass } from './chrome/overlayChrome';
 
 interface Props {
   title: string;

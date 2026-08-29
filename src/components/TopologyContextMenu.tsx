@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { css } from '@emotion/css';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { overlayPortalRoot } from '../utils/overlayPortal';
+import styles from './TopologyContextMenu.module.scss';
 
 export interface ContextMenuItem {
   id: string;
@@ -20,102 +20,6 @@ interface Props {
   onClose: () => void;
 }
 
-const styles = {
-  backdrop: css`
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: transparent;
-  `,
-  menu: css`
-    position: fixed;
-    z-index: 10000;
-    min-width: 180px;
-    background: rgba(13, 17, 23, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    border-radius: 8px;
-    padding: 4px 0;
-    font-size: 13px;
-    color: #f2f4f7;
-  `,
-  item: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    user-select: none;
-    position: relative;
-    &:hover {
-      background: rgba(79, 195, 247, 0.18);
-    }
-  `,
-  itemDisabled: css`
-    opacity: 0.45;
-    cursor: default;
-    &:hover {
-      background: transparent;
-    }
-  `,
-  itemDelete: css`
-    &:hover {
-      background: rgba(229, 57, 53, 0.22);
-    }
-  `,
-  iconAdd: css`
-    color: #ef9a9a;
-    font-weight: 700;
-    width: 14px;
-    text-align: center;
-    flex-shrink: 0;
-  `,
-  iconDelete: css`
-    color: #ef9a9a;
-    font-weight: 700;
-    width: 14px;
-    text-align: center;
-    flex-shrink: 0;
-  `,
-  iconTool: css`
-    color: rgba(255, 255, 255, 0.68);
-    width: 14px;
-    text-align: center;
-    flex-shrink: 0;
-    font-size: 11px;
-  `,
-  submenuArrow: css`
-    margin-left: auto;
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 10px;
-  `,
-  separator: css`
-    height: 1px;
-    margin: 4px 0;
-    background: rgba(255, 255, 255, 0.12);
-  `,
-  submenu: css`
-    position: absolute;
-    left: 100%;
-    top: -4px;
-    min-width: 140px;
-    background: rgba(13, 17, 23, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    border-radius: 8px;
-    padding: 4px 0;
-    z-index: 10001;
-    /* Ponte anti-gap: evita fechar o submenu ao mover o mouse para a direita */
-    &::before {
-      content: '';
-      position: absolute;
-      left: -10px;
-      top: 0;
-      bottom: 0;
-      width: 10px;
-    }
-  `,
-};
 
 function itemIcon(item: ContextMenuItem): string {
   if (item.variant === 'delete') {

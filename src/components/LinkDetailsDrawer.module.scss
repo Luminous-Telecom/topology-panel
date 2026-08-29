@@ -1,0 +1,96 @@
+@use '../styles/mixins' as *;
+@use '../styles/tokens' as *;
+
+.drawer {
+  position: absolute;
+  top: 52px;
+  right: $gap;
+  z-index: 30;
+  width: 280px;
+  max-width: calc(100% - #{$gap * 2});
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+
+  @include compact {
+    top: 96px;
+    max-height: calc(100% - 104px);
+  }
+}
+
+.bar {
+  position: relative;
+}
+
+.close {
+  position: absolute;
+  top: $space-1;
+  right: $space-1;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: $space-1 $space-2;
+  border-radius: $space-1;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+}
+
+.titleBlock {
+  padding-right: 28px;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.arrow {
+  margin: 1px 0;
+}
+
+.status {
+  font-size: 10px;
+  margin-top: $space-1;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.hint {
+  margin-top: $space-2;
+}
+
+.edit {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: $overlay-text;
+  cursor: pointer;
+  font-size: $font-xs;
+  font-weight: 600;
+
+  &:hover {
+    background: $overlay-hover;
+  }
+}
+
+.sectionTitle {
+  font-weight: 600;
+  font-size: $font-xs;
+  margin: 10px 0 $space-1;
+}
+
+.divider {
+  margin: 10px 0 $space-2;
+  border-top: $overlay-divider;
+}

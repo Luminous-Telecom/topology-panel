@@ -1,0 +1,70 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.panel {
+  position: absolute;
+  bottom: var(--overlay-bottom);
+  left: $gap;
+  z-index: 4;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.itemButton {
+  font-size: $font-xs;
+  line-height: 1.15;
+  padding: 5px 10px;
+  gap: 6px;
+
+  @include compact {
+    padding: 6px 10px;
+    min-height: 28px;
+  }
+}
+
+.dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.hostName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 10000;
+  max-width: 320px;
+  pointer-events: none;
+  font-size: $font-sm;
+}
+
+.tooltipProblem {
+  margin-top: 2px;
+  font-size: $font-xs;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mapLabel {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.65;
+  white-space: nowrap;
+}

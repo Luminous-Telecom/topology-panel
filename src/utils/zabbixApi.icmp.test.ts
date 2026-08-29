@@ -9,7 +9,7 @@ vi.mock('@grafana/runtime', () => ({
   }),
 }));
 
-import { fetchHostIcmpStatus } from './zabbixApi';
+import { fetchHostIcmpStatus } from './zabbixApi/ping';
 
 describe('fetchHostIcmpStatus', () => {
   beforeEach(() => {

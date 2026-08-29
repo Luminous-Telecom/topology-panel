@@ -37,7 +37,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no mesmo `item.get` | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts` |
-| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi/poll.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
 | Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts`; casar nó↔problema via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
@@ -92,6 +92,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Undo/redo | `hooks/useMapHistory.ts` |
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
+| Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |
+| Override local de legenda, lista de alertas e modo NOC | `hooks/useCanvasOverlayToggles.ts` |
+| viewEditable e itens da legenda | `hooks/useCanvasDerivedView.ts` |
+| Casca, setas de fluxo e chip de tráfego do cabo | `components/canvas/links/LinkLine.tsx`, `LinkFlowArrows.tsx`, `LinkTrafficLabel.tsx` |
 | Medida do painel, tela cheia, chrome ocioso e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useIdleHide.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
 | Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
@@ -118,7 +122,8 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Fechar overlay com Esc | `hooks/useEscapeKey.ts` |
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
 | Select de interface do cabo (Novo link / Editar link) | `components/LinkInterfaceSelectField.tsx` (`interfaceOptionValue`) |
-| Chrome visual de modal e overlay do mapa | `components/overlayChrome.ts` + `components/TopologyModal.tsx` (`OVERLAY_DIVIDER`, `overlayStackedItemStyle`) |
+| Chrome visual de modal e overlay do mapa | `components/chrome/overlayChrome.ts` + `components/TopologyModal.tsx` (`OVERLAY_DIVIDER`, `overlayStackedItemStyle`) |
+| Editores da aba de opções (grupos, mapeamento de status, cores por ícone) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `StatusValueMappingsEditor.tsx`, `HostTypeColorsEditor.tsx` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
 | Encaixar overlay ao lado da âncora sem sair do painel | `fitOverlayBesideAnchor` / `overlayClipBox` / `overlayPortalParent` em `utils/overlayPortal.ts` |

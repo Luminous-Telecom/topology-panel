@@ -1,0 +1,21 @@
+@use '../styles/tokens' as *;
+
+.terminal {
+  margin: 0;
+  padding: 10px $space-3;
+  border-radius: $space-1;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: $font-sm;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+  min-height: 140px;
+}
+
+.error {
+  margin-top: $space-2;
+}

@@ -1,0 +1,15 @@
+@use '../styles/mixins' as *;
+@use '../styles/tokens' as *;
+
+.wrap {
+  position: absolute;
+  left: $gap;
+  bottom: $gap;
+  z-index: 4;
+  width: 196px;
+  height: 148px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}

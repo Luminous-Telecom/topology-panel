@@ -4,7 +4,7 @@ import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { isHostNodeOffline } from '../../utils/networkStats';
 import { NodeLayout } from '../../utils/nodeLayout';
-import { LinkLine } from './LinkLine';
+import { LinkLine } from './links/LinkLine';
 
 interface Props {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;

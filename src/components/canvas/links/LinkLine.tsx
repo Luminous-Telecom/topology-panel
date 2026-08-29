@@ -1,22 +1,22 @@
 import React from 'react';
 import { useTheme2 } from '@grafana/ui';
-import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
-import { formatLinkBandwidth, linkStrokeWidth } from '../../utils/linkBandwidth';
-import { LINK_FLOW_DASH, supportsFlowArrows } from '../../utils/linkFlow';
+import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
+import { formatLinkBandwidth, linkStrokeWidth } from '../../../utils/linkBandwidth';
+import { LINK_FLOW_DASH, supportsFlowArrows } from '../../../utils/linkFlow';
 import {
   computeFlowSpeed,
   resolveFlowLaneSpeed,
   resolveLinkUtilizationLevel,
-} from '../../utils/linkFlowSpeed';
+} from '../../../utils/linkFlowSpeed';
 import {
   isLinkVisuallyDown,
   linkDegradationColor,
   linkRuntimeColor,
   utilizationThresholdsFromOptions,
   resolveLinkMapTrafficMetrics,
-} from '../../utils/linkMetricsRuntime';
-import { linkKey } from '../../utils/mapLinkEdits';
-import { resolvePanelColor } from '../../utils/panelColors';
+} from '../../../utils/linkMetricsRuntime';
+import { linkKey } from '../../../utils/mapLinkEdits';
+import { resolvePanelColor } from '../../../utils/panelColors';
 import {
   buildLinkPathD,
   computeLinkGeometry,
@@ -24,20 +24,21 @@ import {
   LinkPoint,
   offsetPolyline,
   polylineLength,
-} from '../../utils/linkGeometry';
-import { resolveLinkMedium } from '../../utils/linkMedium';
-import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../utils/zabbixAdapter/formatTraffic';
-import { NodeLayout } from '../../utils/nodeLayout';
-import { canvasStyles } from './canvasStyles';
+} from '../../../utils/linkGeometry';
+import { resolveLinkMedium } from '../../../utils/linkMedium';
+import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../../utils/zabbixAdapter/formatTraffic';
+import { NodeLayout } from '../../../utils/nodeLayout';
+import { canvasStyles } from '../canvasStyles';
+import { LinkFlowArrows } from './LinkFlowArrows';
+import { LinkTrafficLabel } from './LinkTrafficLabel';
+import {
+  LINK_HOVER_COLOR,
+  LINK_LINE_CAP,
+  LINK_OUTLINE_COLOR,
+  LINK_RADIO_DASH,
+  LINK_SELECT_COLOR,
+} from './linkLineVisual';
 
-const LINK_RADIO_DASH = '10 6';
-const LINK_SELECT_COLOR = '#4FC3F7';
-const LINK_HOVER_COLOR = '#81D4FA';
-const LINK_OUTLINE_COLOR = '#0d0f14';
-/** Distância alvo entre setas de tráfego; o cabo curto recebe menos setas. */
-const LINK_FLOW_ARROW_SPACING = 60;
-const LINK_FLOW_ARROW_MAX = 4;
-const LINK_LINE_CAP = { strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
 interface LinkLineProps {
   link: TopologyLink;
@@ -159,116 +160,6 @@ function resolveLaneColor(args: {
   return args.configuredColor;
 }
 
-interface FlowArrowsProps {
-  laneD: string;
-  laneLength: number;
-  color: string;
-  direction: 'upload' | 'download';
-  linkId: string;
-  speed: number;
-  active: boolean;
-  size: number;
-}
-
-/**
- * Setas que **correm com o tráfego**: cada glifo anda pelo canal via `offset-path`, girado na
- * tangente do cabo. Sem tráfego a animação para e as setas ficam paradas.
- */
-function LinkFlowArrows({
-  laneD,
-  laneLength,
-  color,
-  direction,
-  linkId,
-  speed,
-  active,
-  size,
-}: FlowArrowsProps) {
-  const count = Math.min(LINK_FLOW_ARROW_MAX, Math.floor(laneLength / LINK_FLOW_ARROW_SPACING));
-  if (count < 1) {
-    return null;
-  }
-  const step = laneLength / count;
-  const half = size / 2;
-  const glyph = `M ${-half} ${-size * 0.6} L ${half * 1.2} 0 L ${-half} ${size * 0.6}`;
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <path
-          key={index}
-          d={glyph}
-          data-link-flow={direction}
-          data-link-flow-arrow="true"
-          data-link-key={linkId}
-          data-link-flow-speed={String(speed)}
-          data-link-flow-active={active ? 'true' : 'false'}
-          data-link-flow-length={String(laneLength)}
-          data-link-flow-phase={String(index * step)}
-          fill={color}
-          stroke={LINK_OUTLINE_COLOR}
-          strokeWidth={0.5}
-          strokeLinejoin="round"
-          pointerEvents="none"
-          style={{
-            offsetPath: `path('${laneD}')`,
-            offsetRotate: 'auto',
-            offsetDistance: '0px',
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
-interface TrafficLabelProps {
-  x: number;
-  y: number;
-  txLabel?: string;
-  rxLabel?: string;
-  uploadColor: string;
-  downloadColor: string;
-}
-
-function LinkTrafficLabel({ x, y, txLabel, rxLabel, uploadColor, downloadColor }: TrafficLabelProps) {
-  const valueFill = 'rgba(240,243,248,0.96)';
-  const padX = 11;
-  const charW = 6.55;
-  const extra = (txLabel && rxLabel ? 3 : 0) + (txLabel ? 2 : 0) + (rxLabel ? 2 : 0);
-  const chars = (txLabel?.length ?? 0) + (rxLabel?.length ?? 0) + extra;
-  const width = chars * charW + padX * 2;
-  const height = 22;
-  return (
-    <g transform={`translate(${x}, ${y})`} pointerEvents="none">
-      <rect
-        x={-width / 2}
-        y={-height / 2}
-        width={width}
-        height={height}
-        rx={4}
-        fill="rgba(15,17,22,0.95)"
-        stroke="rgba(255,255,255,0.12)"
-        strokeWidth={0.7}
-      />
-      <text
-        x={0}
-        y={0}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={11}
-        fontFamily="Inter, Helvetica, Arial, sans-serif"
-        fontWeight={600}
-        letterSpacing={0.15}
-      >
-        {txLabel ? <tspan fill={uploadColor}>↑</tspan> : null}
-        {txLabel ? <tspan fill={valueFill}> {txLabel}</tspan> : null}
-        {txLabel && rxLabel ? <tspan fill="rgba(255,255,255,0.24)">  ·  </tspan> : null}
-        {rxLabel ? <tspan fill={downloadColor}>↓</tspan> : null}
-        {rxLabel ? <tspan fill={valueFill}> {rxLabel}</tspan> : null}
-      </text>
-    </g>
-  );
-}
-
 function LinkLineComponent({
   link,
   waypoints,
@@ -300,7 +191,6 @@ function LinkLineComponent({
   const hasWaypoints = waypoints.length > 0;
   const d = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset);
   const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
-  const active = selected || hovered;
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? LINK_RADIO_DASH : undefined;
   const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);

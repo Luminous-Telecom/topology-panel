@@ -70,8 +70,8 @@ vi.mock('./canvas/NetworkNodeShape', async (importOriginal) => {
   };
 });
 
-vi.mock('./canvas/LinkLine', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('./canvas/LinkLine')>();
+vi.mock('./canvas/links/LinkLine', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('./canvas/links/LinkLine')>();
   return { ...mod, LinkLine: await countedMemo(mod.LinkLine, () => (renderCounts.link += 1)) };
 });
 

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
-import { modalErrorStyle } from './overlayChrome';
-import { css } from '@emotion/css';
-import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi';
+import { modalErrorStyle } from './chrome/overlayChrome';
+import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi/ping';
 import { copyPingCommand } from '../utils/hostTools';
 import { FieldReadout } from './FieldReadout';
+import styles from './PingModal.module.scss';
 
 interface Props {
   label: string;
@@ -16,22 +16,6 @@ interface Props {
 }
 
 const PANEL_PING_INTERVAL_MS = 5000;
-
-const terminalStyle = css`
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 4px;
-  background: #0d1117;
-  color: #c9d1d9;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 320px;
-  overflow-y: auto;
-  min-height: 140px;
-`;
 
 function formatRtt(ms: number | null): string {
   if (ms === null || Number.isNaN(ms)) {
@@ -223,10 +207,10 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
               {live ? 'Pausar' : 'Retomar'} automático
             </Button>
           </div>
-          <pre ref={outputRef} className={terminalStyle}>
+          <pre ref={outputRef} className={styles.terminal}>
             {pingOutput || (pingError ? '' : 'Aguardando…')}
           </pre>
-          {pingError ? <div className={modalErrorStyle} style={{ marginTop: 8 }}>{pingError}</div> : null}
+          {pingError ? <div className={`${modalErrorStyle} ${styles.error}`}>{pingError}</div> : null}
           {summary ? (
             <div style={{ marginTop: 8, fontSize: 12, color: '#8ab4f8' }}>{summary}</div>
           ) : null}

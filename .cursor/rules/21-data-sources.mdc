@@ -50,20 +50,24 @@ painel não existe — o grupo fica no submapa.
 
 ## API Zabbix — só nas exceções autorizadas
 
-`utils/zabbixApi.ts` é o **único** arquivo que fala JSON-RPC com o Zabbix.
+`utils/zabbixApi/` (JSON-RPC) e `utils/zabbixApi.ts` (reexport do **poll**, sem ping) são o **único**
+lugar que fala JSON-RPC com o Zabbix. Ping/ICMP (`script.execute`) fica em `zabbixApi/ping.ts` e
+só o `PingModal` (lazy) importa esse módulo — não entra no `module.js`.
 `utils/zabbixDatasourceQuery.ts` é o **único** arquivo que chama `DataSourceApi.query()` do plugin
 Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
 
 | Consumidor autorizado | Uso permitido |
 |---|---|
-| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`), para o ping interativo |
+| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`) via `utils/zabbixApi/ping.ts`, para o ping interativo |
 | `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade/sinal filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
 | `hooks/useZabbixDirectIndex.ts` | `prefetchZabbixDatasource` (carrega o plugin em paralelo), `fetchZabbixResolvedGroups` (`hostgroup.get`), `fetchZabbixDirectMetadata` (`host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems **depois** da primeira pintura) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos, sai na hora pelos itemids do mapa), mais `fetchZabbixSignalInventory` fora do ciclo |
 | `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
 
-- Proibido importar `zabbixApi.ts` em qualquer outro arquivo — exceto os testes desses fluxos.
+- Proibido importar `zabbixApi.ts` / `zabbixApi/poll.ts` / `zabbixApi/client.ts` em qualquer outro
+  arquivo — exceto os testes desses fluxos. `zabbixApi/ping.ts` só o `PingModal` e o teste ICMP.
+- Tipos (`ZabbixInterfaceItem`, …) podem vir de `zabbixApi.ts` ou `zabbixApi/types.ts` — não puxam ping.
 - Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor,
   problemas ou polling.
 - Polling do mapa: `useZabbixDirectIndex.ts` (status Metrics e problemas Warning+ no mesmo

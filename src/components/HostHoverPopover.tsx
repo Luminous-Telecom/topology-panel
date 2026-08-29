@@ -1,6 +1,5 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { css } from '@emotion/css';
 import {
   HostDisplayMap,
   HostMetadataMap,
@@ -11,9 +10,10 @@ import { HostLookupRef, resolveHostIp } from '../utils/hostLookup';
 import { lookupHostDisplay } from '../utils/queryHosts';
 import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
-import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle, overlayStackedItemStyle } from './overlayChrome';
+import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle, overlayStackedItemStyle } from './chrome/overlayChrome';
 import { overlayPortalRoot } from '../utils/overlayPortal';
 import { resolveHostDescription } from '../utils/mapSync';
+import styles from './HostHoverPopover.module.scss';
 
 interface Props {
   node: TopologyNode;
@@ -25,8 +25,6 @@ interface Props {
   options: TopologyPanelOptions;
   queryReady?: boolean;
 }
-
-const POPOVER_W = 240;
 
 function hostTitle(node: TopologyNode): string {
   return node.label?.trim() || node.zabbixHost?.trim() || node.id;
@@ -94,33 +92,16 @@ export function HostHoverPopover({
     setPosition({ left, top });
   }, [screenX, screenY, display?.text, description, problems.visible.length, problems.hidden]);
 
-  const panelStyle = css`
-    position: fixed;
-    left: ${position.left}px;
-    top: ${position.top}px;
-    z-index: 10000;
-    width: ${POPOVER_W}px;
-    pointer-events: none;
-    font-size: 12px;
-  `;
-
-  const problemsWrapStyle = css`
-    margin-top: 8px;
-  `;
-
-  const problemNameStyle = css`
-    margin-top: 2px;
-    color: ${options.colorAlert};
-    font-size: 11px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  `;
-
   return createPortal(
-    <div ref={popoverRef} className={`${overlayCardStyle} ${overlayCardBodyStyle} ${panelStyle}`} role="tooltip">
+    <div
+      ref={popoverRef}
+      className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.panel}`}
+      style={{ left: position.left, top: position.top }}
+      role="tooltip"
+    >
       <strong>{hostTitle(node)}</strong>
       {description ? (
-        <div className={overlayMutedStyle} style={{ overflowWrap: 'anywhere' }}>
+        <div className={`${overlayMutedStyle} ${styles.wrapAnywhere}`}>
           {description}
         </div>
       ) : null}
@@ -128,34 +109,38 @@ export function HostHoverPopover({
 
       {display ? (
         <>
-          <div className={overlayMetricRowStyle} style={{ marginTop: 8 }}>
+          <div className={`${overlayMetricRowStyle} ${styles.metricGap}`}>
             <span>Status</span>
             <span>{statusLabel || String(display.value)}</span>
           </div>
           {collectedAt ? (
-            <div className={overlayMutedStyle} style={{ marginTop: 4 }}>
+            <div className={`${overlayMutedStyle} ${styles.collected}`}>
               Coletado às {collectedAt}
             </div>
           ) : null}
         </>
       ) : !queryReady ? (
-        <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
+        <div className={`${overlayMutedStyle} ${styles.metricGap}`}>
           Carregando status…
         </div>
       ) : (
-        <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
+        <div className={`${overlayMutedStyle} ${styles.metricGap}`}>
           Sem status neste host
         </div>
       )}
       {problems.visible.length > 0 ? (
-        <div className={problemsWrapStyle}>
+        <div className={styles.problemsWrap}>
           <div className={overlayMutedStyle}>
             {problems.visible.length + problems.hidden === 1
               ? 'Problema ativo'
               : `Problemas ativos (${problems.visible.length + problems.hidden})`}
           </div>
           {problems.visible.map((name, idx) => (
-            <div key={`${idx}:${name}`} className={`${problemNameStyle} ${overlayStackedItemStyle}`}>
+            <div
+              key={`${idx}:${name}`}
+              className={`${styles.problemName} ${overlayStackedItemStyle}`}
+              style={{ color: options.colorAlert }}
+            >
               {name}
             </div>
           ))}

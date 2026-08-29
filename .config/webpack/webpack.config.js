@@ -55,7 +55,7 @@ module.exports = (env) => {
       },
     ],
     resolve: {
-      extensions: ['.ts', '.tsx', '.js'],
+      extensions: ['.ts', '.tsx', '.js', '.scss'],
     },
     module: {
       rules: [
@@ -72,6 +72,39 @@ module.exports = (env) => {
               },
             },
           },
+        },
+        {
+          test: /\.module\.scss$/,
+          exclude: /node_modules/,
+          use: [
+            'style-loader',
+            {
+              loader: 'css-loader',
+              options: {
+                modules: {
+                  localIdentName: 'luminous-topology__[local]__[hash:base64:6]',
+                  namedExport: false,
+                  exportLocalsConvention: 'as-is',
+                },
+              },
+            },
+            {
+              loader: 'sass-loader',
+              options: { api: 'modern-compiler' },
+            },
+          ],
+        },
+        {
+          test: /\.scss$/,
+          exclude: [/\.module\.scss$/, /node_modules/],
+          use: [
+            'style-loader',
+            'css-loader',
+            {
+              loader: 'sass-loader',
+              options: { api: 'modern-compiler' },
+            },
+          ],
         },
         {
           test: /\.svg$/,

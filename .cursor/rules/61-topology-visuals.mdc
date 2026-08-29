@@ -1,6 +1,6 @@
 ---
 description: Identidade visual do mapa — links, redes, grade, cores e ícones (não alterar sem pedido)
-globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/components/canvas/LinkLine.tsx,src/components/canvas/LinkMarkers.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
+globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/components/canvas/links/**,src/components/canvas/LinkMarkers.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
 alwaysApply: false
 ---
 

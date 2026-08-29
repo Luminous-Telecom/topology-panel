@@ -27,6 +27,7 @@ Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado
 - Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
   `vitest.setup.ts`.
 - Nada de rede em teste: `getBackendSrv` e `utils/zabbixApi.ts` são mockados com `vi.mock`.
+  Ping/ICMP: importe e mocke `utils/zabbixApi/ping.ts` (não entra no barrel do poll).
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.
 - Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em

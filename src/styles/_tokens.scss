@@ -1,0 +1,35 @@
+// Tokens visuais. Números usados em geometria JS precisam permanecer iguais a:
+// OVERLAY_RADIUS (components/chrome/overlayChrome.ts), CANVAS_EDGE_GAP / COMPACT_TOUCH_MIN
+// (canvasOverlayLayout.ts), MAP_NATIVE_SCROLLBAR_PX (mapBounds.ts).
+
+$font-xs: 11px;
+$font-sm: 12px;
+$font-md: 14px;
+
+$space-1: 4px;
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 24px;
+
+$radius: 8px;
+$gap: 8px;
+$scrollbar: 22px;
+$touch-min: 36px;
+
+$z-svg: 1;
+$z-overlay: 5;
+$z-modal: 20;
+$z-toast: 10050;
+
+$color-map-bg: #111217;
+$overlay-bg: rgba(13, 17, 23, 0.92);
+$overlay-border: 1px solid rgba(255, 255, 255, 0.22);
+$overlay-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+$overlay-text: #f2f4f7;
+$overlay-muted: rgba(255, 255, 255, 0.68);
+$overlay-divider: 1px solid rgba(255, 255, 255, 0.12);
+$overlay-hover: rgba(79, 195, 247, 0.18);
+
+$bp-compact: 640px;
+$bp-medium: 900px;

@@ -1,10 +1,8 @@
 import React, { useMemo } from 'react';
-import { css } from '@emotion/css';
 import { useTheme2 } from '@grafana/ui';
 import { LinkRuntimeMetrics, TopologyLink, TopologyMap, TopologyPanelOptions } from '../types';
 import { findNodeById } from '../utils/topologyNodes';
 import { formatLinkBandwidth } from '../utils/linkBandwidth';
-import { linkKey } from '../utils/mapLinkEdits';
 import {
   formatBitsPerSecond,
   formatEndpointTrafficPair,
@@ -15,9 +13,7 @@ import {
 import { resolvePanelColor } from '../utils/panelColors';
 import { resolveLinkUtilizationLevel } from '../utils/linkFlowSpeed';
 import { linkRuntimeColor, utilizationThresholdsFromOptions } from '../utils/linkMetricsRuntime';
-import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../utils/canvasOverlayLayout';
-import {
-  overlayCardBodyStyle,
+import { overlayCardBodyStyle,
   overlayCardFooterStyle,
   overlayCardBarStyle,
   overlayCardStyle,
@@ -25,74 +21,8 @@ import {
   overlayMetricRowStyle,
   overlayMetricValueStyle,
   overlayMutedStyle,
-} from './overlayChrome';
-
-const drawerStyle = css`
-  position: absolute;
-  top: 52px;
-  right: ${CANVAS_EDGE_GAP}px;
-  z-index: 30;
-  width: 280px;
-  max-width: calc(100% - ${CANVAS_EDGE_GAP * 2}px);
-  max-height: calc(100% - 60px);
-  display: flex;
-  flex-direction: column;
-
-  ${MEDIA_COMPACT} {
-    top: 96px;
-    max-height: calc(100% - 104px);
-  }
-`;
-
-const closeButtonStyle = css`
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 4px;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-  }
-`;
-
-const titleBlockStyle = css`
-  padding-right: 28px;
-`;
-
-const editButtonStyle = css`
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
-  padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f2f4f7;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-
-  &:hover {
-    background: rgba(79, 195, 247, 0.18);
-  }
-`;
-
-const sectionTitleStyle = css`
-  font-weight: 600;
-  font-size: 11px;
-  margin: 10px 0 4px;
-`;
-
-const dividerStyle = css`
-  margin: 10px 0 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-`;
+} from './chrome/overlayChrome';
+import styles from './LinkDetailsDrawer.module.scss';
 
 interface Props {
   link: TopologyLink;
@@ -158,7 +88,7 @@ function EndpointBlock({
 
   return (
     <div>
-      <div className={sectionTitleStyle}>
+      <div className={styles.sectionTitle}>
         {title}
         {ifaceName ? <span className={overlayMutedStyle}> · {ifaceName}</span> : null}
       </div>
@@ -204,33 +134,33 @@ export function LinkDetailsDrawer({
   );
 
   return (
-    <div role="dialog" aria-label="Detalhes do link" className={`${overlayCardStyle} ${drawerStyle}`}>
-      <div className={overlayCardBarStyle} style={{ position: 'relative' }}>
-        <button type="button" aria-label="Fechar detalhes do link" onClick={onClose} className={closeButtonStyle}>
+    <div role="dialog" aria-label="Detalhes do link" className={`${overlayCardStyle} ${styles.drawer}`}>
+      <div className={`${overlayCardBarStyle} ${styles.bar}`}>
+        <button type="button" aria-label="Fechar detalhes do link" onClick={onClose} className={styles.close}>
           ×
         </button>
-        <div className={titleBlockStyle}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{fromLabel}</div>
-          <div className={overlayMutedStyle} style={{ margin: '1px 0' }}>
+        <div className={styles.titleBlock}>
+          <div className={styles.title}>{fromLabel}</div>
+          <div className={`${overlayMutedStyle} ${styles.arrow}`}>
             ↕
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{toLabel}</div>
-          <div style={{ fontSize: 10, marginTop: 4, color: statusColor }}>{linkStatusLabel(runtimeMetrics?.status)}</div>
+          <div className={styles.title}>{toLabel}</div>
+          <div className={styles.status} style={{ color: statusColor }}>{linkStatusLabel(runtimeMetrics?.status)}</div>
         </div>
       </div>
 
-      <div className={overlayCardBodyStyle} style={{ flex: 1, overflowY: 'auto' }}>
+      <div className={`${overlayCardBodyStyle} ${styles.body}`}>
         <MetricRow label="Capacidade" value={formatLinkBandwidth(link.bandwidthMbps) ?? 'N/A'} />
         <MetricRow label="Interfaces" value={ifaceSummary} />
         <MetricRow label="Utilização máx." value={maxUtilizationPct(runtimeMetrics)} />
 
         {!link.fromInterface && !link.toInterface ? (
-          <div className={overlayMutedStyle} style={{ marginTop: 8 }}>
+          <div className={`${overlayMutedStyle} ${styles.hint}`}>
             Este link ainda não possui interfaces associadas. Use &quot;Editar link&quot; para vincular.
           </div>
         ) : null}
 
-        <div className={dividerStyle} />
+        <div className={styles.divider} />
 
         <EndpointBlock title="Origem" ifaceName={link.fromInterface?.name} metrics={runtimeMetrics?.from} role="from" />
         <EndpointBlock title="Destino" ifaceName={link.toInterface?.name} metrics={runtimeMetrics?.to} role="to" />
@@ -238,18 +168,11 @@ export function LinkDetailsDrawer({
 
       {onEdit ? (
         <div className={overlayCardFooterStyle}>
-          <button type="button" onClick={onEdit} className={editButtonStyle}>
+          <button type="button" onClick={onEdit} className={styles.edit}>
             Editar link…
           </button>
         </div>
       ) : null}
     </div>
   );
-}
-
-export function resolveLinkDetailsMetrics(
-  link: TopologyLink,
-  metricsByLink: Record<string, LinkRuntimeMetrics>
-): LinkRuntimeMetrics | undefined {
-  return metricsByLink[linkKey(link)];
 }

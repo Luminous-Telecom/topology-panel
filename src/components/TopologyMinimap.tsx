@@ -1,25 +1,13 @@
 import React, { useCallback, useMemo, useRef } from 'react';
-import { css } from '@emotion/css';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { NodeLayout } from '../utils/nodeLayout';
 import { computeTopologyContentBounds, isNetworkNode } from '../utils/mapBounds';
-import { overlayCardStyle } from './overlayChrome';
+import { overlayCardStyle } from './chrome/overlayChrome';
+import styles from './TopologyMinimap.module.scss';
 
 const MINI_WIDTH = 196;
 const MINI_HEIGHT = 148;
 const MINI_PAD = 6;
-
-const wrapStyle = css`
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  z-index: 4;
-  width: ${MINI_WIDTH}px;
-  height: ${MINI_HEIGHT}px;
-  overflow: hidden;
-  touch-action: none;
-  user-select: none;
-`;
 
 interface Props {
   map: TopologyMap;
@@ -165,14 +153,13 @@ export function TopologyMinimap({
   return (
     <div
       ref={wrapRef}
-      className={`${overlayCardStyle} ${wrapStyle}`}
+      className={`${overlayCardStyle} ${styles.wrap}`}
       title="Visão geral — arraste para mover o mapa"
       aria-label="Visão geral do mapa"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      style={{ cursor: 'crosshair' }}
     >
       <svg width={MINI_WIDTH} height={MINI_HEIGHT} aria-hidden>
         <rect x={0} y={0} width={MINI_WIDTH} height={MINI_HEIGHT} fill="rgba(17,18,23,0.95)" />

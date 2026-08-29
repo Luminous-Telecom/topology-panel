@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { css } from '@emotion/css';
 import { TopologyNode, TopologyNodeType, HostMetadataMap } from '../../types';
-import { CANVAS_EDGE_GAP, MEDIA_COMPACT } from '../../utils/canvasOverlayLayout';
-import { OVERLAY_DIVIDER, OVERLAY_HOVER, overlayCardStyle } from '../overlayChrome';
+import { overlayCardStyle } from '../chrome/overlayChrome';
 import { resolveHostDescription } from '../../utils/mapSync';
+import styles from './TopologyMapSearch.module.scss';
 
 function nodeTypeLabel(type?: TopologyNodeType): string {
   switch (type) {
@@ -21,82 +20,7 @@ function nodeTypeLabel(type?: TopologyNodeType): string {
 }
 
 /** Envolve o botão da toolbar e o painel, que é posicionado em relação a ele. */
-export const searchWrapStyle = css`
-  position: relative;
-  display: flex;
-  align-items: center;
-  pointer-events: auto;
-`;
-
-const searchPanelStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  width: min(280px, 70vw);
-  z-index: 5;
-
-  ${MEDIA_COMPACT} {
-    width: min(280px, calc(100vw - ${CANVAS_EDGE_GAP * 2}px));
-    max-width: calc(100vw - ${CANVAS_EDGE_GAP * 2}px);
-  }
-`;
-
-const searchInputStyle = css`
-  width: 100%;
-  box-sizing: border-box;
-  border: 0;
-  outline: none;
-  padding: 7px 10px;
-  background: transparent;
-  color: #fff;
-  font-size: 12px;
-  &::placeholder {
-    color: rgba(255, 255, 255, 0.45);
-  }
-`;
-
-const searchResultsStyle = css`
-  max-height: 220px;
-  overflow-y: auto;
-  border-top: ${OVERLAY_DIVIDER};
-  -webkit-overflow-scrolling: touch;
-
-  ${MEDIA_COMPACT} {
-    max-height: min(220px, 40vh);
-  }
-`;
-
-const searchResultBtnStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: #fff;
-  text-align: left;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  &:hover,
-  &[data-active='true'] {
-    background: ${OVERLAY_HOVER};
-  }
-`;
-
-const searchResultMetaStyle = css`
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.55);
-`;
-
-const searchEmptyStyle = css`
-  padding: 8px 10px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-`;
+export const searchWrapStyle = styles.wrap;
 
 /** Painel flutuante da pesquisa (o botão fica na toolbar). */
 export function TopologySearch({
@@ -161,13 +85,13 @@ export function TopologySearch({
 
   return (
     <div
-      className={`${overlayCardStyle} ${searchPanelStyle}`}
+      className={`${overlayCardStyle} ${styles.panel}`}
       data-map-wheel-overlay
       onPointerDown={(e) => e.stopPropagation()}
     >
       <input
         ref={inputRef}
-        className={searchInputStyle}
+        className={styles.input}
         type="search"
         value={query}
         placeholder="Nome, IP ou host…"
@@ -207,9 +131,9 @@ export function TopologySearch({
         }}
       />
       {query.trim() !== '' && (
-        <div className={searchResultsStyle}>
+        <div className={styles.results}>
           {results.length === 0 ? (
-            <div className={searchEmptyStyle}>Nenhum resultado</div>
+            <div className={styles.empty}>Nenhum resultado</div>
           ) : (
             results.map((node, idx) => {
               const title = (node.label ?? node.id).trim() || node.id;
@@ -226,13 +150,13 @@ export function TopologySearch({
                 <button
                   key={node.id}
                   type="button"
-                  className={searchResultBtnStyle}
+                  className={styles.resultBtn}
                   data-active={idx === activeIndex ? 'true' : 'false'}
                   onMouseEnter={() => setActiveIndex(idx)}
                   onClick={() => selectResult(node.id)}
                 >
                   <span>{title}</span>
-                  <span className={searchResultMetaStyle}>{metaParts.join(' · ')}</span>
+                  <span className={styles.resultMeta}>{metaParts.join(' · ')}</span>
                 </button>
               );
             })

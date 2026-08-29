@@ -1,0 +1,90 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+$edge: var(--topology-gap, #{$gap});
+$bar: var(--topology-scrollbar, #{$scrollbar});
+$touch: var(--topology-touch-min, #{$touch-min});
+
+.toolbarLabel {
+  line-height: 1;
+
+  @include compact {
+    display: none;
+  }
+}
+
+.toolbarButton {
+  pointer-events: auto;
+  box-sizing: border-box;
+  line-height: 1;
+  min-height: 26px;
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  @include compact {
+    min-height: $touch;
+    min-width: $touch;
+    padding: 6px $space-2;
+  }
+}
+
+.toolbarToolGroup {
+  display: flex;
+  align-items: center;
+  gap: $space-1;
+  pointer-events: auto;
+}
+
+.listItemButton {
+  @include compact {
+    min-height: $touch;
+    padding: $space-2 10px;
+  }
+}
+
+.filterChip {
+  @include compact {
+    min-height: $touch;
+    padding: 6px 10px;
+    font-size: $font-xs;
+  }
+}
+
+.panelCompactWidth {
+  width: min(300px, calc(100% - #{$gap * 2} - #{$scrollbar}));
+
+  @include compact {
+    width: min(340px, calc(100% - #{$gap * 2} - #{$scrollbar}));
+    max-width: calc(100% - #{$gap * 2} - #{$scrollbar});
+  }
+}
+
+.panelNocCompactWidth {
+  width: min(300px, calc(100% - #{$gap * 2}));
+
+  @include compact {
+    width: calc(100% - #{$gap * 2});
+    max-width: none;
+  }
+}
+
+.panelCompactMaxHeight {
+  @include compact {
+    max-height: min(200px, 38vh);
+  }
+}
+
+.nocTopClearance {
+  top: 44px;
+
+  @include medium {
+    top: 52px;
+  }
+
+  @include compact {
+    top: 96px;
+  }
+}

@@ -4,8 +4,8 @@ import React, { ComponentProps, lazy, Suspense } from 'react';
  * Modais carregados sob demanda.
  *
  * Nenhum deles aparece ao abrir o dashboard — só depois de um clique explícito (propriedades,
- * edição em lote, ping, adicionar host). Mantê-los fora do `module.js` tira do caminho crítico
- * também o `zabbixApi.ts` (via PingModal) e o `HostIconPicker` (via NodeEditModal).
+ * edição em lote, ping, adicionar host, detalhes do cabo). Mantê-los fora do `module.js` tira do
+ * caminho crítico também o `zabbixApi/ping` (via PingModal) e o `HostIconPicker` (via NodeEditModal).
  *
  * Cada modal ganha seu **próprio** limite de `Suspense`: um limite único mais acima faria o canvas
  * inteiro sumir enquanto o chunk carrega. O `fallback` é `null` de propósito — o carregamento
@@ -39,6 +39,9 @@ const LazyLinkInterfaceSelectModal = lazy(() =>
 );
 const LazyTopologyBlueprintModal = lazy(() =>
   import('./TopologyBlueprintModal').then((m) => ({ default: m.TopologyBlueprintModal }))
+);
+const LazyLinkDetailsDrawer = lazy(() =>
+  import('./LinkDetailsDrawer').then((m) => ({ default: m.LinkDetailsDrawer }))
 );
 
 export function NodeEditModal(props: ComponentProps<typeof LazyNodeEditModal>): JSX.Element {
@@ -125,6 +128,16 @@ export function TopologyBlueprintModal(
   return (
     <Suspense fallback={null}>
       <LazyTopologyBlueprintModal {...props} />
+    </Suspense>
+  );
+}
+
+export function LinkDetailsDrawer(
+  props: ComponentProps<typeof LazyLinkDetailsDrawer>
+): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyLinkDetailsDrawer {...props} />
     </Suspense>
   );
 }

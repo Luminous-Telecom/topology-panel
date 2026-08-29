@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
-import { CanvasTool, HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
+import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
 import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
@@ -23,7 +23,6 @@ import { resolveHostDoubleClickAction } from '../utils/nodeTap';
 import { shouldOpenLinkInterfaceModal } from '../utils/submapHosts';
 import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
-import { buildLegendItems } from '../utils/legendItems';
 import { AlignGuideLine } from '../utils/alignGuides';
 import {
   computeFitToContentBoundsTransform,
@@ -34,6 +33,7 @@ import {
   TopologyFitViewportRecord,
 } from '../utils/mapBounds';
 import { useMapContentScroll } from '../hooks/useMapContentScroll';
+import '../styles/plugin.scss';
 import { canvasStyles } from './canvas/canvasStyles';
 import { CanvasControlsOverlay } from './canvas/CanvasControlsOverlay';
 import { CanvasGridLayer } from './canvas/CanvasGridLayer';
@@ -45,8 +45,7 @@ import { HostNodesLayer, NetworkLabelsLayer, NetworkNodesLayer } from './canvas/
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
-import { LinkDetailsDrawer, resolveLinkDetailsMetrics } from './LinkDetailsDrawer';
-import { TopologyBlueprintModal } from './lazyModals';
+import { TopologyBlueprintModal, LinkDetailsDrawer } from './lazyModals';
 import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
 import { openDashboardUrl } from './DashboardPickerModal';
 import { LinkPoint } from '../utils/linkGeometry';
@@ -74,6 +73,9 @@ import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
 import { useCanvasToast } from '../hooks/useCanvasToast';
 import { useFrozenCanvasData } from '../hooks/useFrozenCanvasData';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
+import { useCanvasDerivedView } from '../hooks/useCanvasDerivedView';
+import { useCanvasOverlayToggles } from '../hooks/useCanvasOverlayToggles';
+import { useCanvasSession } from '../hooks/useCanvasSession';
 import { useMinimapColors } from '../hooks/useMinimapColors';
 import { useNodeLayouts } from '../hooks/useNodeLayouts';
 import { useRenderLinks } from '../hooks/useRenderLinks';
@@ -221,41 +223,45 @@ export function TopologyCanvas({
   const editable = canEditCanvas;
   const networksLocked = areNetworksLocked(storedMap);
   const showMinimap = options.showMinimap !== false;
-  /** Sobrescreve `options.showLegend` na sessão quando o dashboard não está em modo edição. */
-  const [showLegendLocalOverride, setShowLegendLocalOverride] = useState<boolean | undefined>(undefined);
-  useEffect(() => {
-    setShowLegendLocalOverride(undefined);
-  }, [options.showLegend]);
-  const showLegend = showLegendLocalOverride ?? options.showLegend !== false;
-  const handleToggleShowLegend = useCallback(() => {
-    const current = showLegendLocalOverride ?? options.showLegend !== false;
-    const next = !current;
-    setShowLegendLocalOverride(next);
-    onShowLegendChange?.(next);
-  }, [onShowLegendChange, options.showLegend, showLegendLocalOverride]);
-  /** Sobrescreve `options.showHostAlertList` na sessão quando o dashboard não está em modo edição. */
-  const [showHostAlertListLocalOverride, setShowHostAlertListLocalOverride] = useState<boolean | undefined>(
-    undefined
-  );
-  useEffect(() => {
-    setShowHostAlertListLocalOverride(undefined);
-  }, [options.showHostAlertList]);
-  const showHostAlertList = showHostAlertListLocalOverride ?? options.showHostAlertList !== false;
-  const handleToggleShowHostAlertList = useCallback(() => {
-    const current = showHostAlertListLocalOverride ?? options.showHostAlertList !== false;
-    const next = !current;
-    setShowHostAlertListLocalOverride(next);
-    onShowHostAlertListChange?.(next);
-  }, [onShowHostAlertListChange, options.showHostAlertList, showHostAlertListLocalOverride]);
-  const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
-  const panTool = tool === 'pan';
-  const toolRef = useRef(tool);
-  toolRef.current = tool;
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  useEffect(() => {
-    setTool(canEditCanvas ? 'select' : 'pan');
-  }, [canEditCanvas]);
+  const {
+    showLegend,
+    showHostAlertList,
+    effectiveNocMode,
+    handleToggleShowLegend,
+    handleToggleShowHostAlertList,
+    handleToggleNocMode,
+  } = useCanvasOverlayToggles({
+    showLegend: options.showLegend,
+    showHostAlertList: options.showHostAlertList,
+    nocMode: options.nocMode,
+    onShowLegendChange,
+    onShowHostAlertListChange,
+    onNocModeChange,
+  });
+  const {
+    tool,
+    setTool,
+    toolRef,
+    panTool,
+    searchOpen,
+    setSearchOpen,
+    linkFromId,
+    setLinkFromId,
+    pendingLink,
+    setPendingLink,
+    detailsLink,
+    setDetailsLink,
+    blueprintOpen,
+    setBlueprintOpen,
+    pingTarget,
+    setPingTarget,
+  } = useCanvasSession(canEditCanvas);
+  const { viewEditable, legendItems } = useCanvasDerivedView({
+    editable: canEditCanvas,
+    effectiveNocMode,
+    hideOverlayControls,
+    options,
+  });
 
   const { toast, showToast } = useCanvasToast();
 
@@ -320,30 +326,8 @@ export function TopologyCanvas({
       showToast,
     });
   const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
-  const [linkFromId, setLinkFromId] = useState<string | null>(null);
-  const [pendingLink, setPendingLink] = useState<{
-    from: string;
-    to: string;
-    fromNode: TopologyNode;
-    toNode: TopologyNode;
-  } | null>(null);
-  const [detailsLink, setDetailsLink] = useState<TopologyLink | null>(null);
-  const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
   const pendingNocFocusRef = useRef<{ mapId: string; nodeId: string } | null>(null);
-  /** Sobrescreve `options.nocMode` na sessão quando o dashboard não está em modo edição. */
-  const [nocModeLocalOverride, setNocModeLocalOverride] = useState<boolean | undefined>(undefined);
-  useEffect(() => {
-    setNocModeLocalOverride(undefined);
-  }, [options.nocMode]);
-  const effectiveNocMode = nocModeLocalOverride ?? Boolean(options.nocMode);
-  const handleToggleNocMode = useCallback(() => {
-    const current = nocModeLocalOverride ?? Boolean(options.nocMode);
-    const next = !current;
-    setNocModeLocalOverride(next);
-    onNocModeChange?.(next);
-  }, [nocModeLocalOverride, onNocModeChange, options.nocMode]);
-  const viewEditable = editable && !effectiveNocMode && !hideOverlayControls;
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
   const {
     editNode,
@@ -369,11 +353,6 @@ export function TopologyCanvas({
     linkWaypoints?: { key: string; waypoints: LinkPoint[] };
   } | null>(null);
   const [alignGuides, setAlignGuides] = useState<AlignGuideLine[]>([]);
-  const [pingTarget, setPingTarget] = useState<{
-    label: string;
-    ip: string;
-    zabbixHost?: string;
-  } | null>(null);
 
   /** `activeChildMaps` monta um objeto novo a cada chamada — memoize antes de virar dependência. */
   const childMapsById = useMemo(() => activeChildMaps(options.childMaps), [options.childMaps]);
@@ -1171,8 +1150,6 @@ export function TopologyCanvas({
     showToast,
   });
 
-  const showEmptyHint = map.nodes.length === 0;
-
   const { gridBounds, gridVerticalLines, gridHorizontalLines, isMajorGridLine } = useGridLines({
     gridStep,
     mapWidth: map.width,
@@ -1180,8 +1157,6 @@ export function TopologyCanvas({
     view,
     viewport,
   });
-
-  const legendItems = useMemo(() => buildLegendItems(options), [options]);
 
   const { resolveMiniNodeFill, resolveMiniNetworkStroke, miniLinkColor } = useMinimapColors({
     regionStats,
@@ -1568,7 +1543,7 @@ export function TopologyCanvas({
           link={detailsLink}
           storedMap={storedMap}
           options={options}
-          runtimeMetrics={resolveLinkDetailsMetrics(detailsLink, linkMetricsByLink)}
+          runtimeMetrics={linkMetricsByLink[linkKey(detailsLink)]}
           onClose={() => setDetailsLink(null)}
           onEdit={
             editable

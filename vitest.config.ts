@@ -1,6 +1,16 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  css: {
+    modules: {
+      generateScopedName: 'luminous-topology__[local]__[hash:base64:6]',
+    },
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   test: {
     // jsdom para todos os testes: @grafana/data acessa `window` no import (mesmo em
     // utils "puros" que só usam tipos/enums do pacote), então mesmo os testes de
