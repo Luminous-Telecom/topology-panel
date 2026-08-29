@@ -5,7 +5,7 @@
   position: absolute;
   right: $gap;
   bottom: calc(#{$gap} + #{$scrollbar});
-  z-index: $z-modal;
+  z-index: $z-overlay;
   pointer-events: none;
   min-width: 148px;
   max-width: calc(100% - #{$gap * 2});
@@ -13,6 +13,11 @@
   @include medium {
     min-width: 0;
     max-width: min(220px, calc(100% - #{$gap * 2}));
+  }
+
+  @include compact-canvas {
+    min-width: 0;
+    max-width: min(#{$legend-dock}, calc(50% - #{$gap}));
   }
 }
 

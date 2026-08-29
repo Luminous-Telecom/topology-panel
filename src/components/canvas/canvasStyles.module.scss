@@ -9,6 +9,12 @@
   background: $color-map-bg;
   overscroll-behavior: none;
   touch-action: none;
+  container: topology / inline-size;
+  --topology-legend-dock: 0px;
+
+  &:has([data-topology-legend]) {
+    --topology-legend-dock: #{$legend-dock};
+  }
 
   &:fullscreen,
   &:-webkit-full-screen {

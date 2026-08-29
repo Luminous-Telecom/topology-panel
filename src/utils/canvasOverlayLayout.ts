@@ -3,6 +3,9 @@ import { MAP_NATIVE_SCROLLBAR_PX } from './mapBounds';
 /** Espaçamento e medidas dos overlays fixos sobre o canvas (minimapa, listas, toolbar). */
 export const CANVAS_EDGE_GAP = 8;
 
+/** Largura da legenda no canto inferior direito — a lista de alertas reserva isso no compacto. */
+export const LEGEND_DOCK_WIDTH = 148;
+
 export const MINIMAP_WIDTH = 196;
 export const MINIMAP_HEIGHT = 148;
 

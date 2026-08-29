@@ -45,6 +45,17 @@
   }
 }
 
+/** Painel Grafana estreito ou viewport compacto — o `@media` sozinho ignora coluna fina no desktop. */
+@mixin compact-canvas {
+  @include compact {
+    @content;
+  }
+
+  @container topology (max-width: #{$bp-compact}) {
+    @content;
+  }
+}
+
 @mixin touch-target {
   @include compact {
     min-height: var(--topology-touch-min, #{$touch-min});

@@ -1,6 +1,6 @@
 // Tokens visuais. Números usados em geometria JS precisam permanecer iguais a:
-// OVERLAY_RADIUS (components/chrome/overlayChrome.ts), CANVAS_EDGE_GAP / COMPACT_TOUCH_MIN
-// (canvasOverlayLayout.ts), MAP_NATIVE_SCROLLBAR_PX (mapBounds.ts).
+// OVERLAY_RADIUS (components/chrome/overlayChrome.ts), CANVAS_EDGE_GAP / COMPACT_TOUCH_MIN /
+// LEGEND_DOCK_WIDTH (canvasOverlayLayout.ts), MAP_NATIVE_SCROLLBAR_PX (mapBounds.ts).
 
 $font-xs: 11px;
 $font-sm: 12px;
@@ -33,3 +33,4 @@ $overlay-hover: rgba(79, 195, 247, 0.18);
 
 $bp-compact: 640px;
 $bp-medium: 900px;
+$legend-dock: 148px;

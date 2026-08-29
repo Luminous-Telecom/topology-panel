@@ -39,7 +39,7 @@ export function TopologyColorLegend({
   if (visible.length === 0) {
     // Ainda mostra o contador mesmo sem itens de legenda
     return (
-      <div className={`${overlayCardStyle} ${styles.legend}`} aria-label="Atualização do mapa">
+      <div className={`${overlayCardStyle} ${styles.legend}`} data-topology-legend aria-label="Atualização do mapa">
         <div className={`${overlayCardBodyStyle} ${styles.body}`}>
           <div className={`${overlayMutedStyle} ${styles.countdown} ${styles.countdownSolo}`}>
             {countdownLabel}
@@ -49,7 +49,7 @@ export function TopologyColorLegend({
     );
   }
   return (
-    <div className={`${overlayCardStyle} ${styles.legend}`} aria-label="Legenda de cores">
+    <div className={`${overlayCardStyle} ${styles.legend}`} data-topology-legend aria-label="Legenda de cores">
       <div className={overlayCardHeaderStyle}>Legenda</div>
       <div className={`${overlayCardBodyStyle} ${styles.body}`}>
         {visible.map((item) => (

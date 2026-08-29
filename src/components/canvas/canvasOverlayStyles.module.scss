@@ -56,17 +56,17 @@ $touch: var(--topology-touch-min, #{$touch-min});
 .panelCompactWidth {
   width: min(300px, calc(100% - #{$gap * 2} - #{$scrollbar}));
 
-  @include compact {
-    width: min(340px, calc(100% - #{$gap * 2} - #{$scrollbar}));
-    max-width: calc(100% - #{$gap * 2} - #{$scrollbar});
+  @include compact-canvas {
+    width: min(340px, calc(100% - #{$gap * 3} - #{$scrollbar} - var(--topology-legend-dock, 0px)));
+    max-width: calc(100% - #{$gap * 3} - #{$scrollbar} - var(--topology-legend-dock, 0px));
   }
 }
 
 .panelNocCompactWidth {
   width: min(300px, calc(100% - #{$gap * 2}));
 
-  @include compact {
-    width: calc(100% - #{$gap * 2});
+  @include compact-canvas {
+    width: calc(100% - #{$gap * 3} - var(--topology-legend-dock, 0px));
     max-width: none;
   }
 }
