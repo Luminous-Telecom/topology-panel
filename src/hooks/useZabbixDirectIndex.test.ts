@@ -247,7 +247,7 @@ describe('useZabbixDirectIndex', () => {
 
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).toHaveBeenCalledTimes(2);
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenLastCalledWith(
       'ds',
       ['10', '11', '10001'],
@@ -409,7 +409,7 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
   });
 
-  it('relê problemas no poll e some o alerta quando o Zabbix devolve vazio', async () => {
+  it('não relê problemas no ciclo em regime', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -421,11 +421,9 @@ describe('useZabbixDirectIndex', () => {
       itemIdByKey: new Map(),
       interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
     });
-    fetchProblems
-      .mockResolvedValueOnce({
-        '1': { count: 1, maxSeverity: 4, names: ['Interface down'] },
-      })
-      .mockResolvedValueOnce({});
+    fetchProblems.mockResolvedValue({
+      '1': { count: 1, maxSeverity: 4, names: ['Interface down'] },
+    });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -446,8 +444,8 @@ describe('useZabbixDirectIndex', () => {
     });
     await flush();
 
-    expect(fetchProblems).toHaveBeenCalledTimes(2);
-    expect(result.current.problems).toEqual({});
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
+    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
   });
 
   it('falha do problem.get não impede a pintura do status', async () => {
@@ -741,7 +739,7 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
     expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).toHaveBeenCalledTimes(2);
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
     expect(result.current.index.hosts).toContain('host-1');
   });
 
@@ -1111,7 +1109,7 @@ describe('useZabbixDirectIndex', () => {
 
     expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).toHaveBeenCalledTimes(2);
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
   });
 

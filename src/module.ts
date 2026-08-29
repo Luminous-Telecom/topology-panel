@@ -96,7 +96,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addNumberInput({
         path: 'zabbixRefreshSec',
         name: 'Intervalo de atualização (segundos)',
-        description: `Único timer de busca do painel (status, cabos, hosts e problemas). O auto-refresh do dashboard Grafana não consulta o Zabbix. Mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s`,
+        description: `Único timer de busca do painel (status e cabos). Hosts e problemas só na primeira carga. O auto-refresh do dashboard Grafana não consulta o Zabbix. Mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s`,
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },

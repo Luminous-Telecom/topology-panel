@@ -42,17 +42,17 @@ import {
  *
  * O painel não usa a aba Query, então o polling vive aqui. O único timer é o
  * `zabbixRefreshSec` do plugin: a primeira busca quando a chave ainda não buscou, depois um
- * ciclo a cada intervalo. Em regime o lastvalue sai num `item.get` pelos itemids já
- * conhecidos; em seguida `problem.get` + `trigger.get` (POST separado — o grafana-zabbix só
- * aceita um método por requisição). Identidade (`host.get`) só na descoberta. O relógio mora
- * fora do React — remontar o painel não dispara outro ciclo.
+ * ciclo a cada intervalo. Em regime o lastvalue sai num `item.get` só, pelos itemids já
+ * conhecidos. Identidade (`host.get`) e problemas (`problem.get` + `trigger.get`) só na
+ * descoberta — o grafana-zabbix aceita um método por POST, e três chamadas no intervalo
+ * pintavam o Network. O relógio mora fora do React — remontar o painel não dispara outro ciclo.
  *
  * A primeira pintura espera o lastvalue **ao vivo** do `item.get` — não hidrata lastvalue de
  * localStorage. Sem isso o mapa abria com valor velho ou com caixas cinza (`host.get` sozinho).
  * Catálogo de itemids (sem lastvalue) só acelera o POST: em regime e no F5 frio o `item.get` vai
- * por id. `host.get` não repete no intervalo; problemas sim, para o recover limpar o alerta.
+ * por id. `host.get` e problemas não repetem no intervalo.
  *
- * Lastvalue igual: não redesenha o índice. Problema novo ou recover redesenha só o resumo.
+ * Lastvalue igual: não redesenha o índice. Lastvalue de cabo novo reusa o índice de hosts.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -316,11 +316,11 @@ export function useZabbixDirectIndex({
     let knownStatusItems: ZabbixInterfaceItem[] = live?.knownStatusItems?.length
       ? live.knownStatusItems
       : statusItemsFromCatalog(itemIdCatalog);
-    /** Warning+ — relê no intervalo (depois do lastvalue) para o recover sumir do mapa. */
+    /** Warning+ — só na descoberta; o intervalo não gasta POST extra. */
     let currentProblems: HostProblemsMap = live?.state.problems ?? EMPTY_PROBLEMS;
 
     /*
-     * Identidade e problemas no mesmo intervalo do plugin — não há segundo relógio.
+     * Identidade e problemas só na descoberta. Em regime o intervalo é um `item.get`.
      */
     const ensureMetadata = async (
       abortSignal: AbortSignal,
@@ -355,22 +355,6 @@ export function useZabbixDirectIndex({
           throw err;
         }
       }
-    };
-
-    const commitProblemsIfChanged = (): void => {
-      if (cancelled) {
-        return;
-      }
-      const session = liveSessionByKey.get(snapshotKey);
-      if (!session?.state.ready) {
-        return;
-      }
-      if (sameHostProblems(currentProblems, session.state.problems)) {
-        return;
-      }
-      const next: DirectState = { ...session.state, problems: currentProblems };
-      liveSessionByKey.set(snapshotKey, { ...session, state: next });
-      setState(next);
     };
 
     const rememberTrafficItems = (items: ZabbixInterfaceItem[]): void => {
@@ -652,11 +636,6 @@ export function useZabbixDirectIndex({
       };
       try {
         if (metadata && (await publishByItemIds(metadata, pendingTrafficKeys()))) {
-          await loadProblems(metadata, abortSignal);
-          if (cancelled || abortSignal.aborted) {
-            return;
-          }
-          commitProblemsIfChanged();
           return;
         }
 
