@@ -2,6 +2,9 @@
  * Animação contínua das faixas RX/TX — velocidade por elemento via data-link-flow-speed.
  *
  * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
+ *
+ * O React não grava `offset-distance` nem `stroke-dashoffset`: cada commit zerava o deslocamento
+ * e o cabo travava no poll de tráfego. Velocidade entra por `data-link-flow-speed`.
  */
 export const LINK_FLOW_DASH = '7 11';
 const LINK_FLOW_PERIOD = 18;

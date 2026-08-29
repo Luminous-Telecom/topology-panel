@@ -52,9 +52,10 @@ function LinkFlowArrowsComponent({
           strokeLinejoin="round"
           pointerEvents="none"
           style={{
+            // A posição (`offset-distance`) é do laço em `linkFlow.ts`. Se o React gravar 0px
+            // aqui, cada poll de tráfego zera as setas e o cabo parece travado.
             offsetPath: `path('${laneD}')`,
             offsetRotate: 'auto',
-            offsetDistance: '0px',
           }}
         />
       ))}

@@ -202,18 +202,6 @@ function readSignedItemValue(
   return parseSignedLastValue(readBoundItemField(items, ref, lookupKeys, 'lastvalue'));
 }
 
-function readItemClock(
-  items: Record<string, ZabbixItemLastValue>,
-  ref: TopologyMetricReference | undefined,
-  lookupKeys: string[]
-): number | undefined {
-  if (!ref) {
-    return undefined;
-  }
-  const clock = Number(readBoundItemField(items, ref, lookupKeys, 'lastclock'));
-  return Number.isFinite(clock) ? clock * 1000 : undefined;
-}
-
 function linkEndpointLookupRef(
   map: TopologyMap,
   nodeId: string,
@@ -278,14 +266,6 @@ function buildEndpointMetrics(
   const drops = readItemValue(items, m.drops, lookupKeys);
   const rxPowerDbm = readSignedItemValue(items, m.rxPower, lookupKeys);
   const txPowerDbm = readSignedItemValue(items, m.txPower, lookupKeys);
-  const clocks = [
-    readItemClock(items, m.rx, lookupKeys),
-    readItemClock(items, m.tx, lookupKeys),
-    readItemClock(items, m.operStatus, lookupKeys),
-    readItemClock(items, m.rxPower, lookupKeys),
-    readItemClock(items, m.txPower, lookupKeys),
-  ].filter((c): c is number => c !== undefined);
-  const lastUpdateMs = clocks.length ? Math.max(...clocks) : undefined;
 
   return {
     rxBps,
@@ -298,7 +278,6 @@ function buildEndpointMetrics(
     drops,
     rxPowerDbm,
     txPowerDbm,
-    lastUpdateMs,
   };
 }
 

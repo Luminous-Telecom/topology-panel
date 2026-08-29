@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTheme2 } from '@grafana/ui';
-import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
+import { LinkEndpointRuntimeMetrics, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
 import { formatLinkBandwidth, linkStrokeWidth } from '../../../utils/linkBandwidth';
 import { LINK_FLOW_DASH, supportsFlowArrows } from '../../../utils/linkFlow';
 import {
@@ -429,7 +429,6 @@ function LinkLineComponent({
             stroke={downloadColor}
             strokeWidth={flowStroke}
             strokeDasharray={LINK_FLOW_DASH}
-            strokeDashoffset="0"
             fill="none"
             pointerEvents="none"
             opacity={laneOpacity}
@@ -444,7 +443,6 @@ function LinkLineComponent({
             stroke={uploadColor}
             strokeWidth={flowStroke}
             strokeDasharray={LINK_FLOW_DASH}
-            strokeDashoffset="0"
             fill="none"
             pointerEvents="none"
             opacity={laneOpacity}
@@ -464,6 +462,35 @@ function LinkLineComponent({
       ) : null}
     </g>
   );
+}
+
+/**
+ * `lastclock` do Zabbix muda a cada coleta mesmo com o mesmo lastvalue. Comparar só o que o cabo
+ * desenha (bps, utilização, status, sinal) evita redesenhar todos os links no poll.
+ */
+function sameEndpointVisual(prev: LinkEndpointRuntimeMetrics, next: LinkEndpointRuntimeMetrics): boolean {
+  return (
+    prev.rxBps === next.rxBps &&
+    prev.txBps === next.txBps &&
+    prev.rxUtilizationPct === next.rxUtilizationPct &&
+    prev.txUtilizationPct === next.txUtilizationPct &&
+    prev.operStatus === next.operStatus &&
+    prev.capacityMbps === next.capacityMbps &&
+    prev.errors === next.errors &&
+    prev.drops === next.drops &&
+    prev.rxPowerDbm === next.rxPowerDbm &&
+    prev.txPowerDbm === next.txPowerDbm
+  );
+}
+
+function sameRuntimeVisual(prev?: LinkRuntimeMetrics, next?: LinkRuntimeMetrics): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (!prev || !next) {
+    return false;
+  }
+  return prev.status === next.status && sameEndpointVisual(prev.from, next.from) && sameEndpointVisual(prev.to, next.to);
 }
 
 /** Comparação ponto a ponto — a lista é pequena e roda para cada cabo em cada frame de pan. */
@@ -508,7 +535,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   ) {
     return false;
   }
-  if (prev.runtimeMetrics !== next.runtimeMetrics) {
+  if (prev.runtimeMetrics !== next.runtimeMetrics && !sameRuntimeVisual(prev.runtimeMetrics, next.runtimeMetrics)) {
     return false;
   }
   if (prev.fromHostOffline !== next.fromHostOffline || prev.toHostOffline !== next.toHostOffline) {

@@ -46,4 +46,57 @@ describe('useLinkMetricsRuntime', () => {
     rerender({ values: {} });
     expect(result.current.metricsByLink).toBe(first);
   });
+
+  it('nova coleta com o mesmo lastvalue não troca a identidade das métricas do cabo', () => {
+    const map = mapWithTraffic();
+    const { result, rerender } = renderHook(
+      ({ values }: { values: Record<string, { itemid: string; lastvalue: string; lastclock: string }> }) =>
+        useLinkMetricsRuntime(map, defaultOptions(), values),
+      {
+        initialProps: {
+          values: {
+            '10': { itemid: '10', lastvalue: '500000000', lastclock: '1000' },
+            '11': { itemid: '11', lastvalue: '100000000', lastclock: '1000' },
+          },
+        },
+      }
+    );
+
+    const first = result.current.metricsByLink;
+    rerender({
+      values: {
+        '10': { itemid: '10', lastvalue: '500000000', lastclock: '2000' },
+        '11': { itemid: '11', lastvalue: '100000000', lastclock: '2000' },
+      },
+    });
+    expect(result.current.metricsByLink).toBe(first);
+  });
+
+  it('lastvalue novo troca só o cabo que mudou', () => {
+    const map = mapWithTraffic();
+    const { result, rerender } = renderHook(
+      ({ values }: { values: Record<string, { itemid: string; lastvalue: string; lastclock: string }> }) =>
+        useLinkMetricsRuntime(map, defaultOptions(), values),
+      {
+        initialProps: {
+          values: {
+            '10': { itemid: '10', lastvalue: '500000000', lastclock: '1000' },
+            '11': { itemid: '11', lastvalue: '100000000', lastclock: '1000' },
+          },
+        },
+      }
+    );
+
+    const first = result.current.metricsByLink;
+    const key = linkKey(map.links[0]!);
+    rerender({
+      values: {
+        '10': { itemid: '10', lastvalue: '600000000', lastclock: '2000' },
+        '11': { itemid: '11', lastvalue: '100000000', lastclock: '2000' },
+      },
+    });
+    expect(result.current.metricsByLink).not.toBe(first);
+    expect(result.current.metricsByLink[key]?.from.rxBps).toBe(600000000);
+    expect(result.current.metricsByLink[key]?.from.txBps).toBe(100000000);
+  });
 });

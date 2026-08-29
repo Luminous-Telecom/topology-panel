@@ -246,6 +246,10 @@ export interface LinkEndpointRuntimeMetrics {
   drops?: number;
   rxPowerDbm?: number;
   txPowerDbm?: number;
+  /**
+   * Não preencher no poll: `lastclock` muda a cada coleta e invalidava todos os cabos mesmo com
+   * o mesmo tráfego (travava a animação e o canvas).
+   */
   lastUpdateMs?: number;
 }
 
