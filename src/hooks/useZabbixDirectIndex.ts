@@ -10,12 +10,14 @@ import {
 } from '../services/zabbixSnapshotCache';
 import {
   fetchZabbixDirectMetadata,
+  fetchZabbixProblems,
   fetchZabbixResolvedGroups,
   fetchZabbixStatusLastValues,
   fetchZabbixTrafficLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
   mergeItemIdByKey,
+  sameHostProblems,
   sameLastValuesForPaint,
   sameStatusItemsLastValue,
   statusItemSearch,
@@ -40,17 +42,17 @@ import {
  *
  * O painel não usa a aba Query, então o polling vive aqui. O único timer é o
  * `zabbixRefreshSec` do plugin: a primeira busca quando a chave ainda não buscou, depois um
- * ciclo a cada intervalo. Em regime cada ciclo é **um** POST (`item.get` pelos itemids já
- * conhecidos). Identidade (`host.get`) e problemas não repetem — o grafana-zabbix só aceita um
- * método por POST. O relógio mora fora do React — remontar o painel não dispara outro ciclo.
+ * ciclo a cada intervalo. Em regime o lastvalue sai num `item.get` pelos itemids já
+ * conhecidos; em seguida `problem.get` + `trigger.get` (POST separado — o grafana-zabbix só
+ * aceita um método por requisição). Identidade (`host.get`) só na descoberta. O relógio mora
+ * fora do React — remontar o painel não dispara outro ciclo.
  *
  * A primeira pintura espera o lastvalue **ao vivo** do `item.get` — não hidrata lastvalue de
  * localStorage. Sem isso o mapa abria com valor velho ou com caixas cinza (`host.get` sozinho).
  * Catálogo de itemids (sem lastvalue) só acelera o POST: em regime e no F5 frio o `item.get` vai
- * por id. Identidade (`host.get`) e problemas não repetem no intervalo.
+ * por id. `host.get` não repete no intervalo; problemas sim, para o recover limpar o alerta.
  *
- * O ciclo periódico relê só o lastvalue no mesmo `item.get` por itemid.
- * Lastvalue igual: não redesenha. Só tráfego novo: reusa o índice de hosts.
+ * Lastvalue igual: não redesenha o índice. Problema novo ou recover redesenha só o resumo.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -314,6 +316,8 @@ export function useZabbixDirectIndex({
     let knownStatusItems: ZabbixInterfaceItem[] = live?.knownStatusItems?.length
       ? live.knownStatusItems
       : statusItemsFromCatalog(itemIdCatalog);
+    /** Warning+ — relê no intervalo (depois do lastvalue) para o recover sumir do mapa. */
+    let currentProblems: HostProblemsMap = live?.state.problems ?? EMPTY_PROBLEMS;
 
     /*
      * Identidade e problemas no mesmo intervalo do plugin — não há segundo relógio.
@@ -329,6 +333,44 @@ export function useZabbixDirectIndex({
         resolved ?? metadata
       );
       return metadata;
+    };
+
+    const loadProblems = async (
+      meta: ZabbixDirectMetadata,
+      abortSignal: AbortSignal
+    ): Promise<void> => {
+      const hostids = meta.hosts.map((host) => host.hostid);
+      if (!hostids.length || !meta.groupIds.length) {
+        return;
+      }
+      try {
+        currentProblems = await fetchZabbixProblems(
+          datasourceUid,
+          hostids,
+          meta.groupIds,
+          abortSignal
+        );
+      } catch (err) {
+        if (abortSignal.aborted) {
+          throw err;
+        }
+      }
+    };
+
+    const commitProblemsIfChanged = (): void => {
+      if (cancelled) {
+        return;
+      }
+      const session = liveSessionByKey.get(snapshotKey);
+      if (!session?.state.ready) {
+        return;
+      }
+      if (sameHostProblems(currentProblems, session.state.problems)) {
+        return;
+      }
+      const next: DirectState = { ...session.state, problems: currentProblems };
+      liveSessionByKey.set(snapshotKey, { ...session, state: next });
+      setState(next);
     };
 
     const rememberTrafficItems = (items: ZabbixInterfaceItem[]): void => {
@@ -536,6 +578,15 @@ export function useZabbixDirectIndex({
         const prevLive = prevSession?.state;
         if (prevLive?.ready && sameLastValuesForPaint(traffic.lastValues, prevLive.lastValues)) {
           persistCatalog(statusItems, traffic);
+          if (!sameHostProblems(currentProblems, prevLive.problems)) {
+            const next: DirectState = { ...prevLive, problems: currentProblems };
+            liveSessionByKey.set(snapshotKey, {
+              state: next,
+              metadata: meta,
+              knownStatusItems: statusItems,
+            });
+            setState(next);
+          }
           return true;
         }
         const reuseHostIndex =
@@ -554,7 +605,7 @@ export function useZabbixDirectIndex({
                 }),
           lastValues: traffic.lastValues,
           interfaceItems: traffic.interfaceItems,
-          problems: prevLive?.problems ?? EMPTY_PROBLEMS,
+          problems: currentProblems,
           ready: true,
           loading: false,
           error: undefined,
@@ -601,6 +652,11 @@ export function useZabbixDirectIndex({
       };
       try {
         if (metadata && (await publishByItemIds(metadata, pendingTrafficKeys()))) {
+          await loadProblems(metadata, abortSignal);
+          if (cancelled || abortSignal.aborted) {
+            return;
+          }
+          commitProblemsIfChanged();
           return;
         }
 
@@ -621,6 +677,7 @@ export function useZabbixDirectIndex({
         }
 
         const meta = await ensureMetadata(abortSignal, groups);
+        await loadProblems(meta, abortSignal);
 
         if (await publishByItemIds(meta, pendingTrafficKeys())) {
           return;

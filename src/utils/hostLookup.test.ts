@@ -171,4 +171,31 @@ describe('resolveHostZabbixId', () => {
       )
     ).toBe('101');
   });
+
+  it('ignora zabbixHostId legado quando a metadata já resolve o host', () => {
+    expect(
+      resolveHostZabbixId(
+        { zabbixHost: '10.0.0.1', label: 'host-a', zabbixHostId: '999' },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' } }
+      )
+    ).toBe('101');
+  });
+
+  it('resolve o hostid pelo label quando a metadata só está no IP', () => {
+    expect(
+      resolveHostZabbixId(
+        { label: 'host-a' },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' } }
+      )
+    ).toBe('101');
+  });
+
+  it('casa o label com o nome visível sem distinguir maiúsculas', () => {
+    expect(
+      resolveHostZabbixId(
+        { label: 'Host-A' },
+        { '10.0.0.1': { name: 'host-a', ip: '10.0.0.1', hostid: '101' } }
+      )
+    ).toBe('101');
+  });
 });

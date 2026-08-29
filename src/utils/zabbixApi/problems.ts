@@ -16,11 +16,15 @@ export interface ZabbixProblemRow {
   severity?: string | number;
   objectid?: string;
   hostid?: string;
+  /** Presente no Zabbix 5.4+ — manutenção/supressão. */
+  suppressed?: boolean | string | number;
   hosts?: Array<{ hostid?: string }>;
 }
 
 interface ZabbixTriggerHostRow {
   triggerid?: string;
+  /** 0 = habilitado, 1 = desabilitado — a tela Problems omite desabilitado. */
+  status?: string | number;
   hosts?: Array<{ hostid?: string }>;
 }
 
@@ -49,8 +53,19 @@ function problemName(row: ZabbixProblemRow): string | undefined {
   return name || undefined;
 }
 
+/** A tela Problems do Zabbix omite suprimidos por padrão; o mapa segue o mesmo recorte. */
+function problemIsSuppressed(row: ZabbixProblemRow): boolean {
+  const value = row.suppressed;
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
 function uniqueNumericIds(values: Array<string | undefined>): string[] {
   return [...new Set(values.map((id) => asZabbixId(id)).filter((id) => isNumericZabbixItemId(id)))];
+}
+
+/** Trigger desabilitado some da tela Problems; `problem.get` ainda devolve o evento aberto. */
+function triggerIsDisabled(row: ZabbixTriggerHostRow): boolean {
+  return row.status === 1 || row.status === '1';
 }
 
 /** Agrega Warning+ por hostid — mesma forma que o mapa já consome. */
@@ -63,6 +78,9 @@ export function parseZabbixProblems(rows: ZabbixProblemRow[], hostIds: string[])
   }
 
   for (const row of rows) {
+    if (problemIsSuppressed(row)) {
+      continue;
+    }
     const severity = problemSeverity(row);
     if (severity < ZABBIX_PROBLEM_MIN_SEVERITY) {
       continue;
@@ -101,10 +119,37 @@ export function parseZabbixProblems(rows: ZabbixProblemRow[], hostIds: string[])
   return summary;
 }
 
+/** Compara o resumo Warning+ — lastvalue igual não pode esconder recover/novo problema. */
+export function sameHostProblems(a: HostProblemsMap, b: HostProblemsMap): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+  for (const key of keysA) {
+    const left = a[key];
+    const right = b[key];
+    if (!left || !right || left.count !== right.count || left.maxSeverity !== right.maxSeverity) {
+      return false;
+    }
+    const namesA = left.names ?? [];
+    const namesB = right.names ?? [];
+    if (namesA.length !== namesB.length) {
+      return false;
+    }
+    for (let i = 0; i < namesA.length; i += 1) {
+      if (namesA[i] !== namesB[i]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 /**
  * `problem.get` não devolve host — `selectHosts` ali é parâmetro inválido e o grafana-zabbix
  * mapeia o erro JSON-RPC para HTTP 500. O join é o mesmo do plugin: `trigger.get` pelos
- * objectids (triggerid), só `hostid`.
+ * objectids (triggerid), só `hostid`. Trigger desabilitado não entra (status=1).
  */
 async function attachProblemHosts(
   datasourceUid: string,
@@ -120,7 +165,8 @@ async function attachProblemHosts(
     'trigger.get',
     {
       triggerids,
-      output: ['triggerid'],
+      output: ['triggerid', 'status'],
+      filter: { status: 0 },
       selectHosts: ['hostid'],
     },
     ZABBIX_CALL_TIMEOUT_MS,
@@ -128,6 +174,9 @@ async function attachProblemHosts(
   );
   const hostsByTrigger = new Map<string, string[]>();
   for (const trigger of triggers ?? []) {
+    if (triggerIsDisabled(trigger)) {
+      continue;
+    }
     const triggerid = asZabbixId(trigger.triggerid);
     const hostids = uniqueNumericIds((trigger.hosts ?? []).map((host) => host.hostid));
     if (isNumericZabbixItemId(triggerid) && hostids.length) {
@@ -148,6 +197,8 @@ async function attachProblemHosts(
  *
  * `problem.get` por `groupids` (lista curta). Mandar todos os hostids no body faz o proxy
  * do grafana-zabbix devolver 500. O recorte para hosts do índice é no parse.
+ * `recent: false` e `suppressed: false` batem com a tela Problems (sem recentes, sem manutenção).
+ * Trigger desabilitado também some da tela e é recortado no `trigger.get` (`filter.status: 0`).
  */
 export async function fetchZabbixProblems(
   datasourceUid: string,
@@ -169,6 +220,8 @@ export async function fetchZabbixProblems(
       severities: PROBLEM_SEVERITIES,
       source: 0,
       object: 0,
+      recent: false,
+      suppressed: false,
       limit: PROBLEMS_LIMIT,
     },
     ZABBIX_CALL_TIMEOUT_MS,

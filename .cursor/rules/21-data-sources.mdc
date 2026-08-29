@@ -31,9 +31,12 @@ submapa. Atalho interno herda os grupos do nó dono; o rótulo curto sozinho nã
 - Cor e rótulo saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`).
 - O hover lê o mesmo lastvalue via `hostDisplay` — proibido JSON-RPC ao passar o mouse.
 - Problemas Warning+ (`fetchZabbixProblems` / `problem.get` pelos groupids + `trigger.get` só
-  para casar objectid→hostid, ciclo de identidade) pintam `colorAlert` e entram na lista de
-  alertas. `problem.get` **não** aceita `selectHosts` — o proxy do grafana-zabbix vira HTTP 500.
-  Offline do índice vence. Sem `problem.get`, `problemsUnavailable` mantém o badge anterior.
+  para casar objectid→hostid) pintam `colorAlert` e entram na lista de alertas. Relê no intervalo
+  do painel depois do lastvalue. Só problemas atuais não suprimidos (`recent: false`,
+  `suppressed: false`) de trigger **habilitado** (`trigger.get` `filter.status: 0`) — o mesmo
+  recorte da tela Problems do Zabbix. Casa o nó pelo `hostid` resolvido, não por alias.
+  `problem.get` **não** aceita `selectHosts` — o proxy do grafana-zabbix vira HTTP 500. Offline do
+  índice vence. Falha do `problem.get` mantém o resumo anterior.
 - O painel declara `skipDataQuery` em `plugin.json`: não há aba Query nem `DataSourceApi.query()`.
 
 `utils/zabbixApi/` e `utils/zabbixApi.ts` (poll + catalog + problems, **sem** ping) são o **único**
@@ -42,8 +45,8 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
 | Consumidor autorizado | Uso permitido |
 |---|---|
 | `components/PingModal.tsx` | `executeHostPingScript` e `fetchHostIcmpStatus` via `zabbixApi/ping.ts` |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` por hostid e termo) |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixResolvedGroups`, `fetchZabbixDirectMetadata`, `fetchZabbixStatusLastValues` (descoberta, só hostids), `fetchZabbixTrafficLastValues` (regime: um `item.get` por itemid) |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` por hostid e termo; sem hostid no índice, `host.get` exato por nome/técnico/IP — sem `groupids`) |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixResolvedGroups`, `fetchZabbixDirectMetadata`, `fetchZabbixStatusLastValues` (descoberta, só hostids), `fetchZabbixTrafficLastValues` (regime: um `item.get` por itemid), `fetchZabbixProblems` (descoberta e intervalo, depois do lastvalue) |
 | `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`) |
 | `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNames` (`item.get` `output: name` por grupo) |
 
@@ -56,8 +59,9 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
   por itemid depois do `host.get`. Com chave de cabo ainda sem id: `item.get` por key no mesmo
   ciclo, sem misturar `itemids` e `key_` no mesmo POST. Itemids de cabo **não** entram na chave
   do efeito.
-  Ciclo em regime: **um** POST — `item.get` pelos itemids já conhecidos (status + tráfego).
-  Sem `host.get`, `problem.get`, `trigger.get` nem inventário de sinal no intervalo.
+  Ciclo em regime: **um** POST de lastvalue (`item.get` pelos itemids) e, em seguida, problemas
+  ativos (`problem.get` + `trigger.get`, POSTs separados). Sem `host.get` nem inventário de sinal
+  no intervalo.
   `item.get` de status por hostids só na descoberta (primeira carga sem catálogo, host novo).
   Relógio do poll em `utils/pollingGate.ts` (sobrevive à remontagem do painel). Sem fetch extra
   ao trocar cabo. Drawer lê `runtimeMetrics` do mesmo poll.

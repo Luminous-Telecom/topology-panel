@@ -50,22 +50,92 @@ export interface HostLookupRef {
   label?: string;
 }
 
-/** `hostid` Zabbix do nó — IP/nome via metadata; `zabbixHostId` só se ainda estiver gravado. */
+function sameLookupToken(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function nameKeysOf(ref: HostLookupRef): string[] {
+  return [ref.zabbixHost, ref.label]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value && !isIpv4(value)));
+}
+
+/** Entrada de metadata por IP, por chave de nome, ou por `name` de qualquer entrada. */
+export function findHostMetadata(
+  metadata: HostMetadataMap,
+  ip: string | undefined,
+  nameKeys: string[]
+): HostMetadata | undefined {
+  if (ip) {
+    const byIp = metadata[ip];
+    if (byIp) {
+      return byIp;
+    }
+    for (const value of Object.values(metadata)) {
+      if (value.ip && sameLookupToken(value.ip, ip)) {
+        return value;
+      }
+    }
+  }
+  for (const key of nameKeys) {
+    const byName = metadata[key];
+    if (byName) {
+      return byName;
+    }
+  }
+  for (const [mapKey, value] of Object.entries(metadata)) {
+    if (nameKeys.some((name) => sameLookupToken(name, mapKey))) {
+      return value;
+    }
+    const visible = value.name?.trim();
+    if (visible && nameKeys.some((name) => sameLookupToken(name, visible))) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/** `hostid` gravado no índice para uma chave de lookup (IP, label ou nome técnico). */
+export function hostidFromLookupKey(key: string, metadata?: HostMetadataMap): string | undefined {
+  const trimmed = key.trim();
+  if (!trimmed || !metadata) {
+    return undefined;
+  }
+  const direct = metadata[trimmed]?.hostid?.trim();
+  if (direct) {
+    return direct;
+  }
+  const ip = isIpv4(trimmed) ? trimmed : undefined;
+  return findHostMetadata(metadata, ip, ip ? [] : [trimmed])?.hostid?.trim();
+}
+
+function numericHostId(value?: string): string | undefined {
+  const id = value?.trim();
+  return id && /^\d+$/.test(id) ? id : undefined;
+}
+
+/** `hostid` Zabbix do nó — IP/nome da metadata vencem `zabbixHostId` legado no JSON. */
 export function resolveHostZabbixId(
   ref: HostLookupRef,
   metadata?: HostMetadataMap
 ): string | undefined {
-  const fromRef = ref.zabbixHostId?.trim();
-  if (fromRef && /^\d+$/.test(fromRef)) {
-    return fromRef;
-  }
-  for (const key of collectHostLookupCandidates(ref, metadata)) {
-    const id = metadata?.[key]?.hostid?.trim();
-    if (id) {
-      return id;
+  if (metadata) {
+    for (const key of collectHostLookupCandidates(ref, metadata)) {
+      const id = hostidFromLookupKey(key, metadata);
+      if (id) {
+        return id;
+      }
+    }
+    const fromMeta = findHostMetadata(
+      metadata,
+      resolveHostIp(ref, metadata),
+      nameKeysOf(ref)
+    )?.hostid?.trim();
+    if (fromMeta) {
+      return fromMeta;
     }
   }
-  return undefined;
+  return numericHostId(ref.zabbixHostId);
 }
 
 /** Chave primária — IP quando existir; senão nome (zabbixHost / label). */
@@ -183,6 +253,21 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
     }
   }
 
+  if (metadata) {
+    const entry = findHostMetadata(metadata, resolvedIp, nameKeysOf(ref));
+    if (entry) {
+      if (entry.ip && isIpv4(entry.ip)) {
+        add(entry.ip);
+      }
+      if (entry.name) {
+        add(entry.name);
+      }
+      if (entry.hostid) {
+        add(entry.hostid);
+      }
+    }
+  }
+
   return out;
 }
 
@@ -206,7 +291,7 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
       continue;
     }
 
-    const entry = findMetadataEntry(result, ip, nameKeys);
+    const entry = findHostMetadata(result, ip, nameKeys);
     if (!entry) {
       continue;
     }
@@ -239,32 +324,6 @@ export function enrichHostMetadataFromMaps(
     result = enrichHostMetadataFromMap(result, map);
   }
   return result;
-}
-
-/** Entrada de metadata por IP, por chave de nome, ou por `name` de qualquer entrada. */
-function findMetadataEntry(
-  metadata: HostMetadataMap,
-  ip: string | undefined,
-  nameKeys: string[]
-): HostMetadata | undefined {
-  if (ip) {
-    const byIp = metadata[ip];
-    if (byIp) {
-      return byIp;
-    }
-  }
-  for (const key of nameKeys) {
-    const byName = metadata[key];
-    if (byName) {
-      return byName;
-    }
-  }
-  for (const value of Object.values(metadata)) {
-    if (value.name && nameKeys.includes(value.name.trim())) {
-      return value;
-    }
-  }
-  return undefined;
 }
 
 /**

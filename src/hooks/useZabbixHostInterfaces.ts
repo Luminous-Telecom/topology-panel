@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from '../types';
 import { createAsyncCache } from '../services/asyncCache';
+import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from '../types';
+import { hostidFromLookupKey } from '../utils/hostLookup';
 import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
 import { fetchZabbixHostInterfaceItems } from '../utils/zabbixApi';
@@ -37,6 +38,25 @@ export const NO_KEYWORDS_ERROR =
   'Configure as palavras-chave RX, TX, status e capacidade da interface em Fonte de dados.';
 export const NO_API_ITEMS_ERROR =
   'Nenhuma métrica de interface encontrada no Zabbix para as chaves RX/TX/status/capacidade configuradas.';
+export const NO_HOST_FOUND_ERROR =
+  'Não foi possível localizar este host no Zabbix. Confira se o nome ou o IP do nó coincide com um host monitorado.';
+
+function aliasInterfacesToLookupKeys(
+  byHost: InterfacesByHost,
+  keys: string[]
+): InterfacesByHost {
+  const filled = Object.values(byHost).find((list) => list.length);
+  if (!filled) {
+    return byHost;
+  }
+  const next: InterfacesByHost = { ...byHost };
+  for (const key of keys) {
+    if (!next[key]?.length) {
+      next[key] = filled;
+    }
+  }
+  return next;
+}
 
 export function panelInterfaceKeywords(
   options: Pick<
@@ -120,7 +140,7 @@ export function useZabbixHostInterfaces(
     interfaceKeywords?.txPowerKeyword,
   ]);
   const metadataHostIds = useMemo(
-    () => keys.map((key) => hostMetadata?.[key]?.hostid?.trim() ?? '').join('\u0001'),
+    () => keys.map((key) => hostidFromLookupKey(key, hostMetadata) ?? '').join('\u0001'),
     [keys, hostMetadata]
   );
   const configKey = `${searchKeys.join('\u0001')}\u0000${metadataHostIds}`;
@@ -153,20 +173,27 @@ export function useZabbixHostInterfaces(
 
     interfacesCache
       .get(cacheKey, async () => {
+        const lookupKeys = hostKey.split('\0').filter(Boolean);
         const entries = await fetchZabbixHostInterfaceItems(
           datasourceUid,
-          hostKey.split('\0').flatMap((key) => {
-            const hostid = hostMetadataRef.current?.[key]?.hostid?.trim();
-            return hostid ? [{ hostKey: key, hostid }] : [];
-          }),
+          lookupKeys.map((key) => ({
+            hostKey: key,
+            hostid: hostidFromLookupKey(key, hostMetadataRef.current),
+          })),
           searchKeysRef.current
         );
-        return groupInterfacesByHost(entries, keyParseOptionsRef.current);
+        return aliasInterfacesToLookupKeys(
+          groupInterfacesByHost(entries, keyParseOptionsRef.current),
+          lookupKeys
+        );
       })
       .then((result) => {
         if (!cancelled) {
           setApiInterfaces(result);
           setLoading(false);
+          if (hostKey && Object.keys(result).length === 0) {
+            setApiError(NO_HOST_FOUND_ERROR);
+          }
         }
       })
       .catch(() => {

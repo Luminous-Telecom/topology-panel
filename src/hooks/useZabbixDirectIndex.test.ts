@@ -238,17 +238,16 @@ describe('useZabbixDirectIndex', () => {
     );
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
-      await Promise.resolve();
-      await Promise.resolve();
     });
+    await flush();
 
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).not.toHaveBeenCalled();
-    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    expect(fetchProblems).toHaveBeenCalledTimes(2);
     expect(fetchLastValues).toHaveBeenLastCalledWith(
       'ds',
       ['10', '11', '10001'],
@@ -410,13 +409,23 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
   });
 
-  it('não consulta problemas no poll — cada ciclo é um POST só', async () => {
-    fetchMetadata.mockResolvedValueOnce({
+  it('relê problemas no poll e some o alerta quando o Zabbix devolve vazio', async () => {
+    fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusItems('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: { '10001': { itemid: '10001', lastvalue: '1' } },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
+    });
+    fetchProblems
+      .mockResolvedValueOnce({
+        '1': { count: 1, maxSeverity: 4, names: ['Interface down'] },
+      })
+      .mockResolvedValueOnce({});
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -429,9 +438,41 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
+    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+
+    expect(fetchProblems).toHaveBeenCalledTimes(2);
+    expect(result.current.problems).toEqual({});
+  });
+
+  it('falha do problem.get não impede a pintura do status', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
+    fetchProblems.mockRejectedValueOnce(new Error('Falha ao consultar o Zabbix.'));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
     expect(result.current.ready).toBe(true);
     expect(result.current.index.hosts).toContain('host-1');
+    expect(result.current.problems).toEqual({});
   });
 
   it('resolve chave de cabo no item.get de descoberta e devolve o lastvalue pela key', async () => {
@@ -669,7 +710,7 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
   });
 
-  it('ciclo em regime não relê host.get — um POST só', async () => {
+  it('ciclo em regime não relê host.get', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -694,13 +735,13 @@ describe('useZabbixDirectIndex', () => {
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
-      await Promise.resolve();
-      await Promise.resolve();
     });
+    await flush();
 
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
     expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(fetchProblems).toHaveBeenCalledTimes(2);
     expect(result.current.index.hosts).toContain('host-1');
   });
 
@@ -1060,18 +1101,17 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchProblems).toHaveBeenCalledTimes(1);
     expect(fetchLastValues).not.toHaveBeenCalled();
 
     await act(async () => {
       vi.advanceTimersByTime(10_000);
-      await Promise.resolve();
-      await Promise.resolve();
     });
+    await flush();
 
     expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
-    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchProblems).toHaveBeenCalledTimes(2);
     expect(fetchLastValues).toHaveBeenCalledTimes(1);
   });
 

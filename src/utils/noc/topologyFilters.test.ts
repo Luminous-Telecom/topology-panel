@@ -235,6 +235,26 @@ describe('topologyFilters', () => {
     expect(summary).toEqual({ count: 1, maxSeverity: 3, names: ['ICMP timeout'] });
   });
 
+  it('não pinta problema de outro hostid que só aparece num alias do nó', () => {
+    const summary = resolveHostProblemSummary(
+      {
+        id: 'sw1',
+        type: 'host',
+        label: 'host-a',
+        zabbixHost: 'CPE-01',
+        subtitle: '10.0.0.1',
+        x: 0,
+        y: 0,
+      },
+      {
+        'host-a': { name: 'host-a', ip: '10.0.0.1', hostid: '1001' },
+        'CPE-01': { name: 'other', ip: '10.0.0.9', hostid: '1002' },
+      },
+      { '1002': { count: 1, maxSeverity: 4, names: ['Interface down'] } }
+    );
+    expect(summary).toBeUndefined();
+  });
+
   it('visibleHostProblemNames recorta a lista e conta o restante', () => {
     expect(visibleHostProblemNames(['  a  ', '', 'b'])).toEqual({ visible: ['a', 'b'], hidden: 0 });
     const many = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];

@@ -24,12 +24,12 @@ hooks de arraste/viewport.
 - Não recalcule por nó dentro do laço de render. Monte `Map`/`Set` antes do laço e consulte por
   chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).
 - Não multiplique `POST .../zabbix-api`: ciclo em regime é **um** `item.get` pelos itemids já
-  conhecidos. Sem `host.get`/`problem.get` no intervalo. Remontar o painel ou trocar cabo não
-  dispara ciclo novo antes do `zabbixRefreshSec`.
+  conhecidos e, depois, `problem.get` + `trigger.get` (recover some o alerta). Sem `host.get` no
+  intervalo. Remontar o painel ou trocar cabo não dispara ciclo novo antes do `zabbixRefreshSec`.
 - Poll em regime não grava lastvalue no `localStorage` (`persistZabbixItemIdCatalog` só com ids,
   e só se os ids mudaram).
 - Lastclock novo sem lastvalue novo não dispara `setState` nem redesenha o SVG (`sameLastValuesForPaint`;
-  o memo do nó ignora `updatedAtSec`).
+  o memo do nó ignora `updatedAtSec`). Recover ou problema novo ainda pinta (`sameHostProblems`).
 - Poll em que só o lastvalue de tráfego mudou reusa o `QueryIndex` (`sameStatusItemsLastValue`) —
   contador de cabo sobe a cada intervalo e não pode remontar os nós.
 

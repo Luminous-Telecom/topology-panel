@@ -6,12 +6,7 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../../types';
-import {
-  collectHostLookupCandidates,
-  enrichHostDisplayFromMap,
-  enrichHostMetadataFromMap,
-  resolveHostZabbixId,
-} from '../hostLookup';
+import { enrichHostDisplayFromMap, enrichHostMetadataFromMap, resolveHostZabbixId } from '../hostLookup';
 import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
@@ -38,23 +33,21 @@ export function resolveHostProblemSummary(
   if (!hostProblems) {
     return undefined;
   }
-  const ref = {
-    zabbixHost: node.zabbixHost,
-    subtitle: node.subtitle,
-    label: node.label,
-    zabbixHostId: node.zabbixHostId,
-  };
-  const keys = [resolveHostZabbixId(ref, hostMetadata), ...collectHostLookupCandidates(ref, hostMetadata)];
-  const seen = new Set<string>();
-  for (const key of keys) {
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    const summary = hostProblems[key];
-    if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
-      return summary;
-    }
+  const hostid = resolveHostZabbixId(
+    {
+      zabbixHost: node.zabbixHost,
+      subtitle: node.subtitle,
+      label: node.label,
+      zabbixHostId: node.zabbixHostId,
+    },
+    hostMetadata
+  );
+  if (!hostid) {
+    return undefined;
+  }
+  const summary = hostProblems[hostid];
+  if (summary && summary.count > 0 && summary.maxSeverity >= ZABBIX_PROBLEM_MIN_SEVERITY) {
+    return summary;
   }
   return undefined;
 }

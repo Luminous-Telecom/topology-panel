@@ -33,5 +33,5 @@ export {
 } from './zabbixApi/poll';
 export { fetchZabbixHostInterfaceItems, fetchZabbixItemNames } from './zabbixApi/catalog';
 export type { ZabbixInterfaceHostRef } from './zabbixApi/catalog';
-export { fetchZabbixProblems, parseZabbixProblems } from './zabbixApi/problems';
+export { fetchZabbixProblems, parseZabbixProblems, sameHostProblems } from './zabbixApi/problems';
 export type { ZabbixProblemRow } from './zabbixApi/problems';
