@@ -1,51 +1,56 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { EventBus } from '@grafana/data';
-import { RefreshEvent } from '@grafana/runtime';
-import { ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
+import { ZABBIX_DIRECT_DEFAULT_REFRESH_SEC, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
-  readZabbixSnapshot,
-  writeZabbixSnapshot,
+  persistZabbixItemIdCatalog,
+  readZabbixItemIdCatalog,
   zabbixSnapshotCacheKey,
-  ZabbixSnapshotPayload,
+  ZabbixItemIdCatalog,
 } from '../services/zabbixSnapshotCache';
 import {
   fetchZabbixDirectMetadata,
   fetchZabbixResolvedGroups,
-  fetchZabbixSignalInventory,
+  fetchZabbixStatusLastValues,
   fetchZabbixTrafficLastValues,
   isBenignZabbixFetchError,
   isNumericZabbixItemId,
+  mergeItemIdByKey,
+  sameLastValuesForPaint,
+  sameStatusItemsLastValue,
+  statusItemSearch,
+  zabbixHostItemKey,
   ZabbixDirectMetadata,
   ZabbixInterfaceItem,
   ZabbixItemLastValue,
   ZabbixResolvedGroups,
 } from '../utils/zabbixApi';
 import { aliasLastValuesByItemKey, coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
-import { fetchZabbixStatusViaQuery, prefetchZabbixDatasource } from '../utils/zabbixDatasourceQuery';
 import { HostProblemsMap } from '../utils/noc/types';
-import { POLL_WATCHDOG_MS, canStartRefreshEventFetch } from '../utils/pollingGate';
+import {
+  canStartPolledFetch,
+  markPollFinished,
+  markPollStarted,
+  msUntilNextPoll,
+  readPollClock,
+} from '../utils/pollingGate';
 
 /**
  * Busca periódica do último valor no Zabbix.
  *
- * O painel não usa a aba Query, então o polling vive aqui. Ele para quando a aba está oculta,
- * não sobrepõe buscas rápidas e retoma o ciclo se a busca anterior não voltou (watchdog) —
- * senão o mapa fica preso no primeiro snapshot.
+ * O painel não usa a aba Query, então o polling vive aqui. O único timer é o
+ * `zabbixRefreshSec` do plugin: a primeira busca quando a chave ainda não buscou, depois um
+ * ciclo a cada intervalo. Em regime cada ciclo é **um** POST (`item.get` pelos itemids já
+ * conhecidos). Identidade (`host.get`) e problemas não repetem — o grafana-zabbix só aceita um
+ * método por POST. O relógio mora fora do React — remontar o painel não dispara outro ciclo.
  *
- * A primeira pintura é só estrutura (`host.get`): caixas cinza, sem cor e sem tráfego — a menos
- * que exista snapshot em cache (abrir o dashboard de novo pinta status e cabos na hora). Cor e
- * cabos novos entram juntos no `commitSnapshot('full')`. Trocar grupos (abrir submapa, editar)
- * não zera o índice: o mapa continua com o último snapshot até o novo chegar. Mudar interface de
- * cabo também não remonta o poll — senão a pintura rápida sai sem status e todos os nós ficam cinza.
+ * A primeira pintura espera o lastvalue **ao vivo** do `item.get` — não hidrata lastvalue de
+ * localStorage. Sem isso o mapa abria com valor velho ou com caixas cinza (`host.get` sozinho).
+ * Catálogo de itemids (sem lastvalue) só acelera o POST: em regime e no F5 frio o `item.get` vai
+ * por id. Identidade (`host.get`) e problemas não repetem no intervalo.
  *
- * O ciclo periódico chama `ds.query()` do datasource Zabbix: um POST com Metrics (status)
- * e Problems (Warning+) no mesmo request — lastvalue e badge, depois da primeira
- * pintura. O tráfego e o sinal dos cabos lêem o `lastvalue` do `item.get` em paralelo, mas só
- * publicam no mesmo snapshot do status.
- * O `RefreshEvent` do dashboard não recomeça este efeito — o Grafana recria o EventBus no load
- * e isso abortava o primeiro `ds.query()` para disparar outro.
+ * O ciclo periódico relê só o lastvalue no mesmo `item.get` por itemid.
+ * Lastvalue igual: não redesenha. Só tráfego novo: reusa o índice de hosts.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
@@ -61,17 +66,10 @@ export interface UseZabbixDirectIndexOptions {
   groupNames: string[];
   statusItemKey: string;
   refreshSec: number;
-  eventBus?: EventBus;
-  /** Itemids de RX/TX dos cabos — último ponto da série em paralelo. */
+  /** Itemids de RX/TX dos cabos — lastvalue no mesmo `item.get` do status. */
   trafficItemIds?: string[];
   /** Chaves dos cabos sem itemid numérico — resolvidas uma vez via `item.get`. */
   trafficKeys?: string[];
-  /** Hosts dos cabos com interface — sinal óptico/rádio no mesmo `item.get`. */
-  signalHostIds?: string[];
-  /** Termos de busca de sinal (óptico/rádio) no mesmo `item.get` do tráfego. */
-  signalSearchTerms?: string[];
-  /** Reduz o inventário de sinal recém-descoberto aos itens que os cabos realmente usam. */
-  selectSignalItemIds?: (items: ZabbixInterfaceItem[]) => string[];
 }
 
 export interface UseZabbixDirectIndexResult {
@@ -98,16 +96,6 @@ interface DirectState {
 const EMPTY_LAST_VALUES: Record<string, ZabbixItemLastValue> = {};
 const EMPTY_INTERFACE_ITEMS: ZabbixInterfaceItem[] = [];
 const EMPTY_PROBLEMS: HostProblemsMap = {};
-/**
- * Intervalo entre varreduras do inventário de sinal. Porta nova só aparece na próxima varredura;
- * editar a interface do cabo muda a configuração do poll e já força uma imediata.
- */
-const SIGNAL_REDISCOVERY_MS = 10 * 60_000;
-/**
- * Intervalo da releitura de identidade (`hostgroup.get` + `host.get`) e dos problemas. Host novo,
- * host desativado e badge de alerta aparecem dentro desta janela, não a cada refresh.
- */
-const IDENTITY_REFRESH_MS = 60_000;
 const IDLE_STATE: DirectState = {
   index: EMPTY_INDEX,
   lastValues: EMPTY_LAST_VALUES,
@@ -117,21 +105,118 @@ const IDLE_STATE: DirectState = {
   loading: false,
 };
 
-function hydrateFromSnapshot(cached: ZabbixSnapshotPayload): DirectState {
-  return {
-    index: buildZabbixDirectIndex({
-      datasourceUid: cached.datasourceUid,
-      groupNames: cached.groupNames,
-      statusItemKey: cached.statusItemKey,
-      hosts: cached.hosts,
-      statusItems: cached.statusItems,
-    }),
-    lastValues: cached.lastValues,
-    interfaceItems: cached.interfaceItems,
-    problems: cached.problems,
-    ready: true,
-    loading: false,
-  };
+function numericStatusItemIds(items: ZabbixInterfaceItem[]): string[] {
+  return [...new Set(items.map((item) => item.itemid.trim()).filter((id) => isNumericZabbixItemId(id)))];
+}
+
+/**
+ * Dá para reler o status no mesmo `item.get` dos cabos: todo host tem itemid numérico conhecido.
+ * Senão (primeira carga, host novo, itemid ainda não resolvido) volta o `item.get` por hostids.
+ */
+function statusItemsCoverHosts(items: ZabbixInterfaceItem[], hostids: string[]): boolean {
+  if (!hostids.length || !items.length || numericStatusItemIds(items).length !== items.length) {
+    return false;
+  }
+  const covered = new Set(items.map((item) => item.hostid?.trim()).filter(Boolean));
+  return hostids.every((id) => covered.has(id));
+}
+
+function statusLastValuesPresent(
+  lastValues: Record<string, ZabbixItemLastValue>,
+  items: ZabbixInterfaceItem[]
+): boolean {
+  const hasIncoming = items.some((item) => {
+    const id = item.itemid.trim();
+    return isNumericZabbixItemId(id) && lastValues[id]?.lastvalue !== undefined;
+  });
+  if (hasIncoming) {
+    return true;
+  }
+  return items.some((item) => item.lastvalue !== undefined);
+}
+
+function statusItemsFromCatalog(catalog: ZabbixItemIdCatalog | undefined): ZabbixInterfaceItem[] {
+  if (!catalog?.statusItems.length) {
+    return [];
+  }
+  return catalog.statusItems;
+}
+
+function itemIdByKeyFromCatalog(catalog: ZabbixItemIdCatalog | undefined): Map<string, string> {
+  const next = new Map<string, string>();
+  if (!catalog) {
+    return next;
+  }
+  for (const [scoped, id] of Object.entries(catalog.itemIdByKey)) {
+    const trimmed = id.trim();
+    if (!scoped.includes(':') || !isNumericZabbixItemId(trimmed)) {
+      continue;
+    }
+    next.set(scoped, trimmed);
+  }
+  return next;
+}
+
+/** A chave do mapa é `hostid:key`; a `trafficKeys` do cabo vem sem hostid. */
+function trafficKeyIsResolved(itemIdByKey: Map<string, string>, key: string): boolean {
+  if (itemIdByKey.has(key)) {
+    return true;
+  }
+  const suffix = `:${key}`;
+  for (const scoped of itemIdByKey.keys()) {
+    if (scoped.endsWith(suffix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyLastValuesToStatusItems(
+  items: ZabbixInterfaceItem[],
+  lastValues: Record<string, ZabbixItemLastValue>,
+  interfaceItems: ZabbixInterfaceItem[]
+): ZabbixInterfaceItem[] {
+  const byId = new Map<string, ZabbixInterfaceItem>();
+  for (const item of interfaceItems) {
+    const id = item.itemid.trim();
+    if (isNumericZabbixItemId(id)) {
+      byId.set(id, item);
+    }
+  }
+  return items.map((item) => {
+    const id = item.itemid.trim();
+    const fromTraffic = byId.get(id);
+    if (fromTraffic) {
+      return {
+        ...item,
+        lastvalue: fromTraffic.lastvalue ?? item.lastvalue,
+        lastclock: fromTraffic.lastclock ?? item.lastclock,
+      };
+    }
+    const lv = lastValues[id];
+    if (!lv) {
+      return item;
+    }
+    return {
+      ...item,
+      lastvalue: lv.lastvalue ?? item.lastvalue,
+      lastclock: lv.lastclock ?? item.lastclock,
+    };
+  });
+}
+
+/** Sessão desta aba — sobrevive à remontagem do Grafana, não ao F5. Sem lastvalue de localStorage. */
+interface LiveSession {
+  state: DirectState;
+  metadata: ZabbixDirectMetadata;
+  knownStatusItems: ZabbixInterfaceItem[];
+}
+
+const liveSessionByKey = new Map<string, LiveSession>();
+
+/** Testes: simula F5 (some o lastvalue em memória; o catálogo de itemids permanece). */
+export function dropZabbixLiveIndex(): void {
+  liveSessionByKey.clear();
 }
 
 export function useZabbixDirectIndex({
@@ -140,19 +225,19 @@ export function useZabbixDirectIndex({
   groupNames,
   statusItemKey,
   refreshSec,
-  eventBus,
   trafficItemIds,
   trafficKeys,
-  signalHostIds,
-  signalSearchTerms,
-  selectSignalItemIds,
 }: UseZabbixDirectIndexOptions): UseZabbixDirectIndexResult {
   const groups = useMemo(
     () => [...new Set(groupNames.map((name) => name.trim()).filter(Boolean))],
     [groupNames]
   );
   const itemKey = statusItemKey.trim();
-  const intervalSec = Math.max(ZABBIX_DIRECT_MIN_REFRESH_SEC, Math.floor(refreshSec));
+  const parsedRefresh = Math.floor(Number(refreshSec));
+  const intervalSec = Math.max(
+    ZABBIX_DIRECT_MIN_REFRESH_SEC,
+    Number.isFinite(parsedRefresh) ? parsedRefresh : ZABBIX_DIRECT_DEFAULT_REFRESH_SEC
+  );
   const trafficIds = useMemo(
     () => [...new Set((trafficItemIds ?? []).map((id) => id.trim()).filter(Boolean))].sort(),
     [trafficItemIds]
@@ -161,14 +246,6 @@ export function useZabbixDirectIndex({
     () => [...new Set((trafficKeys ?? []).map((key) => key.trim()).filter(Boolean))].sort(),
     [trafficKeys]
   );
-  const signalIds = useMemo(
-    () => [...new Set((signalHostIds ?? []).map((id) => id.trim()).filter(Boolean))].sort(),
-    [signalHostIds]
-  );
-  const signalTerms = useMemo(
-    () => [...new Set((signalSearchTerms ?? []).map((term) => term.trim()).filter(Boolean))].sort(),
-    [signalSearchTerms]
-  );
   /*
    * Só identidade do poll: datasource, grupos, item de status e intervalo. Itemids/chaves de cabo
    * ficam em ref — se entrarem na chave, apagar uma interface remonta o efeito, a primeira pintura
@@ -176,7 +253,6 @@ export function useZabbixDirectIndex({
    */
   const configKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}\u0000${intervalSec}`;
   const snapshotKey = zabbixSnapshotCacheKey(datasourceUid ?? '', groups, itemKey);
-  const trafficConfigKey = `${trafficIds.join('\u0001')}\u0000${trafficItemKeys.join('\u0001')}\u0000${signalIds.join('\u0001')}\u0000${signalTerms.join('\u0001')}`;
 
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
@@ -184,59 +260,34 @@ export function useZabbixDirectIndex({
   trafficItemIdsRef.current = trafficIds;
   const trafficKeysRef = useRef(trafficItemKeys);
   trafficKeysRef.current = trafficItemKeys;
-  const signalIdsRef = useRef(signalIds);
-  signalIdsRef.current = signalIds;
-  const signalTermsRef = useRef(signalTerms);
-  signalTermsRef.current = signalTerms;
-  const selectSignalItemIdsRef = useRef(selectSignalItemIds);
-  selectSignalItemIdsRef.current = selectSignalItemIds;
-  /**
-   * O Grafana recria o EventBus no carregamento do dashboard. Se o poll depende disso, o efeito
-   * aborta o primeiro `ds.query()` e dispara outro — duas buscas iguais ao recarregar.
-   */
-  const fetchSnapshotRef = useRef<() => void>(() => undefined);
-  const fetchTrafficRef = useRef<() => void>(() => undefined);
-  const seenTrafficConfigKey = useRef(trafficConfigKey);
-
   const [state, setState] = useState<DirectState>(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
       return IDLE_STATE;
     }
-    const cached = readZabbixSnapshot(snapshotKey);
-    return cached ? hydrateFromSnapshot(cached) : { ...IDLE_STATE, loading: true };
+    return liveSessionByKey.get(snapshotKey)?.state ?? { ...IDLE_STATE, loading: true };
   });
 
   useLayoutEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
-      fetchSnapshotRef.current = () => undefined;
-      fetchTrafficRef.current = () => undefined;
       setState(IDLE_STATE);
       return;
     }
 
-    prefetchZabbixDatasource(datasourceUid);
-
-    const warmSnapshot = readZabbixSnapshot(snapshotKey);
+    const live = liveSessionByKey.get(snapshotKey);
     setState((prev) => {
-      if (warmSnapshot) {
-        const hydrated = hydrateFromSnapshot(warmSnapshot);
-        return { ...hydrated, loading: false };
+      if (live) {
+        return { ...live.state, loading: false };
       }
-      return {
-        index: prev.index,
-        lastValues: prev.lastValues,
-        interfaceItems: prev.interfaceItems,
-        problems: prev.problems,
-        ready: prev.ready,
-        loading: true,
-        error: prev.error,
-      };
+      if (prev.ready) {
+        return { ...prev, loading: true };
+      }
+      return { ...IDLE_STATE, loading: true };
     });
 
     let cancelled = false;
-    let inFlight = false;
-    let lastStartMs = 0;
     let fetchGeneration = 0;
+    const clockKey = snapshotKey;
+    const intervalMs = intervalSec * 1000;
     /**
      * Só descarta resultado mais antigo do que o já publicado. Comparar com a geração em voo
      * fazia um snapshot lento ser jogado fora toda vez que o watchdog liberava outro ciclo — o
@@ -245,91 +296,121 @@ export function useZabbixDirectIndex({
     let lastPublishedGeneration = 0;
     /** Timeout/abort isolado só vira erro visível na segunda falha seguida. */
     let consecutiveFailures = 0;
-    /** Última identidade boa; o ciclo relê `host.get` para tirar host desativado do índice. */
-    let metadata: ZabbixDirectMetadata | undefined;
+    /** Identidade da descoberta; em regime não relê `host.get` (seria outro POST). */
+    let metadata: ZabbixDirectMetadata | undefined = live?.metadata;
+    const itemIdCatalog = readZabbixItemIdCatalog(snapshotKey);
     /** itemid numérico por key — só busca as chaves que ainda não resolveram. */
-    let itemIdByKey = new Map<string, string>();
+    let itemIdByKey = itemIdByKeyFromCatalog(itemIdCatalog);
     /** Chaves já pedidas ao `item.get` nesta configuração — não repete as que não existem. */
     let triedTrafficKeys = new Set<string>();
     /** Cancela a busca anterior quando o watchdog ou o timer disparam outro ciclo. */
     let fetchAbort: AbortController | undefined;
-    /** `item.get` isolado (troca de cabo) — abort próprio, senão sobrevive ao unmount. */
-    let trafficAbort: AbortController | undefined;
-    /** Últimos problemas publicados nesta configuração — uma falha isolada não apaga o badge. */
-    let latestProblems: HostProblemsMap = warmSnapshot?.problems ?? EMPTY_PROBLEMS;
-    /** Tráfego já pintado — ciclo vazio (timeout/`item.get` falho) não apaga os cabos. */
+    /** Tráfego já pintado nesta aba — ciclo vazio não apaga os cabos. */
     let lastTraffic = {
-      lastValues: warmSnapshot?.lastValues ?? EMPTY_LAST_VALUES,
-      interfaceItems: warmSnapshot?.interfaceItems ?? EMPTY_INTERFACE_ITEMS,
+      lastValues: live?.state.lastValues ?? EMPTY_LAST_VALUES,
+      interfaceItems: live?.state.interfaceItems ?? EMPTY_INTERFACE_ITEMS,
     };
-    /** Itemids de sinal em uso pelos cabos; relidos por id enquanto não há redescoberta. */
-    let knownSignalItemIds: string[] = [];
-    /** Quando o inventário de sinal foi varrido pela última vez (0 = ainda não). */
-    let lastSignalSearchMs = 0;
-    /** A varredura de sinal não usa o abort do ciclo: ela sobrevive às trocas de ciclo. */
-    let signalAbort: AbortController | undefined;
-    let signalInFlight = false;
-    /** Quando identidade e problemas foram relidos pela última vez (0 = ainda não). */
-    let lastIdentityMs = 0;
+    /** Itens de status já descobertos — o ciclo em regime relê lastvalue no mesmo `item.get`. */
+    let knownStatusItems: ZabbixInterfaceItem[] = live?.knownStatusItems?.length
+      ? live.knownStatusItems
+      : statusItemsFromCatalog(itemIdCatalog);
 
     /*
-     * Identidade (host novo, host desativado) e problemas mudam em minutos, não a cada refresh.
-     * Fora da janela o ciclo fica só com `ds.query` de status e um `item.get` — duas requisições.
+     * Identidade e problemas no mesmo intervalo do plugin — não há segundo relógio.
      */
-    const isIdentityCycle = (): boolean => !metadata || Date.now() - lastIdentityMs >= IDENTITY_REFRESH_MS;
-
     const ensureMetadata = async (
       abortSignal: AbortSignal,
-      identityCycle: boolean,
       resolved?: ZabbixResolvedGroups
     ): Promise<ZabbixDirectMetadata> => {
-      if (metadata && !identityCycle) {
-        return metadata;
-      }
       metadata = await fetchZabbixDirectMetadata(
         datasourceUid,
         groupsRef.current,
         abortSignal,
         resolved ?? metadata
       );
-      lastIdentityMs = Date.now();
       return metadata;
     };
 
-    /**
-     * Varredura do inventário de sinal — fora do caminho crítico, de propósito.
-     *
-     * Ela devolve toda porta óptica dos hosts dos cabos e leva segundos. Esperar por ela atrasava
-     * a primeira pintura do mapa, e o ciclo seguinte ainda abortava a busca no meio. Aqui ela roda
-     * solta, com abort próprio, e o que descobre entra por itemid no ciclo seguinte.
-     */
-    const startSignalDiscovery = (_meta: ZabbixDirectMetadata): void => {
-      const terms = signalTermsRef.current;
-      /*
-       * Só os extremos dos cabos. Sem `signalHostIds` o fallback era `meta.hosts` — todos os
-       * monitorados do grupo, inclusive CPE. Em produção isso vira um `item.get` de megabytes
-       * (portas ópticas de OLT) na primeira carga. Sem ids ainda, espera o próximo ciclo.
-       */
-      const hostIds = signalIdsRef.current;
-      const due = Date.now() - lastSignalSearchMs >= SIGNAL_REDISCOVERY_MS;
-      if (signalInFlight || !due || !hostIds.length || !terms.length) {
+    const rememberTrafficItems = (items: ZabbixInterfaceItem[]): void => {
+      mergeItemIdByKey(itemIdByKey, items);
+    };
+
+    const pendingTrafficKeys = (): string[] =>
+      trafficKeysRef.current.filter(
+        (key) => !trafficKeyIsResolved(itemIdByKey, key) && !triedTrafficKeys.has(key)
+      );
+
+    const absorbTrafficFromStatusFetch = (
+      fetched: ZabbixInterfaceItem[],
+      extraKeys: string[]
+    ): ZabbixInterfaceItem[] => {
+      const statusKey = statusItemSearch(itemKey).key_;
+      const statusItems =
+        statusKey && extraKeys.length
+          ? fetched.filter((item) => item.key_ === statusKey)
+          : fetched;
+      if (statusKey && extraKeys.length) {
+        const trafficItems = fetched.filter((item) => item.key_ !== statusKey);
+        rememberTrafficItems(trafficItems);
+        const trafficValues: Record<string, ZabbixItemLastValue> = {};
+        for (const item of trafficItems) {
+          const id = item.itemid.trim();
+          if (!isNumericZabbixItemId(id)) {
+            continue;
+          }
+          const stored: ZabbixItemLastValue = { itemid: id };
+          if (item.lastvalue !== undefined) {
+            stored.lastvalue = item.lastvalue;
+          }
+          trafficValues[id] = stored;
+          const hostid = item.hostid?.trim();
+          const key = item.key_?.trim();
+          if (hostid && key) {
+            trafficValues[zabbixHostItemKey(hostid, key)] = stored;
+          }
+        }
+        lastTraffic = coalesceLinkTraffic(
+          { lastValues: trafficValues, interfaceItems: trafficItems },
+          lastTraffic
+        );
+        triedTrafficKeys = new Set([...triedTrafficKeys, ...extraKeys]);
+      }
+      return statusItems;
+    };
+
+    const fetchPendingKeyTraffic = async (
+      hostids: string[],
+      extraKeys: string[],
+      abortSignal: AbortSignal
+    ): Promise<void> => {
+      if (!extraKeys.length) {
         return;
       }
-      signalInFlight = true;
-      signalAbort = new AbortController();
-      fetchZabbixSignalInventory(datasourceUid, hostIds, terms, signalAbort.signal)
-        .then((items) => {
-          lastSignalSearchMs = Date.now();
-          knownSignalItemIds = (selectSignalItemIdsRef.current?.(items) ?? []).filter((id) =>
-            isNumericZabbixItemId(id)
-          );
-        })
-        .catch(() => {
-          // Falhou: mantém os ids anteriores e tenta de novo no próximo ciclo, sem travar o mapa.
-        })
-        .finally(() => {
-          signalInFlight = false;
-        });
+      try {
+        const fetched = await fetchZabbixTrafficLastValues(
+          datasourceUid,
+          [],
+          abortSignal,
+          extraKeys,
+          hostids
+        );
+        if (fetched.itemIdByKey.size) {
+          itemIdByKey = new Map([...itemIdByKey, ...fetched.itemIdByKey]);
+        }
+        rememberTrafficItems(fetched.interfaceItems);
+        lastTraffic = coalesceLinkTraffic(
+          {
+            lastValues: aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey),
+            interfaceItems: fetched.interfaceItems,
+          },
+          lastTraffic
+        );
+        triedTrafficKeys = new Set([...triedTrafficKeys, ...extraKeys]);
+      } catch (err) {
+        if (abortSignal.aborted) {
+          throw err;
+        }
+      }
     };
 
     const fetchTrafficLastValues = async (
@@ -341,8 +422,10 @@ export function useZabbixDirectIndex({
           [...trafficItemIdsRef.current, ...itemIdByKey.values()].filter((id) => isNumericZabbixItemId(id))
         ),
       ];
-      const pending = trafficKeysRef.current.filter((key) => !itemIdByKey.has(key) && !triedTrafficKeys.has(key));
-      const numeric = [...new Set([...trafficNumeric, ...knownSignalItemIds])];
+      const numeric = [...new Set([...trafficNumeric, ...numericStatusItemIds(knownStatusItems)])];
+      const pending = numeric.length
+        ? []
+        : pendingTrafficKeys();
       if (!numeric.length && !pending.length) {
         return { lastValues: EMPTY_LAST_VALUES, interfaceItems: EMPTY_INTERFACE_ITEMS };
       }
@@ -372,87 +455,55 @@ export function useZabbixDirectIndex({
       }
     };
 
-    const publishTraffic = (traffic: {
-      lastValues: Record<string, ZabbixItemLastValue>;
-      interfaceItems: ZabbixInterfaceItem[];
-    }) => {
-      if (cancelled) {
+    const persistCatalog = (
+      statusItems: ZabbixInterfaceItem[],
+      traffic: { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] }
+    ): void => {
+      if (!statusItems.length) {
         return;
       }
-      const merged = coalesceLinkTraffic(traffic, lastTraffic);
-      lastTraffic = merged;
-      setState((prev) => ({
-        ...prev,
-        lastValues: aliasLastValuesByItemKey(merged.lastValues, itemIdByKey),
-        interfaceItems: merged.interfaceItems,
-      }));
-    };
-
-    fetchTrafficRef.current = () => {
-      if (cancelled) {
-        return;
-      }
-      trafficAbort?.abort();
-      trafficAbort = new AbortController();
-      const signal = trafficAbort.signal;
-      void fetchTrafficLastValues(metadata, signal)
-        .then((traffic) => {
-          if (cancelled || signal.aborted) {
-            return;
-          }
-          publishTraffic(traffic);
-        })
-        .catch(() => undefined);
+      persistZabbixItemIdCatalog(snapshotKey, {
+        statusItems,
+        lastValues: traffic.lastValues,
+        interfaceItems: traffic.interfaceItems,
+      });
     };
 
     const fetchSnapshot = async () => {
       if (cancelled) {
         return;
       }
-      if (document.hidden && !inFlight && Date.now() - lastStartMs < POLL_WATCHDOG_MS) {
+      const clock = readPollClock(clockKey);
+      if (document.hidden && clock.lastStartMs != null) {
         return;
       }
-      const allowed = canStartRefreshEventFetch(
-        Date.now(),
-        lastStartMs,
-        inFlight,
-        intervalSec * 1000
+      const nowMs = Date.now();
+      const allowed = canStartPolledFetch(
+        nowMs,
+        clock.lastStartMs,
+        clock.inFlight,
+        intervalMs,
+        Number.POSITIVE_INFINITY
       );
       if (!allowed) {
         return;
       }
-      lastStartMs = Date.now();
+      markPollStarted(clockKey, nowMs);
       const generation = ++fetchGeneration;
       fetchAbort?.abort();
       fetchAbort = new AbortController();
       const abortSignal = fetchAbort.signal;
-      inFlight = true;
-      let publishedKind: 'none' | 'fast' | 'full' = 'none';
       const commitSnapshot = (
         meta: ZabbixDirectMetadata,
         statusItems: ZabbixInterfaceItem[],
         lastValues: Record<string, ZabbixItemLastValue>,
-        interfaceItems: ZabbixInterfaceItem[],
-        problems: HostProblemsMap,
-        problemsUnavailable: boolean | undefined,
-        kind: 'fast' | 'full'
+        interfaceItems: ZabbixInterfaceItem[]
       ): boolean => {
-        /*
-         * Mesma geração pode pintar duas vezes: lastvalue primeiro, `ds.query()` depois
-         * (status e problemas). O caminho rápido não pode sobrescrever o completo se ele chegou antes.
-         */
         if (cancelled || generation < lastPublishedGeneration) {
           return false;
         }
-        if (kind === 'fast' && publishedKind !== 'none') {
-          return false;
-        }
-        if (!problemsUnavailable) {
-          latestProblems = problems;
-        }
         if (!meta.resolvedGroups.length) {
           lastPublishedGeneration = generation;
-          publishedKind = kind;
           setState({
             index: EMPTY_INDEX,
             lastValues,
@@ -464,9 +515,8 @@ export function useZabbixDirectIndex({
           });
           return true;
         }
-        if (meta.hosts.length && !statusItems.length && kind === 'full') {
+        if (meta.hosts.length && !statusItems.length) {
           lastPublishedGeneration = generation;
-          publishedKind = kind;
           setState({
             index: EMPTY_INDEX,
             lastValues,
@@ -479,16 +529,22 @@ export function useZabbixDirectIndex({
           return true;
         }
         lastPublishedGeneration = generation;
-        publishedKind = kind;
         consecutiveFailures = 0;
         const traffic = coalesceLinkTraffic({ lastValues, interfaceItems }, lastTraffic);
         lastTraffic = traffic;
-        setState((prev) => {
-          const keepStatus =
-            kind === 'fast' && !statusItems.length && prev.ready && prev.index.hosts.length > 0;
-          return {
-            index: keepStatus
-              ? prev.index
+        const prevSession = liveSessionByKey.get(snapshotKey);
+        const prevLive = prevSession?.state;
+        if (prevLive?.ready && sameLastValuesForPaint(traffic.lastValues, prevLive.lastValues)) {
+          persistCatalog(statusItems, traffic);
+          return true;
+        }
+        const reuseHostIndex =
+          Boolean(prevLive?.ready) &&
+          sameStatusItemsLastValue(statusItems, prevSession?.knownStatusItems ?? []);
+        const next: DirectState = {
+          index:
+            reuseHostIndex && prevLive
+              ? prevLive.index
               : buildZabbixDirectIndex({
                   datasourceUid,
                   groupNames: groupsRef.current,
@@ -496,39 +552,58 @@ export function useZabbixDirectIndex({
                   hosts: meta.hosts,
                   statusItems,
                 }),
-            lastValues: traffic.lastValues,
-            interfaceItems: traffic.interfaceItems,
-            problems: latestProblems,
-            ready: true,
-            loading: false,
-            error: undefined,
-          };
+          lastValues: traffic.lastValues,
+          interfaceItems: traffic.interfaceItems,
+          problems: prevLive?.problems ?? EMPTY_PROBLEMS,
+          ready: true,
+          loading: false,
+          error: undefined,
+        };
+        liveSessionByKey.set(snapshotKey, {
+          state: next,
+          metadata: meta,
+          knownStatusItems: statusItems,
         });
-        if (kind === 'full') {
-          startSignalDiscovery(meta);
-          if (statusItems.length && meta.hosts.length) {
-            writeZabbixSnapshot(snapshotKey, {
-              datasourceUid,
-              groupNames: groupsRef.current,
-              statusItemKey: itemKey,
-              hosts: meta.hosts,
-              statusItems,
-              lastValues: traffic.lastValues,
-              interfaceItems: traffic.interfaceItems,
-              problems: latestProblems,
-            });
+        setState(next);
+        persistCatalog(statusItems, traffic);
+        return true;
+      };
+      const publishByItemIds = async (
+        meta: ZabbixDirectMetadata,
+        extraKeys: string[]
+      ): Promise<boolean> => {
+        const hostids = meta.hosts.map((host) => host.hostid);
+        if (!statusItemsCoverHosts(knownStatusItems, hostids)) {
+          return false;
+        }
+        const traffic = await fetchTrafficLastValues(meta, abortSignal);
+        if (cancelled || abortSignal.aborted) {
+          return false;
+        }
+        if (!statusLastValuesPresent(traffic.lastValues, knownStatusItems)) {
+          return false;
+        }
+        lastTraffic = coalesceLinkTraffic(traffic, lastTraffic);
+        if (extraKeys.length) {
+          await fetchPendingKeyTraffic(hostids, extraKeys, abortSignal);
+          if (cancelled || abortSignal.aborted) {
+            return false;
           }
         }
+        const statusItems = applyLastValuesToStatusItems(
+          knownStatusItems,
+          lastTraffic.lastValues,
+          lastTraffic.interfaceItems
+        );
+        knownStatusItems = statusItems;
+        commitSnapshot(meta, statusItems, lastTraffic.lastValues, lastTraffic.interfaceItems);
         return true;
       };
       try {
-        /*
-         * O `item.get` dos cabos só precisa dos itemids do mapa — não espera o `host.get`.
-         * No recarregar a frio o inventário de hosts leva segundos; o tráfego não precisa.
-         */
-        const trafficPromise = fetchTrafficLastValues(metadata, abortSignal);
+        if (metadata && (await publishByItemIds(metadata, pendingTrafficKeys()))) {
+          return;
+        }
 
-        const identityCycle = isIdentityCycle();
         const groups = await fetchZabbixResolvedGroups(
           datasourceUid,
           groupsRef.current,
@@ -536,69 +611,64 @@ export function useZabbixDirectIndex({
           metadata
         );
         if (!groups.resolvedGroups.length) {
-          const traffic = await trafficPromise;
           commitSnapshot(
             { hosts: [], ...groups },
             [],
-            aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey),
-            traffic.interfaceItems,
-            EMPTY_PROBLEMS,
-            true,
-            'full'
+            lastTraffic.lastValues,
+            lastTraffic.interfaceItems
           );
           return;
         }
 
-        const firstPaint = lastPublishedGeneration === 0;
-        const meta = await ensureMetadata(abortSignal, identityCycle, groups);
-        if (firstPaint && !warmSnapshot) {
-          /*
-           * Em produção um `item.get` de status por groupid puxa icmpping de todos os hosts do
-           * grupo (milhares de CPE) — 5 MB e dezenas de segundos. O mapa pinta a estrutura assim
-           * que o `host.get` volta; a cor chega no `ds.query()` em seguida. Com snapshot em
-           * cache essa pintura cinza não roda — o dashboard já abre com status e tráfego.
-           */
-          commitSnapshot(
-            meta,
-            [],
-            EMPTY_LAST_VALUES,
-            EMPTY_INTERFACE_ITEMS,
-            latestProblems,
-            true,
-            'fast'
-          );
+        const meta = await ensureMetadata(abortSignal, groups);
+
+        if (await publishByItemIds(meta, pendingTrafficKeys())) {
+          return;
         }
 
-        /*
-         * Status + problemas só depois da primeira pintura. A frio o `ds.query()` leva
-         * segundos; esperar por ele atrasava a estrutura. O `item.get` dos cabos já saiu em
-         * paralelo, mas só entra no estado no `commitSnapshot('full')` — junto com a cor.
-         */
-        const snapshotPromise = fetchZabbixStatusViaQuery({
+        const hostids = meta.hosts.map((host) => host.hostid);
+        const extraKeys = pendingTrafficKeys();
+        const extraInStatus = statusItemSearch(itemKey).key_ ? extraKeys : [];
+        const fetched = await fetchZabbixStatusLastValues(
           datasourceUid,
-          groupNames: meta.resolvedGroups,
-          statusItemKey: itemKey,
-          hosts: meta.hosts,
+          itemKey,
+          hostids,
           abortSignal,
-          refreshSec: intervalSec,
-          includeProblems: identityCycle,
-        });
-        const [snapshot, traffic] = await Promise.all([
-          snapshotPromise,
-          trafficPromise.catch(() => ({
-            lastValues: EMPTY_LAST_VALUES,
-            interfaceItems: EMPTY_INTERFACE_ITEMS,
-          })),
-        ]);
-        commitSnapshot(
-          meta,
-          snapshot.items,
-          aliasLastValuesByItemKey(traffic.lastValues, itemIdByKey),
-          traffic.interfaceItems,
-          snapshot.problems,
-          snapshot.problemsUnavailable,
-          'full'
+          extraInStatus
         );
+        let statusItems = absorbTrafficFromStatusFetch(fetched, extraInStatus);
+        if (!statusItems.length && knownStatusItems.length) {
+          statusItems = knownStatusItems;
+        }
+        knownStatusItems = statusItems;
+        if (extraKeys.length && !extraInStatus.length) {
+          await fetchPendingKeyTraffic(hostids, extraKeys, abortSignal);
+          if (cancelled || abortSignal.aborted) {
+            return;
+          }
+        }
+        /*
+         * Sem chave pendente, o lastvalue de status+cabos sai num `item.get` por itemid.
+         * Com chave pendente o lastvalue já veio (status+keys ou item.get pelas keys) —
+         * um segundo POST por itemid apagava o tráfego das chaves.
+         */
+        if (
+          !extraKeys.length &&
+          trafficItemIdsRef.current.some((id) => isNumericZabbixItemId(id))
+        ) {
+          const traffic = await fetchTrafficLastValues(meta, abortSignal);
+          if (cancelled || abortSignal.aborted) {
+            return;
+          }
+          statusItems = applyLastValuesToStatusItems(
+            statusItems,
+            traffic.lastValues,
+            traffic.interfaceItems
+          );
+          knownStatusItems = statusItems;
+          lastTraffic = coalesceLinkTraffic(traffic, lastTraffic);
+        }
+        commitSnapshot(meta, statusItems, lastTraffic.lastValues, lastTraffic.interfaceItems);
       } catch (err) {
         if (abortSignal.aborted && !cancelled) {
           return;
@@ -620,53 +690,45 @@ export function useZabbixDirectIndex({
         }
       } finally {
         if (generation === fetchGeneration) {
-          inFlight = false;
+          markPollFinished(clockKey);
         }
       }
     };
 
-    fetchSnapshotRef.current = () => {
+    /*
+     * Só busca na hora se esta chave ainda não largou um ciclo. Senão espera o resto do
+     * intervalo — o Grafana remonta o painel e um `void fetchSnapshot()` aqui virava +4 POSTs.
+     */
+    let intervalId: number | undefined;
+    const startInterval = () => {
+      intervalId = window.setInterval(() => void fetchSnapshot(), intervalMs);
+    };
+    const waitMs = msUntilNextPoll(clockKey, intervalMs, Date.now());
+    let timeoutId: number | undefined;
+    if (waitMs <= 0) {
       void fetchSnapshot();
-    };
-    void fetchSnapshot();
-
-    const timer = window.setInterval(() => void fetchSnapshot(), intervalSec * 1000);
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        // Reabrir a aba é a janela natural para reler a identidade dos hosts e pegar host novo.
-        metadata = undefined;
+      startInterval();
+    } else {
+      timeoutId = window.setTimeout(() => {
         void fetchSnapshot();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
+        startInterval();
+      }, waitMs);
+    }
 
     return () => {
       cancelled = true;
-      fetchSnapshotRef.current = () => undefined;
-      fetchTrafficRef.current = () => undefined;
       fetchAbort?.abort();
-      trafficAbort?.abort();
-      signalAbort?.abort();
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      markPollFinished(clockKey);
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+      }
     };
     // `configKey` resume datasource, grupos, chave e intervalo num único valor estável.
-  }, [enabled, configKey, datasourceUid, itemKey]);
-
-  useLayoutEffect(() => {
-    if (seenTrafficConfigKey.current === trafficConfigKey) {
-      return;
-    }
-    seenTrafficConfigKey.current = trafficConfigKey;
-    fetchTrafficRef.current();
-  }, [trafficConfigKey]);
-
-  useLayoutEffect(() => {
-    const refreshSub = eventBus?.getStream(RefreshEvent).subscribe(() => fetchSnapshotRef.current());
-    return () => {
-      refreshSub?.unsubscribe();
-    };
-  }, [eventBus]);
+  }, [enabled, configKey, datasourceUid, itemKey, snapshotKey]);
 
   return state;
 }
+

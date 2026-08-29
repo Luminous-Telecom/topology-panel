@@ -3,7 +3,7 @@ import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from 
 import { createAsyncCache } from '../services/asyncCache';
 import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { fetchZabbixHostInterfaceItemsViaQuery } from '../utils/zabbixDatasourceQuery';
+import { fetchZabbixHostInterfaceItems } from '../utils/zabbixApi';
 
 export interface UseZabbixHostInterfacesResult {
   interfacesByHost: Record<string, TopologyNetworkInterface[]>;
@@ -90,9 +90,7 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces — ds.query() Metrics (um host, qualquer item).
- * O grafana-zabbix só filtra o campo Item pelo nome; as palavras-chave da key
- * entram no parse das frames.
+ * Inventário de interfaces — `item.get` por hostid e palavra-chave da key.
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
@@ -155,11 +153,13 @@ export function useZabbixHostInterfaces(
 
     interfacesCache
       .get(cacheKey, async () => {
-        const entries = await fetchZabbixHostInterfaceItemsViaQuery(
+        const entries = await fetchZabbixHostInterfaceItems(
           datasourceUid,
-          hostKey.split('\0'),
-          searchKeysRef.current,
-          hostMetadataRef.current
+          hostKey.split('\0').flatMap((key) => {
+            const hostid = hostMetadataRef.current?.[key]?.hostid?.trim();
+            return hostid ? [{ hostKey: key, hostid }] : [];
+          }),
+          searchKeysRef.current
         );
         return groupInterfacesByHost(entries, keyParseOptionsRef.current);
       })

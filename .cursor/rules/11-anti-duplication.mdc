@@ -29,18 +29,18 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics + Problems: lastvalue e badge). Não faça `item.get` de status por `groupids` — em produção isso varre todos os CPE do grupo. |
-| Inventário de itens de interface | `fetchZabbixHostInterfaceItemsViaQuery` em `utils/zabbixDatasourceQuery.ts` (`ds.query()` Metrics: um host, item `/.*/`; filtro da key no parse) |
-| Gate de intervalo/watchdog do polling | `canStartPolledFetch` em `utils/pollingGate.ts` |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusLastValues` / `fetchZabbixTrafficLastValues` em `utils/zabbixApi/poll.ts`. Ciclo em regime: um `item.get` por itemid. Sem `item.get` de status por `groupids`. Lastvalue igual: `sameLastValuesForPaint`. Status igual com tráfego novo: `sameStatusItemsLastValue` (reusa o índice). |
+| Inventário de itens de interface | `fetchZabbixHostInterfaceItems` em `utils/zabbixApi/catalog.ts` (`item.get` por hostid e termo; palavras-chave filtram a `key_`) |
+| Gate de intervalo/watchdog do polling | `canStartPolledFetch` / relógio `msUntilNextPoll` em `utils/pollingGate.ts` (sobrevive à remontagem) |
 | Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Último snapshot Zabbix ao reabrir o dashboard | `services/zabbixSnapshotCache.ts` (`readZabbixSnapshot` / `writeZabbixSnapshot`, TTL 30 min; localStorage v2 sem NUL, payload compacto) |
+| Catálogo de itemids Zabbix (sem lastvalue; F5 relê ao vivo por id) | `services/zabbixSnapshotCache.ts` (`readZabbixItemIdCatalog` / `persistZabbixItemIdCatalog`) |
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
-| Hosts dos extremos para o sinal no mesmo `item.get` | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts` |
+| Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi/poll.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | mesmo `ds.query()` de `fetchZabbixStatusViaQuery` (target P0) + `parseProblemsFromFrames` em `utils/zabbixDatasourceQuery.ts`; casar nó↔problema via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts` |
-| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`metricFindQuery`) |
-| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`metricFindQuery` Item) |
+| Problemas Warning+ | `fetchZabbixProblems` em `utils/zabbixApi/problems.ts` (`problem.get` pelos groupids + `trigger.get` objectid→hostid; `problem.get` não tem `selectHosts`) + `parseZabbixProblems`; casar nó↔problema via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts` |
+| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`hostgroup.get` via `fetchZabbixHostGroupNames`) |
+| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get` `output: name` via `fetchZabbixItemNames`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
@@ -64,7 +64,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Necessidade | Já existe em |
 |---|---|
 | Add/move/update/remove de nó, travas do mapa | `utils/mapEdits.ts` |
-| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`linksMatchIdentity`/`upsertLinkWithInterfaces`) | `utils/mapLinkEdits.ts` |
+| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`linksMatchIdentity`/`upsertLinkWithInterfaces`/`applyResolvedMetricItemIds`) | `utils/mapLinkEdits.ts` |
 | Espelhar cabo entre submapas (raiz e mapa de destino) | `syncInterSubmapCounterpartLinks` em `utils/interSubmapLinks.ts` |
 | Excluir cabo entre submapas em cascata (espelhos e hops órfãos) | `removeInterSubmapCounterpartLinks` / `removeMissingInterSubmapCounterparts` em `utils/interSubmapLinks.ts` |
 | Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
@@ -77,7 +77,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Limites/bounding box do mapa | `utils/mapBounds.ts` |
 | Guias de alinhamento durante o arraste | `computeAlignGuides` em `utils/alignGuides.ts` |
 | Pan automático ao arrastar na borda | `utils/edgePan.ts` |
-| Geometria do link: path, waypoint mais próximo, âncora do rótulo, cabos paralelos | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `linkLabelAnchor`, `offsetPolyline`, `parallelLinkBundleOffset` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
+| Geometria do link: path, waypoint, ponto no comprimento, cabos paralelos | `computeLinkGeometry`, `buildLinkPathD`, `closestPointOnPolyline`, `nearestWaypointIndex`, `pointAlongPolyline`, `polylineLength`, `offsetPolyline`, `parallelLinkBundleOffset` em `utils/linkGeometry.ts` (ângulo e raio de canto são internos — não reimplemente, use estas funções) |
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
 | Formato de tráfego (bps, rótulo do cabo, intervalo) | `formatBitsPerSecond`, `formatLinkMapTrafficLabel`, `formatEndpointTrafficPair`, `formatSignalDbm`, `formatPluginRefreshInterval` em `utils/zabbixAdapter/formatTraffic.ts` |
 | Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts`; sinal no cabo via `attachSignalRefsToInterface` / `matchDiscoveredInterface` em `bindInterfaceMetrics.ts` (a partir dos itens do mesmo `item.get` do tráfego) |
@@ -86,6 +86,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |
 | Identidade fixa de handler | `useStableCallback` em `hooks/useStableCallback.ts` |
 | Coalescer o preview de um gesto em um frame | `useGestureFrame` em `hooks/useGestureFrame.ts` (um por canvas — só há um gesto por vez) |
+| Preview de arraste/resize/laço/guias (fora do state do canvas) | `createCanvasGestureStore` em `utils/canvasGestureStore.ts` + `useCanvasGestureUi` em `hooks/useCanvasGestureUi.ts`; aplica nas caixas em `applyDragPreviewToLayouts` (`utils/dragPreviewLayouts.ts`); camadas em `components/canvas/GesturePreviewLayers.tsx` |
 | Recorte de nós/cabos pela viewport | `visibleWorldRect` em `utils/viewportCulling.ts` |
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
@@ -95,7 +96,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |
 | Override local de legenda, lista de alertas e modo NOC | `hooks/useCanvasOverlayToggles.ts` |
 | viewEditable e itens da legenda | `hooks/useCanvasDerivedView.ts` |
-| Casca, setas de fluxo e chip de tráfego do cabo | `components/canvas/links/LinkLine.tsx`, `LinkFlowArrows.tsx`, `LinkTrafficLabel.tsx` |
+| Linha do cabo, pulsos de fluxo e pílula de tráfego | `components/canvas/links/LinkLine.tsx`, `LinkFlowArrows.tsx`, `LinkTrafficLabel.tsx` |
 | Medida do painel, tela cheia, chrome ocioso e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useIdleHide.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
 | Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
@@ -124,9 +125,11 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Select de interface do cabo (Novo link / Editar link) | `components/LinkInterfaceSelectField.tsx` (`interfaceOptionValue`) |
 | Chrome visual de modal e overlay do mapa | `components/chrome/overlayChrome.ts` + `components/TopologyModal.tsx` (`OVERLAY_DIVIDER`, `overlayStackedItemStyle`) |
 | Editores da aba de opções (grupos, mapeamento de status, cores por ícone) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `StatusValueMappingsEditor.tsx`, `HostTypeColorsEditor.tsx` |
-| Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
 | Encaixar overlay ao lado da âncora sem sair do painel | `fitOverlayBesideAnchor` / `overlayClipBox` / `overlayPortalParent` em `utils/overlayPortal.ts` |
+| Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |
+| Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
+| Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 
 ## Exceções
 

@@ -19,7 +19,7 @@ Qualquer arquivo em `src/`.
 | Área | Arquivo |
 |---|---|
 | Composição do canvas: junta hooks e camadas, não desenha | `components/TopologyCanvas.tsx` |
-| Camadas do `<svg>`: grid, redes, cabos, seleção, títulos de rede, hosts | `components/canvas/CanvasGridLayer.tsx`, `NodeLayers.tsx`, `LinksLayer.tsx`, `CanvasSelectionShapes.tsx` |
+| Camadas do `<svg>`: grid, redes, cabos, seleção, títulos de rede, hosts; preview de gesto em `GesturePreviewLayers` | `components/canvas/CanvasGridLayer.tsx`, `NodeLayers.tsx`, `LinksLayer.tsx`, `CanvasSelectionShapes.tsx`, `GesturePreviewLayers.tsx` |
 | Formas de um nó / de um cabo | `components/canvas/NetworkNodeShape.tsx`, `HostNodeShape.tsx`, `components/canvas/links/LinkLine.tsx` |
 | Camadas sobrepostas: controles, HUD e modais | `components/canvas/CanvasControlsOverlay.tsx`, `CanvasHudOverlay.tsx`, `CanvasModals.tsx` |
 | Menu de contexto (clique direito) | `components/TopologyContextMenu.tsx` (render), `hooks/useCanvasContextMenu.ts` (estado), `hooks/useTopologyMenuItems.ts` + `utils/contextMenuItems.ts` (itens) |

@@ -1,6 +1,7 @@
 import React, { Dispatch, MutableRefObject, RefObject, SetStateAction, useCallback, useMemo } from 'react';
 import { TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
-import { DragPreview, DragState } from '../utils/dragState';
+import { CanvasGestureStore } from '../utils/canvasGestureStore';
+import { DragState } from '../utils/dragState';
 import {
   closestPointOnPolyline,
   computeLinkGeometry,
@@ -24,8 +25,7 @@ export interface LinkWaypointGesturesParams {
   gridStep: number;
   snapCoord: (n: number) => number;
   view: TopologyView;
-  dragPreview: DragPreview;
-  setDragPreview: Dispatch<SetStateAction<DragPreview>>;
+  gestureStore: CanvasGestureStore;
   setSelectedNodeIds: Dispatch<SetStateAction<string[]>>;
   setSelectedLink: Dispatch<SetStateAction<TopologyLink | null>>;
   persist: (next: TopologyMap) => void;
@@ -70,8 +70,7 @@ export function useLinkWaypointGestures({
   gridStep,
   snapCoord,
   view,
-  dragPreview,
-  setDragPreview,
+  gestureStore,
   setSelectedNodeIds,
   setSelectedLink,
   persist,
@@ -94,13 +93,13 @@ export function useLinkWaypointGestures({
   const resolveLinkWaypoints = useCallback(
     (link: TopologyLink): LinkPoint[] => {
       const key = linkKey(link);
-      const preview = dragPreview?.linkWaypoints;
+      const preview = gestureStore.get().dragPreview?.linkWaypoints;
       if (preview && preview.key === key) {
         return preview.waypoints;
       }
       return storedWaypointsByKey.get(key) ?? link.waypoints ?? [];
     },
-    [dragPreview?.linkWaypoints, storedWaypointsByKey]
+    [gestureStore, storedWaypointsByKey]
   );
 
   const beginLinkWaypointDrag = useCallback(
@@ -200,9 +199,11 @@ export function useLinkWaypointGestures({
       d.waypoints = waypoints;
       // `d.waypoints` acima é o que `commitLinkWaypoint` grava; o preview pode esperar o frame.
       const key = linkKey(d.link);
-      gestureFrame.schedule(() => setDragPreview({ linkWaypoints: { key, waypoints } }));
+      gestureFrame.schedule(() =>
+        gestureStore.set({ dragPreview: { linkWaypoints: { key, waypoints } } })
+      );
     },
-    [clientToMap, gestureFrame, setDragPreview, snapCoord]
+    [clientToMap, gestureFrame, gestureStore, snapCoord]
   );
 
   /** Arraste começando em cima do cabo (não num waypoint existente): converte o ponto e delega. */
@@ -222,9 +223,9 @@ export function useLinkWaypointGestures({
       if (d.moved && d.waypointIndex >= 0) {
         persist(updateLinkProps(storedMap, d.link, { waypoints: d.waypoints }));
       }
-      setDragPreview(null);
+      gestureStore.set({ dragPreview: null });
     },
-    [persist, setDragPreview, storedMap]
+    [gestureStore, persist, storedMap]
   );
 
   const removeLinkWaypoint = useCallback(
@@ -235,9 +236,9 @@ export function useLinkWaypointGestures({
       }
       const waypoints = current.filter((_, i) => i !== waypointIndex);
       persist(updateLinkProps(storedMap, link, { waypoints }));
-      setDragPreview(null);
+      gestureStore.set({ dragPreview: null });
     },
-    [persist, resolveLinkWaypoints, setDragPreview, storedMap]
+    [gestureStore, persist, resolveLinkWaypoints, storedMap]
   );
 
   /** Duplo clique no cabo remove o desvio mais próximo, se houver algum ao alcance. */
@@ -258,9 +259,9 @@ export function useLinkWaypointGestures({
   const resetLinkRoute = useCallback(
     (link: TopologyLink) => {
       persist(updateLinkProps(storedMap, link, { waypoints: [] }));
-      setDragPreview(null);
+      gestureStore.set({ dragPreview: null });
     },
-    [persist, setDragPreview, storedMap]
+    [gestureStore, persist, storedMap]
   );
 
   return {

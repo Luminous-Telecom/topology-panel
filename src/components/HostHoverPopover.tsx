@@ -11,7 +11,7 @@ import { lookupHostDisplay } from '../utils/queryHosts';
 import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
 import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle, overlayStackedItemStyle } from './chrome/overlayChrome';
-import { overlayPortalRoot } from '../utils/overlayPortal';
+import { clampFixedOverlayPosition, overlayPortalRoot } from '../utils/overlayPortal';
 import { resolveHostDescription } from '../utils/mapSync';
 import styles from './HostHoverPopover.module.scss';
 
@@ -77,19 +77,12 @@ export function HostHoverPopover({
     if (!el) {
       return;
     }
-    const margin = 8;
-    const rect = el.getBoundingClientRect();
-    let left = screenX + 12;
-    let top = screenY + 12;
-    if (left + rect.width > window.innerWidth - margin) {
-      left = screenX - rect.width - 12;
-    }
-    if (top + rect.height > window.innerHeight - margin) {
-      top = screenY - rect.height - 12;
-    }
-    left = Math.max(margin, left);
-    top = Math.max(margin, top);
-    setPosition({ left, top });
+    setPosition(
+      clampFixedOverlayPosition(screenX, screenY, el.getBoundingClientRect(), {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    );
   }, [screenX, screenY, display?.text, description, problems.visible.length, problems.hidden]);
 
   return createPortal(

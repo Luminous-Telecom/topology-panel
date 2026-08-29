@@ -18,20 +18,21 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 ## Links — não alterar sem pedido explícito
 
 - Linha **reta** (não ortogonal/Manhattan). Waypoints arredondam o cotovelo via `pathToRoundedD`.
-- Saída no **centro** do host de origem; chegada na **borda** do host de destino, com seta visível.
+- Sai da **borda** do host de origem e chega na **borda** do destino, com ponto luminoso nas duas pontas.
 - Fibra: linha contínua. Rádio: tracejada (`10 6`).
-- Cabo de dois canais (padrão weathermap): casca na **cor de status**, canaleta escura (`#0d0f14`)
-  e um canal por sentido — TX acima, RX abaixo.
-- Fluxo: **setas que correm dentro do canal** (`offset-path` + `offset-rotate: auto`), na cor do
-  sentido, sobre um fundo do canal a 20%. TX corre origem→destino, RX volta. Canal offline não tem seta.
-- Sem suporte a `offset-path` (`supportsFlowArrows`), o canvas cai nos pacotes por dash (`7 11`).
+- Um cabo = **uma linha** na cor de status (um stroke só, sem camadas de glow). Cabos paralelos no
+  mesmo par usam `parallelLinkBundleOffset`.
+- Fluxo: **pulsos circulares** que correm no cabo (`offset-path`), na **cor do sentido** (upload /
+  download). TX origem→destino, RX no path invertido. Sem suporte (`supportsFlowArrows`), o canvas
+  cai nos pacotes por dash (`7 11`).
 - Velocidade é **por sentido** (`resolveFlowLaneSpeed`): contínua na carga daquele sentido, de ~0,22
   a 2,4 px/frame, por curva de potência (`load ** 0.6`). Sem capacidade configurada a carga sai da
   vazão contra 10 Gbps. Nunca use a utilização máxima do link para os dois canais nem escala log —
-  ambos achatam a assimetria e as setas andam iguais.
-- Marcadores em px (`markerUnits=userSpaceOnUse`): anilha na origem, seta no destino.
-- Seleção/hover: casca vai para `#4FC3F7` / `#81D4FA` + realce externo contido. Sem glow em idle.
-- Tráfego: chip escuro de uma linha, setas nas cores das faixas.
+  ambos achatam a assimetria e os pulsos andam iguais.
+- Marcadores em px (`markerUnits=userSpaceOnUse`): ponto nas duas pontas.
+- Seleção/hover: a linha vai para `#4FC3F7` / `#81D4FA`.
+- Tráfego: uma pílula escura com borda ciano no meio do cabo; upload (↑) em cima, download (↓)
+  embaixo, setas nas cores das faixas. Nunca TX e RX na mesma linha.
 
 ## Redes e grade
 

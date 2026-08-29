@@ -1,67 +1,48 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  catalogFromSnapshot,
   clearZabbixSnapshotCache,
   dropZabbixSnapshotMemory,
-  readZabbixSnapshot,
-  writeZabbixSnapshot,
+  persistZabbixItemIdCatalog,
+  readZabbixItemIdCatalog,
   zabbixSnapshotCacheKey,
-  ZABBIX_SNAPSHOT_TTL_MS,
+  ZABBIX_ITEMID_CATALOG_TTL_MS,
 } from './zabbixSnapshotCache';
 
 const payload = {
-  datasourceUid: 'ds',
-  groupNames: ['Backbone'],
-  statusItemKey: 'icmpping',
-  hosts: [{ hostid: '1', host: 'host-a', name: 'host-a', groups: ['Backbone'] }],
-  statusItems: [{ itemid: 'i1', hostid: '1', key_: 'icmpping', lastvalue: '1' }],
-  lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+  statusItems: [{ itemid: '10001', hostid: '1', key_: 'icmpping', lastvalue: '1' }],
+  lastValues: { '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '1' } },
   interfaceItems: [],
-  problems: {},
 };
 
 describe('zabbixSnapshotCache', () => {
-  it('devolve o snapshot enquanto o TTL não expira', () => {
+  it('grava o catálogo de itemids sem lastvalue', () => {
     clearZabbixSnapshotCache();
     const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
-    writeZabbixSnapshot(key, payload, 1_000);
-    const hit = readZabbixSnapshot(key, 1_000 + ZABBIX_SNAPSHOT_TTL_MS - 1);
-    expect(hit?.hosts[0]?.hostid).toBe('1');
-    expect(hit?.lastValues['10']?.lastvalue).toBe('1');
-  });
-
-  it('expira depois do TTL', () => {
-    clearZabbixSnapshotCache();
-    const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
-    writeZabbixSnapshot(key, payload, 1_000);
-    expect(readZabbixSnapshot(key, 1_000 + ZABBIX_SNAPSHOT_TTL_MS)).toBeUndefined();
-  });
-
-  it('não grava snapshot sem hosts ou sem itens de status', () => {
-    clearZabbixSnapshotCache();
-    const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
-    writeZabbixSnapshot(key, { ...payload, hosts: [] }, 1_000);
-    expect(readZabbixSnapshot(key, 1_000)).toBeUndefined();
-    writeZabbixSnapshot(key, { ...payload, statusItems: [] }, 1_000);
-    expect(readZabbixSnapshot(key, 1_000)).toBeUndefined();
+    persistZabbixItemIdCatalog(key, payload, 1_000);
+    const catalog = readZabbixItemIdCatalog(key, 1_000);
+    expect(catalog?.statusItems[0]?.itemid).toBe('10001');
+    expect(catalog?.statusItems[0]?.lastvalue).toBeUndefined();
+    expect(catalog?.itemIdByKey['1:vendor.metric.rx[10]']).toBe('77');
+    expect(catalogFromSnapshot(payload)?.itemIdByKey['1:vendor.metric.rx[10]']).toBe('77');
   });
 
   it('sobrevive a um reload relendo o localStorage', () => {
     clearZabbixSnapshotCache();
     const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
-    writeZabbixSnapshot(key, payload, 1_000);
+    persistZabbixItemIdCatalog(key, payload, 1_000);
     dropZabbixSnapshotMemory();
-    const hit = readZabbixSnapshot(key, 2_000);
-    expect(hit?.statusItems[0]?.lastvalue).toBe('1');
+    expect(readZabbixItemIdCatalog(key, 2_000)?.statusItems[0]?.itemid).toBe('10001');
   });
 
   it('grava a chave do localStorage sem NUL (sobrevive ao restart do Grafana)', () => {
     clearZabbixSnapshotCache();
     const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
-    writeZabbixSnapshot(key, payload, 1_000);
+    persistZabbixItemIdCatalog(key, payload, 1_000);
     const storedKeys: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const stored = localStorage.key(i);
-      if (stored?.startsWith('luminous-topology.zabbixSnapshot.v2:')) {
+      if (stored?.startsWith('luminous-topology.zabbixItemIds.v1:')) {
         storedKeys.push(stored);
       }
     }
@@ -69,7 +50,7 @@ describe('zabbixSnapshotCache', () => {
     expect(storedKeys[0]?.includes('\u0000')).toBe(false);
   });
 
-  it('ainda grava depois de quota: limpa snapshots antigos e tenta de novo', () => {
+  it('ainda grava depois de quota: limpa chaves antigas e tenta de novo', () => {
     clearZabbixSnapshotCache();
     const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
     const originalSetItem = Storage.prototype.setItem;
@@ -82,11 +63,39 @@ describe('zabbixSnapshotCache', () => {
       return originalSetItem.call(this, name, value);
     };
     try {
-      writeZabbixSnapshot(key, payload, 1_000);
+      persistZabbixItemIdCatalog(key, payload, 1_000);
     } finally {
       Storage.prototype.setItem = originalSetItem;
     }
     dropZabbixSnapshotMemory();
-    expect(readZabbixSnapshot(key, 2_000)?.hosts[0]?.hostid).toBe('1');
+    expect(readZabbixItemIdCatalog(key, 2_000)?.statusItems[0]?.itemid).toBe('10001');
+  });
+
+  it('expira o catálogo de itemids depois do TTL longo', () => {
+    clearZabbixSnapshotCache();
+    const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
+    persistZabbixItemIdCatalog(key, payload, 1_000);
+    dropZabbixSnapshotMemory();
+    expect(readZabbixItemIdCatalog(key, 1_000 + ZABBIX_ITEMID_CATALOG_TTL_MS)).toBeUndefined();
+  });
+
+  it('não regrava o catálogo quando os itemids não mudaram', () => {
+    clearZabbixSnapshotCache();
+    const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
+    persistZabbixItemIdCatalog(key, payload, 1_000);
+    const spy = vi.spyOn(Storage.prototype, 'setItem');
+    persistZabbixItemIdCatalog(key, payload, 2_000);
+    const catalogWrites = spy.mock.calls.filter(([name]) =>
+      String(name).includes('luminous-topology.zabbixItemIds.v1:')
+    );
+    spy.mockRestore();
+    expect(catalogWrites).toHaveLength(0);
+  });
+
+  it('não grava catálogo sem itens de status', () => {
+    clearZabbixSnapshotCache();
+    const key = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
+    persistZabbixItemIdCatalog(key, { ...payload, statusItems: [] }, 1_000);
+    expect(readZabbixItemIdCatalog(key, 1_000)).toBeUndefined();
   });
 });

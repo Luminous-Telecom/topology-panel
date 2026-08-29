@@ -8,7 +8,7 @@ interface Props {
   colorOffline: string;
 }
 
-/** `<defs>` com as pontas dos links: anilha na origem e seta no destino. Tamanho em px. */
+/** `<defs>` com as pontas dos links: ponto luminoso na origem e no destino. Tamanho em px. */
 export function LinkMarkers({
   colorLink,
   colorLinkAttention,
@@ -16,44 +16,26 @@ export function LinkMarkers({
   colorLinkCongestion,
   colorOffline,
 }: Props) {
-  const arrow = (fill: string) => (
-    <path d="M0.15,0.4 L7.35,3.5 L0.15,6.6 Z" fill={fill} />
-  );
-  /** Anilha do patch panel: aro na cor do cabo com miolo escuro. */
-  const origin = (color: string, emphasized = false) => (
+  /** Ponto na borda do host: halo + miolo na cor do cabo. */
+  const portDot = (color: string, emphasized = false) => (
     <g>
-      <circle cx="3.5" cy="3.5" r={emphasized ? 3.1 : 2.9} fill={color} />
-      <circle cx="3.5" cy="3.5" r={emphasized ? 1.35 : 1.25} fill="#0d0f14" />
+      <circle cx="3.5" cy="3.5" r={emphasized ? 3.25 : 3.05} fill={color} opacity={0.4} />
+      <circle cx="3.5" cy="3.5" r={emphasized ? 2.05 : 1.9} fill={color} />
     </g>
   );
 
-  const startMarker = (id: string, color: string, emphasized: boolean, size: number) => (
+  const dotMarker = (id: string, color: string, emphasized: boolean, size: number) => (
     <marker
       id={id}
       viewBox="0 0 7 7"
-      refX="3.5"
+      refX="6.2"
       refY="3.5"
       markerWidth={size}
       markerHeight={size}
       markerUnits="userSpaceOnUse"
       orient="auto"
     >
-      {origin(color, emphasized)}
-    </marker>
-  );
-
-  const endMarker = (id: string, color: string, size: number) => (
-    <marker
-      id={id}
-      viewBox="0 0 8 7"
-      refX="7.2"
-      refY="3.5"
-      markerWidth={size}
-      markerHeight={size * 0.88}
-      markerUnits="userSpaceOnUse"
-      orient="auto"
-    >
-      {arrow(color)}
+      {portDot(color, emphasized)}
     </marker>
   );
 
@@ -62,19 +44,19 @@ export function LinkMarkers({
     color: string
   ) => (
     <>
-      {startMarker(`link-dot-start-${level}`, color, true, 8)}
-      {endMarker(`link-arrow-end-${level}`, color, 11)}
+      {dotMarker(`link-dot-start-${level}`, color, true, 8)}
+      {dotMarker(`link-dot-end-${level}`, color, true, 8)}
     </>
   );
 
   return (
     <defs>
-      {startMarker('link-dot-start', colorLink, false, 7.5)}
-      {endMarker('link-arrow-end', colorLink, 10.5)}
-      {startMarker('link-dot-start-active', '#4FC3F7', true, 8.5)}
-      {endMarker('link-arrow-end-active', '#4FC3F7', 11.5)}
-      {startMarker('link-dot-start-hover', '#81D4FA', true, 8)}
-      {endMarker('link-arrow-end-hover', '#81D4FA', 11)}
+      {dotMarker('link-dot-start', colorLink, false, 7.5)}
+      {dotMarker('link-dot-end', colorLink, false, 7.5)}
+      {dotMarker('link-dot-start-active', '#4FC3F7', true, 8.5)}
+      {dotMarker('link-dot-end-active', '#4FC3F7', true, 8.5)}
+      {dotMarker('link-dot-start-hover', '#81D4FA', true, 8)}
+      {dotMarker('link-dot-end-hover', '#81D4FA', true, 8)}
       {degradationMarkers('attention', colorLinkAttention)}
       {degradationMarkers('high', colorLinkHigh)}
       {degradationMarkers('congested', colorLinkCongestion)}

@@ -1,4 +1,3 @@
-import { EventBus } from '@grafana/data';
 import { QueryIndex } from '../services/queryIndex';
 import { HostProblemsMap } from '../utils/noc/types';
 import { ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
@@ -17,12 +16,8 @@ export interface UseTopologyQueryIndexOptions {
   groupNames: string[];
   statusItemKey: string;
   refreshSec: number;
-  eventBus?: EventBus;
   trafficItemIds?: string[];
   trafficKeys?: string[];
-  signalHostIds?: string[];
-  signalSearchTerms?: string[];
-  selectSignalItemIds?: (items: ZabbixInterfaceItem[]) => string[];
 }
 
 export interface UseTopologyQueryIndexResult {
@@ -41,12 +36,8 @@ export function useTopologyQueryIndex({
   groupNames,
   statusItemKey,
   refreshSec,
-  eventBus,
   trafficItemIds,
   trafficKeys,
-  signalHostIds,
-  signalSearchTerms,
-  selectSignalItemIds,
 }: UseTopologyQueryIndexOptions): UseTopologyQueryIndexResult {
   return useZabbixDirectIndex({
     enabled,
@@ -54,11 +45,7 @@ export function useTopologyQueryIndex({
     groupNames,
     statusItemKey,
     refreshSec,
-    eventBus,
     trafficItemIds,
     trafficKeys,
-    signalHostIds,
-    signalSearchTerms,
-    selectSignalItemIds,
   });
 }

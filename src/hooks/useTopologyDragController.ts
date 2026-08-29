@@ -11,11 +11,11 @@ import React, {
 import { CanvasTool, TopologyLink, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { areNetworksLocked, moveStoredNodesBulk, updateStoredNode } from '../utils/mapEdits';
 import { clientToMapCoords } from '../utils/mapCoords';
-import { snapNodeCenterToGrid } from '../utils/mapCoords';
 import { DEFAULT_NETWORK_HEIGHT, DEFAULT_NETWORK_WIDTH, NodeLayout } from '../utils/nodeLayout';
 import { NodeTapStamp, resolveHostTouchTap } from '../utils/nodeTap';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
-import { AlignGuideLine, computeAlignGuides } from '../utils/alignGuides';
+import { computeAlignGuides } from '../utils/alignGuides';
+import { CanvasGestureStore } from '../utils/canvasGestureStore';
 import { LinkPoint } from '../utils/linkGeometry';
 import { nextSelectedNodeIds, nextSelectedNodeIdsOnPointerDown } from './useTopologySelection';
 import {
@@ -23,7 +23,6 @@ import {
   canMoveSelectedNode,
   defaultResizeSize,
   DragGroupMember,
-  DragPreview,
   DragState,
   HOST_LONG_PRESS_MOVE_CANCEL_PX,
   HOST_LONG_PRESS_MS,
@@ -71,11 +70,8 @@ interface UseTopologyDragControllerParams {
   /** Dois toques no host (mobile): menu Tools. */
   onHostOpenTools: (node: TopologyNode, clientX: number, clientY: number) => void;
   persist: (next: TopologyMap) => void;
-  /** Preview de posição/tamanho durante o arraste — estado do componente pai (alimenta `nodeLayouts`). */
-  dragPreview: DragPreview;
-  setDragPreview: Dispatch<SetStateAction<DragPreview>>;
-  setMarqueeRect: Dispatch<SetStateAction<{ x0: number; y0: number; x1: number; y1: number } | null>>;
-  setAlignGuides: Dispatch<SetStateAction<AlignGuideLine[]>>;
+  /** Preview de gesto fora do state do canvas — ver `canvasGestureStore`. */
+  gestureStore: CanvasGestureStore;
 }
 
 interface UseTopologyDragControllerResult {
@@ -143,10 +139,7 @@ export function useTopologyDragController({
   onHostPeek,
   onHostOpenTools,
   persist,
-  dragPreview,
-  setDragPreview,
-  setMarqueeRect,
-  setAlignGuides,
+  gestureStore,
 }: UseTopologyDragControllerParams): UseTopologyDragControllerResult {
   const dragRef = useRef<DragState | null>(null);
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
@@ -304,10 +297,10 @@ export function useTopologyDragController({
         setSelectedNodeIds([]);
       }
       dragRef.current = { kind: 'marquee', mapX0: mapX, mapY0: mapY, additive };
-      setMarqueeRect({ x0: mapX, y0: mapY, x1: mapX, y1: mapY });
+      gestureStore.set({ marqueeRect: { x0: mapX, y0: mapY, x1: mapX, y1: mapY } });
       wrapRef.current?.setPointerCapture(e.pointerId);
     },
-    [setMarqueeRect, setSelectedNodeIds, wrapRef]
+    [gestureStore, setSelectedNodeIds, wrapRef]
   );
 
   const {
@@ -329,8 +322,7 @@ export function useTopologyDragController({
     gridStep,
     snapCoord,
     view,
-    dragPreview,
-    setDragPreview,
+    gestureStore,
     setSelectedNodeIds,
     setSelectedLink,
     persist,
@@ -421,7 +413,6 @@ export function useTopologyDragController({
       // As guias custam O(nós) e o preview redesenha o canvas: os dois entram no frame, não no
       // evento. Quem fecha o gesto lê `dragPositionsRef`, que já está atualizado aqui.
       gestureFrame.schedule(() => {
-        setDragPreview({ positions });
         const draggedIds = new Set(Object.keys(positions));
         const bounds = computeGuideBounds({
           mapWidth: map.width,
@@ -431,8 +422,9 @@ export function useTopologyDragController({
           gridStep,
         });
         const others = guideReferenceNodes(map.nodes, draggedIds, nodeLayouts);
-        setAlignGuides(
-          computeAlignGuides({
+        gestureStore.set({
+          dragPreview: { positions },
+          alignGuides: computeAlignGuides({
             dragged: {
               id: primary.id,
               x: primaryPos.x,
@@ -443,11 +435,11 @@ export function useTopologyDragController({
             others,
             bounds,
             threshold: Math.max(6, gridStep * 0.5),
-          })
-        );
+          }),
+        });
       });
     },
-    [edgePan, enablePan, gestureFrame, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, setAlignGuides, setDragPreview, storedMap, viewRef, viewportRef]
+    [edgePan, enablePan, gestureFrame, gestureStore, gridStep, map.height, map.nodes, map.width, movableNodeIds, nodeLayouts, storedMap, viewRef, viewportRef]
   );
 
   applyNodeDragMoveRef.current = applyNodeDragMove;
@@ -515,9 +507,9 @@ export function useTopologyDragController({
       const height = Math.max(gridStep * 2, snapCoord(d.startH + dh));
       resizePreviewRef.current = { width, height };
       const nodeId = d.node.id;
-      gestureFrame.schedule(() => setDragPreview({ nodeId, width, height }));
+      gestureFrame.schedule(() => gestureStore.set({ dragPreview: { nodeId, width, height } }));
     },
-    [gestureFrame, gridStep, setDragPreview, snapCoord, viewRef]
+    [gestureFrame, gestureStore, gridStep, snapCoord, viewRef]
   );
 
   const onResizePointerDown = useCallback(
@@ -712,7 +704,7 @@ export function useTopologyDragController({
           return;
         }
         const rect = { x0: d.mapX0, y0: d.mapY0, x1: point.x, y1: point.y };
-        gestureFrame.schedule(() => setMarqueeRect(rect));
+        gestureFrame.schedule(() => gestureStore.set({ marqueeRect: rect }));
       }
     },
     [
@@ -724,23 +716,18 @@ export function useTopologyDragController({
       commitView,
       edgePan,
       gestureFrame,
+      gestureStore,
       moveLinkWaypoint,
       pinchActiveRef,
-      setMarqueeRect,
     ]
   );
-
-  const clearDragUi = useCallback(() => {
-    setAlignGuides([]);
-  }, [setAlignGuides]);
 
   const clearNodeDragUi = useCallback(() => {
     gestureFrame.cancel();
     dragPositionsRef.current = null;
     resizePreviewRef.current = null;
-    setDragPreview(null);
-    clearDragUi();
-  }, [clearDragUi, gestureFrame, setDragPreview]);
+    gestureStore.set({ dragPreview: null, alignGuides: [] });
+  }, [gestureFrame, gestureStore]);
 
   /** Encerra o gesto: solta refs, para o pan de borda e aplica o pan pendente. */
   const endGestureBookkeeping = useCallback(
@@ -849,7 +836,7 @@ export function useTopologyDragController({
   /** Fecha o laço de seleção: abaixo de 4px foi clique, não laço — não mexe na seleção. */
   const commitMarquee = useCallback(
     (drag: Extract<DragState, { kind: 'marquee' }>, e: React.PointerEvent) => {
-      setMarqueeRect(null);
+      gestureStore.set({ marqueeRect: null });
       const corner = clientToMap(e.clientX, e.clientY);
       if (!corner) {
         return;
@@ -861,7 +848,7 @@ export function useTopologyDragController({
       const ids = nodesInMarquee(sel, map.nodes, nodeLayouts, areNetworksLocked(storedMap));
       setSelectedNodeIds((prev) => (drag.additive ? [...new Set([...prev, ...ids])] : ids));
     },
-    [clientToMap, map.nodes, nodeLayouts, setMarqueeRect, setSelectedNodeIds, storedMap]
+    [clientToMap, gestureStore, map.nodes, nodeLayouts, setSelectedNodeIds, storedMap]
   );
 
   /** Grava as posições do arraste (um nó ou o grupo inteiro) e limpa o preview. */
@@ -877,10 +864,9 @@ export function useTopologyDragController({
         persist(moveStoredNodesBulk(storedMap, moves, (nodeId) => findNodeById(map.nodes, nodeId)));
       }
       dragPositionsRef.current = null;
-      setDragPreview(null);
-      clearDragUi();
+      gestureStore.set({ dragPreview: null, alignGuides: [] });
     },
-    [clearDragUi, map.nodes, persist, setDragPreview, storedMap]
+    [gestureStore, map.nodes, persist, storedMap]
   );
 
   /** Clique em nó sem arraste: fecha o link em andamento, peek/Tools no toque ou duplo-clique. */
@@ -945,7 +931,7 @@ export function useTopologyDragController({
           persist(updateStoredNode(storedMap, d.node, { width: preview.width, height: preview.height }));
         }
         resizePreviewRef.current = null;
-        setDragPreview(null);
+        gestureStore.set({ dragPreview: null });
       }
 
       const tapNode = d.kind === 'node' ? d.node : node;
@@ -963,7 +949,7 @@ export function useTopologyDragController({
       handleNodeTap,
       handlePanTap,
       persist,
-      setDragPreview,
+      gestureStore,
       storedMap,
     ]
   );
@@ -979,7 +965,8 @@ export function useTopologyDragController({
       panRafRef.current = null;
     }
     panPendingRef.current = null;
-  }, [cancelHostLongPress, edgePan, gestureFrame]);
+    gestureStore.reset();
+  }, [cancelHostLongPress, edgePan, gestureFrame, gestureStore]);
 
   return {
     dragRef,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseInterfaceItemKey, extractInterfaceTokenFromKey } from './zabbixAdapter/interfaceItemKeys';
+import { parseInterfaceItemKey, extractInterfaceTokenFromKey, itemMatchesInterfaceKeywords } from './zabbixAdapter/interfaceItemKeys';
 
 describe('interfaceItemKeys', () => {
   it('classifica net.if.in com nome de interface', () => {
@@ -107,5 +107,11 @@ describe('interfaceItemKeys', () => {
     expect(parseInterfaceItemKey('vendor.customtx.uplink[eth0]', opts)?.kind).toBe('tx');
     expect(parseInterfaceItemKey('vendor.customoper.uplink[eth0]', opts)?.kind).toBe('operStatus');
     expect(parseInterfaceItemKey('vendor.customspeed.uplink[eth0]', opts)?.kind).toBe('speed');
+  });
+
+  it('casa palavra-chave na key ou nome, e key pontilhada de tráfego', () => {
+    expect(itemMatchesInterfaceKeywords('vendor.metric.rx[10]', 'port-a', ['vendor.metric.rx'])).toBe(true);
+    expect(itemMatchesInterfaceKeywords('other.metric[10]', 'skip', ['vendor.metric.rx'])).toBe(false);
+    expect(itemMatchesInterfaceKeywords('rx.port.1.1', undefined, ['nope'])).toBe(true);
   });
 });

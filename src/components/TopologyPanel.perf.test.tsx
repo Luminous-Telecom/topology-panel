@@ -236,7 +236,11 @@ function panelProps(options: TopologyPanelOptions, data: PanelData): TopologyPan
   };
 }
 
-function buildDirectIndex(hostCount: number, downHosts: ReadonlySet<number> = new Set()) {
+function buildDirectIndex(
+  hostCount: number,
+  downHosts: ReadonlySet<number> = new Set(),
+  lastclock?: string
+) {
   const hosts = [];
   const statusItems = [];
   for (let i = 0; i < hostCount; i += 1) {
@@ -253,6 +257,7 @@ function buildDirectIndex(hostCount: number, downHosts: ReadonlySet<number> = ne
       hostid: String(i),
       key_: 'icmpping',
       lastvalue: downHosts.has(i) ? '0' : '1',
+      ...(lastclock != null ? { lastclock } : {}),
     });
   }
   return buildZabbixDirectIndex({
@@ -386,5 +391,19 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     );
 
     expect(renderCounts.host).toBe(1);
+  });
+
+  it('poll só com lastclock novo não redesenha nó nem cabo', () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    queryIndexState.index = buildDirectIndex(HOST_COUNT, new Set(), '1000');
+    const { rerender } = render(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
+
+    resetCounts();
+    queryIndexState.index = buildDirectIndex(HOST_COUNT, new Set(), '2000');
+    rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
+
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
   });
 });

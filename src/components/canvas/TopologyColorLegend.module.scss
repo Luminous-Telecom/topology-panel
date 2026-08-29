@@ -3,28 +3,16 @@
 
 .legend {
   position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
+  right: $gap;
+  bottom: calc(#{$gap} + #{$scrollbar});
   z-index: $z-modal;
   pointer-events: none;
   min-width: 148px;
   max-width: calc(100% - #{$gap * 2});
 
   @include medium {
-    top: auto;
-    bottom: $gap;
-    right: $gap;
-    transform: none;
     min-width: 0;
     max-width: min(220px, calc(100% - #{$gap * 2}));
-  }
-
-  @include compact {
-    top: 96px;
-    bottom: auto;
-    right: $gap;
-    max-width: calc(100% - #{$gap * 2});
   }
 }
 

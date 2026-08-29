@@ -1,4 +1,5 @@
 import React from 'react';
+import { LINK_PILL_FILL, LINK_PILL_STROKE } from './linkLineVisual';
 
 interface TrafficLabelProps {
   x: number;
@@ -9,6 +10,19 @@ interface TrafficLabelProps {
   downloadColor: string;
 }
 
+function pillLineWidth(value: string, padX: number, charW: number): number {
+  return (value.length + 2) * charW + padX * 2;
+}
+
+const PILL_TEXT = {
+  textAnchor: 'middle' as const,
+  dominantBaseline: 'middle' as const,
+  fontSize: 11,
+  fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+  fontWeight: 600,
+  letterSpacing: 0.15,
+};
+
 function LinkTrafficLabelComponent({
   x,
   y,
@@ -18,12 +32,22 @@ function LinkTrafficLabelComponent({
   downloadColor,
 }: TrafficLabelProps) {
   const valueFill = 'rgba(240,243,248,0.96)';
-  const padX = 11;
-  const charW = 6.55;
-  const extra = (txLabel && rxLabel ? 3 : 0) + (txLabel ? 2 : 0) + (rxLabel ? 2 : 0);
-  const chars = (txLabel?.length ?? 0) + (rxLabel?.length ?? 0) + extra;
-  const width = chars * charW + padX * 2;
-  const height = 22;
+  const padX = 10;
+  const charW = 6.45;
+  const lineH = 14;
+  const padY = 5;
+  const both = Boolean(txLabel && rxLabel);
+  const txWidth = txLabel ? pillLineWidth(txLabel, padX, charW) : 0;
+  const rxWidth = rxLabel ? pillLineWidth(rxLabel, padX, charW) : 0;
+  const width = Math.max(txWidth, rxWidth);
+  const rows = (txLabel ? 1 : 0) + (rxLabel ? 1 : 0);
+  const height = rows * lineH + padY * 2;
+  let txY = 0;
+  let rxY = 0;
+  if (both) {
+    txY = -lineH / 2;
+    rxY = lineH / 2;
+  }
   return (
     <g transform={`translate(${x}, ${y})`} pointerEvents="none">
       <rect
@@ -31,27 +55,23 @@ function LinkTrafficLabelComponent({
         y={-height / 2}
         width={width}
         height={height}
-        rx={4}
-        fill="rgba(15,17,22,0.95)"
-        stroke="rgba(255,255,255,0.12)"
-        strokeWidth={0.7}
+        rx={8}
+        fill={LINK_PILL_FILL}
+        stroke={LINK_PILL_STROKE}
+        strokeWidth={1}
       />
-      <text
-        x={0}
-        y={0}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={11}
-        fontFamily="Inter, Helvetica, Arial, sans-serif"
-        fontWeight={600}
-        letterSpacing={0.15}
-      >
-        {txLabel ? <tspan fill={uploadColor}>↑</tspan> : null}
-        {txLabel ? <tspan fill={valueFill}> {txLabel}</tspan> : null}
-        {txLabel && rxLabel ? <tspan fill="rgba(255,255,255,0.24)">  ·  </tspan> : null}
-        {rxLabel ? <tspan fill={downloadColor}>↓</tspan> : null}
-        {rxLabel ? <tspan fill={valueFill}> {rxLabel}</tspan> : null}
-      </text>
+      {txLabel ? (
+        <text x={0} y={txY} {...PILL_TEXT}>
+          <tspan fill={uploadColor}>↑</tspan>
+          <tspan fill={valueFill}> {txLabel}</tspan>
+        </text>
+      ) : null}
+      {rxLabel ? (
+        <text x={0} y={rxY} {...PILL_TEXT}>
+          <tspan fill={downloadColor}>↓</tspan>
+          <tspan fill={valueFill}> {rxLabel}</tspan>
+        </text>
+      ) : null}
     </g>
   );
 }

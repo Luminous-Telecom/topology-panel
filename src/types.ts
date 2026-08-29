@@ -133,9 +133,9 @@ export type MetricBindingConfidence = 'high' | 'medium' | 'low' | 'ambiguous';
 /** Referência persistida a um item Zabbix. */
 export interface TopologyMetricReference {
   /**
-   * Itemid numérico do Zabbix. Ausente quando o DataFrame não trouxe o id — aí a leitura do último
+   * Itemid numérico do Zabbix. Ausente quando a API não trouxe o id — aí a leitura do último
    * valor cai na `key`. Nunca guarde valor sintético aqui: este campo vai para `itemids` no
-   * `ds.query()`, que recusa o request inteiro se algum id não for numérico.
+   * `item.get`, que recusa o request inteiro se algum id não for numérico.
    */
   itemId?: string;
   key?: string;
@@ -536,7 +536,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   hostTypeColors: defaultHostTypeColors(),
   colorStatic: '#8f3bb8',
   colorSubmap: '#56A64B',
-  colorLink: '#78909C',
+  colorLink: '#28eb0e',
   colorLinkDownload: '#C0D8FF',
   colorLinkUpload: '#FADE2A',
   colorLinkWidth: 2,

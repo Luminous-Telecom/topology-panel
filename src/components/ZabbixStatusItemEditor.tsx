@@ -8,7 +8,7 @@ import { collectAllSubmapGroups } from '../utils/queryHosts';
 
 type Props = StandardEditorProps<string | undefined, TopologyPanelOptions>;
 
-/** Item de status: escolhe um nome da lista do campo Item do grafana-zabbix. */
+/** Item de status: escolhe um nome da lista de itens do Zabbix. */
 export function ZabbixStatusItemEditor({ value, onChange, context }: Props) {
   const uid = useId();
   const panelOptions = context.options as TopologyPanelOptions | undefined;

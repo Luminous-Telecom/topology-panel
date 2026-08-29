@@ -23,7 +23,7 @@ import { resolveHostDoubleClickAction } from '../utils/nodeTap';
 import { shouldOpenLinkInterfaceModal } from '../utils/submapHosts';
 import { TopologyBreadcrumbItem, ROOT_MAP_ID } from '../utils/topologyMapNavigation';
 import { resolvePanelColor } from '../utils/panelColors';
-import { AlignGuideLine } from '../utils/alignGuides';
+import { createCanvasGestureStore } from '../utils/canvasGestureStore';
 import {
   computeFitToContentBoundsTransform,
   computeTopologyContentBounds,
@@ -39,16 +39,13 @@ import { CanvasControlsOverlay } from './canvas/CanvasControlsOverlay';
 import { CanvasGridLayer } from './canvas/CanvasGridLayer';
 import { CanvasHudOverlay } from './canvas/CanvasHudOverlay';
 import { CanvasModals } from './canvas/CanvasModals';
-import { CanvasSelectionShapes } from './canvas/CanvasSelectionShapes';
-import { LinksLayer } from './canvas/LinksLayer';
-import { HostNodesLayer, NetworkLabelsLayer, NetworkNodesLayer } from './canvas/NodeLayers';
+import { GesturePreviewLayers } from './canvas/GesturePreviewLayers';
 import { LinkMarkers } from './canvas/LinkMarkers';
 import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
 import { TopologyBlueprintModal, LinkDetailsDrawer } from './lazyModals';
 import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
 import { openDashboardUrl } from './DashboardPickerModal';
-import { LinkPoint } from '../utils/linkGeometry';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useStableCallback } from '../hooks/useStableCallback';
@@ -159,8 +156,8 @@ export function TopologyCanvas({
   submapHosts: liveSubmapHosts = NO_SUBMAP_HOSTS,
   refreshIntervalSec = null,
   zabbixDatasourceUid,
-  linkMetricsByLink = NO_LINK_METRICS,
-  hostProblems,
+  linkMetricsByLink: liveLinkMetricsByLink = NO_LINK_METRICS,
+  hostProblems: liveHostProblems,
   onNocModeChange,
   onMapChange,
   onViewChange,
@@ -197,6 +194,8 @@ export function TopologyCanvas({
       queryError: liveQueryError,
       hostMetadata: liveHostMetadata,
       submapHosts: liveSubmapHosts,
+      linkMetricsByLink: liveLinkMetricsByLink,
+      hostProblems: liveHostProblems,
     },
     isGestureActiveRef
   );
@@ -208,8 +207,15 @@ export function TopologyCanvas({
     queryError,
     hostMetadata,
     submapHosts,
+    linkMetricsByLink,
+    hostProblems,
   } = frozenData;
   const wrapRef = useRef<HTMLDivElement>(null);
+  const gestureStoreRef = useRef<ReturnType<typeof createCanvasGestureStore> | null>(null);
+  if (gestureStoreRef.current === null) {
+    gestureStoreRef.current = createCanvasGestureStore();
+  }
+  const gestureStore = gestureStoreRef.current;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastFitViewportRef = useRef<TopologyFitViewportRecord | null>(null);
   const bindScrollRef = useCallback((node: HTMLDivElement | null) => {
@@ -325,7 +331,6 @@ export function TopologyCanvas({
       setSelectedNodeIds,
       showToast,
     });
-  const [marqueeRect, setMarqueeRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<TopologyMapFilterId>>(() => new Set());
   const pendingNocFocusRef = useRef<{ mapId: string; nodeId: string } | null>(null);
   const modals = useNodePropertiesModals({ storedMap, editable, linkFromId });
@@ -345,14 +350,6 @@ export function TopologyCanvas({
     typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
   );
   const [hoveredLinkKey, setHoveredLinkKey] = useState<string | null>(null);
-  const [dragPreview, setDragPreview] = useState<{
-    nodeId?: string;
-    positions?: Record<string, { x: number; y: number }>;
-    width?: number;
-    height?: number;
-    linkWaypoints?: { key: string; waypoints: LinkPoint[] };
-  } | null>(null);
-  const [alignGuides, setAlignGuides] = useState<AlignGuideLine[]>([]);
 
   /** `activeChildMaps` monta um objeto novo a cada chamada — memoize antes de virar dependência. */
   const childMapsById = useMemo(() => activeChildMaps(options.childMaps), [options.childMaps]);
@@ -500,7 +497,6 @@ export function TopologyCanvas({
     map,
     layoutOpts,
     templateOpts,
-    dragPreview,
     hostDisplay,
     hostDisplayByRefId,
     hostMetadata,
@@ -659,11 +655,10 @@ export function TopologyCanvas({
       setSelectedLink(null);
       setLinkFromId(null);
       closeContextMenu();
-      setMarqueeRect(null);
-      setAlignGuides([]);
+      gestureStore.reset();
       return true;
     },
-    [closeContextMenu, commitView, nodeLayoutsRef, setSelectedLink, setSelectedNodeIds, viewRef, viewportRef]
+    [closeContextMenu, commitView, gestureStore, nodeLayoutsRef, setSelectedLink, setSelectedNodeIds, viewRef, viewportRef]
   );
 
   const handleSelectHostFromList = useCallback(
@@ -915,10 +910,7 @@ export function TopologyCanvas({
       openContextMenuAt(clientX, clientY, { node });
     },
     persist,
-    dragPreview,
-    setDragPreview,
-    setMarqueeRect,
-    setAlignGuides,
+    gestureStore,
   });
 
   const handlePointerMove = useCallback(
@@ -1093,9 +1085,8 @@ export function TopologyCanvas({
     setLinkFromId(null);
     closeContextMenu();
     setSelectedNodeIds([]);
-    setMarqueeRect(null);
-    setAlignGuides([]);
-  }, [setSelectedNodeIds]);
+    gestureStore.reset();
+  }, [gestureStore, setSelectedNodeIds]);
 
   useCanvasKeyboardShortcuts({
     wrapRef,
@@ -1412,9 +1403,10 @@ export function TopologyCanvas({
             onContextMenu={handleContextMenu}
           />
 
-          <NetworkNodesLayer
+          <GesturePreviewLayers
+            store={gestureStore}
             nodes={visibleNodes}
-            nodeLayouts={nodeLayouts}
+            baseNodeLayouts={nodeLayouts}
             regionStats={regionStats}
             options={options}
             queryReady={queryReady}
@@ -1423,70 +1415,34 @@ export function TopologyCanvas({
             panTool={panTool}
             editable={viewEditable}
             networksLocked={networksLocked}
-            onPointerDown={stableNetworkPointerDown}
-            onDoubleClick={stableNodeDoubleClick}
-            onContextMenu={stableNodeContextMenu}
-            onResizePointerDown={stableResizePointerDown}
-            onResizePointerUp={stableResizePointerUp}
-          />
-
-          <LinksLayer
-            renderLinks={culledRenderLinks}
-            nodeLayouts={nodeLayouts}
-            options={options}
-            editable={viewEditable}
-            panTool={panTool}
-            selectedLink={selectedLink}
-            hoveredLinkKey={hoveredLinkKey}
-            setHoveredLinkKey={setHoveredLinkKey}
-            resolveLinkWaypoints={resolveLinkWaypoints}
-            linkMetricsByLink={linkMetricsByLink}
-            hostDisplay={hostDisplay}
-            hostMetadata={hostMetadata}
-            onLinkSelect={stableLinkSelect}
-            onLinkContextMenu={stableLinkContextMenu}
-            beginPan={stableBeginPan}
-            beginWaypointDragFromPath={stableBeginWaypointDragFromPath}
-            removeWaypointNearPointer={stableRemoveWaypointNearPointer}
-          />
-
-          <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />
-
-          <NetworkLabelsLayer
-            nodes={visibleNodes}
-            nodeLayouts={nodeLayouts}
-            options={options}
-            resolveColor={resolveColor}
-            selectedNodeIds={selectedNodeIds}
-          />
-
-          <HostNodesLayer
-            nodes={visibleNodes}
-            nodeLayouts={nodeLayouts}
-            regionStats={regionStats}
-            options={options}
-            queryReady={queryReady}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
             badgesByNode={hostBadgesByNode}
             activeFilters={activeFilters}
             filterContext={filterContext}
-            resolveColor={resolveColor}
-            selectedNodeIds={selectedNodeIds}
             selectedLink={selectedLink}
             linkFromId={linkFromId}
             linkHoverId={linkHoverId}
-            panTool={panTool}
-            editable={viewEditable}
-            onPointerDown={stableNodePointerDown}
-            onClick={stableNodeClick}
-            onDoubleClick={stableNodeDoubleClick}
-            onContextMenu={stableNodeContextMenu}
-            onMouseEnter={stableNodeMouseEnter}
-            onMouseMove={stableNodeMouseMove}
-            onMouseLeave={stableNodeMouseLeave}
+            renderLinks={culledRenderLinks}
+            hoveredLinkKey={hoveredLinkKey}
+            setHoveredLinkKey={setHoveredLinkKey}
+            resolveLinkWaypoints={resolveLinkWaypoints}
+            linkMetricsByLink={linkMetricsByLink}
+            onNetworkPointerDown={stableNetworkPointerDown}
+            onNodePointerDown={stableNodePointerDown}
+            onNodeClick={stableNodeClick}
+            onNodeDoubleClick={stableNodeDoubleClick}
+            onNodeContextMenu={stableNodeContextMenu}
+            onNodeMouseEnter={stableNodeMouseEnter}
+            onNodeMouseMove={stableNodeMouseMove}
+            onNodeMouseLeave={stableNodeMouseLeave}
             onResizePointerDown={stableResizePointerDown}
             onResizePointerUp={stableResizePointerUp}
+            onLinkSelect={stableLinkSelect}
+            onLinkContextMenu={stableLinkContextMenu}
+            beginPan={stableBeginPan}
+            beginWaypointDragFromPath={stableBeginWaypointDragFromPath}
+            removeWaypointNearPointer={stableRemoveWaypointNearPointer}
           />
         </g>
       </svg>

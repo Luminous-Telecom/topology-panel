@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  HostDisplayInfo,
   HostDisplayMap,
   HostMetadataMap,
   TopologyNode,
@@ -263,7 +264,22 @@ function HostNodeShapeComponent({
  * `hostDisplay` é o mapa de status do mapa **inteiro**, então ele troca de identidade sempre que
  * qualquer host muda de valor. Comparar por identidade fazia um único host offline redesenhar os
  * quinhentos nós; o que este nó realmente lê do mapa é uma entrada só.
+ *
+ * `updatedAtSec` (lastclock) não entra: o poll do Zabbix atualiza o relógio de todos os itens
+ * mesmo com o mesmo lastvalue, e isso redesenhava o SVG inteiro a cada intervalo.
  */
+function hostDisplayPaintSlice(info: HostDisplayInfo | undefined): unknown {
+  if (!info) {
+    return info;
+  }
+  return {
+    value: info.value,
+    color: info.color,
+    text: info.text,
+    status: info.status,
+  };
+}
+
 function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapeProps): boolean {
   if (prev.hostDisplay === next.hostDisplay) {
     return true;
@@ -278,8 +294,8 @@ function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapePr
     label: next.node.label,
   };
   return sameStructure(
-    lookupHostDisplay(next.hostDisplay, lookupRef, next.hostMetadata),
-    lookupHostDisplay(prev.hostDisplay, lookupRef, prev.hostMetadata)
+    hostDisplayPaintSlice(lookupHostDisplay(next.hostDisplay, lookupRef, next.hostMetadata)),
+    hostDisplayPaintSlice(lookupHostDisplay(prev.hostDisplay, lookupRef, prev.hostMetadata))
   );
 }
 

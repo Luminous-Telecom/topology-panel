@@ -511,14 +511,28 @@ export function coalesceLinkTraffic(
   incoming: { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] },
   previous: { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] }
 ): { lastValues: Record<string, ZabbixItemLastValue>; interfaceItems: ZabbixInterfaceItem[] } {
-  const keepValues =
-    Object.keys(incoming.lastValues).length === 0 && Object.keys(previous.lastValues).length > 0;
-  const keepIfaces = incoming.interfaceItems.length === 0 && previous.interfaceItems.length > 0;
-  if (!keepValues && !keepIfaces) {
-    return incoming;
+  if (Object.keys(incoming.lastValues).length === 0) {
+    const keepIfaces = incoming.interfaceItems.length === 0 && previous.interfaceItems.length > 0;
+    return {
+      lastValues: Object.keys(previous.lastValues).length ? previous.lastValues : incoming.lastValues,
+      interfaceItems: keepIfaces ? previous.interfaceItems : incoming.interfaceItems,
+    };
+  }
+  const byId = new Map<string, ZabbixInterfaceItem>();
+  for (const item of previous.interfaceItems) {
+    const id = item.itemid.trim();
+    if (id) {
+      byId.set(id, item);
+    }
+  }
+  for (const item of incoming.interfaceItems) {
+    const id = item.itemid.trim();
+    if (id) {
+      byId.set(id, item);
+    }
   }
   return {
-    lastValues: keepValues ? previous.lastValues : incoming.lastValues,
-    interfaceItems: keepIfaces ? previous.interfaceItems : incoming.interfaceItems,
+    lastValues: { ...previous.lastValues, ...incoming.lastValues },
+    interfaceItems: byId.size ? [...byId.values()] : incoming.interfaceItems,
   };
 }

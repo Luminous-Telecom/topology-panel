@@ -1,5 +1,6 @@
 import { MutableRefObject, useMemo } from 'react';
-import { HostDisplayMap, HostMetadataMap, TopologyMap } from '../types';
+import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap } from '../types';
+import { HostProblemsMap } from '../utils/noc/types';
 import { useDeferredDuringGesture } from './useDeferredDuringGesture';
 
 export interface CanvasData {
@@ -10,13 +11,15 @@ export interface CanvasData {
   queryError?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts: Record<string, string[] | null | undefined>;
+  linkMetricsByLink: LinkRuntimeMetricsMap;
+  hostProblems?: HostProblemsMap;
 }
 
 /**
  * Dados do painel congelados enquanto há gesto em andamento.
  *
- * Sem isso, um auto-refresh do dashboard no meio de um arraste trocaria cores, hosts e posições
- * debaixo da mão do usuário. O `flush` devolvido é chamado ao soltar o ponteiro.
+ * Sem isso, um auto-refresh do dashboard no meio de um arraste trocaria cores, hosts, posições
+ * e rótulos de tráfego debaixo da mão do usuário. O `flush` devolvido é chamado ao soltar o ponteiro.
  */
 export function useFrozenCanvasData(
   live: CanvasData,
@@ -25,7 +28,8 @@ export function useFrozenCanvasData(
   const stable = useMemo(
     () => live,
     [live.map, live.hostDisplay, live.hostDisplayByRefId, live.queryReady,
-     live.queryError, live.hostMetadata, live.submapHosts]
+     live.queryError, live.hostMetadata, live.submapHosts, live.linkMetricsByLink,
+     live.hostProblems]
   );
   return useDeferredDuringGesture(stable, isGestureActiveRef);
 }

@@ -7,11 +7,8 @@ import { resolveNetworkFontSize } from './networkFontSize';
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 /**
- * Cache de `measureTextWidth` por texto+fontSize — `nodeLayouts` (TopologyCanvas.tsx) recalcula
- * o layout de todos os nós em todo render (inclui drag/resize preview nas deps), então sem cache
- * o mesmo label/subtítulo é medido no canvas repetidamente a cada frame de arraste. Rótulos de
- * host/rede são um conjunto pequeno e estável por mapa, então um cap simples evita crescimento
- * ilimitado sem precisar de uma LRU real.
+ * Cache de `measureTextWidth` por texto+fontSize — `useNodeLayouts` mede todos os nós quando
+ * geometria ou status mudam. Sem cache o mesmo label seria medido no canvas repetidamente.
  */
 const MEASURE_TEXT_CACHE_MAX = 4000;
 const measureTextCache = new Map<string, number>();

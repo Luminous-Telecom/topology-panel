@@ -114,12 +114,14 @@ export function computeLinkGeometry(
   gridStep: number,
   waypoints: LinkPoint[] = []
 ): LinkGeometry {
-  const start = nodeCenter(from);
+  const fromCenter = nodeCenter(from);
+  const toCenter = nodeCenter(to);
   const wps = waypoints.map((p) => ({ x: p.x, y: p.y }));
-  const end =
-    wps.length > 0
-      ? nodeEdgeToward(to, wps[wps.length - 1])
-      : snapLinkEndpoint(start, nodeEdgeToward(to, start), gridStep);
+  const startToward = wps.length > 0 ? wps[0] : toCenter;
+  const endToward = wps.length > 0 ? wps[wps.length - 1] : fromCenter;
+  const start = nodeEdgeToward(from, startToward);
+  const rawEnd = nodeEdgeToward(to, endToward);
+  const end = wps.length > 0 ? rawEnd : snapLinkEndpoint(start, rawEnd, gridStep);
   const pathPoints = [start, ...wps, end];
   const d = wps.length > 0 ? pathToRoundedD(pathPoints, linkCornerRadius(gridStep)) : pathToD(pathPoints);
   return { d, start, end, waypoints: wps, pathPoints };
@@ -171,7 +173,7 @@ export function nearestWaypointIndex(
   return bestIndex;
 }
 
-/** Desloca a polilinha perpendicularmente (px) — faixas RX/TX e cabos paralelos. */
+/** Desloca a polilinha perpendicularmente (px) — cabos paralelos entre o mesmo par. */
 export function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[] {
   if (points.length < 2 || offset === 0) {
     return points.map((p) => ({ ...p }));
@@ -207,7 +209,7 @@ export function buildLinkPathD(
   return hasWaypoints ? pathToRoundedD(pts, linkCornerRadius(gridStep)) : pathToD(pts);
 }
 
-/** Comprimento da polilinha — período de repetição das setas que correm no cabo. */
+/** Comprimento da polilinha — período de repetição dos pulsos que correm no cabo. */
 export function polylineLength(points: LinkPoint[]): number {
   let total = 0;
   for (let i = 0; i < points.length - 1; i++) {
@@ -216,42 +218,47 @@ export function polylineLength(points: LinkPoint[]): number {
   return total;
 }
 
+/** Ponto a uma fração `t` (0–1) do comprimento, com o ângulo do segmento. */
+export function pointAlongPolyline(points: LinkPoint[], t: number): { x: number; y: number; angle: number } {
+  if (points.length === 0) {
+    return { x: 0, y: 0, angle: 0 };
+  }
+  if (points.length === 1) {
+    return { x: points[0].x, y: points[0].y, angle: 0 };
+  }
+  const total = polylineLength(points);
+  if (total <= 0) {
+    return { x: points[0].x, y: points[0].y, angle: segmentAngle(points[0], points[1]) };
+  }
+  const target = Math.max(0, Math.min(1, t)) * total;
+  let walked = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    const isLast = i === points.length - 2;
+    if (walked + seg >= target || isLast) {
+      const rest = seg === 0 ? 0 : (target - walked) / seg;
+      const u = Math.max(0, Math.min(1, rest));
+      return {
+        x: a.x + (b.x - a.x) * u,
+        y: a.y + (b.y - a.y) * u,
+        angle: segmentAngle(a, b),
+      };
+    }
+    walked += seg;
+  }
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  return { x: last.x, y: last.y, angle: segmentAngle(prev, last) };
+}
+
 function segmentAngle(a: LinkPoint, b: LinkPoint): number {
   let angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
   if (angle > 90 || angle < -90) {
     angle += 180;
   }
   return angle;
-}
-
-/** Rótulo de capacidade no meio visual da linha (projetado sobre o path). */
-export function linkLabelAnchor(
-  pathPoints: LinkPoint[],
-  from?: LinkBox,
-  to?: LinkBox
-): { x: number; y: number; angle: number } {
-  if (pathPoints.length < 2) {
-    return { x: 0, y: 0, angle: 0 };
-  }
-
-  const anchorTarget =
-    from && to
-      ? nodeCenter(from)
-      : pathPoints[0];
-  const anchorTargetEnd =
-    from && to
-      ? nodeCenter(to)
-      : pathPoints[pathPoints.length - 1];
-
-  const betweenNodes = {
-    x: (anchorTarget.x + anchorTargetEnd.x) / 2,
-    y: (anchorTarget.y + anchorTargetEnd.y) / 2,
-  };
-
-  const onPath = closestPointOnPolyline(pathPoints, betweenNodes);
-  const a = pathPoints[onPath.insertIndex];
-  const b = pathPoints[onPath.insertIndex + 1];
-  return { x: onPath.x, y: onPath.y, angle: segmentAngle(a, b) };
 }
 
 const PARALLEL_LINK_SPACING = 12;

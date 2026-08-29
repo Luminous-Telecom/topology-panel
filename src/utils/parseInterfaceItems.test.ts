@@ -21,8 +21,8 @@ describe('parseZabbixInterfaceItems', () => {
   });
 
   it('descarta itemid sintetico e guarda so a key', () => {
-    // Sem o id no frame, o inventário monta `hostid:key`. Persistir isso fazia o mapa mandá-lo como
-    // itemid real no `ds.query()`, que recusava o request inteiro e derrubava o status.
+    // Sem o id, o inventário monta `hostid:key`. Persistir isso fazia o mapa mandá-lo como
+    // itemid real no `item.get`, que recusava o request inteiro e derrubava o status.
     const interfaces = parseZabbixInterfaceItems(hostKey, '10001', [
       { itemid: '10001:vendor.metric.rx[10]', key_: 'vendor.metric.rx[10]', hostid: '10001' },
       { itemid: '', key_: 'vendor.metric.tx[10]', hostid: '10001' },

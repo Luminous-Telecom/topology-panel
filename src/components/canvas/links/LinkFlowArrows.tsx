@@ -1,5 +1,5 @@
 import React from 'react';
-import { LINK_FLOW_ARROW_MAX, LINK_FLOW_ARROW_SPACING, LINK_OUTLINE_COLOR } from './linkLineVisual';
+import { LINK_FLOW_ARROW_MAX, LINK_FLOW_ARROW_SPACING } from './linkLineVisual';
 
 interface FlowArrowsProps {
   laneD: string;
@@ -13,8 +13,8 @@ interface FlowArrowsProps {
 }
 
 /**
- * Setas que **correm com o tráfego**: cada glifo anda pelo canal via `offset-path`, girado na
- * tangente do cabo. Sem tráfego a animação para e as setas ficam paradas.
+ * Pulsos que **correm com o tráfego**: cada círculo anda pelo cabo via `offset-path`.
+ * Sem tráfego a animação para e os pulsos ficam parados.
  */
 function LinkFlowArrowsComponent({
   laneD,
@@ -31,14 +31,15 @@ function LinkFlowArrowsComponent({
     return null;
   }
   const step = laneLength / count;
-  const half = size / 2;
-  const glyph = `M ${-half} ${-size * 0.6} L ${half * 1.2} 0 L ${-half} ${size * 0.6}`;
+  const coreR = Math.max(1.6, size * 0.38);
   return (
     <>
       {Array.from({ length: count }, (_, index) => (
-        <path
+        <circle
           key={index}
-          d={glyph}
+          r={coreR}
+          cx={0}
+          cy={0}
           data-link-flow={direction}
           data-link-flow-arrow="true"
           data-link-key={linkId}
@@ -47,15 +48,15 @@ function LinkFlowArrowsComponent({
           data-link-flow-length={String(laneLength)}
           data-link-flow-phase={String(index * step)}
           fill={color}
-          stroke={LINK_OUTLINE_COLOR}
-          strokeWidth={0.5}
-          strokeLinejoin="round"
+          stroke={color}
+          strokeWidth={coreR * 1.6}
+          strokeOpacity={0.35}
           pointerEvents="none"
           style={{
             // A posição (`offset-distance`) é do laço em `linkFlow.ts`. Se o React gravar 0px
-            // aqui, cada poll de tráfego zera as setas e o cabo parece travado.
+            // aqui, cada poll de tráfego zera os pulsos e o cabo parece travado.
             offsetPath: `path('${laneD}')`,
-            offsetRotate: 'auto',
+            offsetRotate: '0deg',
           }}
         />
       ))}

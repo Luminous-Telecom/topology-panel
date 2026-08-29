@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
-import { DragPreview } from '../utils/dragState';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
@@ -19,7 +18,6 @@ export interface NodeLayoutsParams {
   /** Só o que altera geometria — ver comentário do memo abaixo. */
   layoutOpts: Pick<TopologyPanelOptions, 'nodeFontSize' | 'networkFontSize' | 'showSubtitle'>;
   templateOpts?: Pick<TopologyPanelOptions, 'nodeTemplates' | 'templateRules' | 'showSubtitle'>;
-  dragPreview: DragPreview;
   hostDisplay?: HostDisplayMap;
   hostDisplayByRefId?: Record<string, HostDisplayMap>;
   hostMetadata?: HostMetadataMap;
@@ -85,8 +83,10 @@ function measureNodeLayout(
 }
 
 /**
- * Caixa medida de cada nó (já com o preview do arraste aplicado) e as estatísticas agregadas de
- * cada rede e submapa.
+ * Caixa medida de cada nó e as estatísticas agregadas de cada rede e submapa.
+ *
+ * O preview de arraste/resize não entra aqui: aplica-se em `applyDragPreviewToLayouts` no
+ * `GesturePreviewLayers`, para o pointermove não remediar o mapa inteiro.
  *
  * Os dois saem do mesmo memo porque o submapa é medido duas vezes: a contagem de hosts vira o
  * subtítulo dele, e o subtítulo muda a altura da caixa.
@@ -95,7 +95,6 @@ export function useNodeLayouts({
   map,
   layoutOpts,
   templateOpts,
-  dragPreview,
   hostDisplay,
   hostDisplayByRefId,
   hostMetadata,
@@ -195,73 +194,5 @@ export function useNodeLayouts({
     linkMetricsByLink,
   ]);
 
-  return useMemo(() => {
-    if (!dragPreview) {
-      return baseResult;
-    }
-
-    const movePositions = dragPreview.positions;
-    const resizeId = dragPreview.nodeId;
-    const resizeW = dragPreview.width;
-    const resizeH = dragPreview.height;
-    const hasMove = movePositions && Object.keys(movePositions).length > 0;
-    const hasResize = resizeId !== undefined && resizeW !== undefined && resizeH !== undefined;
-
-    if (!hasMove && !hasResize) {
-      return baseResult;
-    }
-
-    let layouts = baseResult.nodeLayouts;
-
-    if (hasMove) {
-      const next = new Map(layouts);
-      for (const [id, pos] of Object.entries(movePositions)) {
-        const layout = next.get(id);
-        if (layout) {
-          next.set(id, { ...layout, x: pos.x, y: pos.y });
-        }
-      }
-      layouts = next;
-    }
-
-    if (hasResize) {
-      const node = map.nodes.find((n) => n.id === resizeId);
-      const prev = layouts.get(resizeId);
-      if (node && prev) {
-        const next = new Map(layouts);
-        const positioned = { ...prev, width: resizeW, height: resizeH };
-        let layoutEntry = measureNodeLayout(
-          node,
-          positioned,
-          layoutOpts,
-          templateOpts,
-          hostMetadata,
-          hostDisplay,
-          uplinkCountByNode
-        );
-        if (node.type === 'submap') {
-          const region = baseResult.regionStats.get(resizeId);
-          if (region) {
-            const withStats = { ...layoutEntry, subtitle: formatRegionStats(region, queryReady, 'submap') };
-            const layout = computeNodeLayout(withStats, layoutOpts);
-            layoutEntry = { ...layoutEntry, ...layout, subtitle: withStats.subtitle };
-          }
-        }
-        next.set(resizeId, layoutEntry);
-        layouts = next;
-      }
-    }
-
-    return { nodeLayouts: layouts, regionStats: baseResult.regionStats };
-  }, [
-    baseResult,
-    dragPreview,
-    map.nodes,
-    layoutOpts,
-    templateOpts,
-    hostMetadata,
-    hostDisplay,
-    uplinkCountByNode,
-    queryReady,
-  ]);
+  return baseResult;
 }

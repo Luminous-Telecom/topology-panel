@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createAsyncCache } from '../services/asyncCache';
-import { fetchZabbixHostGroupNamesViaQuery } from '../utils/zabbixDatasourceQuery';
+import { fetchZabbixHostGroupNames } from '../utils/zabbixApi';
 
 /** Lista de grupos muda pouco; o TTL evita uma chamada por remontagem do painel de opções. */
 const GROUPS_TTL_MS = 60_000;
@@ -35,7 +35,7 @@ export function useZabbixHostGroups(datasourceUid?: string): UseZabbixHostGroups
     setLoadError(undefined);
 
     groupsCache
-      .get(datasourceUid, () => fetchZabbixHostGroupNamesViaQuery(datasourceUid))
+      .get(datasourceUid, () => fetchZabbixHostGroupNames(datasourceUid))
       .then((result) => {
         if (!cancelled) {
           setGroups(result);

@@ -164,6 +164,21 @@ describe('fetchZabbixTrafficLastValues', () => {
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0][1]).toMatchObject({ method: 'item.get', params: { itemids: ['10'] } });
   });
+
+  it('com itemids e chaves faz um POST só — pelas ids', async () => {
+    post.mockResolvedValueOnce({ result: [] });
+
+    await fetchZabbixTrafficLastValues('ds', ['10'], undefined, ['vendor.metric.rx[10]'], ['10001']);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        itemids: ['10'],
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+      },
+    });
+  });
 });
 
 describe('fetchZabbixSignalInventory', () => {
@@ -171,20 +186,19 @@ describe('fetchZabbixSignalInventory', () => {
     post.mockReset();
   });
 
-  it('faz um item.get por termo, em paralelo', async () => {
+  it('faz um item.get só com OR dos termos', async () => {
     post.mockResolvedValue({ result: [] });
 
     await fetchZabbixSignalInventory('ds', ['10001'], ['rxpower', 'txpower', 'optical']);
 
-    // Um `search` só com os três termos leva mais que o dobro do tempo no Zabbix.
-    expect(post).toHaveBeenCalledTimes(3);
-    expect(post.mock.calls.map((call) => call[1].params.search.key_)).toEqual(['rxpower', 'txpower', 'optical']);
+    expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0][1]).toEqual({
       method: 'item.get',
       params: {
         output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
         hostids: ['10001'],
-        search: { key_: 'rxpower' },
+        search: { key_: ['rxpower', 'txpower', 'optical'] },
+        searchByAny: true,
       },
     });
   });
@@ -235,23 +249,39 @@ describe('fetchZabbixStatusLastValues', () => {
       params: {
         output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
         hostids: ['1'],
-        search: { key_: 'icmpping' },
+        filter: { key_: 'icmpping' },
       },
     });
     expect(items[0]?.lastvalue).toBe('1');
   });
 
-  it('busca status por groupid quando ainda não há hostid', async () => {
+  it('inclui chaves de cabo no mesmo item.get de status', async () => {
     post.mockResolvedValueOnce({ result: [] });
 
-    await fetchZabbixStatusLastValues('ds', 'icmpping', [], undefined, ['10']);
+    await fetchZabbixStatusLastValues('ds', 'icmpping', ['1'], undefined, ['vendor.metric.rx[10]']);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1]).toEqual({
+      method: 'item.get',
+      params: {
+        output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
+        hostids: ['1'],
+        filter: { key_: ['icmpping', 'vendor.metric.rx[10]'] },
+      },
+    });
+  });
+
+  it('busca pelo nome quando o item de status não é uma chave Zabbix', async () => {
+    post.mockResolvedValueOnce({ result: [] });
+
+    await fetchZabbixStatusLastValues('ds', 'ICMP ping', ['1']);
 
     expect(post.mock.calls[0][1]).toEqual({
       method: 'item.get',
       params: {
         output: ['itemid', 'key_', 'name', 'hostid', 'lastvalue', 'lastclock'],
-        groupids: ['10'],
-        search: { key_: 'icmpping' },
+        hostids: ['1'],
+        filter: { name: 'ICMP ping' },
       },
     });
   });

@@ -1,7 +1,17 @@
 /** Criação, edição e remoção de cabos do mapa salvo. */
-import { TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap } from '../types';
+import {
+  HostMetadataMap,
+  TopologyInterfaceMetrics,
+  TopologyInterfaceReference,
+  TopologyLink,
+  TopologyLinkPeerHost,
+  TopologyMap,
+  TopologyMetricReference,
+} from '../types';
+import { resolveHostZabbixId } from './hostLookup';
 import { inferLinkMedium } from './linkMedium';
 import { findNodeById } from './topologyNodes';
+import { isNumericZabbixItemId, zabbixHostItemKey } from './zabbixApi/itemIds';
 
 /** Compara endpoints de link sem considerar direção (a→b é o mesmo par que b→a). */
 export function linksMatchEndpoints(
@@ -371,4 +381,110 @@ export function removeLinkByEndpoints(map: TopologyMap, from: string, to: string
     ...map,
     links: map.links.filter((l) => !linksMatchEndpoints(l, { from, to })),
   };
+}
+
+function linkEndpointHostId(
+  map: TopologyMap,
+  nodeId: string,
+  peer: TopologyLinkPeerHost | undefined,
+  hostMetadata?: HostMetadataMap
+): string | undefined {
+  if (peer) {
+    return resolveHostZabbixId({ zabbixHost: peer.zabbixHost, label: peer.label }, hostMetadata);
+  }
+  const node = findNodeById(map.nodes, nodeId);
+  if (!node) {
+    return undefined;
+  }
+  return resolveHostZabbixId(
+    {
+      zabbixHost: node.zabbixHost,
+      subtitle: node.subtitle,
+      zabbixHostId: node.zabbixHostId,
+      label: node.label,
+    },
+    hostMetadata
+  );
+}
+
+function bindMetricItemId(
+  ref: TopologyMetricReference | undefined,
+  hostid: string,
+  itemIdByKey: Map<string, string>
+): TopologyMetricReference | undefined {
+  if (!ref) {
+    return ref;
+  }
+  if (isNumericZabbixItemId(ref.itemId)) {
+    return ref;
+  }
+  const key = ref.key?.trim();
+  if (!key) {
+    return ref;
+  }
+  const itemId = itemIdByKey.get(zabbixHostItemKey(hostid, key));
+  if (!itemId || !isNumericZabbixItemId(itemId)) {
+    return ref;
+  }
+  return { ...ref, itemId };
+}
+
+function bindInterfaceItemIds(
+  ref: TopologyInterfaceReference | undefined,
+  hostid: string | undefined,
+  itemIdByKey: Map<string, string>
+): TopologyInterfaceReference | undefined {
+  if (!ref?.metrics || !hostid) {
+    return ref;
+  }
+  const metrics = ref.metrics;
+  let changed = false;
+  const nextMetrics: TopologyInterfaceMetrics = { ...metrics };
+  for (const field of Object.keys(metrics) as Array<keyof TopologyInterfaceMetrics>) {
+    const bound = bindMetricItemId(metrics[field], hostid, itemIdByKey);
+    if (bound !== metrics[field]) {
+      nextMetrics[field] = bound;
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return ref;
+  }
+  return { ...ref, metrics: nextMetrics };
+}
+
+/**
+ * Grava o itemid numérico nas métricas do cabo quando a chave já foi resolvida.
+ * Sem hostid do extremo não preenche — a mesma `key_` existe em vários hosts.
+ */
+export function applyResolvedMetricItemIds(
+  map: TopologyMap,
+  itemIdByKey: Map<string, string>,
+  hostMetadata?: HostMetadataMap
+): TopologyMap {
+  if (!itemIdByKey.size || !map.links?.length) {
+    return map;
+  }
+  let changed = false;
+  const links = map.links.map((link) => {
+    const fromInterface = bindInterfaceItemIds(
+      link.fromInterface,
+      linkEndpointHostId(map, link.from, link.fromPeerHost, hostMetadata),
+      itemIdByKey
+    );
+    const toInterface = bindInterfaceItemIds(
+      link.toInterface,
+      linkEndpointHostId(map, link.to, link.toPeerHost, hostMetadata),
+      itemIdByKey
+    );
+    if (fromInterface === link.fromInterface && toInterface === link.toInterface) {
+      return link;
+    }
+    changed = true;
+    return { ...link, fromInterface, toInterface };
+  });
+  if (!changed) {
+    return map;
+  }
+  return { ...map, links };
 }

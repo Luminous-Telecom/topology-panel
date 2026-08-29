@@ -40,7 +40,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         path: 'zabbixStatusItemKey',
         name: 'Item de status',
         description:
-          'Nome do item no editor grafana-zabbix. O valor passa pelo mapeamento de status em Aparência.',
+          'Nome ou chave do item de status no Zabbix. O valor passa pelo mapeamento de status em Aparência.',
         editor: ZabbixStatusItemEditor,
         category: ['Fonte de dados'],
         defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
@@ -96,7 +96,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addNumberInput({
         path: 'zabbixRefreshSec',
         name: 'Intervalo de atualização (segundos)',
-        description: `Frequência de busca do status dos hosts e do tráfego dos cabos. Mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s`,
+        description: `Único timer de busca do painel (status, cabos, hosts e problemas). O auto-refresh do dashboard Grafana não consulta o Zabbix. Mínimo ${ZABBIX_DIRECT_MIN_REFRESH_SEC}s`,
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },
@@ -318,20 +318,20 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addColorPicker({
         path: 'colorLink',
         name: 'Cor base dos cabos',
-        defaultValue: '#78909C',
+        defaultValue: '#28eb0e',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorLinkDownload',
         name: 'Cor download (→ origem)',
-        description: 'Faixa animada no sentido da origem',
+        description: 'Seta da pílula de tráfego no sentido da origem',
         defaultValue: '#C0D8FF',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorLinkUpload',
         name: 'Cor upload (→ destino)',
-        description: 'Faixa animada no sentido do destino (seta)',
+        description: 'Seta da pílula de tráfego no sentido do destino',
         defaultValue: '#FADE2A',
         category: ['Aparência'],
       })
@@ -386,7 +386,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addBooleanSwitch({
         path: 'showLegend',
         name: 'Mostrar legenda',
-        description: 'Exibe a caixa de legenda na lateral direita do mapa',
+        description: 'Exibe a caixa de legenda no canto inferior direito do mapa',
         defaultValue: true,
         category: ['Legenda'],
       })

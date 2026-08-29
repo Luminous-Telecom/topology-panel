@@ -15,127 +15,70 @@ nomeadas.
 
 Qualquer arquivo em `src/`.
 
-## O `QueryIndex` é a fonte do mapa
+## Regras obrigatórias
 
 Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado em
 `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`, via `hooks/useZabbixDirectIndex.ts`):
-metadados a cada ciclo (`hostgroup.get` + `host.get` só de hosts monitorados) e valor via `DataSourceApi.query()`
-(`utils/zabbixDatasourceQuery.ts`): um target Metrics pelos grupos visíveis (`zabbixGroupsFilter`:
-nome exato se for um; regex âncora se forem vários) com o item de status no campo `item`. Sem
-`item.get` e sem um target por grupo — o grafana-zabbix vira cada target em várias JSON-RPC.
-A query de status usa os grupos de **toda a árvore** (`collectAllSubmapGroups` em
-`utils/queryHosts.ts`: raiz + childMaps, via `queryRefIds` / `effectiveSubmapQueryRefIds`).
-Assim o índice já tem os hosts do submapa antes de abrir — não refaz a busca nem zera o
-mapa ao navegar. Atalho para outro mapa interno herda os grupos do nó que originou esse
-mapa — o rótulo curto do atalho sozinho não consulta o Zabbix. O campo de grupos do
-painel não existe — o grupo fica no submapa.
+metadados (`hostgroup.get` + `host.get` só de hosts monitorados) e lastvalue via `item.get`
+(`fetchZabbixStatusLastValues`) pelos **hostids** já resolvidos. Sem `item.get` de status por
+`groupids` — em produção isso varre icmpping de todos os CPE do grupo. Os grupos de **toda a
+árvore** (`collectAllSubmapGroups` em `utils/queryHosts.ts`) alimentam o índice antes de abrir o
+submapa. Atalho interno herda os grupos do nó dono; o rótulo curto sozinho não consulta o Zabbix.
 
 - Consumidor novo recebe `QueryIndex` por parâmetro e nunca lê `data.series` nem chama a API por
   conta própria.
-- O **grupo de host** ocupa o lugar do refId: cada grupo configurado vira um refId virtual
-  (`directRefId`), então `displayQueryRefIds` e o campo de grupo do submapa seguem valendo.
-- Cor e rótulo de status saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`), a partir dos
-  thresholds e value mappings configurados nas opções do painel.
-- A cor/status do mapa vem do último ponto de `fetchZabbixStatusViaQuery` (Metrics, `maxDataPoints: 1`).
-  O hover lê o mesmo lastvalue via `hostDisplay` — proibido `ds.query()` ao passar o mouse. O target
-  preenche `group` com o filtro dos grupos visíveis e `item` com o valor configurado no painel. Sem
-  `item.get`. `skipDataQuery` permanece true.
-- Problemas Zabbix (Warning+, via `useZabbixDirectIndex` / `ds.query()` Problems no **mesmo**
-  `/api/ds/query` do status: target P0 junto do Metrics G0) usam os grupos já resolvidos da
-  metadata (`resolvedGroups`). Nunca `/.*/`. Pintam o host com `colorAlert` e entram na lista
-  de alertas. Offline da Query continua vencendo. Não recalcule isso com outra chamada.
-- Fora do caminho do `QueryIndex` e de `hostProblems`, nunca colora o mapa nem calcule status a
-  partir de chamada de API.
-- O painel declara `skipDataQuery` em `plugin.json`: não há aba Query.
+- O **grupo de host** ocupa o lugar do refId (`directRefId`).
+- Cor e rótulo saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`).
+- O hover lê o mesmo lastvalue via `hostDisplay` — proibido JSON-RPC ao passar o mouse.
+- Problemas Warning+ (`fetchZabbixProblems` / `problem.get` pelos groupids + `trigger.get` só
+  para casar objectid→hostid, ciclo de identidade) pintam `colorAlert` e entram na lista de
+  alertas. `problem.get` **não** aceita `selectHosts` — o proxy do grafana-zabbix vira HTTP 500.
+  Offline do índice vence. Sem `problem.get`, `problemsUnavailable` mantém o badge anterior.
+- O painel declara `skipDataQuery` em `plugin.json`: não há aba Query nem `DataSourceApi.query()`.
 
-## API Zabbix — só nas exceções autorizadas
-
-`utils/zabbixApi/` (JSON-RPC) e `utils/zabbixApi.ts` (reexport do **poll**, sem ping) são o **único**
-lugar que fala JSON-RPC com o Zabbix. Ping/ICMP (`script.execute`) fica em `zabbixApi/ping.ts` e
-só o `PingModal` (lazy) importa esse módulo — não entra no `module.js`.
-`utils/zabbixDatasourceQuery.ts` é o **único** arquivo que chama `DataSourceApi.query()` do plugin
-Zabbix. Os dois só podem ser importados pelos consumidores abaixo:
+`utils/zabbixApi/` e `utils/zabbixApi.ts` (poll + catalog + problems, **sem** ping) são o **único**
+lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `PingModal` (lazy) importa.
 
 | Consumidor autorizado | Uso permitido |
 |---|---|
-| `components/PingModal.tsx` | `executeHostPingScript` (`script.get` + `script.execute`) e `fetchHostIcmpStatus` (`host.get` + `item.get` de `icmpping*`) via `utils/zabbixApi/ping.ts`, para o ping interativo |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItemsViaQuery` (`ds.query()` Metrics: um host, item `/.*/`; palavras-chave RX/TX/status/capacidade/sinal filtram a `key_` no parse). O campo Item do grafana-zabbix só casa o nome. |
-| `hooks/useZabbixDirectIndex.ts` | `prefetchZabbixDatasource` (carrega o plugin em paralelo), `fetchZabbixResolvedGroups` (`hostgroup.get`), `fetchZabbixDirectMetadata` (`host.get` de hosts monitorados, a cada `IDENTITY_REFRESH_MS`), `fetchZabbixStatusViaQuery` (`ds.query()` Metrics + Problems **depois** da primeira pintura) e `fetchZabbixTrafficLastValues` (`item.get` lastvalue dos cabos, sai na hora pelos itemids do mapa), mais `fetchZabbixSignalInventory` fora do ciclo |
-| `utils/zabbixDatasourceQuery.ts` | único arquivo que chama `DataSourceApi.query()` / `metricFindQuery` |
-| `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNamesViaQuery` (`metricFindQuery` com `queryType: 'group'`) |
-| `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNamesViaQuery` (`metricFindQuery` com `queryType: 'item'`) |
+| `components/PingModal.tsx` | `executeHostPingScript` e `fetchHostIcmpStatus` via `zabbixApi/ping.ts` |
+| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` por hostid e termo) |
+| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixResolvedGroups`, `fetchZabbixDirectMetadata`, `fetchZabbixStatusLastValues` (descoberta, só hostids), `fetchZabbixTrafficLastValues` (regime: um `item.get` por itemid) |
+| `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`) |
+| `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNames` (`item.get` `output: name` por grupo) |
 
-- Proibido importar `zabbixApi.ts` / `zabbixApi/poll.ts` / `zabbixApi/client.ts` em qualquer outro
-  arquivo — exceto os testes desses fluxos. `zabbixApi/ping.ts` só o `PingModal` e o teste ICMP.
-- Tipos (`ZabbixInterfaceItem`, …) podem vir de `zabbixApi.ts` ou `zabbixApi/types.ts` — não puxam ping.
-- Fora dos consumidores acima, proibido usar essas funções para status do mapa, cor,
-  problemas ou polling.
-- Polling do mapa: `useZabbixDirectIndex.ts` (status Metrics e problemas Warning+ no mesmo
-  `ds.query()`; tráfego e sinal dos cabos via `item.get` lastvalue em paralelo — itemids de
-  **toda a árvore**, não só do mapa aberto; hostids dos extremos com interface para o sinal), no
-  `zabbixRefreshSec` do painel — não no refresh do dashboard nem no lastclock do item.
-  A primeira pintura **não** espera o `ds.query()` nem um `item.get` de status por grupo: em
-  produção esse `item.get` devolve icmpping de todos os CPE do grupo (megabytes, dezenas de
-  segundos) e o mapa ficava em “Consultando status…”. `prefetchZabbixDatasource` começa na hora,
-  o `item.get` dos cabos sai pelos itemids do mapa, e assim que o `host.get` volta o índice pinta
-  a estrutura (caixas cinza, texto `N hosts` — não `0 / 0 / 0`). Cor e tráfego entram juntos no
-  snapshot seguinte (`ds.query()` + `item.get` dos cabos). O último snapshot completo fica em
-  `zabbixSnapshotCache` (memória + localStorage, chave sem NUL, payload compacto) para o F5 e o
-  restart do Grafana no deploy pintarem status na hora. A varredura de sinal só começa depois
-  dessa pintura completa. Itemids/chaves
-  de cabo **não** entram na chave do efeito do poll: apagar a interface de um cabo só relê o
-  `item.get` de tráfego. Remontar o poll fazia a pintura rápida sair sem status e o mapa inteiro
-  ficava cinza.
-  O ciclo em regime são **duas** requisições: o `ds.query()` de status e um `item.get` só, com a
-  lista inteira de itemids — não fatie por lote, senão o número de requisições cresce junto com o
-  ambiente (a resposta depende de quantos itens existem, não do tamanho da lista enviada).
-  Identidade (`hostgroup.get` + `host.get`) e problemas saem do ciclo e vão a cada
-  `IDENTITY_REFRESH_MS`: os groupids voltam ao `fetchZabbixDirectMetadata` para não repetir o
-  `hostgroup.get`, e sem o target Problems o datasource deixa de disparar `problem.get` +
-  `trigger.get`. Ciclo sem problemas devolve `problemsUnavailable` — o badge anterior fica.
-  A varredura de inventário de sinal é `fetchZabbixSignalInventory`, e ela roda **fora** do ciclo:
-  na primeira busca e a cada `SIGNAL_REDISCOVERY_MS`, com `AbortController` próprio, sem `await` no
-  caminho que publica o snapshot. Ela devolve toda porta óptica do host (milhares numa OLT) e leva
-  segundos; esperar por ela atrasava a primeira pintura do mapa e o ciclo seguinte ainda a abortava
-  no meio. Um `item.get` por termo, em paralelo — um `search` só com todos os termos (`searchByAny`)
-  leva mais que o dobro do tempo, porque o Zabbix resolve os `LIKE` em série na mesma consulta.
-  O que ela descobre entra por itemid no ciclo seguinte, filtrado por `collectPolledSignalItemIds`
-  (só o que algum cabo usa). Não devolva ao ciclo, como itemid a reler, tudo o que a varredura
-  achou — foi o que fez o número de requisições crescer sem parar.
-  A busca usa **somente** `signalHostIds` (extremos dos cabos). Sem esses ids, não varre: o
-  fallback para `meta.hosts` puxava item óptico de todo o grupo (CPE + OLT) e gerava o
-  `item.get` de ~5 MB da primeira carga. Sem ids ainda, o ciclo seguinte tenta de novo.
-  Travas: aba oculta, watchdog, `AbortController` e `canStartPolledFetch` /
-  `canStartRefreshEventFetch` (`utils/pollingGate.ts`). Não crie um segundo laço. `useLinkMetricsRuntime.ts`
-  só monta o mapa de cabo a partir dos lastvalues já buscados. O drawer de detalhes **não** consulta
-  o Zabbix — lê `runtimeMetrics` do mesmo poll.
-- Ampliar a superfície da API (método novo, `trend.get`, `trigger.get`, `history.get`,
-  ou metadata para outra finalidade) exige **aprovação
-  explícita** do usuário antes de implementar. Se a tarefa parecer exigir isso, pare e pergunte.
-- Busca e classificação de interface usam **só** as palavras-chave das opções do painel
-  (`zabbixRxItemKeyword`, `zabbixTxItemKeyword`, `zabbixOperStatusItemKeyword`,
-  `zabbixSpeedItemKeyword`, `zabbixRxPowerItemKeyword`, `zabbixTxPowerItemKeyword`)
-  e, com pelo menos uma configurada, os termos genéricos de sinal em
-  `INTERFACE_SIGNAL_SEARCH_TERMS`. Proibido lista fixa de key, fallback `if`/`octets`
-  ou nome de template/equipamento no código. Hint da UI descreve o campo, sem exemplo de key real.
+- Proibido importar `zabbixApi.ts` / `poll.ts` / `client.ts` / `catalog.ts` / `problems.ts` fora
+  desses consumidores — exceto os testes. `ping.ts` só o `PingModal` e o teste ICMP.
+- Polling: `useZabbixDirectIndex.ts` **só** no `zabbixRefreshSec` do painel (primeira busca +
+  `setInterval`). Sem `RefreshEvent` do Grafana, sem `visibilitychange`, sem relógio interno de
+  identidade/sinal. Primeira pintura espera o `item.get` ao vivo — não pinta lastvalue de
+  localStorage nem caixas cinza só com o `host.get`. Com itemids conhecidos (catálogo, 7 dias):
+  por itemid depois do `host.get`. Com chave de cabo ainda sem id: `item.get` por key no mesmo
+  ciclo, sem misturar `itemids` e `key_` no mesmo POST. Itemids de cabo **não** entram na chave
+  do efeito.
+  Ciclo em regime: **um** POST — `item.get` pelos itemids já conhecidos (status + tráfego).
+  Sem `host.get`, `problem.get`, `trigger.get` nem inventário de sinal no intervalo.
+  `item.get` de status por hostids só na descoberta (primeira carga sem catálogo, host novo).
+  Relógio do poll em `utils/pollingGate.ts` (sobrevive à remontagem do painel). Sem fetch extra
+  ao trocar cabo. Drawer lê `runtimeMetrics` do mesmo poll.
+  O intervalo não grava lastvalue no localStorage — só o catálogo de itemids, e só se os ids
+  mudaram. Lastclock sem lastvalue novo não pinta de novo. Só lastvalue de cabo novo reusa o
+  índice de hosts; lastvalue de status novo reconstrói o índice.
+- Ampliar a superfície (`trend.get`, `history.get`, metadata nova) exige **aprovação explícita**.
+  `problem.get` e o `trigger.get` de join (só em `zabbixApi/problems.ts`, `selectHosts: hostid`)
+  já estão autorizados.
+- Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`. Sem lista
+  fixa de key no código.
 
 ## APIs do Grafana
 
-- Toda leitura de dado do Grafana passa por `getBackendSrv()` (`@grafana/runtime`) — nunca `fetch`
-  ou `XMLHttpRequest` direto, que perdem header de auth e roteamento do proxy.
-- O painel não usa o seletor de tempo do dashboard: status e cabos são lastvalue. A query Metrics
-  usa `ZABBIX_STATUS_QUERY_RANGE_SEC` para o plugin devolver o último ponto. Nunca crie um
-  `TimeRange` com números crus.
-- Navegação entre dashboards só por `openDashboardUrl` (`DashboardPickerModal.tsx`), que valida uid e
-  encoda slug. Não implemente outro caminho com `window.location.href`.
-- Proibido percorrer o DOM fora do próprio painel (`document.querySelector` no chrome do Grafana ou
-  em outro painel) e mutar `style` de elementos ancestrais.
-- `document.createElement` só para elemento efêmero e desanexado do próprio plugin (`a`/`iframe` de
-  `winbox://` e `ssh://` em `hostTools.ts`, `canvas` em memória).
-- `VerticalGroup` e `HorizontalGroup` (`@grafana/ui`) estão depreciados: use `Stack` com `gap`
-  numérico (`0.5`≈xs, `1`≈sm, `2`≈md, `3`≈lg).
-- Opção nova em `module.ts` sempre com `defaultValue` e categoria em português, e valor ausente
-  tratado em `defaultOptions()` (`types.ts`), nunca em cada callsite.
+- Toda leitura passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
+- Status e cabos são lastvalue; o painel não usa o seletor de tempo. Não crie `TimeRange`.
+- Navegação só por `openDashboardUrl`. Sem outro `window.location.href`.
+- Sem `document.querySelector` no chrome do Grafana. `document.createElement` só efêmero
+  (`hostTools.ts`, canvas em memória).
+- `Stack` com `gap` numérico — sem `VerticalGroup`/`HorizontalGroup`.
+- Opção nova em `module.ts` com `defaultValue` e `defaultOptions()`.
 
 ## Faça / Não faça
 
@@ -153,6 +96,5 @@ function hostsNoMapa(index: QueryIndex) {
 
 ## Exceções
 
-Leitura de DOM do Grafana é tolerada apenas em `hooks/useDashboardEditMode.ts` e
-`hooks/useGrafanaPlaylistPlayback.ts`, porque o Grafana não expõe esses estados por API. Não copie o
-padrão para casos novos.
+Leitura de DOM do Grafana só em `hooks/useDashboardEditMode.ts` e
+`hooks/useGrafanaPlaylistPlayback.ts`. Não copie o padrão.

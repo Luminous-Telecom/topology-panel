@@ -94,3 +94,29 @@ export function fitOverlayBesideAnchor(
 
   return { left, top };
 }
+
+/**
+ * Posição de overlay `position: fixed` ao lado do ponteiro, sem sair da janela.
+ * Usado pelo hover de host e pelo tooltip do cabo.
+ */
+export function clampFixedOverlayPosition(
+  screenX: number,
+  screenY: number,
+  overlay: { width: number; height: number },
+  viewport: { width: number; height: number },
+  offset = 12,
+  margin = 8
+): { left: number; top: number } {
+  let left = screenX + offset;
+  let top = screenY + offset;
+  if (left + overlay.width > viewport.width - margin) {
+    left = screenX - overlay.width - offset;
+  }
+  if (top + overlay.height > viewport.height - margin) {
+    top = screenY - overlay.height - offset;
+  }
+  return {
+    left: Math.max(margin, left),
+    top: Math.max(margin, top),
+  };
+}

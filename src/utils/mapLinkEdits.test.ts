@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addLinkToMap,
   addLinkWithInterfaces,
+  applyResolvedMetricItemIds,
   linkKey,
   linksMatchEndpoints,
   linksMatchIdentity,
@@ -223,5 +224,47 @@ describe('removeLink / updateLinkProps', () => {
         { from: 'b', to: 'a', fromInterface: { name: 'eth-b' }, toInterface: { name: 'eth-a' } }
       )
     ).toBe(true);
+  });
+});
+
+describe('applyResolvedMetricItemIds', () => {
+  it('grava o itemid na métrica do cabo quando a chave e o hostid batem', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ zabbixHost: '10.0.0.1' }), hostNode({ id: 'b', zabbixHost: '10.0.0.2' })],
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: { name: 'eth0', metrics: { rx: { key: 'vendor.metric.rx[10]' } } },
+        },
+      ],
+    });
+    const next = applyResolvedMetricItemIds(
+      map,
+      new Map([['1:vendor.metric.rx[10]', '77']]),
+      { '10.0.0.1': { name: 'host-a', hostid: '1', ip: '10.0.0.1' } }
+    );
+    expect(next.links[0]?.fromInterface?.metrics?.rx?.itemId).toBe('77');
+    expect(next.links[0]?.fromInterface?.metrics?.rx?.key).toBe('vendor.metric.rx[10]');
+  });
+
+  it('não preenche itemid de outro host com a mesma chave', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ zabbixHost: '10.0.0.1' }), hostNode({ id: 'b', zabbixHost: '10.0.0.2' })],
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          fromInterface: { name: 'eth0', metrics: { rx: { key: 'vendor.metric.rx[10]' } } },
+        },
+      ],
+    });
+    const next = applyResolvedMetricItemIds(
+      map,
+      new Map([['2:vendor.metric.rx[10]', '88']]),
+      { '10.0.0.1': { name: 'host-a', hostid: '1', ip: '10.0.0.1' } }
+    );
+    expect(next).toBe(map);
+    expect(next.links[0]?.fromInterface?.metrics?.rx?.itemId).toBeUndefined();
   });
 });

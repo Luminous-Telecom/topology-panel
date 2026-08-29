@@ -286,6 +286,19 @@ export function isDottedDirectionalInterfaceKey(key: string): boolean {
   return /^(rx|tx)\.[^\s[\]]+$/i.test(key.trim());
 }
 
+/** Palavra-chave da key/nome, ou key pontilhada de tráfego (`rx.port.1.1`). */
+export function itemMatchesInterfaceKeywords(
+  key_: string,
+  name: string | undefined,
+  keywords: string[]
+): boolean {
+  if (isDottedDirectionalInterfaceKey(key_)) {
+    return true;
+  }
+  const hay = `${key_} ${name ?? ''}`.toLowerCase();
+  return keywords.some((keyword) => hay.includes(keyword.toLowerCase()));
+}
+
 function stripDirectionalPrefix(key: string, kind: 'rx' | 'tx'): string | undefined {
   const match = key.match(kind === 'rx' ? /^rx\./i : /^tx\./i);
   if (!match) {

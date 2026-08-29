@@ -115,7 +115,7 @@ beforeEach(() => {
 });
 
 describe(`custo de re-render de um gesto (${HOST_COUNT} hosts)`, () => {
-  it('arrastar um nó redesenha só ele e os cabos ligados a ele', () => {
+    it('arrastar um nó redesenha só ele e os cabos ligados a ele', async () => {
     const map = buildMap(HOST_COUNT);
     const { container } = renderEditableCanvas(map);
 
@@ -133,6 +133,12 @@ describe(`custo de re-render de um gesto (${HOST_COUNT} hosts)`, () => {
     const MOVES = 6;
     for (let step = 1; step <= MOVES; step += 1) {
       fireEvent.pointerMove(target, { pointerId: 1, clientX: 100 + step * 10, clientY: 100 + step * 10 });
+      // O preview só commita no rAF (`useGestureFrame` + store). Sem esperar, o teste não via o gesto.
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
     }
 
     // eslint-disable-next-line no-console

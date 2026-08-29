@@ -452,4 +452,24 @@ describe('coalesceLinkTraffic', () => {
     );
     expect(next.lastValues['10']?.lastvalue).toBe('9');
   });
+
+  it('não apaga lastvalue de chave quando o ciclo seguinte só relê itemids', () => {
+    const previous = {
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
+      },
+      interfaceItems: [{ itemid: '77', hostid: '1', key_: 'vendor.metric.rx[10]', lastvalue: '500000000' }],
+    };
+    const next = coalesceLinkTraffic(
+      {
+        lastValues: { '10': { itemid: '10', lastvalue: '2' } },
+        interfaceItems: [],
+      },
+      previous
+    );
+    expect(next.lastValues['10']?.lastvalue).toBe('2');
+    expect(next.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+    expect(next.interfaceItems).toHaveLength(1);
+  });
 });

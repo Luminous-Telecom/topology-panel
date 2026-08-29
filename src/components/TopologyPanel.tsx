@@ -4,7 +4,6 @@ import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
-  HostMetadataMap,
   TopologyLink,
   TopologyMap,
   TopologyPanelOptions,
@@ -25,6 +24,7 @@ import {
   queryHostsByRefIdFromIndex,
 } from '../services/queryIndex';
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
+import { applyResolvedMetricItemIds } from '../utils/mapLinkEdits';
 import { useStableIdentity } from '../hooks/useStableIdentity';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
@@ -32,8 +32,7 @@ import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
-import { panelInterfaceKeywords } from '../hooks/useZabbixHostInterfaces';
-import { ZabbixInterfaceItem } from '../utils/zabbixApi';
+import { itemIdByKeyFromLastValues, mergeItemIdByKey } from '../utils/zabbixApi';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
 import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
@@ -46,10 +45,7 @@ import { canPersistTopologyPanelOptions } from '../utils/grafanaDashboardEdit';
 import {
   collectLinkMetricItemIds,
   collectLinkMetricKeys,
-  collectLinkSignalHostIds,
   collectMapsLinks,
-  collectPolledSignalItemIds,
-  linkSignalSearchTerms,
 } from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 
@@ -59,7 +55,6 @@ export function TopologyPanel({
   options,
   width,
   height,
-  eventBus,
   onOptionsChange,
 }: Props) {
   const theme = useTheme2();
@@ -174,41 +169,16 @@ export function TopologyPanel({
   const allMapLinks = useMemo(() => collectMapsLinks(mapsForPoll), [mapsForPoll]);
   const trafficItemIds = useMemo(() => collectLinkMetricItemIds(allMapLinks), [allMapLinks]);
   const trafficKeys = useMemo(() => collectLinkMetricKeys(allMapLinks), [allMapLinks]);
-  const signalSearchTerms = useMemo(
-    () => linkSignalSearchTerms(resolvedOptions),
-    [resolvedOptions.zabbixRxPowerItemKeyword, resolvedOptions.zabbixTxPowerItemKeyword]
-  );
-  const hostMetaForSignalRef = useRef<HostMetadataMap | undefined>(undefined);
-  const signalHostIds = collectLinkSignalHostIds(mapsForPoll, hostMetaForSignalRef.current);
-  const signalKeywordsRef = useRef(panelInterfaceKeywords(resolvedOptions));
-  signalKeywordsRef.current = panelInterfaceKeywords(resolvedOptions);
-  const mapsForPollRef = useRef(mapsForPoll);
-  mapsForPollRef.current = mapsForPoll;
-  /** Da varredura periódica de sinal o poll guarda só as portas ligadas a algum cabo. */
-  const selectSignalItemIds = useCallback(
-    (items: ZabbixInterfaceItem[]) =>
-      collectPolledSignalItemIds(
-        mapsForPollRef.current,
-        items,
-        hostMetaForSignalRef.current,
-        signalKeywordsRef.current
-      ),
-    []
-  );
 
-  /** Status, RX/TX/sinal dos cabos e problemas Warning+ em paralelo no mesmo ciclo. */
+  /** Status e lastvalue dos cabos no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
     enabled: true,
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: statusGroupNames,
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
-    eventBus,
     trafficItemIds,
     trafficKeys,
-    signalHostIds,
-    signalSearchTerms,
-    selectSignalItemIds,
   });
 
   const queryIndex = querySource.index;
@@ -230,7 +200,52 @@ export function TopologyPanel({
    * anterior, um refresh sem mudança nenhuma remedia todos os nós.
    */
   const dataMeta = useStableIdentity(dataMetaRaw);
-  hostMetaForSignalRef.current = dataMeta;
+
+  useEffect(() => {
+    if (!canPersistOptions || !onOptionsChange || !querySource.ready) {
+      return;
+    }
+    const itemIdByKey = itemIdByKeyFromLastValues(querySource.lastValues);
+    mergeItemIdByKey(itemIdByKey, querySource.interfaceItems);
+    if (!itemIdByKey.size) {
+      return;
+    }
+    const current = latestOptionsRef.current;
+    if (!current.map) {
+      return;
+    }
+    const nextMap = applyResolvedMetricItemIds(current.map, itemIdByKey, dataMeta);
+    let childChanged = false;
+    let nextChildMaps = current.childMaps;
+    if (current.childMaps) {
+      const updated = { ...current.childMaps };
+      for (const [id, child] of Object.entries(activeChildMaps(current.childMaps))) {
+        const next = applyResolvedMetricItemIds(child, itemIdByKey, dataMeta);
+        if (next !== child) {
+          updated[id] = next;
+          childChanged = true;
+        }
+      }
+      if (childChanged) {
+        nextChildMaps = updated;
+      }
+    }
+    if (nextMap === current.map && !childChanged) {
+      return;
+    }
+    onOptionsChange({
+      ...current,
+      map: nextMap,
+      ...(childChanged ? { childMaps: nextChildMaps } : {}),
+    });
+  }, [
+    canPersistOptions,
+    dataMeta,
+    onOptionsChange,
+    querySource.interfaceItems,
+    querySource.lastValues,
+    querySource.ready,
+  ]);
 
   /**
    * Fonte de dados em erro (datasource fora do ar, script quebrado, etc.) — não reaproveita o

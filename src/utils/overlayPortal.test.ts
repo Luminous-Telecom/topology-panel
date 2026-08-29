@@ -5,6 +5,7 @@ import {
   overlayLocalPosition,
   overlayPortalParent,
   overlayPortalRoot,
+  clampFixedOverlayPosition,
 } from './overlayPortal';
 
 describe('overlayPortalRoot', () => {
@@ -107,6 +108,24 @@ describe('overlayLocalPosition', () => {
     expect(overlayLocalPosition({ left: 128, top: 182 }, { left: 10, top: 20, width: 400, height: 300 })).toEqual({
       left: 118,
       top: 162,
+    });
+  });
+});
+
+describe('clampFixedOverlayPosition', () => {
+  const viewport = { width: 800, height: 600 };
+
+  it('fica à direita e abaixo do ponteiro quando cabe', () => {
+    expect(clampFixedOverlayPosition(100, 80, { width: 240, height: 120 }, viewport)).toEqual({
+      left: 112,
+      top: 92,
+    });
+  });
+
+  it('vira para a esquerda e para cima perto da borda', () => {
+    expect(clampFixedOverlayPosition(760, 560, { width: 240, height: 120 }, viewport)).toEqual({
+      left: 508,
+      top: 428,
     });
   });
 });

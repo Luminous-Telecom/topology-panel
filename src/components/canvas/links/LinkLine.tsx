@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { LinkEndpointRuntimeMetrics, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
 import { formatLinkBandwidth, linkStrokeWidth } from '../../../utils/linkBandwidth';
@@ -10,7 +10,6 @@ import {
 } from '../../../utils/linkFlowSpeed';
 import {
   isLinkVisuallyDown,
-  linkDegradationColor,
   linkRuntimeColor,
   utilizationThresholdsFromOptions,
   resolveLinkMapTrafficMetrics,
@@ -20,21 +19,22 @@ import { resolvePanelColor } from '../../../utils/panelColors';
 import {
   buildLinkPathD,
   computeLinkGeometry,
-  linkLabelAnchor,
   LinkPoint,
   offsetPolyline,
+  pointAlongPolyline,
   polylineLength,
 } from '../../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../../utils/linkMedium';
-import { formatBitsPerSecond, formatLinkMapTrafficLabel } from '../../../utils/zabbixAdapter/formatTraffic';
+import { formatBitsPerSecond } from '../../../utils/zabbixAdapter/formatTraffic';
+import { buildLinkHoverTooltip } from '../../../utils/linkHoverTooltip';
 import { NodeLayout } from '../../../utils/nodeLayout';
 import { canvasStyles } from '../canvasStyles';
+import { LinkHoverPopover } from '../../LinkHoverPopover';
 import { LinkFlowArrows } from './LinkFlowArrows';
 import { LinkTrafficLabel } from './LinkTrafficLabel';
 import {
   LINK_HOVER_COLOR,
   LINK_LINE_CAP,
-  LINK_OUTLINE_COLOR,
   LINK_RADIO_DASH,
   LINK_SELECT_COLOR,
 } from './linkLineVisual';
@@ -109,7 +109,7 @@ function linkMarkerUrl(
   markerLevel: string | undefined,
   linkDown: boolean
 ): string {
-  const prefix = kind === 'start' ? 'link-dot-start' : 'link-arrow-end';
+  const prefix = kind === 'start' ? 'link-dot-start' : 'link-dot-end';
   if (!linkDown && selected) {
     return `url(#${prefix}-active)`;
   }
@@ -120,44 +120,6 @@ function linkMarkerUrl(
     return `url(#${prefix}-${markerLevel})`;
   }
   return `url(#${prefix})`;
-}
-
-/** O pacote é o elemento mais brilhante do cabo — opacidade alta em qualquer estado. */
-function flowLaneOpacity(selected: boolean, hovered: boolean): number {
-  if (selected) {
-    return 1;
-  }
-  if (hovered) {
-    return 1;
-  }
-  return 0.95;
-}
-
-/** Realce na cor de status: só em hover/seleção, para não competir com as faixas. */
-function casingGlowOpacity(selected: boolean, hovered: boolean): number {
-  if (selected) {
-    return 0.22;
-  }
-  if (hovered) {
-    return 0.14;
-  }
-  return 0;
-}
-
-function resolveLaneColor(args: {
-  offline: boolean;
-  utilLevel: ReturnType<typeof resolveLinkUtilizationLevel>;
-  runtimeColor: string;
-  degradationColor: string;
-  configuredColor: string;
-}): string {
-  if (args.offline) {
-    return args.runtimeColor;
-  }
-  if (args.utilLevel !== 'normal') {
-    return args.degradationColor;
-  }
-  return args.configuredColor;
 }
 
 function LinkLineComponent({
@@ -180,6 +142,7 @@ function LinkLineComponent({
   onPathDoubleClick,
 }: LinkLineProps) {
   const theme = useTheme2();
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const from = nodeLayouts.get(link.from);
   const to = nodeLayouts.get(link.to);
   if (!from || !to) {
@@ -194,38 +157,29 @@ function LinkLineComponent({
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? LINK_RADIO_DASH : undefined;
   const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
-  // Cada sentido é um canal do cabo (padrão weathermap): TX acima da linha, RX abaixo.
-  const laneWidth = Math.max(2.8, strokeWidth * 1.25);
-  const laneOffset = laneWidth / 2 + 0.5;
-  const downloadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset + laneOffset);
-  const uploadD = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset - laneOffset);
   const displayTraffic = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
   const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? displayTraffic.capacityMbps);
   const fromName = link.fromInterface?.name;
   const toName = link.toInterface?.name;
   const txLabel = formatBitsPerSecond(displayTraffic.txBps);
   const rxLabel = formatBitsPerSecond(displayTraffic.rxBps);
-  const labelText = formatLinkMapTrafficLabel(displayTraffic.txBps, displayTraffic.rxBps);
   const drawnPoints = bundleOffset === 0 ? pathPoints : offsetPolyline(pathPoints, bundleOffset);
-  const mid = linkLabelAnchor(drawnPoints, from, to);
-  const labelRad = (mid.angle * Math.PI) / 180;
-  const labelOffset = 15;
-  const tooltipParts = [
-    from?.label || link.from,
-    to?.label || link.to,
-    fromName && toName ? `Interfaces: ${fromName} ↔ ${toName}` : undefined,
-    bandwidthLabel ? `Capacidade: ${bandwidthLabel}` : undefined,
-    txLabel ? `Upload (TX): ${txLabel}` : undefined,
-    rxLabel ? `Download (RX): ${rxLabel}` : undefined,
-    displayTraffic.txUtilizationPct !== undefined
-      ? `Util. TX: ${displayTraffic.txUtilizationPct}%`
-      : undefined,
-    displayTraffic.rxUtilizationPct !== undefined
-      ? `Util. RX: ${displayTraffic.rxUtilizationPct}%`
-      : undefined,
-    runtimeMetrics?.status ? `Status: ${runtimeMetrics.status}` : undefined,
-  ].filter((p): p is string => Boolean(p));
-  const titleAttr = tooltipParts.length ? tooltipParts.join('\n') : undefined;
+  const hoverTooltip = buildLinkHoverTooltip({
+    fromLabel: from.label || link.from,
+    toLabel: to.label || link.to,
+    fromInterfaceName: fromName,
+    toInterfaceName: toName,
+    capacityLabel: bandwidthLabel,
+    uploadLabel: txLabel,
+    downloadLabel: rxLabel,
+    txUtilizationPct: displayTraffic.txUtilizationPct,
+    rxUtilizationPct: displayTraffic.rxUtilizationPct,
+    txPowerDbm: displayTraffic.txPowerDbm,
+    rxPowerDbm: displayTraffic.rxPowerDbm,
+    errors: displayTraffic.errors,
+    drops: displayTraffic.drops,
+    status: runtimeMetrics?.status,
+  });
   const thresholds = utilizationThresholdsFromOptions(options);
   const utilLevel = resolveLinkUtilizationLevel(runtimeMetrics, thresholds);
   const interfaceDown = runtimeMetrics?.status === 'down';
@@ -236,7 +190,6 @@ function LinkLineComponent({
     theme,
     linkRuntimeColor(options, runtimeMetrics, utilLevel, fromHostOffline || toHostOffline)
   );
-  const degradationColor = resolvePanelColor(theme, linkDegradationColor(options, utilLevel));
   const markerLevel = linkMarkerSuffix(linkDown, utilLevel);
   const linkColor = resolvePanelColor(theme, options.colorLink);
   const strokeColor = resolveLinkStrokeColor({
@@ -249,24 +202,8 @@ function LinkLineComponent({
   });
   const markerStart = linkMarkerUrl('start', selected, hovered, markerLevel, linkDown);
   const markerEnd = linkMarkerUrl('end', selected, hovered, markerLevel, linkDown);
-  const downloadColor = resolveLaneColor({
-    offline: downloadOffline,
-    utilLevel,
-    runtimeColor,
-    degradationColor,
-    configuredColor: resolvePanelColor(theme, options.colorLinkDownload),
-  });
-  const uploadColor = resolveLaneColor({
-    offline: uploadOffline,
-    utilLevel,
-    runtimeColor,
-    degradationColor,
-    configuredColor: resolvePanelColor(theme, options.colorLinkUpload),
-  });
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
-  // O pacote ocupa o canal inteiro: é ele que precisa ser visto, não a linha de fundo.
-  const flowStroke = laneWidth;
   const downloadSpeed = resolveFlowLaneSpeed(
     displayTraffic.rxBps,
     displayTraffic.rxUtilizationPct,
@@ -283,36 +220,41 @@ function LinkLineComponent({
   const downloadFlowActive = !downloadOffline && (hasMetricBinding ? downloadSpeed > 0 : true);
   const uploadFlowActive = !uploadOffline && (hasMetricBinding ? uploadSpeed > 0 : true);
   const lk = linkKey(link);
-  const laneOpacity = flowLaneOpacity(selected, hovered);
-  const glowColor = selected ? LINK_SELECT_COLOR : LINK_HOVER_COLOR;
-  const casingWidth = laneWidth * 2 + 2.8;
-  const casingGlow = casingGlowOpacity(selected, hovered);
   const downloadFlowSpeed = hasMetricBinding
     ? downloadSpeed
     : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5;
   const uploadFlowSpeed = hasMetricBinding
     ? uploadSpeed
     : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5;
-  // TX corre origem → destino; RX volta, então a seta anda por um path invertido (offset trocado).
-  const downloadArrowD = buildLinkPathD(
-    [...pathPoints].reverse(),
-    gridStep,
-    hasWaypoints,
-    -(bundleOffset + laneOffset)
-  );
-  const uploadLaneLength = polylineLength(offsetPolyline(pathPoints, bundleOffset - laneOffset));
-  const downloadLaneLength = polylineLength(offsetPolyline(pathPoints, bundleOffset + laneOffset));
-  const arrowSize = Math.max(3.6, laneWidth * 1.3);
+  const reverseD = buildLinkPathD([...pathPoints].reverse(), gridStep, hasWaypoints, -bundleOffset);
+  const laneLength = polylineLength(drawnPoints);
+  const pulseSize = Math.max(4, strokeWidth * 1.8);
+  const trafficAnchor = pointAlongPolyline(drawnPoints, 0.5);
 
   return (
     <g
       className={linkDown ? canvasStyles.offlineBlink : undefined}
       data-link-offline={linkDown ? 'true' : undefined}
       onContextMenu={editable ? onContextMenu : undefined}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
+      onMouseEnter={(e) => {
+        onHoverChange(true);
+        setHoverPoint({ x: e.clientX, y: e.clientY });
+      }}
+      onMouseLeave={() => {
+        onHoverChange(false);
+        setHoverPoint(null);
+      }}
     >
-      {titleAttr ? <title>{titleAttr}</title> : null}
+      {hoverPoint ? (
+        <LinkHoverPopover
+          model={hoverTooltip}
+          screenX={hoverPoint.x}
+          screenY={hoverPoint.y}
+          uploadColor={uploadLabelColor}
+          downloadColor={downloadLabelColor}
+          statusColor={runtimeColor}
+        />
+      ) : null}
       <path
         d={d}
         stroke="transparent"
@@ -337,22 +279,10 @@ function LinkLineComponent({
           }
         }}
       />
-      {casingGlow > 0 && (
-        <path
-          d={d}
-          stroke={glowColor}
-          strokeWidth={casingWidth + 7}
-          strokeOpacity={casingGlow}
-          strokeDasharray={dashArray}
-          fill="none"
-          pointerEvents="none"
-          {...LINK_LINE_CAP}
-        />
-      )}
       <path
         d={d}
         stroke={strokeColor}
-        strokeWidth={casingWidth}
+        strokeWidth={strokeWidth}
         strokeOpacity={1}
         strokeDasharray={dashArray}
         markerStart={markerStart}
@@ -361,99 +291,69 @@ function LinkLineComponent({
         pointerEvents="none"
         {...LINK_LINE_CAP}
       />
-      <path
-        d={d}
-        stroke={LINK_OUTLINE_COLOR}
-        strokeWidth={laneWidth * 2 + 1.1}
-        strokeOpacity={1}
-        strokeDasharray={dashArray}
-        fill="none"
-        pointerEvents="none"
-        {...LINK_LINE_CAP}
-      />
-      <path
-        d={uploadD}
-        stroke={uploadColor}
-        strokeWidth={laneWidth}
-        strokeOpacity={0.2}
-        strokeDasharray={dashArray}
-        fill="none"
-        pointerEvents="none"
-        {...LINK_LINE_CAP}
-      />
-      <path
-        d={downloadD}
-        stroke={downloadColor}
-        strokeWidth={laneWidth}
-        strokeOpacity={0.2}
-        strokeDasharray={dashArray}
-        fill="none"
-        pointerEvents="none"
-        {...LINK_LINE_CAP}
-      />
       {supportsFlowArrows ? (
-        <g opacity={laneOpacity}>
+        <g>
           {!uploadOffline && (
             <LinkFlowArrows
-              laneD={uploadD}
-              laneLength={uploadLaneLength}
-              color={uploadColor}
+              laneD={d}
+              laneLength={laneLength}
+              color={uploadLabelColor}
               direction="upload"
               linkId={lk}
               speed={uploadFlowSpeed}
               active={uploadFlowActive}
-              size={arrowSize}
+              size={pulseSize}
             />
           )}
           {!downloadOffline && (
             <LinkFlowArrows
-              laneD={downloadArrowD}
-              laneLength={downloadLaneLength}
-              color={downloadColor}
+              laneD={reverseD}
+              laneLength={laneLength}
+              color={downloadLabelColor}
               direction="download"
               linkId={lk}
               speed={downloadFlowSpeed}
               active={downloadFlowActive}
-              size={arrowSize}
+              size={pulseSize}
             />
           )}
         </g>
       ) : (
         <>
           <path
-            d={downloadD}
+            d={d}
             data-link-flow="download"
             data-link-key={lk}
             data-link-flow-speed={String(downloadFlowSpeed)}
             data-link-flow-active={downloadFlowActive ? 'true' : 'false'}
-            stroke={downloadColor}
-            strokeWidth={flowStroke}
+            stroke={downloadLabelColor}
+            strokeWidth={Math.max(2.4, strokeWidth)}
             strokeDasharray={LINK_FLOW_DASH}
             fill="none"
             pointerEvents="none"
-            opacity={laneOpacity}
+            opacity={0.95}
             {...LINK_LINE_CAP}
           />
           <path
-            d={uploadD}
+            d={d}
             data-link-flow="upload"
             data-link-key={lk}
             data-link-flow-speed={String(uploadFlowSpeed)}
             data-link-flow-active={uploadFlowActive ? 'true' : 'false'}
-            stroke={uploadColor}
-            strokeWidth={flowStroke}
+            stroke={uploadLabelColor}
+            strokeWidth={Math.max(2.4, strokeWidth)}
             strokeDasharray={LINK_FLOW_DASH}
             fill="none"
             pointerEvents="none"
-            opacity={laneOpacity}
+            opacity={0.95}
             {...LINK_LINE_CAP}
           />
         </>
       )}
-      {labelText ? (
+      {txLabel || rxLabel ? (
         <LinkTrafficLabel
-          x={mid.x - Math.sin(labelRad) * labelOffset}
-          y={mid.y + Math.cos(labelRad) * labelOffset}
+          x={trafficAnchor.x}
+          y={trafficAnchor.y}
           txLabel={txLabel}
           rxLabel={rxLabel}
           uploadColor={uploadLabelColor}

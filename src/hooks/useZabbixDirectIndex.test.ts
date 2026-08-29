@@ -1,37 +1,47 @@
-import { EventBusSrv } from '@grafana/data';
-import { RefreshEvent } from '@grafana/runtime';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchZabbixDirectMetadata,
+  fetchZabbixProblems,
   fetchZabbixResolvedGroups,
   fetchZabbixSignalInventory,
+  fetchZabbixStatusLastValues,
   fetchZabbixTrafficLastValues,
 } from '../utils/zabbixApi';
-import { fetchZabbixStatusViaQuery, prefetchZabbixDatasource } from '../utils/zabbixDatasourceQuery';
-import { useZabbixDirectIndex } from './useZabbixDirectIndex';
-import { clearZabbixSnapshotCache } from '../services/zabbixSnapshotCache';
+import { useZabbixDirectIndex, dropZabbixLiveIndex } from './useZabbixDirectIndex';
+import {
+  clearZabbixSnapshotCache,
+  dropZabbixSnapshotMemory,
+  persistZabbixItemIdCatalog,
+  readZabbixItemIdCatalog,
+  zabbixSnapshotCacheKey,
+} from '../services/zabbixSnapshotCache';
+import { clearPollClock } from '../utils/pollingGate';
 
-vi.mock('../utils/zabbixApi', () => ({
-  fetchZabbixDirectMetadata: vi.fn(),
-  fetchZabbixResolvedGroups: vi.fn(async () => ({ resolvedGroups: ['Backbone'], groupIds: ['10'] })),
-  fetchZabbixSignalInventory: vi.fn(async () => []),
-  fetchZabbixTrafficLastValues: vi.fn(async () => ({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] })),
-  isBenignZabbixFetchError: vi.fn(() => false),
-  isNumericZabbixItemId: (value: string | undefined) => Boolean(value && /^\d+$/.test(value.trim())),
-}));
-
-vi.mock('../utils/zabbixDatasourceQuery', () => ({
-  fetchZabbixStatusViaQuery: vi.fn(),
-  prefetchZabbixDatasource: vi.fn(),
-}));
+vi.mock('../utils/zabbixApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/zabbixApi')>();
+  return {
+    ...actual,
+    fetchZabbixDirectMetadata: vi.fn(),
+    fetchZabbixProblems: vi.fn(async () => ({})),
+    fetchZabbixResolvedGroups: vi.fn(async () => ({ resolvedGroups: ['Backbone'], groupIds: ['10'] })),
+    fetchZabbixSignalInventory: vi.fn(async () => []),
+    fetchZabbixStatusLastValues: vi.fn(),
+    fetchZabbixTrafficLastValues: vi.fn(async () => ({
+      lastValues: {},
+      itemIdByKey: new Map(),
+      interfaceItems: [],
+    })),
+    isBenignZabbixFetchError: vi.fn(() => false),
+  };
+});
 
 const fetchMetadata = vi.mocked(fetchZabbixDirectMetadata);
-const fetchStatus = vi.mocked(fetchZabbixStatusViaQuery);
+const fetchStatus = vi.mocked(fetchZabbixStatusLastValues);
+const fetchProblems = vi.mocked(fetchZabbixProblems);
 const fetchLastValues = vi.mocked(fetchZabbixTrafficLastValues);
 const fetchSignalInventory = vi.mocked(fetchZabbixSignalInventory);
 const fetchResolvedGroups = vi.mocked(fetchZabbixResolvedGroups);
-const prefetchDatasource = vi.mocked(prefetchZabbixDatasource);
 
 function host(id: string, group: string) {
   return {
@@ -45,7 +55,7 @@ function host(id: string, group: string) {
 
 function statusItem(hostid: string, lastvalue = '1') {
   return {
-    itemid: `item-${hostid}`,
+    itemid: `${10000 + Number(hostid)}`,
     key_: 'icmpping',
     lastvalue,
     lastclock: '1000',
@@ -53,15 +63,18 @@ function statusItem(hostid: string, lastvalue = '1') {
   };
 }
 
-function statusSnapshot(
-  hostid: string,
-  problems: Record<string, { count: number; maxSeverity: number; names?: string[] }> = {}
-) {
-  return { items: [statusItem(hostid)], lastValues: {}, problems };
+function statusItems(hostid: string, lastvalue = '1') {
+  return [statusItem(hostid, lastvalue)];
 }
 
 async function flush() {
   await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -70,20 +83,25 @@ async function flush() {
 describe('useZabbixDirectIndex', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    clearPollClock();
+    dropZabbixLiveIndex();
     fetchMetadata.mockReset();
     fetchStatus.mockReset();
+    fetchProblems.mockReset();
+    fetchProblems.mockResolvedValue({});
     fetchLastValues.mockReset();
     fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
     fetchSignalInventory.mockReset();
     fetchSignalInventory.mockResolvedValue([]);
     fetchResolvedGroups.mockReset();
     fetchResolvedGroups.mockResolvedValue({ resolvedGroups: ['Backbone'], groupIds: ['10'] });
-    prefetchDatasource.mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     clearZabbixSnapshotCache();
+    dropZabbixLiveIndex();
+    clearPollClock();
   });
 
   it('trocar os grupos não zera o índice enquanto o novo snapshot não chega', async () => {
@@ -92,7 +110,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
 
     const { result, rerender } = renderHook(
       ({ groupNames }: { groupNames: string[] }) =>
@@ -119,7 +137,7 @@ describe('useZabbixDirectIndex', () => {
         })
     );
     fetchResolvedGroups.mockResolvedValue({ resolvedGroups: ['Borda'], groupIds: ['20'] });
-    fetchStatus.mockResolvedValue(statusSnapshot('2'));
+    fetchStatus.mockResolvedValue(statusItems('2'));
 
     rerender({ groupNames: ['Borda'] });
     expect(result.current.ready).toBe(true);
@@ -150,7 +168,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
     fetchLastValues.mockResolvedValue({
       lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
@@ -184,14 +202,14 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchStatus).toHaveBeenCalledTimes(1);
   });
 
-  it('busca o lastvalue dos cabos em paralelo ao status', async () => {
-    fetchMetadata.mockResolvedValueOnce({
+  it('no ciclo em regime o lastvalue dos cabos entra no mesmo item.get do status', async () => {
+    fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValueOnce({
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
       lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
       interfaceItems: [],
@@ -210,49 +228,195 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '11'], expect.any(AbortSignal), [], undefined);
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledWith(
+      'ds',
+      ['10', '11', '10001'],
+      expect.any(AbortSignal),
+      [],
+      ['1']
+    );
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
-  });
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
 
-  it('traz problemas Warning+ no mesmo snapshot do status', async () => {
-    fetchMetadata.mockResolvedValueOnce({
-      hosts: [host('1', 'Backbone')],
-      resolvedGroups: ['Backbone'],
-      groupIds: ['10'],
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    fetchStatus.mockResolvedValueOnce(
-      statusSnapshot('1', { '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } })
-    );
 
-    const { result } = renderHook(() =>
-      useZabbixDirectIndex({
-        enabled: true,
-        datasourceUid: 'ds',
-        groupNames: ['Backbone'],
-        statusItemKey: 'icmpping',
-        refreshSec: 60,
-      })
-    );
-
-    await flush();
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
     expect(fetchStatus).toHaveBeenCalledTimes(1);
-    expect(result.current.ready).toBe(true);
-    expect(result.current.index.hosts).toContain('host-1');
-    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
+    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    expect(fetchLastValues).toHaveBeenLastCalledWith(
+      'ds',
+      ['10', '11', '10001'],
+      expect.any(AbortSignal),
+      [],
+      ['1']
+    );
   });
 
-  it('falha isolada da busca de problemas não impede o status dos hosts', async () => {
+  it('poll com o mesmo lastvalue não troca o índice nem grava snapshot de valor', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1', lastclock: '1000' },
+        '10001': { itemid: '10001', lastvalue: '1', lastclock: '1000' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    const indexAfterFirst = result.current.index;
+    const lastValuesAfterFirst = result.current.lastValues;
+    expect(result.current.ready).toBe(true);
+
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1', lastclock: '2000' },
+        '10001': { itemid: '10001', lastvalue: '1', lastclock: '2000' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '2000' }],
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.index).toBe(indexAfterFirst);
+    expect(result.current.lastValues).toBe(lastValuesAfterFirst);
+    const cacheKey = zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping');
+    expect(readZabbixItemIdCatalog(cacheKey)?.statusItems[0]?.itemid).toBe('10001');
+  });
+
+  it('poll com lastvalue novo atualiza o status', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '10001': { itemid: '10001', lastvalue: '1' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1' }],
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '10001': { itemid: '10001', lastvalue: '0' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '0' }],
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(0);
+  });
+
+  it('poll só com tráfego novo reusa o índice de hosts', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '100' },
+        '10001': { itemid: '10001', lastvalue: '1' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1' }],
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    const indexAfterFirst = result.current.index;
+    expect(result.current.lastValues['10']?.lastvalue).toBe('100');
+
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '250' },
+        '10001': { itemid: '10001', lastvalue: '1' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1' }],
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.index).toBe(indexAfterFirst);
+    expect(result.current.lastValues['10']?.lastvalue).toBe('250');
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+  });
+
+  it('não consulta problemas no poll — cada ciclo é um POST só', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce({
-      items: [statusItem('1')],
-      lastValues: {},
-      problems: {},
-      problemsUnavailable: true,
-    });
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -265,25 +429,182 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
+    expect(fetchProblems).not.toHaveBeenCalled();
     expect(result.current.ready).toBe(true);
     expect(result.current.index.hosts).toContain('host-1');
-    expect(result.current.problems).toEqual({});
   });
 
-  it('resolve chave de cabo para itemid e devolve o lastvalue pela key', async () => {
+  it('resolve chave de cabo no item.get de descoberta e devolve o lastvalue pela key', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValueOnce({
+    fetchStatus.mockResolvedValueOnce([
+      ...statusItems('1'),
+      {
+        itemid: '77',
+        key_: 'vendor.metric.rx[10]',
+        lastvalue: '500000000',
+        lastclock: '1000',
+        hostid: '1',
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficKeys: ['vendor.metric.rx[10]'],
+      })
+    );
+
+    await flush();
+    expect(fetchLastValues).not.toHaveBeenCalled();
+    expect(fetchStatus).toHaveBeenCalledWith('ds', 'icmpping', ['1'], expect.any(AbortSignal), [
+      'vendor.metric.rx[10]',
+    ]);
+    expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+  });
+
+  it('com catálogo de itemids lê lastvalue das chaves de cabo num item.get por key', async () => {
+    persistZabbixItemIdCatalog(zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping'), {
+      statusItems: statusItems('1'),
+      lastValues: {},
+      interfaceItems: [],
+    });
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchLastValues
+      .mockResolvedValueOnce({
+        lastValues: { '10001': { itemid: '10001', lastvalue: '1' } },
+        itemIdByKey: new Map(),
+        interfaceItems: [],
+      })
+      .mockResolvedValueOnce({
+        lastValues: {
+          '77': { itemid: '77', lastvalue: '500000000' },
+          '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
+        },
+        itemIdByKey: new Map([['1:vendor.metric.rx[10]', '77']]),
+        interfaceItems: [
+          { itemid: '77', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '500000000', lastclock: '1000' },
+        ],
+      });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficKeys: ['vendor.metric.rx[10]'],
+      })
+    );
+
+    await flush();
+    expect(fetchMetadata).toHaveBeenCalled();
+    expect(fetchStatus).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenNthCalledWith(1, 'ds', ['10001'], expect.any(AbortSignal), [], ['1']);
+    expect(fetchLastValues).toHaveBeenNthCalledWith(
+      2,
+      'ds',
+      [],
+      expect.any(AbortSignal),
+      ['vendor.metric.rx[10]'],
+      ['1']
+    );
+    expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+  });
+
+  it('item de status por nome lê lastvalue das chaves de cabo num item.get por key', async () => {
+    persistZabbixItemIdCatalog(zabbixSnapshotCacheKey('ds', ['Backbone'], 'ICMP ping'), {
+      statusItems: [
+        { itemid: '10001', key_: 'icmpping', lastvalue: '1', lastclock: '1000', hostid: '1' },
+      ],
+      lastValues: {},
+      interfaceItems: [],
+    });
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchLastValues
+      .mockResolvedValueOnce({
+        lastValues: { '10001': { itemid: '10001', lastvalue: '1' } },
+        itemIdByKey: new Map(),
+        interfaceItems: [],
+      })
+      .mockResolvedValueOnce({
+        lastValues: {
+          '77': { itemid: '77', lastvalue: '500000000' },
+          '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
+        },
+        itemIdByKey: new Map([['1:vendor.metric.rx[10]', '77']]),
+        interfaceItems: [
+          { itemid: '77', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '500000000', lastclock: '1000' },
+        ],
+      });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'ICMP ping',
+        refreshSec: 60,
+        trafficKeys: ['vendor.metric.rx[10]'],
+      })
+    );
+
+    await flush();
+    expect(fetchStatus).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenNthCalledWith(1, 'ds', ['10001'], expect.any(AbortSignal), [], ['1']);
+    expect(fetchLastValues).toHaveBeenNthCalledWith(
+      2,
+      'ds',
+      [],
+      expect.any(AbortSignal),
+      ['vendor.metric.rx[10]'],
+      ['1']
+    );
+    expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+  });
+
+  it('com catálogo de itemids relê lastvalue por id depois do host.get, sem item.get por hostids', async () => {
+    persistZabbixItemIdCatalog(zabbixSnapshotCacheKey('ds', ['Backbone'], 'icmpping'), {
+      statusItems: statusItems('1'),
       lastValues: {
-        '77': { itemid: '77', lastvalue: '500000000' },
         '1:vendor.metric.rx[10]': { itemid: '77', lastvalue: '500000000' },
       },
-      itemIdByKey: new Map([['1:vendor.metric.rx[10]', '77']]),
-      interfaceItems: [],
+      interfaceItems: [
+        { itemid: '77', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '500000000', lastclock: '1000' },
+      ],
+    });
+    dropZabbixSnapshotMemory();
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10001': { itemid: '10001', lastvalue: '1' },
+        '77': { itemid: '77', lastvalue: '500000000' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [
+        { itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' },
+        { itemid: '77', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '500000000', lastclock: '1000' },
+      ],
     });
 
     const { result } = renderHook(() =>
@@ -298,18 +619,26 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', [], expect.any(AbortSignal), ['vendor.metric.rx[10]'], undefined);
-    expect(result.current.lastValues['1:vendor.metric.rx[10]']?.lastvalue).toBe('500000000');
+    expect(fetchMetadata).toHaveBeenCalled();
+    expect(fetchStatus).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenCalledWith(
+      'ds',
+      expect.arrayContaining(['10001', '77']),
+      expect.any(AbortSignal),
+      [],
+      ['1']
+    );
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+    expect(result.current.lastValues['77']?.lastvalue).toBe('500000000');
   });
 
-  it('não dispara ds.query de status de novo no RefreshEvent do carregamento do dashboard', async () => {
+  it('só busca de novo quando o intervalo do plugin vence — não no meio do ciclo', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
-    const eventBus = new EventBusSrv();
+    fetchStatus.mockResolvedValue(statusItems('1'));
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -318,7 +647,6 @@ describe('useZabbixDirectIndex', () => {
         groupNames: ['Backbone'],
         statusItemKey: 'icmpping',
         refreshSec: 60,
-        eventBus,
       })
     );
 
@@ -326,60 +654,29 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchStatus).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      eventBus.publish(new RefreshEvent());
+      vi.advanceTimersByTime(30_000);
       await Promise.resolve();
     });
 
     expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
   });
 
-  it('não reinicia o poll quando o Grafana troca a identidade do eventBus', async () => {
+  it('ciclo em regime não relê host.get — um POST só', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
-
-    const { rerender } = renderHook(
-      ({ eventBus }: { eventBus: EventBusSrv }) =>
-        useZabbixDirectIndex({
-          enabled: true,
-          datasourceUid: 'ds',
-          groupNames: ['Backbone'],
-          statusItemKey: 'icmpping',
-          refreshSec: 60,
-          eventBus,
-        }),
-      { initialProps: { eventBus: new EventBusSrv() } }
-    );
-
-    await flush();
-    expect(fetchStatus).toHaveBeenCalledTimes(1);
-
-    rerender({ eventBus: new EventBusSrv() });
-    await flush();
-
-    expect(fetchStatus).toHaveBeenCalledTimes(1);
-  });
-
-  it('relê os hosts monitorados a cada ciclo e tira o status de host desativado', async () => {
-    fetchMetadata
-      .mockResolvedValueOnce({
-        hosts: [host('1', 'Backbone')],
-        resolvedGroups: ['Backbone'],
-        groupIds: ['10'],
-      })
-      .mockResolvedValueOnce({
-        hosts: [],
-        resolvedGroups: ['Backbone'],
-        groupIds: ['10'],
-      });
-    fetchStatus.mockResolvedValue({
-      items: [statusItem('1', '0')],
-      lastValues: {},
-      problems: {},
-    });
+    fetchStatus.mockResolvedValue(statusItems('1', '0'));
+    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -393,7 +690,7 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(result.current.index.hosts).toContain('host-1');
-    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(0);
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
@@ -401,25 +698,19 @@ describe('useZabbixDirectIndex', () => {
       await Promise.resolve();
     });
 
-    expect(fetchMetadata).toHaveBeenCalledTimes(2);
-    expect(result.current.index.hosts).not.toContain('host-1');
-    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.has('host-1')).toBe(false);
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(result.current.index.hosts).toContain('host-1');
   });
 
-  it('publica o mapa sem esperar a varredura de sinal terminar', async () => {
+  it('não dispara varredura de sinal no poll', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValueOnce({
-      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
-      itemIdByKey: new Map(),
-      interfaceItems: [],
-    });
-    // Varredura lenta: antes ela ficava no mesmo `await` do ciclo e segurava a primeira pintura.
-    fetchSignalInventory.mockReturnValueOnce(new Promise(() => undefined));
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -429,16 +720,13 @@ describe('useZabbixDirectIndex', () => {
         statusItemKey: 'icmpping',
         refreshSec: 60,
         trafficItemIds: ['10'],
-        signalHostIds: ['1'],
-        signalSearchTerms: ['optical'],
       })
     );
 
     await flush();
-    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10'], expect.any(AbortSignal), [], undefined);
-    expect(fetchSignalInventory).toHaveBeenCalledWith('ds', ['1'], ['optical'], expect.any(AbortSignal));
+    expect(fetchSignalInventory).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '10001'], expect.any(AbortSignal), [], ['1']);
     expect(result.current.loading).toBe(false);
-    expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
   it('não varre sinal em todos os hosts do grupo quando os extremos dos cabos ainda não resolveram', async () => {
@@ -447,7 +735,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValueOnce(statusSnapshot('1'));
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -456,7 +744,6 @@ describe('useZabbixDirectIndex', () => {
         groupNames: ['Backbone'],
         statusItemKey: 'icmpping',
         refreshSec: 60,
-        signalSearchTerms: ['optical'],
       })
     );
 
@@ -464,7 +751,7 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchSignalInventory).not.toHaveBeenCalled();
   });
 
-  it('pinta o mapa assim que o host.get volta, sem esperar o ds.query', async () => {
+  it('não pinta o mapa sem lastvalue ao vivo — espera o item.get de status', async () => {
     fetchMetadata.mockResolvedValueOnce({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
@@ -489,31 +776,28 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(prefetchDatasource).toHaveBeenCalledWith('ds');
-    expect(result.current.ready).toBe(true);
-    expect(result.current.loading).toBe(false);
-    expect(result.current.index.hosts).toContain('host-1');
+    expect(result.current.ready).toBe(false);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.index.hosts).not.toContain('host-1');
     expect(result.current.lastValues['10']).toBeUndefined();
-    expect(fetchStatus).toHaveBeenCalled();
+    expect(fetchLastValues).not.toHaveBeenCalled();
   });
 
-  it('tráfego e status dos hosts entram no mapa no mesmo snapshot', async () => {
-    let resolveStatus: ((value: ReturnType<typeof statusSnapshot>) => void) | undefined;
-    fetchMetadata.mockResolvedValueOnce({
+  it('pinta lastvalue de status e cabos só quando o item.get conjunto volta', async () => {
+    fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchLastValues.mockResolvedValueOnce({
-      lastValues: { '10': { itemid: '10', lastvalue: '1' } },
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '10001': { itemid: '10001', lastvalue: '1' },
+      },
       itemIdByKey: new Map(),
-      interfaceItems: [],
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
     });
-    fetchStatus.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveStatus = resolve;
-      })
-    );
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -527,27 +811,47 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(result.current.index.hosts).toContain('host-1');
-    expect(result.current.lastValues['10']).toBeUndefined();
-    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.has('host-1')).toBe(false);
-
-    await act(async () => {
-      resolveStatus?.(statusSnapshot('1'));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
     expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '10001'], expect.any(AbortSignal), [], ['1']);
   });
 
-  it('reabrir o painel pinta status e tráfego do último snapshot sem esperar o Zabbix', async () => {
+  it('não pinta lastvalue de status nem de cabo se o item.get conjunto não voltou', async () => {
+    fetchMetadata.mockResolvedValueOnce({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchLastValues.mockReturnValueOnce(new Promise(() => undefined));
+    fetchStatus.mockResolvedValueOnce(statusItems('1'));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.index.hosts).not.toContain('host-1');
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBeUndefined();
+    expect(result.current.lastValues['10']).toBeUndefined();
+  });
+
+  it('F5 não pinta lastvalue do localStorage — espera o Zabbix', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
     fetchLastValues.mockResolvedValue({
       lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
@@ -566,7 +870,15 @@ describe('useZabbixDirectIndex', () => {
     );
     await flush();
     expect(first.result.current.ready).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(first.result.current.lastValues['10']?.lastvalue).toBe('1');
     first.unmount();
+    dropZabbixLiveIndex();
 
     fetchMetadata.mockReturnValue(new Promise(() => undefined));
     fetchStatus.mockReturnValue(new Promise(() => undefined));
@@ -583,11 +895,10 @@ describe('useZabbixDirectIndex', () => {
       })
     );
 
-    expect(second.result.current.ready).toBe(true);
-    expect(second.result.current.loading).toBe(false);
-    expect(second.result.current.index.hosts).toContain('host-1');
-    expect(second.result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
-    expect(second.result.current.lastValues['10']?.lastvalue).toBe('1');
+    expect(second.result.current.ready).toBe(false);
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBeUndefined();
+    expect(second.result.current.lastValues['10']).toBeUndefined();
     second.unmount();
   });
 
@@ -597,7 +908,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
     fetchLastValues.mockResolvedValueOnce({
       lastValues: { '10': { itemid: '10', lastvalue: '1' } },
       itemIdByKey: new Map(),
@@ -629,9 +940,9 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.lastValues['10']?.lastvalue).toBe('1');
   });
 
-  it('não dispara o ds.query enquanto o host.get da primeira pintura não voltou', async () => {
+  it('não dispara o item.get de status enquanto o host.get da primeira pintura não voltou', async () => {
     fetchMetadata.mockReturnValueOnce(new Promise(() => undefined));
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -647,22 +958,94 @@ describe('useZabbixDirectIndex', () => {
     expect(fetchStatus).not.toHaveBeenCalled();
   });
 
-  it('a varredura de sinal não usa o abort do ciclo', async () => {
+  it('desmontar aborta o item.get de status da descoberta', async () => {
     fetchMetadata.mockResolvedValue({
       hosts: [host('1', 'Backbone')],
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
-    let cycleSignal: AbortSignal | undefined;
-    fetchLastValues.mockImplementation(async (_uid, _ids, abortSignal) => {
-      cycleSignal = abortSignal;
-      return { lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] };
+    let statusSignal: AbortSignal | undefined;
+    fetchStatus.mockImplementation(async (_uid, _key, _hosts, abortSignal) => {
+      statusSignal = abortSignal;
+      return new Promise(() => undefined);
     });
-    let signalSignal: AbortSignal | undefined;
-    fetchSignalInventory.mockImplementation(async (_uid, _hosts, _terms, abortSignal) => {
-      signalSignal = abortSignal;
-      return [];
+
+    const { unmount } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    expect(statusSignal).toBeDefined();
+    expect(statusSignal?.aborted).toBe(false);
+
+    unmount();
+    expect(statusSignal?.aborted).toBe(true);
+  });
+
+  it('no ciclo em regime relê o status no mesmo item.get dos cabos', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue([
+      { itemid: '51', key_: 'icmpping', lastvalue: '1', lastclock: '1000', hostid: '1' },
+    ]);
+    fetchLastValues.mockResolvedValue({
+      lastValues: {
+        '10': { itemid: '10', lastvalue: '1' },
+        '51': { itemid: '51', lastvalue: '1' },
+      },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '51', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 10,
+        trafficItemIds: ['10'],
+      })
+    );
+
+    await flush();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '51'], expect.any(AbortSignal), [], ['1']);
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['10', '51'], expect.any(AbortSignal), [], ['1']);
+    expect(result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBe(1);
+  });
+
+  it('cada intervalo do plugin relê só o lastvalue num item.get', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({
+      lastValues: { '10001': { itemid: '10001', lastvalue: '1' } },
+      itemIdByKey: new Map(),
+      interfaceItems: [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '1000' }],
     });
 
     renderHook(() =>
@@ -672,94 +1055,13 @@ describe('useZabbixDirectIndex', () => {
         groupNames: ['Backbone'],
         statusItemKey: 'icmpping',
         refreshSec: 10,
-        trafficItemIds: ['10'],
-        signalHostIds: ['1'],
-        signalSearchTerms: ['optical'],
-      })
-    );
-
-    await flush();
-    await act(async () => {
-      vi.advanceTimersByTime(10_000);
-      await Promise.resolve();
-    });
-    await flush();
-
-    expect(signalSignal).toBeDefined();
-    expect(signalSignal).not.toBe(cycleSignal);
-    // O ciclo seguinte aborta o anterior; se a varredura viajasse nesse mesmo sinal, morreria no meio.
-    expect(signalSignal?.aborted).toBe(false);
-  });
-
-  it('desmontar aborta o item.get isolado disparado pela troca de cabo', async () => {
-    fetchMetadata.mockResolvedValue({
-      hosts: [host('1', 'Backbone')],
-      resolvedGroups: ['Backbone'],
-      groupIds: ['10'],
-    });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
-    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
-
-    const { rerender, unmount } = renderHook(
-      ({ trafficItemIds }: { trafficItemIds: string[] }) =>
-        useZabbixDirectIndex({
-          enabled: true,
-          datasourceUid: 'ds',
-          groupNames: ['Backbone'],
-          statusItemKey: 'icmpping',
-          refreshSec: 60,
-          trafficItemIds,
-        }),
-      { initialProps: { trafficItemIds: ['10'] } }
-    );
-
-    await flush();
-
-    let trafficSignal: AbortSignal | undefined;
-    fetchLastValues.mockImplementation(async (_uid, _ids, abortSignal) => {
-      trafficSignal = abortSignal;
-      return new Promise(() => undefined);
-    });
-
-    rerender({ trafficItemIds: ['11'] });
-    await flush();
-    expect(trafficSignal).toBeDefined();
-    expect(trafficSignal?.aborted).toBe(false);
-
-    unmount();
-    expect(trafficSignal?.aborted).toBe(true);
-  });
-
-  it('entre releituras de identidade o ciclo não repete host.get nem os problemas', async () => {
-    fetchMetadata.mockResolvedValue({
-      hosts: [host('1', 'Backbone')],
-      resolvedGroups: ['Backbone'],
-      groupIds: ['10'],
-    });
-    fetchStatus
-      .mockResolvedValueOnce(
-        statusSnapshot('1', { '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } })
-      )
-      .mockResolvedValue({
-        items: [statusItem('1')],
-        lastValues: {},
-        problems: {},
-        problemsUnavailable: true,
-      });
-
-    const { result } = renderHook(() =>
-      useZabbixDirectIndex({
-        enabled: true,
-        datasourceUid: 'ds',
-        groupNames: ['Backbone'],
-        statusItemKey: 'icmpping',
-        refreshSec: 10,
       })
     );
 
     await flush();
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
-    expect(fetchStatus.mock.calls[0]?.[0].includeProblems).toBe(true);
+    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchLastValues).not.toHaveBeenCalled();
 
     await act(async () => {
       vi.advanceTimersByTime(10_000);
@@ -767,17 +1069,16 @@ describe('useZabbixDirectIndex', () => {
       await Promise.resolve();
     });
 
-    expect(fetchStatus).toHaveBeenCalledTimes(2);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
     expect(fetchMetadata).toHaveBeenCalledTimes(1);
-    expect(fetchStatus.mock.calls[1]?.[0].includeProblems).toBe(false);
-    // O badge do ciclo anterior continua: pular problemas não pode apagar alerta.
-    expect(result.current.problems['1']?.names).toEqual(['Interface down']);
+    expect(fetchProblems).not.toHaveBeenCalled();
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
   });
 
   it('passa os grupos já resolvidos adiante para não repetir o hostgroup.get', async () => {
     const meta = { hosts: [host('1', 'Backbone')], resolvedGroups: ['Backbone'], groupIds: ['10'] };
     fetchMetadata.mockResolvedValue(meta);
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -800,8 +1101,7 @@ describe('useZabbixDirectIndex', () => {
       });
     }
 
-    expect(fetchMetadata).toHaveBeenCalledTimes(2);
-    expect(fetchMetadata.mock.calls[1]?.[3]).toEqual({ resolvedGroups: ['Backbone'], groupIds: ['10'] });
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
   });
 
   it('no ciclo seguinte relê por itemid só o sinal em uso, sem varrer o inventário de novo', async () => {
@@ -810,7 +1110,7 @@ describe('useZabbixDirectIndex', () => {
       resolvedGroups: ['Backbone'],
       groupIds: ['10'],
     });
-    fetchStatus.mockResolvedValue(statusSnapshot('1'));
+    fetchStatus.mockResolvedValue(statusItems('1'));
     fetchLastValues.mockResolvedValue({
       lastValues: { '30': { itemid: '30', lastvalue: '-8.5' } },
       itemIdByKey: new Map(),
@@ -829,10 +1129,6 @@ describe('useZabbixDirectIndex', () => {
         statusItemKey: 'icmpping',
         refreshSec: 60,
         trafficItemIds: ['10'],
-        signalHostIds: ['1'],
-        signalSearchTerms: ['optical'],
-        selectSignalItemIds: (items) =>
-          items.filter((item) => item.itemid === '30').map((item) => item.itemid),
       })
     );
 
@@ -843,9 +1139,96 @@ describe('useZabbixDirectIndex', () => {
       await Promise.resolve();
     });
 
-    expect(fetchSignalInventory).toHaveBeenCalledTimes(1);
+    expect(fetchSignalInventory).not.toHaveBeenCalled();
     expect(fetchLastValues).toHaveBeenCalledTimes(2);
-    // Só a porta que o cabo usa entra na releitura; a `99` fica de fora.
-    expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['10', '30'], expect.any(AbortSignal), [], ['1']);
+    expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['10', '10001'], expect.any(AbortSignal), [], ['1']);
+  });
+
+  it('remontar o painel no meio do intervalo não dispara outro ciclo', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+
+    const first = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+    await flush();
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+    await flush();
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(59_000);
+      await Promise.resolve();
+    });
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchMetadata).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+  });
+
+  it('trocar itemids de cabo não busca até o intervalo vencer', async () => {
+    fetchMetadata.mockResolvedValue({
+      hosts: [host('1', 'Backbone')],
+      resolvedGroups: ['Backbone'],
+      groupIds: ['10'],
+    });
+    fetchStatus.mockResolvedValue(statusItems('1'));
+    fetchLastValues.mockResolvedValue({ lastValues: {}, itemIdByKey: new Map(), interfaceItems: [] });
+
+    const { rerender } = renderHook(
+      ({ trafficItemIds }: { trafficItemIds: string[] }) =>
+        useZabbixDirectIndex({
+          enabled: true,
+          datasourceUid: 'ds',
+          groupNames: ['Backbone'],
+          statusItemKey: 'icmpping',
+          refreshSec: 60,
+          trafficItemIds,
+        }),
+      { initialProps: { trafficItemIds: ['10'] } }
+    );
+
+    await flush();
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+    expect(fetchLastValues).toHaveBeenCalledWith('ds', ['10', '10001'], expect.any(AbortSignal), [], ['1']);
+
+    rerender({ trafficItemIds: ['11'] });
+    await flush();
+    expect(fetchLastValues).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetchLastValues).toHaveBeenCalledTimes(2);
+    expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['11', '10001'], expect.any(AbortSignal), [], ['1']);
   });
 });
