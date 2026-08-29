@@ -7,12 +7,16 @@ import {
   collectAlertHostEntries,
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
+  collectPresentHostTypeFilterIds,
+  retainPresentNocTypeFilters,
+  visibleNocFilterIds,
   resolveHostProblemSummary,
   alertListHoverText,
   visibleHostProblemNames,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
 import { linkKey } from '../mapLinkEdits';
+import { hostNode, emptyMap } from '../testMapFixtures';
 
 describe('topologyFilters', () => {
   const map: TopologyMap = {
@@ -30,6 +34,72 @@ describe('topologyFilters', () => {
     const olt = map.nodes[0];
     expect(isNodeVisibleForFilters(olt, new Set(['olt']), ctx)).toBe(true);
     expect(isNodeVisibleForFilters(map.nodes[1], new Set(['olt']), ctx)).toBe(false);
+  });
+
+  it('filtra câmeras, firewalls e servidores pelo ícone ou template', () => {
+    const typedMap = emptyMap({
+      nodes: [
+        hostNode({ id: 'cam', icon: 'camera', zabbixHost: '10.0.0.1' }),
+        hostNode({ id: 'fw', icon: 'firewall', zabbixHost: '10.0.0.2' }),
+        hostNode({ id: 'srv', nodeTemplateId: 'server', zabbixHost: '10.0.0.3' }),
+        hostNode({ id: 'ap', icon: 'access_point', zabbixHost: '10.0.0.4' }),
+      ],
+    });
+    const ctx = { map: typedMap, options: { linkUtilThresholdHigh: 75 } };
+    expect(isNodeVisibleForFilters(typedMap.nodes[0], new Set(['camera']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(typedMap.nodes[1], new Set(['camera']), ctx)).toBe(false);
+    expect(isNodeVisibleForFilters(typedMap.nodes[1], new Set(['firewall']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(typedMap.nodes[2], new Set(['server']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(typedMap.nodes[3], new Set(['access_point']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(typedMap.nodes[0], new Set(['firewall']), ctx)).toBe(false);
+  });
+
+  it('marca tags de tipo no modo NOC para câmera e firewall', () => {
+    const typedMap = emptyMap({
+      nodes: [
+        hostNode({ id: 'cam', icon: 'camera', label: 'cam-a', zabbixHost: '10.0.0.1' }),
+        hostNode({ id: 'fw', icon: 'firewall', label: 'fw-a', zabbixHost: '10.0.0.2' }),
+      ],
+    });
+    const ctx = {
+      hostDisplay: {},
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectNocHostEntries(new Set(), [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: typedMap }], ctx);
+    expect(entries.find((e) => e.nodeId === 'cam')?.tags).toContain('Câmera');
+    expect(entries.find((e) => e.nodeId === 'fw')?.tags).toContain('Firewall');
+  });
+
+  it('lista só tipos de equipamento que têm host na árvore do painel', () => {
+    const root = emptyMap({
+      nodes: [
+        hostNode({ id: 'cam', icon: 'camera', zabbixHost: '10.0.0.1' }),
+        hostNode({ id: 'plain', zabbixHost: '10.0.0.2' }),
+      ],
+    });
+    const child = emptyMap({
+      nodes: [hostNode({ id: 'fw', icon: 'firewall', zabbixHost: '10.0.0.3' })],
+    });
+    const ids = collectPresentHostTypeFilterIds([
+      { mapId: ROOT_MAP_ID, mapLabel: 'Início', map: root },
+      { mapId: 'filial', mapLabel: 'Filial', map: child },
+    ]);
+    expect(ids).toEqual(['firewall', 'camera']);
+    expect(visibleNocFilterIds([{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: root }])).toEqual([
+      'offline',
+      'problems',
+      'congestedLinks',
+      'camera',
+    ]);
+  });
+
+  it('remove filtro de tipo sem host e preserva status e tipos presentes', () => {
+    const active = new Set<'offline' | 'camera' | 'olt'>(['offline', 'camera', 'olt']);
+    const next = retainPresentNocTypeFilters(active, ['olt']);
+    expect([...next]).toEqual(['offline', 'olt']);
+    expect(retainPresentNocTypeFilters(next, ['olt'])).toBe(next);
   });
 
   it('filtra pontas de cabo congestionado e marca a tag no host', () => {

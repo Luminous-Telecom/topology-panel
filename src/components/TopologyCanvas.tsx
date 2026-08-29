@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
-import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId } from '../utils/noc/types';
+import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId, TOPOLOGY_STATUS_FILTER_IDS } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
+  collectPresentHostTypeFilterIds,
   isLinkVisibleForFilters,
   NocHostListEntry,
+  retainPresentNocTypeFilters,
   TopologyFilterContext,
 } from '../utils/noc/topologyFilters';
 import { TopologyHostAlertList } from './canvas/TopologyHostAlertList';
@@ -428,6 +430,23 @@ export function TopologyCanvas({
     () => flattenHostDisplayByRefId(hostDisplayByRefId),
     [hostDisplayByRefId]
   );
+
+  const presentHostTypeIds = useMemo(
+    () => collectPresentHostTypeFilterIds(nocMapScopes),
+    [nocMapScopes]
+  );
+
+  const nocFilterIds = useMemo(
+    () => [...TOPOLOGY_STATUS_FILTER_IDS, ...presentHostTypeIds],
+    [presentHostTypeIds]
+  );
+
+  useEffect(() => {
+    if (!effectiveNocMode) {
+      return;
+    }
+    setActiveFilters((prev) => retainPresentNocTypeFilters(prev, presentHostTypeIds));
+  }, [effectiveNocMode, presentHostTypeIds]);
 
   const alertHostEntries = useMemo(() => {
     if (effectiveNocMode || !showHostAlertList) {
@@ -1352,6 +1371,7 @@ export function TopologyCanvas({
       {effectiveNocMode && !hideOverlayControls ? (
         <TopologyNocPanel
           entries={nocHostEntries}
+          filterIds={nocFilterIds}
           activeFilters={activeFilters}
           queryReady={queryReady}
           showMinimap={minimapVisible}

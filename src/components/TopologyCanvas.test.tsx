@@ -231,6 +231,27 @@ describe('TopologyCanvas — modo NOC', () => {
     expect(Math.abs(center.y - VIEWPORT_H / 2)).toBeLessThan(1);
     expect(container.querySelector('g[data-node-id="c3"] rect')?.getAttribute('stroke')).toBe('#4FC3F7');
   });
+
+  it('mostra só chips de tipos que têm host no mapa', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'cam', icon: 'camera', label: 'Cam 1', zabbixHost: '10.0.0.1' })],
+    });
+    const options = { ...defaultOptions(), nocMode: true, map };
+    const { getByText, queryByText } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+      />
+    );
+    expect(getByText('Câmeras')).toBeInTheDocument();
+    expect(getByText('Somente DOWN')).toBeInTheDocument();
+    expect(queryByText('Firewalls')).not.toBeInTheDocument();
+    expect(queryByText('OLTs')).not.toBeInTheDocument();
+  });
 });
 
 describe('TopologyCanvas — quiosque / playlist', () => {

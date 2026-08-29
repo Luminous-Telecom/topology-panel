@@ -11,7 +11,18 @@ import { resolveHostNodeStatus } from '../networkStats';
 import { isHostNode } from '../topologyNodes';
 import { linkKey } from '../mapLinkEdits';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
-import { HostProblemSummary, HostProblemsMap, TopologyMapFilterId, ZABBIX_PROBLEM_MIN_SEVERITY } from './types';
+import {
+  HostProblemSummary,
+  HostProblemsMap,
+  TopologyHostTypeFilter,
+  TopologyMapFilterId,
+  TopologyMapTypeFilterId,
+  TOPOLOGY_HOST_TYPE_FILTERS,
+  TOPOLOGY_HOST_TYPE_FILTER_BY_ID,
+  TOPOLOGY_STATUS_FILTER_IDS,
+  ZABBIX_PROBLEM_MIN_SEVERITY,
+  isHostTypeFilterId,
+} from './types';
 
 export interface TopologyFilterContext {
   map: TopologyMap;
@@ -61,13 +72,38 @@ function contextForMap(
   return { ...baseCtx, map, hostDisplay, hostMetadata };
 }
 
+function nodeMatchesTypeFilter(node: TopologyNode, def: TopologyHostTypeFilter): boolean {
+  if (node.icon && def.icons.includes(node.icon)) {
+    return true;
+  }
+  return Boolean(node.nodeTemplateId && def.templateIds?.includes(node.nodeTemplateId));
+}
+
+function hostTypeFilterForNode(node: TopologyNode): TopologyHostTypeFilter | undefined {
+  for (const def of TOPOLOGY_HOST_TYPE_FILTERS) {
+    if (nodeMatchesTypeFilter(node, def)) {
+      return def;
+    }
+  }
+  return undefined;
+}
+
+function hostTypeTagForNode(node: TopologyNode): string | undefined {
+  return hostTypeFilterForNode(node)?.tag;
+}
+
 function nodeMatchesSingleFilter(
   node: TopologyNode,
   filter: TopologyMapFilterId,
   ctx: TopologyFilterContext
 ): boolean {
   if (!isHostNode(node)) {
-    return filter !== 'olt' && filter !== 'router' && filter !== 'switch';
+    return !isHostTypeFilterId(filter);
+  }
+
+  if (isHostTypeFilterId(filter)) {
+    const def = TOPOLOGY_HOST_TYPE_FILTER_BY_ID.get(filter);
+    return def !== undefined && nodeMatchesTypeFilter(node, def);
   }
 
   switch (filter) {
@@ -77,20 +113,6 @@ function nodeMatchesSingleFilter(
       return resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems) !== undefined;
     case 'congestedLinks':
       return filterIndex(ctx).congestedNodeIds.has(node.id);
-    case 'olt':
-      return node.icon === 'olt' || node.nodeTemplateId === 'olt';
-    case 'router':
-      return (
-        node.icon === 'router' ||
-        node.nodeTemplateId === 'router' ||
-        node.nodeTemplateId === 'core-router'
-      );
-    case 'switch':
-      return (
-        node.icon === 'switch_managed' ||
-        node.icon === 'switch_unmanaged' ||
-        node.nodeTemplateId === 'switch'
-      );
     default: {
       const _exhaustive: never = filter;
       return _exhaustive;
@@ -264,6 +286,51 @@ export interface NocTopologyMapScope {
   map: TopologyMap;
 }
 
+/** Tipos de equipamento que têm pelo menos um host na árvore do painel, na ordem dos chips. */
+export function collectPresentHostTypeFilterIds(
+  maps: readonly NocTopologyMapScope[]
+): TopologyMapTypeFilterId[] {
+  const present = new Set<TopologyMapTypeFilterId>();
+  for (const { map } of maps) {
+    for (const node of map.nodes) {
+      if (!isHostNode(node)) {
+        continue;
+      }
+      const def = hostTypeFilterForNode(node);
+      if (def) {
+        present.add(def.id);
+      }
+    }
+  }
+  return TOPOLOGY_HOST_TYPE_FILTERS.filter((def) => present.has(def.id)).map((def) => def.id);
+}
+
+/** Chips do modo NOC: status sempre visível; tipos só quando há host daquele tipo. */
+export function visibleNocFilterIds(maps: readonly NocTopologyMapScope[]): TopologyMapFilterId[] {
+  return [...TOPOLOGY_STATUS_FILTER_IDS, ...collectPresentHostTypeFilterIds(maps)];
+}
+
+/** Tira filtro de tipo que não tem mais host, para o chip escondido não ficar preso. */
+export function retainPresentNocTypeFilters(
+  active: ReadonlySet<TopologyMapFilterId>,
+  presentTypeIds: readonly TopologyMapTypeFilterId[]
+): Set<TopologyMapFilterId> {
+  const present = new Set<TopologyMapTypeFilterId>(presentTypeIds);
+  const next = new Set<TopologyMapFilterId>();
+  let dropped = false;
+  for (const id of active) {
+    if (isHostTypeFilterId(id) && !present.has(id)) {
+      dropped = true;
+      continue;
+    }
+    next.add(id);
+  }
+  if (!dropped) {
+    return active instanceof Set ? active : next;
+  }
+  return next;
+}
+
 const ALERT_REASON_ORDER: Record<HostAlertListReason, number> = {
   offline: 0,
   alert: 1,
@@ -375,20 +442,9 @@ function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
     tags.push(`Problemas (${problemSummary.count})`);
   }
 
-  if (node.icon === 'olt' || node.nodeTemplateId === 'olt') {
-    tags.push('OLT');
-  } else if (
-    node.icon === 'router' ||
-    node.nodeTemplateId === 'router' ||
-    node.nodeTemplateId === 'core-router'
-  ) {
-    tags.push('Roteador');
-  } else if (
-    node.icon === 'switch_managed' ||
-    node.icon === 'switch_unmanaged' ||
-    node.nodeTemplateId === 'switch'
-  ) {
-    tags.push('Switch');
+  const typeTag = hostTypeTagForNode(node);
+  if (typeTag) {
+    tags.push(typeTag);
   }
 
   if (filterIndex(ctx).congestedNodeIds.has(node.id)) {

@@ -13,6 +13,7 @@ import styles from './TopologyNocPanel.module.scss';
 
 interface Props {
   entries: NocHostListEntry[];
+  filterIds: readonly TopologyMapFilterId[];
   activeFilters: ReadonlySet<TopologyMapFilterId>;
   queryReady?: boolean;
   showMinimap?: boolean;
@@ -20,17 +21,15 @@ interface Props {
   onSelectHost: (entry: NocHostListEntry) => void;
 }
 
-const FILTER_IDS = Object.keys(TOPOLOGY_FILTER_LABELS) as TopologyMapFilterId[];
-
 function TopologyNocPanelComponent({
   entries,
+  filterIds,
   activeFilters,
   queryReady = false,
   showMinimap = false,
   onToggleFilter,
   onSelectHost,
 }: Props) {
-  const filters = FILTER_IDS;
   const bottomOffset = minimapBottomOffset(showMinimap);
 
   return (
@@ -44,7 +43,7 @@ function TopologyNocPanelComponent({
     >
       <div className={overlayCardHeaderStyle}>Modo NOC — equipamentos ({entries.length})</div>
       <div className={styles.filters}>
-        {filters.map((id) => {
+        {filterIds.map((id) => {
           const active = activeFilters.has(id);
           return (
             <button
