@@ -31,6 +31,7 @@ import { useStableIdentity } from '../hooks/useStableIdentity';
 import { validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
+import { useGrafanaDashboardFlush } from '../hooks/useGrafanaDashboardFlush';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
@@ -65,7 +66,11 @@ export function TopologyPanel({
   const playlistPlayback = useGrafanaPlaylistPlayback();
 
   const latestOptionsRef = useRef(options);
-  latestOptionsRef.current = options;
+  const pendingNocModeRef = useRef<boolean | undefined>(undefined);
+  latestOptionsRef.current =
+    pendingNocModeRef.current === undefined
+      ? options
+      : { ...options, nocMode: pendingNocModeRef.current };
 
   /**
    * Erros estruturais em `options.map` (JSON editado à mão, fora do `TopologyEditor`) — `nodes`/
@@ -507,14 +512,32 @@ export function TopologyPanel({
     [commitChange]
   );
 
-  const handleNocModeChange = useCallback(
-    (enabled: boolean) => {
-      if (!canPersistOptions) {
-        return;
-      }
-      onOptionsChange({ ...latestOptionsRef.current, nocMode: enabled });
+  const handleNocModeChange = useCallback((enabled: boolean) => {
+    pendingNocModeRef.current = enabled;
+    latestOptionsRef.current = { ...latestOptionsRef.current, nocMode: enabled };
+  }, []);
+
+  const flushPendingNocMode = useCallback(() => {
+    if (!canPersistOptions || !onOptionsChange) {
+      return;
+    }
+    const pending = pendingNocModeRef.current;
+    if (pending === undefined) {
+      return;
+    }
+    pendingNocModeRef.current = undefined;
+    if (Boolean(options.nocMode) === pending) {
+      return;
+    }
+    onOptionsChange({ ...latestOptionsRef.current, nocMode: pending });
+  }, [canPersistOptions, onOptionsChange, options.nocMode]);
+
+  useGrafanaDashboardFlush(flushPendingNocMode);
+  useEffect(
+    () => () => {
+      flushPendingNocMode();
     },
-    [canPersistOptions, onOptionsChange]
+    [flushPendingNocMode]
   );
 
   const handleActiveViewChange = useCallback(

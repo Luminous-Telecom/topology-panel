@@ -16,6 +16,7 @@ interface Props {
   filterIds: readonly TopologyMapFilterId[];
   activeFilters: ReadonlySet<TopologyMapFilterId>;
   queryReady?: boolean;
+  listPending?: boolean;
   showMinimap?: boolean;
   onToggleFilter: (filter: TopologyMapFilterId) => void;
   onSelectHost: (entry: NocHostListEntry) => void;
@@ -26,6 +27,7 @@ function TopologyNocPanelComponent({
   filterIds,
   activeFilters,
   queryReady = false,
+  listPending = false,
   showMinimap = false,
   onToggleFilter,
   onSelectHost,
@@ -64,6 +66,8 @@ function TopologyNocPanelComponent({
       </div>
       {!queryReady ? (
         <div className={`${overlayMutedStyle} ${styles.empty}`}>Carregando status da Query…</div>
+      ) : listPending ? (
+        <div className={`${overlayMutedStyle} ${styles.empty}`}>Carregando equipamentos…</div>
       ) : entries.length === 0 ? (
         <div className={`${overlayMutedStyle} ${styles.empty}`}>
           {activeFilters.size > 0

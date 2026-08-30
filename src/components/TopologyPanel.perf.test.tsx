@@ -553,3 +553,50 @@ describe('custo de travar o mapa', () => {
     expect(onOptionsChange).not.toHaveBeenCalled();
   });
 });
+
+describe('custo de abrir o modo NOC', () => {
+  it('clique no NOC abre o painel sem gravar o Grafana no idle curto', async () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const onOptionsChange = vi.fn();
+    const { getByRole, getByText } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />
+    );
+
+    onOptionsChange.mockClear();
+    resetCounts();
+    fireEvent.click(getByRole('button', { name: 'NOC' }));
+    expect(getByText(/Modo NOC/)).toBeTruthy();
+    expect(getByText('Carregando equipamentos…')).toBeTruthy();
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 450);
+      });
+    });
+    expect(onOptionsChange).not.toHaveBeenCalled();
+  });
+
+  it('Salvar dashboard grava o modo NOC pendente', async () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const onOptionsChange = vi.fn();
+    const { getByRole } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />
+    );
+
+    onOptionsChange.mockClear();
+    fireEvent.click(getByRole('button', { name: 'NOC' }));
+    const save = document.createElement('button');
+    save.setAttribute('aria-label', 'Salvar dashboard');
+    document.body.appendChild(save);
+    fireEvent.click(save);
+    save.remove();
+
+    expect(onOptionsChange).toHaveBeenCalled();
+    const persisted = onOptionsChange.mock.calls[onOptionsChange.mock.calls.length - 1][0] as TopologyPanelOptions;
+    expect(persisted.nocMode).toBe(true);
+  });
+});

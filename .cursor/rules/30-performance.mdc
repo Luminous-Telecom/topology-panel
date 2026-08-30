@@ -44,7 +44,10 @@ hooks de arraste/viewport.
   `panTool` e `networksLocked` não descem para `HostNodeShape` / `NetworkNodeShape` / `LinkLine`.
 - Trava/dimensão (mesmos `nodes`/`links`) não chama `onOptionsChange` no clique: o JSON inteiro do
   mapa congela o tráfego. `applyMap` local na hora; persist no próximo arraste, no flush, ao
-  salvar/sair do dashboard (`eventTargetRequestsDashboardFlush`) ou ao ocultar a aba.
+  salvar/sair do dashboard (`eventTargetRequestsDashboardFlush` / `useGrafanaDashboardFlush`) ou ao
+  ocultar a aba.
+- Clique no modo NOC idem: override local na hora, sem `onOptionsChange`; a lista de equipamentos
+  só monta depois do paint (`scheduleAfterPaint`). Persist no flush/salvar.
 - Estado de alta frequência (pointermove, wheel, pan, resize) vai em `ref` + `requestAnimationFrame`:
   um commit por frame, nunca `setState` por evento de ponteiro. Preview de gesto usa
   `hooks/useGestureFrame.ts` + `utils/canvasGestureStore.ts` (não `useState` no `TopologyCanvas`):

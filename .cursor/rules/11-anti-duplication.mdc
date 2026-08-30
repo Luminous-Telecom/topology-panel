@@ -91,7 +91,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
 | Undo/redo | `hooks/useMapHistory.ts` (`applyMap` depois do paint, `persistRemote` no idle via `scheduleWhenIdle`; trava só local até flush/salvar) |
-| Clique Salvar/Sair do Grafana (flush da trava pendente) | `eventTargetRequestsDashboardFlush` em `utils/grafanaDashboardEdit.ts` |
+| Clique Salvar/Sair do Grafana (flush da trava/NOC pendente) | `eventTargetRequestsDashboardFlush` em `utils/grafanaDashboardEdit.ts` + `useGrafanaDashboardFlush` |
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |

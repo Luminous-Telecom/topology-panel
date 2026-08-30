@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyMap } from '../types';
-import { eventTargetRequestsDashboardFlush } from '../utils/grafanaDashboardEdit';
 import { mapRevisionChanged, sameNodeGeometry } from '../utils/mapRevision';
 import { scheduleAfterPaint, scheduleWhenIdle } from '../utils/scheduleAfterPaint';
+import { useGrafanaDashboardFlush } from './useGrafanaDashboardFlush';
 
 const MAX_HISTORY = 50;
 /** Grafana `onOptionsChange` depois do mapa local — no pointerup isso congelava o canvas. */
@@ -141,33 +141,7 @@ export function useMapHistory(
     [flushRemote]
   );
 
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.hidden) {
-        flushRemote();
-      }
-    };
-    const onClick = (event: MouseEvent) => {
-      if (eventTargetRequestsDashboardFlush(event.target)) {
-        flushRemote();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-        flushRemote();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', flushRemote);
-    document.addEventListener('click', onClick, true);
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', flushRemote);
-      document.removeEventListener('click', onClick, true);
-      document.removeEventListener('keydown', onKeyDown, true);
-    };
-  }, [flushRemote]);
+  useGrafanaDashboardFlush(flushRemote);
 
   /** Mapa trocado externamente (dashboard recarregado) — zera histórico. */
   useEffect(() => {

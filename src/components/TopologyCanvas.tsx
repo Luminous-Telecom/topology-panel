@@ -70,7 +70,7 @@ import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
 import { useCanvasToast } from '../hooks/useCanvasToast';
-import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
+import { scheduleAfterPaint, scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { useFrozenCanvasData } from '../hooks/useFrozenCanvasData';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
 import { useCanvasDerivedView } from '../hooks/useCanvasDerivedView';
@@ -144,6 +144,7 @@ const NO_QUERY_HOST_OPTIONS: QueryHostOption[] = [];
 const NO_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
 const NO_SUBMAP_HOSTS: Record<string, string[] | null | undefined> = {};
 const NO_LINK_METRICS: LinkRuntimeMetricsMap = {};
+const EMPTY_NOC_HOST_ENTRIES: NocHostListEntry[] = [];
 
 export function TopologyCanvas({
   map: liveMap,
@@ -248,6 +249,18 @@ export function TopologyCanvas({
     onShowHostAlertListChange,
     onNocModeChange,
   });
+  const prevNocModeRef = useRef(effectiveNocMode);
+  const nocOpenedThisRender = effectiveNocMode && !prevNocModeRef.current;
+  const [nocListGen, setNocListGen] = useState(0);
+  useEffect(() => {
+    prevNocModeRef.current = effectiveNocMode;
+    if (!effectiveNocMode || !nocOpenedThisRender) {
+      return;
+    }
+    return scheduleAfterPaint(() => {
+      setNocListGen((gen) => gen + 1);
+    });
+  }, [effectiveNocMode, nocOpenedThisRender]);
   const {
     tool,
     setTool,
@@ -476,8 +489,8 @@ export function TopologyCanvas({
   ]);
 
   const nocHostEntries = useMemo(() => {
-    if (!effectiveNocMode) {
-      return [];
+    if (!effectiveNocMode || nocOpenedThisRender) {
+      return EMPTY_NOC_HOST_ENTRIES;
     }
     return collectNocHostEntries(activeFilters, nocMapScopes, {
       hostDisplay: nocHostDisplayBase,
@@ -488,6 +501,8 @@ export function TopologyCanvas({
     });
   }, [
     effectiveNocMode,
+    nocOpenedThisRender,
+    nocListGen,
     activeFilters,
     nocHostDisplayBase,
     hostMetadata,
@@ -1394,6 +1409,7 @@ export function TopologyCanvas({
           filterIds={nocFilterIds}
           activeFilters={activeFilters}
           queryReady={queryReady}
+          listPending={nocOpenedThisRender}
           showMinimap={minimapVisible}
           onToggleFilter={toggleFilter}
           onSelectHost={handleNocSelectHost}
