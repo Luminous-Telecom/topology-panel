@@ -1,8 +1,9 @@
 /**
  * Incrementa o patch em package.json e src/plugin.json.
  *
- * O Grafana cacheia module.js pela query ?_cache=<versão do plugin.json>. Sem bump a cada
- * publicação, o navegador mantém o JS antigo mesmo após rsync — limpar cache geral não muda a URL.
+ * Usado em todo commit (ver `.cursor/rules/90-workflow.mdc`) e no deploy quando a versão
+ * no working tree ainda é a do HEAD. O Grafana cacheia module.js pela query
+ * `?_cache=<versão do plugin.json>`.
  */
 import fs from 'node:fs';
 import path from 'node:path';

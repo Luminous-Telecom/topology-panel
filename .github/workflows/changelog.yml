@@ -1,0 +1,25 @@
+name: Versão e changelog
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CHANGELOG inclui a versão de package.json e plugin.json
+        run: |
+          set -euo pipefail
+          ver="$(node -p "require('./package.json').version")"
+          plugin_ver="$(node -p "require('./src/plugin.json').info.version")"
+          if [[ "$ver" != "$plugin_ver" ]]; then
+            echo "package.json ($ver) e src/plugin.json ($plugin_ver) divergem" >&2
+            exit 1
+          fi
+          if ! grep -qE "^## \[${ver}\]" CHANGELOG.md; then
+            echo "CHANGELOG.md não tem entrada ## [${ver}]" >&2
+            exit 1
+          fi
