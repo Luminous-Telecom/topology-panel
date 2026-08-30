@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HostMetadataMap } from '../types';
-import { mergeMapWithQueryHosts } from './mapSync';
-import { emptyMap } from './testMapFixtures';
+import { mergeMapWithQueryHosts, patchDisplayMapPositions } from './mapSync';
+import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('mergeMapWithQueryHosts', () => {
   it('mapa vazio + hosts da Query cria nós em grade (posições incrementais)', () => {
@@ -104,5 +104,33 @@ describe('mergeMapWithQueryHosts', () => {
     const metadata: HostMetadataMap = { 'host-a': { name: 'Host A', ip: '10.0.0.5' } };
     const next = mergeMapWithQueryHosts(emptyMap(), ['host-a'], metadata);
     expect(next.nodes[0]).toMatchObject({ zabbixHost: '10.0.0.5', subtitle: '10.0.0.5', label: 'Host A' });
+  });
+});
+
+describe('patchDisplayMapPositions', () => {
+  it('reusa o nó que não andou e só clona o que mudou de x/y', () => {
+    const kept = hostNode({ id: 'kept', x: 10, y: 10, label: 'Kept', zabbixHost: 'host-a' });
+    const moved = hostNode({ id: 'moved', x: 20, y: 20, label: 'Moved', zabbixHost: 'host-b' });
+    const prevDisplay = emptyMap({ nodes: [kept, moved] });
+    const nextStored = emptyMap({
+      nodes: [kept, { ...moved, x: 90, y: 40 }],
+    });
+    const patched = patchDisplayMapPositions(prevDisplay, nextStored);
+    expect(patched).toBeDefined();
+    expect(patched!.nodes[0]).toBe(kept);
+    expect(patched!.nodes[1]).not.toBe(moved);
+    expect(patched!.nodes[1]).toMatchObject({ id: 'moved', x: 90, y: 40, label: 'Moved' });
+  });
+
+  it('ignora id extra só no mapa salvo e ainda aplica o x/y', () => {
+    const a = hostNode({ id: 'a', x: 1, y: 1 });
+    const hidden = hostNode({ id: 'hidden', x: 0, y: 0 });
+    const prevDisplay = emptyMap({ nodes: [a] });
+    const nextStored = emptyMap({
+      nodes: [{ ...a, x: 9, y: 9 }, hidden],
+    });
+    const patched = patchDisplayMapPositions(prevDisplay, nextStored);
+    expect(patched?.nodes).toHaveLength(1);
+    expect(patched?.nodes[0]).toMatchObject({ id: 'a', x: 9, y: 9 });
   });
 });

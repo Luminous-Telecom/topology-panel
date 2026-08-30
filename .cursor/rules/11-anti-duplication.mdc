@@ -45,7 +45,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
-| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts` |
+| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` em `utils/mapRevision.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
@@ -90,7 +90,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Recorte de nós/cabos pela viewport | `visibleWorldRect` em `utils/viewportCulling.ts` |
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
-| Undo/redo | `hooks/useMapHistory.ts` |
+| Undo/redo | `hooks/useMapHistory.ts` (`applyMap` depois do paint, `persistRemote` no idle via `scheduleWhenIdle`) |
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |

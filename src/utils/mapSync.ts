@@ -3,27 +3,77 @@ import { hostToNodeId, isQueryHostHidden, resolveHostIp } from './hostLookup';
 import { isIpv4 } from './ipv4';
 import { isHostNode } from './topologyNodes';
 
+function pushIndexed(index: Map<string, TopologyNode[]>, key: string, node: TopologyNode): void {
+  if (!key) {
+    return;
+  }
+  const list = index.get(key);
+  if (list) {
+    list.push(node);
+    return;
+  }
+  index.set(key, [node]);
+}
+
+interface SavedHostIndex {
+  byZabbixHost: Map<string, TopologyNode[]>;
+  bySubtitle: Map<string, TopologyNode[]>;
+  byLabel: Map<string, TopologyNode[]>;
+  byId: Map<string, TopologyNode[]>;
+}
+
+function buildSavedHostIndex(nodes: TopologyNode[]): SavedHostIndex {
+  const byZabbixHost = new Map<string, TopologyNode[]>();
+  const bySubtitle = new Map<string, TopologyNode[]>();
+  const byLabel = new Map<string, TopologyNode[]>();
+  const byId = new Map<string, TopologyNode[]>();
+  for (const node of nodes) {
+    if (!isHostNode(node)) {
+      continue;
+    }
+    const linked = node.zabbixHost?.trim();
+    if (!linked) {
+      continue;
+    }
+    pushIndexed(byZabbixHost, linked, node);
+    pushIndexed(bySubtitle, node.subtitle?.trim() ?? '', node);
+    pushIndexed(byLabel, node.label?.trim() ?? '', node);
+    pushIndexed(byId, node.id, node);
+  }
+  return { byZabbixHost, bySubtitle, byLabel, byId };
+}
+
+function collectIndexed(list: TopologyNode[] | undefined, seen: Set<string>, out: TopologyNode[]): void {
+  if (!list) {
+    return;
+  }
+  for (const node of list) {
+    if (seen.has(node.id)) {
+      continue;
+    }
+    seen.add(node.id);
+    out.push(node);
+  }
+}
+
 /** Nós salvos que representam o mesmo host da Query (por IP, nome, label ou id). */
 function findSavedHostNodes(
-  map: TopologyMap,
+  index: SavedHostIndex,
   hostName: string,
   hostIp?: string
 ): TopologyNode[] {
   const key = hostName.trim();
   const ip = hostIp?.trim();
-  return map.nodes.filter((n) => {
-    if (!isHostNode(n)) {
-      return false;
-    }
-    const linked = n.zabbixHost?.trim();
-    if (!linked) {
-      return false;
-    }
-    if (ip && (n.subtitle?.trim() === ip || linked === ip)) {
-      return true;
-    }
-    return linked === key || n.label?.trim() === key || n.id === key;
-  });
+  const seen = new Set<string>();
+  const out: TopologyNode[] = [];
+  if (ip) {
+    collectIndexed(index.bySubtitle.get(ip), seen, out);
+    collectIndexed(index.byZabbixHost.get(ip), seen, out);
+  }
+  collectIndexed(index.byZabbixHost.get(key), seen, out);
+  collectIndexed(index.byLabel.get(key), seen, out);
+  collectIndexed(index.byId.get(key), seen, out);
+  return out;
 }
 
 interface HostNodeDraft {
@@ -65,6 +115,47 @@ function syncedSavedNode(map: TopologyMap, saved: TopologyNode, draft: HostNodeD
 }
 
 /**
+ * Copia x/y/largura/altura do mapa salvo para o mapa de exibição já mesclado, sem remontar
+ * hosts da Query. Devolve `undefined` quando a lista de ids não casa — aí o merge completo
+ * é obrigatório.
+ */
+export function patchDisplayMapPositions(prevDisplay: TopologyMap, nextStored: TopologyMap): TopologyMap | undefined {
+  const storedById = new Map(nextStored.nodes.map((node) => [node.id, node]));
+  let moved = false;
+  const nodes: TopologyNode[] = [];
+  for (const node of prevDisplay.nodes) {
+    const stored = storedById.get(node.id);
+    if (!stored) {
+      nodes.push(node);
+      continue;
+    }
+    if (
+      stored.x === node.x &&
+      stored.y === node.y &&
+      stored.width === node.width &&
+      stored.height === node.height &&
+      stored.networkId === node.networkId
+    ) {
+      nodes.push(node);
+      continue;
+    }
+    moved = true;
+    nodes.push({
+      ...node,
+      x: stored.x,
+      y: stored.y,
+      width: stored.width,
+      height: stored.height,
+      networkId: stored.networkId,
+    });
+  }
+  if (!moved) {
+    return { ...nextStored, nodes: prevDisplay.nodes };
+  }
+  return { ...nextStored, nodes };
+}
+
+/**
  * Monta o mapa de exibição: hosts da Query Zabbix + layout salvo.
  * Sem hosts na Query, mantém os hosts configurados no mapa.
  */
@@ -85,6 +176,7 @@ export function mergeMapWithQueryHosts(
   const hidden = new Set((map.hiddenHosts ?? []).map((h) => h.trim()).filter(Boolean));
   const visibleHostNames = hostNames.filter((h) => !isQueryHostHidden(h, hostMetadata[h], hidden));
 
+  const savedIndex = buildSavedHostIndex(map.nodes);
   const hostNodes: TopologyNode[] = [];
   const usedSavedIds = new Set<string>();
   const usedHostKeys = new Set<string>();
@@ -99,7 +191,7 @@ export function mergeMapWithQueryHosts(
     usedHostKeys.add(hostKey.toLowerCase());
 
     const draft: HostNodeDraft = { hostName, hostKey, ip, label: meta?.name ?? hostName, index };
-    const savedMatches = findSavedHostNodes(map, hostName, ip).filter((n) => !usedSavedIds.has(n.id));
+    const savedMatches = findSavedHostNodes(savedIndex, hostName, ip).filter((n) => !usedSavedIds.has(n.id));
 
     if (savedMatches.length === 0) {
       hostNodes.push(gridHostNode(map, draft));

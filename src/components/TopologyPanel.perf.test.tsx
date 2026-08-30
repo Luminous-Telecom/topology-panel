@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DataFrame,
@@ -93,6 +93,10 @@ const queryIndexState = vi.hoisted(() => ({
   index: undefined as import('../services/queryIndex').QueryIndex | undefined,
   ready: true,
   error: undefined as string | undefined,
+}));
+
+vi.mock('../hooks/useDashboardEditMode', () => ({
+  useDashboardEditMode: () => true,
 }));
 
 vi.mock('../hooks/useTopologyQueryIndex', async () => {
@@ -281,6 +285,8 @@ beforeAll(() => {
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => VIEWPORT_W });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT_H });
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
   restoreClientSize = () => {
     if (width) {
       Object.defineProperty(HTMLElement.prototype, 'clientWidth', width);
@@ -405,5 +411,94 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
 
     expect(renderCounts.host).toBe(0);
     expect(renderCounts.link).toBe(0);
+  });
+});
+
+describe(`custo de soltar um nó (${HOST_COUNT} hosts)`, () => {
+  it('pointerup não grava o Grafana nem redesenha o mapa no mesmo turno', async () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const onOptionsChange = vi.fn((next: TopologyPanelOptions) => {
+      JSON.stringify(next);
+    });
+    const { container } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />
+    );
+
+    const target = container.querySelector('[data-node-id="host-5"]');
+    expect(target).not.toBeNull();
+    if (!target) {
+      return;
+    }
+
+    fireEvent.pointerDown(target, { pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    for (let step = 1; step <= 4; step += 1) {
+      fireEvent.pointerMove(target, { pointerId: 1, clientX: 100 + step * 12, clientY: 100 + step * 8 });
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+    }
+
+    resetCounts();
+    onOptionsChange.mockClear();
+    const started = performance.now();
+    fireEvent.pointerUp(target, { pointerId: 1 });
+    const elapsedMs = performance.now() - started;
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[perf] pointerup: ${elapsedMs.toFixed(1)} ms | hosts ${renderCounts.host} | cabos ${renderCounts.link} | ` +
+        `onOptionsChange ${onOptionsChange.mock.calls.length}`
+    );
+
+    expect(onOptionsChange).not.toHaveBeenCalled();
+    expect(renderCounts.host).toBeLessThanOrEqual(2);
+    expect(elapsedMs).toBeLessThan(32);
+  });
+
+  it('eco do Grafana depois do drop não redesenha os hosts', async () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const onOptionsChange = vi.fn();
+    const { container, rerender } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />
+    );
+
+    const target = container.querySelector('[data-node-id="host-5"]');
+    expect(target).not.toBeNull();
+    if (!target) {
+      return;
+    }
+
+    fireEvent.pointerDown(target, { pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    for (let step = 1; step <= 4; step += 1) {
+      fireEvent.pointerMove(target, { pointerId: 1, clientX: 100 + step * 12, clientY: 100 + step * 8 });
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+    }
+    fireEvent.pointerUp(target, { pointerId: 1 });
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 900);
+      });
+    });
+    expect(onOptionsChange).toHaveBeenCalled();
+    const persisted = onOptionsChange.mock.calls[onOptionsChange.mock.calls.length - 1][0] as TopologyPanelOptions;
+    const cloned = JSON.parse(JSON.stringify(persisted)) as TopologyPanelOptions;
+
+    resetCounts();
+    rerender(<TopologyPanel {...panelProps(cloned, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />);
+
+    // eslint-disable-next-line no-console
+    console.log(`[perf] eco Grafana pós-drop: ${renderCounts.host} hosts / ${renderCounts.link} cabos`);
+
+    expect(renderCounts.host).toBeLessThanOrEqual(2);
+    expect(renderCounts.link).toBeLessThanOrEqual(2);
   });
 });

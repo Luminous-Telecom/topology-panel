@@ -16,6 +16,8 @@ import { NodeTapStamp, resolveHostTouchTap } from '../utils/nodeTap';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { computeAlignGuides } from '../utils/alignGuides';
 import { CanvasGestureStore } from '../utils/canvasGestureStore';
+import { dragPreviewCaughtUp } from '../utils/dragPreviewLayouts';
+import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { LinkPoint } from '../utils/linkGeometry';
 import { nextSelectedNodeIds, nextSelectedNodeIdsOnPointerDown } from './useTopologySelection';
 import {
@@ -142,6 +144,23 @@ export function useTopologyDragController({
   gestureStore,
 }: UseTopologyDragControllerParams): UseTopologyDragControllerResult {
   const dragRef = useRef<DragState | null>(null);
+  const cancelIdlePersistRef = useRef<(() => void) | null>(null);
+  const persistAfterIdle = useCallback(
+    (build: () => TopologyMap) => {
+      cancelIdlePersistRef.current?.();
+      cancelIdlePersistRef.current = scheduleWhenIdle(() => {
+        cancelIdlePersistRef.current = null;
+        persist(build());
+      });
+    },
+    [persist]
+  );
+  useEffect(
+    () => () => {
+      cancelIdlePersistRef.current?.();
+    },
+    []
+  );
   /** Coalesce pan setState to one frame — avoids jank on mobile. */
   const panRafRef = useRef<number | null>(null);
   const panPendingRef = useRef<{ x: number; y: number } | null>(null);
@@ -603,6 +622,10 @@ export function useTopologyDragController({
         return;
       }
 
+      setSelectedNodeIds((prev) =>
+        nextSelectedNodeIdsOnPointerDown(prev, node.id, e.ctrlKey || e.metaKey)
+      );
+
       if (editable) {
         beginNodeDrag(
           e,
@@ -614,7 +637,18 @@ export function useTopologyDragController({
         );
       }
     },
-    [beginMarquee, beginNodeDrag, beginPan, clientToMap, editable, nodeLayouts, setSelectedLink, storedMap, toolRef]
+    [
+      beginMarquee,
+      beginNodeDrag,
+      beginPan,
+      clientToMap,
+      editable,
+      nodeLayouts,
+      setSelectedLink,
+      setSelectedNodeIds,
+      storedMap,
+      toolRef,
+    ]
   );
 
   const onCanvasPointerDown = useCallback(
@@ -851,22 +885,35 @@ export function useTopologyDragController({
     [clientToMap, gestureStore, map.nodes, nodeLayouts, setSelectedNodeIds, storedMap]
   );
 
-  /** Grava as posições do arraste (um nó ou o grupo inteiro) e limpa o preview. */
+  /**
+   * Grava as posições do arraste. O preview fica até o mapa gravado ter as mesmas coordenadas —
+   * limpar no pointerup fazia o nó voltar à posição antiga enquanto o Grafana serializava o JSON.
+   */
   const commitNodeDrag = useCallback(
     (moved: boolean) => {
       const positions = dragPositionsRef.current;
-      if (moved && positions) {
-        const moves = Object.entries(positions).map(([nodeId, pos]) => ({
-          nodeId,
-          x: pos.x,
-          y: pos.y,
-        }));
-        persist(moveStoredNodesBulk(storedMap, moves, (nodeId) => findNodeById(map.nodes, nodeId)));
-      }
       dragPositionsRef.current = null;
-      gestureStore.set({ dragPreview: null, alignGuides: [] });
+      if (!moved || !positions) {
+        gestureStore.set({ dragPreview: null, alignGuides: [] });
+        return;
+      }
+      const rounded: Record<string, { x: number; y: number }> = {};
+      for (const [nodeId, pos] of Object.entries(positions)) {
+        rounded[nodeId] = { x: Math.round(pos.x), y: Math.round(pos.y) };
+      }
+      if (gestureStore.get().alignGuides.length > 0) {
+        gestureStore.set({ alignGuides: [] });
+      }
+      const moves = Object.entries(rounded).map(([nodeId, pos]) => ({
+        nodeId,
+        x: pos.x,
+        y: pos.y,
+      }));
+      const stored = storedMap;
+      const nodes = map.nodes;
+      persistAfterIdle(() => moveStoredNodesBulk(stored, moves, (nodeId) => findNodeById(nodes, nodeId)));
     },
-    [gestureStore, map.nodes, persist, storedMap]
+    [gestureStore, map.nodes, persistAfterIdle, storedMap]
   );
 
   /** Clique em nó sem arraste: fecha o link em andamento, peek/Tools no toque ou duplo-clique. */
@@ -899,10 +946,10 @@ export function useTopologyDragController({
       if (!d) {
         return;
       }
-      if (d.kind === 'node') {
+      if (d.kind === 'node' && !d.moved) {
         applyNodeDragMove(e.clientX, e.clientY, e);
       }
-      if (d.kind === 'resize') {
+      if (d.kind === 'resize' && !d.moved) {
         applyResizeMove(e.clientX, e.clientY);
       }
       endGestureBookkeeping(d, e);
@@ -927,11 +974,15 @@ export function useTopologyDragController({
 
       if (d.kind === 'resize' && d.moved) {
         const preview = resizePreviewRef.current;
-        if (preview) {
-          persist(updateStoredNode(storedMap, d.node, { width: preview.width, height: preview.height }));
-        }
         resizePreviewRef.current = null;
-        gestureStore.set({ dragPreview: null });
+        if (preview) {
+          gestureStore.set({
+            dragPreview: { nodeId: d.node.id, width: preview.width, height: preview.height },
+          });
+          persistAfterIdle(() =>
+            updateStoredNode(storedMap, d.node, { width: preview.width, height: preview.height })
+          );
+        }
       }
 
       const tapNode = d.kind === 'node' ? d.node : node;
@@ -948,11 +999,29 @@ export function useTopologyDragController({
       endGestureBookkeeping,
       handleNodeTap,
       handlePanTap,
-      persist,
+      persistAfterIdle,
       gestureStore,
       storedMap,
     ]
   );
+
+  /**
+   * Preview de arraste/resize só some quando o mapa gravado já tem a mesma geometria. Sem isso o
+   * pointerup apagava o overlay, o mapa congelado ainda tinha a posição antiga e o Grafana travava
+   * serializando o JSON — o host/submapa "pulava" de volta.
+   */
+  useEffect(() => {
+    if (dragRef.current) {
+      return;
+    }
+    const preview = gestureStore.get().dragPreview;
+    if (!preview || preview.linkWaypoints) {
+      return;
+    }
+    if (dragPreviewCaughtUp(nodeLayouts, preview)) {
+      gestureStore.set({ dragPreview: null, alignGuides: [] });
+    }
+  }, [gestureStore, nodeLayouts]);
 
   const cancelActiveDrag = useCallback(() => {
     cancelHostLongPress();

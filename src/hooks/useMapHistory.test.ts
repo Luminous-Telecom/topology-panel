@@ -124,6 +124,77 @@ describe('useMapHistory', () => {
     expect(result.current.canRedo).toBe(false);
   });
 
+  it('com persistRemote, o pointerup não aplica mapa nem grava no Grafana', async () => {
+    const applyMap = vi.fn();
+    const persistRemote = vi.fn();
+    const { result } = renderHook(() => useMapHistory(map(), applyMap, persistRemote));
+    const changed = map({ nodes: [{ id: 'a', type: 'host', x: 1, y: 1 }] });
+    act(() => {
+      result.current.commitChange(changed);
+    });
+    expect(applyMap).not.toHaveBeenCalled();
+    expect(persistRemote).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setTimeout(() => resolve(), 0);
+          });
+        });
+      });
+    });
+    expect(applyMap).not.toHaveBeenCalled();
+    expect(persistRemote).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 150);
+      });
+    });
+    expect(applyMap).toHaveBeenCalledTimes(1);
+    expect(persistRemote).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 450);
+      });
+    });
+    expect(persistRemote).toHaveBeenCalledTimes(1);
+    expect(persistRemote).toHaveBeenCalledWith(changed);
+  });
+
+  it('eco do mesmo objeto de mapa não zera o histórico', () => {
+    const initial = map();
+    const applyMap = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ currentMap }: { currentMap: TopologyMap }) => useMapHistory(currentMap, applyMap),
+      { initialProps: { currentMap: initial } }
+    );
+    const changed = map({ nodes: [{ id: 'a', type: 'host', x: 1, y: 1 }] });
+    act(() => {
+      result.current.commitChange(changed);
+    });
+    rerender({ currentMap: changed });
+    expect(result.current.canUndo).toBe(true);
+  });
+
+  it('eco do Grafana (clone JSON, mesma geometria) não zera o histórico', () => {
+    const initial = map();
+    const applyMap = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ currentMap }: { currentMap: TopologyMap }) => useMapHistory(currentMap, applyMap),
+      { initialProps: { currentMap: initial } }
+    );
+    const changed = map({
+      nodes: [{ id: 'a', type: 'host', x: 1, y: 1 }],
+      links: [{ from: 'a', to: 'a', medium: 'fiber' }],
+    });
+    act(() => {
+      result.current.commitChange(changed);
+    });
+    const cloned = JSON.parse(JSON.stringify(changed)) as TopologyMap;
+    rerender({ currentMap: cloned });
+    expect(result.current.canUndo).toBe(true);
+  });
+
   it('o histórico guarda um clone: mutar o mapa anterior não altera o undo', () => {
     const initial = map({ nodes: [{ id: 'a', type: 'host', x: 0, y: 0 }] });
     const { result, applyMap } = renderMapHistory(initial);

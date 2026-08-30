@@ -14,15 +14,23 @@ export function useDeferredDuringGesture<T>(
   const [committed, setCommitted] = useState(value);
   const pendingRef = useRef(value);
   pendingRef.current = value;
+  const committedRef = useRef(committed);
+  committedRef.current = committed;
 
   useEffect(() => {
     if (isGestureActiveRef.current) {
+      return;
+    }
+    if (Object.is(value, committedRef.current)) {
       return;
     }
     setCommitted(value);
   }, [value, isGestureActiveRef]);
 
   const flush = useCallback(() => {
+    if (Object.is(pendingRef.current, committedRef.current)) {
+      return;
+    }
     setCommitted(pendingRef.current);
   }, []);
 

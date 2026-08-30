@@ -70,6 +70,7 @@ import { useTopologyDragController } from '../hooks/useTopologyDragController';
 import { useHostHoverTarget } from '../hooks/useHostHoverTarget';
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu';
 import { useCanvasToast } from '../hooks/useCanvasToast';
+import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { useFrozenCanvasData } from '../hooks/useFrozenCanvasData';
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts';
 import { useCanvasDerivedView } from '../hooks/useCanvasDerivedView';
@@ -187,6 +188,7 @@ export function TopologyCanvas({
   /** True do pointerdown ao pointerup/cancel (pan, nó, resize, marquee, scrollbar) — usado só
    * para congelar `liveDataSnapshot` abaixo; não é a máquina de estado do drag em si. */
   const isGestureActiveRef = useRef(false);
+  const cancelFrozenFlushRef = useRef<(() => void) | null>(null);
   const [frozenData, flushFrozenData] = useFrozenCanvasData(
     {
       map: liveMap,
@@ -968,14 +970,25 @@ export function TopologyCanvas({
     [onWrapPointerDown, stopScrollbarBubble]
   );
 
-  /** Limpeza comum de fim de gesto (pointerup normal ou cancelamento por pinch): libera o sync
-   * de scroll, descongela `liveDataSnapshot` e realinha a scrollbar à view final. */
+  /** Limpeza comum de fim de gesto: libera o sync de scroll. O descongelamento dos dados
+   * espera o idle — no pointerup travava o canvas inteiro (poll do Zabbix + mapa novo). */
   const finishGesture = useCallback(() => {
     suspendScrollSyncRef.current = false;
     isGestureActiveRef.current = false;
-    flushFrozenData();
     syncScrollFromView();
+    cancelFrozenFlushRef.current?.();
+    cancelFrozenFlushRef.current = scheduleWhenIdle(() => {
+      cancelFrozenFlushRef.current = null;
+      flushFrozenData();
+    });
   }, [syncScrollFromView, flushFrozenData]);
+
+  useEffect(
+    () => () => {
+      cancelFrozenFlushRef.current?.();
+    },
+    []
+  );
 
   const endPointerGesture = useCallback(
     (e: React.PointerEvent) => {

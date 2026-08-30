@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelProps } from '@grafana/data';
 import { useTheme2 } from '@grafana/ui';
 import { TopologyCanvas } from './TopologyCanvas';
 import {
   HostDisplayMap,
+  HostMetadataMap,
   TopologyLink,
   TopologyMap,
   TopologyPanelOptions,
@@ -14,7 +15,8 @@ import {
 } from '../types';
 import { enrichHostDisplayFromMaps, enrichHostMetadataFromMaps } from '../utils/hostLookup';
 import { activeChildMaps } from '../utils/childMapEdits';
-import { mergeMapWithQueryHosts } from '../utils/mapSync';
+import { mergeMapWithQueryHosts, patchDisplayMapPositions } from '../utils/mapSync';
+import { isPositionOnlyMapChange, reuseMapsIfOnlyMoved, reuseResolvedOptionsIfOnlyMoved, sameNodeGeometry } from '../utils/mapRevision';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
 import { collectAllSubmapGroups, collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds } from '../utils/queryHosts';
@@ -75,7 +77,7 @@ export function TopologyPanel({
     [options.map]
   );
 
-  const resolvedOptions = useMemo(() => {
+  const resolvedOptionsRaw = useMemo(() => {
     // Mapa malformado nunca é usado para renderizar — só evita que os hooks abaixo quebrem antes
     // do erro explícito (ver `mapValidationErrors`) ser mostrado.
     const useIncomingMap = Boolean(options.map) && mapValidationErrors.length === 0;
@@ -92,6 +94,9 @@ export function TopologyPanel({
       ...colored,
     };
   }, [options, theme, mapValidationErrors]);
+  const resolvedOptionsPrevRef = useRef<TopologyPanelOptions>();
+  const resolvedOptions = reuseResolvedOptionsIfOnlyMoved(resolvedOptionsPrevRef.current, resolvedOptionsRaw);
+  resolvedOptionsPrevRef.current = resolvedOptions;
 
   const handlePersistNavView = useCallback(
     (mapId: string, view: TopologyView) => {
@@ -141,6 +146,9 @@ export function TopologyPanel({
     () => resolveTopologyMapById(resolvedOptions, currentMapId) ?? resolvedOptions.map,
     [resolvedOptions, currentMapId]
   );
+  const [localMap, setLocalMap] = useState<TopologyMap | null>(null);
+  const storedForUi = localMap ?? activeStoredMap;
+  const persistTargetMapIdRef = useRef(currentMapId);
 
   const statusColorOptions = useMemo(
     () => ({
@@ -157,15 +165,22 @@ export function TopologyPanel({
     ]
   );
 
-  const statusGroupNames = useMemo(
+  const statusGroupNamesRaw = useMemo(
     () => collectAllSubmapGroups(resolvedOptions),
     [resolvedOptions.map, resolvedOptions.childMaps]
   );
+  const statusGroupNames = useStableIdentity(statusGroupNamesRaw);
 
-  const mapsForPoll = useMemo(
+  const mapsForPollRaw = useMemo(
     () => [resolvedOptions.map, ...Object.values(activeChildMaps(resolvedOptions.childMaps))],
     [resolvedOptions.map, resolvedOptions.childMaps]
   );
+  const mapsForPollPrevRef = useRef<TopologyMap[]>();
+  const mapsForPoll = useMemo(() => {
+    const reused = reuseMapsIfOnlyMoved(mapsForPollPrevRef.current, mapsForPollRaw);
+    mapsForPollPrevRef.current = reused;
+    return reused;
+  }, [mapsForPollRaw]);
   const allMapLinks = useMemo(() => collectMapsLinks(mapsForPoll), [mapsForPoll]);
   const trafficItemIds = useMemo(() => collectLinkMetricItemIds(allMapLinks), [allMapLinks]);
   const trafficKeys = useMemo(() => collectLinkMetricKeys(allMapLinks), [allMapLinks]);
@@ -318,10 +333,41 @@ export function TopologyPanel({
 
   const hostMetadata = dataMeta;
 
-  const displayMap = useMemo(
-    () => mergeMapWithQueryHosts(activeStoredMap, displayQueryHosts, hostMetadata),
-    [activeStoredMap, displayQueryHosts, hostMetadata]
-  );
+  const mergeCacheRef = useRef<{
+    stored: TopologyMap;
+    display: TopologyMap;
+    queryHosts: string[];
+    hostMetadata: HostMetadataMap;
+  }>();
+
+  const displayMap = useMemo(() => {
+    const cache = mergeCacheRef.current;
+    if (
+      cache &&
+      cache.queryHosts === displayQueryHosts &&
+      cache.hostMetadata === hostMetadata &&
+      isPositionOnlyMapChange(cache.stored, storedForUi)
+    ) {
+      const patched = patchDisplayMapPositions(cache.display, storedForUi);
+      if (patched) {
+        mergeCacheRef.current = {
+          stored: storedForUi,
+          display: patched,
+          queryHosts: displayQueryHosts,
+          hostMetadata,
+        };
+        return patched;
+      }
+    }
+    const merged = mergeMapWithQueryHosts(storedForUi, displayQueryHosts, hostMetadata);
+    mergeCacheRef.current = {
+      stored: storedForUi,
+      display: merged,
+      queryHosts: displayQueryHosts,
+      hostMetadata,
+    };
+    return merged;
+  }, [storedForUi, displayQueryHosts, hostMetadata]);
 
   const queryHostOptionsRaw = useMemo(() => {
     const enriched = enrichQueryHostOptionsFromMap(
@@ -355,7 +401,7 @@ export function TopologyPanel({
     [displayMap, hostMetadata]
   );
 
-  const submapHosts = useMemo(() => {
+  const submapHostsRaw = useMemo(() => {
     const result: Record<string, string[] | null | undefined> = {};
     for (const node of submapNodes) {
       result[node.id] = submapHostListForNode(
@@ -369,6 +415,7 @@ export function TopologyPanel({
     }
     return result;
   }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, parentHostKeys, hostMetadata]);
+  const submapHosts = useStableIdentity(submapHostsRaw);
 
   useEffect(() => {
     if (!canPersistOptions) {
@@ -393,20 +440,61 @@ export function TopologyPanel({
       if (!canPersistOptions || !onOptionsChange) {
         return;
       }
-      const previous = resolveTopologyMapById(latestOptionsRef.current, currentMapId);
-      const base = applyTopologyMapToPanelOptions(latestOptionsRef.current, currentMapId, map);
+      const mapId = persistTargetMapIdRef.current;
+      const previous = resolveTopologyMapById(latestOptionsRef.current, mapId);
+      const base = applyTopologyMapToPanelOptions(latestOptionsRef.current, mapId, map);
       const hop = pendingInterSubmapLinkRef.current;
       pendingInterSubmapLinkRef.current = undefined;
-      let next = hop ? syncInterSubmapCounterpartLinks(base, currentMapId, hop) : base;
-      if (previous) {
-        next = removeMissingInterSubmapCounterparts(next, currentMapId, previous, map);
+      let next = hop ? syncInterSubmapCounterpartLinks(base, mapId, hop) : base;
+      if (previous && previous.links !== map.links) {
+        next = removeMissingInterSubmapCounterparts(next, mapId, previous, map);
       }
       onOptionsChange(next);
     },
-    [canPersistOptions, currentMapId, onOptionsChange]
+    [canPersistOptions, onOptionsChange]
   );
 
-  const { commitChange, undo, redo, canUndo, canRedo } = useMapHistory(activeStoredMap, applyActiveMap);
+  const applyLocalMap = useCallback(
+    (map: TopologyMap) => {
+      persistTargetMapIdRef.current = currentMapId;
+      setLocalMap(map);
+    },
+    [currentMapId]
+  );
+
+  const { commitChange, undo, redo, flushRemote, canUndo, canRedo } = useMapHistory(
+    storedForUi,
+    applyLocalMap,
+    applyActiveMap
+  );
+
+  useEffect(() => {
+    if (!localMap || !sameNodeGeometry(localMap, activeStoredMap)) {
+      return;
+    }
+    const cache = mergeCacheRef.current;
+    if (cache && cache.stored === localMap) {
+      const patched = patchDisplayMapPositions(cache.display, activeStoredMap);
+      mergeCacheRef.current = {
+        stored: activeStoredMap,
+        display: patched ?? cache.display,
+        queryHosts: cache.queryHosts,
+        hostMetadata: cache.hostMetadata,
+      };
+    }
+    setLocalMap(null);
+  }, [activeStoredMap, localMap]);
+
+  const currentMapIdRef = useRef(currentMapId);
+  useEffect(() => {
+    if (currentMapIdRef.current === currentMapId) {
+      return;
+    }
+    currentMapIdRef.current = currentMapId;
+    flushRemote();
+    persistTargetMapIdRef.current = currentMapId;
+    setLocalMap(null);
+  }, [currentMapId, flushRemote]);
 
   const handleMapChange = useCallback(
     (map: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => {
@@ -524,7 +612,7 @@ export function TopologyPanel({
     >
       <TopologyCanvas
         map={displayMap}
-        storedMap={currentMapId === ROOT_MAP_ID ? resolvedOptions.map : activeStoredMap}
+        storedMap={storedForUi}
         options={resolvedOptions}
         savedView={savedViewForCurrent}
         mapNavigationKey={currentMapId}

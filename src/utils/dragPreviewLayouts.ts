@@ -46,3 +46,38 @@ export function applyDragPreviewToLayouts(layouts: LayoutMap, preview: DragPrevi
 
   return next;
 }
+
+/**
+ * True quando as caixas gravadas no mapa já coincidem com o preview — dá para apagar o overlay
+ * sem o nó "pular" de volta à posição antiga no pointerup.
+ */
+export function dragPreviewCaughtUp(layouts: LayoutMap, preview: DragPreview): boolean {
+  if (!preview) {
+    return true;
+  }
+  if (preview.linkWaypoints) {
+    return false;
+  }
+
+  const movePositions = preview.positions;
+  if (movePositions) {
+    for (const [id, pos] of Object.entries(movePositions)) {
+      const layout = layouts.get(id);
+      if (!layout || Math.round(layout.x) !== Math.round(pos.x) || Math.round(layout.y) !== Math.round(pos.y)) {
+        return false;
+      }
+    }
+  }
+
+  const resizeId = preview.nodeId;
+  const resizeW = preview.width;
+  const resizeH = preview.height;
+  if (resizeId !== undefined && resizeW !== undefined && resizeH !== undefined) {
+    const layout = layouts.get(resizeId);
+    if (!layout || layout.w !== resizeW || layout.h !== resizeH) {
+      return false;
+    }
+  }
+
+  return Boolean(movePositions) || resizeId !== undefined;
+}

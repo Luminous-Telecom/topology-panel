@@ -3,8 +3,30 @@ import { Stack, useTheme2 } from '@grafana/ui';
 import { TopologyNode } from '../../types';
 import { FieldReadout } from '../../components/FieldReadout';
 
+/** Lista só de identidade visível: posição no mapa não entra — arraste não remonta esta lista. */
+export function sameHostReadoutIdentity(prev: TopologyNode[], next: TopologyNode[]): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (prev.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < prev.length; i += 1) {
+    const a = prev[i];
+    const b = next[i];
+    if (a.id !== b.id || a.label !== b.label || a.zabbixHost !== b.zabbixHost || a.subtitle !== b.subtitle) {
+      return false;
+    }
+  }
+  return true;
+}
+
+interface Props {
+  hostNodes: TopologyNode[];
+}
+
 /** Lista somente-leitura dos hosts: nome e IP vêm do Zabbix, não se edita aqui. */
-export function HostNodesSection({ hostNodes }: { hostNodes: TopologyNode[] }) {
+function HostNodesSectionComponent({ hostNodes }: Props) {
   const theme = useTheme2();
   return (
     <FieldReadout
@@ -41,3 +63,7 @@ export function HostNodesSection({ hostNodes }: { hostNodes: TopologyNode[] }) {
     </FieldReadout>
   );
 }
+
+export const HostNodesSection = React.memo(HostNodesSectionComponent, (prev, next) =>
+  sameHostReadoutIdentity(prev.hostNodes, next.hostNodes)
+);

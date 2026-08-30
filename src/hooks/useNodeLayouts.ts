@@ -5,6 +5,7 @@ import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
 import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats } from '../utils/networkStats';
+import { nodesOnlyMoved } from '../utils/mapRevision';
 import { structuralShareMap } from '../utils/structuralIdentity';
 import {
   NodeLayout,
@@ -35,6 +36,71 @@ export interface NodeLayoutsResult {
 
 type LayoutOpts = Pick<TopologyPanelOptions, 'nodeFontSize' | 'networkFontSize' | 'showSubtitle'>;
 type TemplateOpts = Pick<TopologyPanelOptions, 'nodeTemplates' | 'templateRules' | 'showSubtitle'>;
+
+/** True quando a caixa medida anterior ainda vale — só x/y iguais e a fonte do texto não mudou. */
+function sameMeasureSource(prev: NodeLayout & TopologyNode, node: TopologyNode): boolean {
+  return (
+    prev.type === node.type &&
+    prev.width === node.width &&
+    prev.height === node.height &&
+    prev.fontSize === node.fontSize &&
+    prev.icon === node.icon &&
+    prev.label === (node.label ?? '').trim() &&
+    (node.type === 'submap' || (prev.subtitle ?? '') === (node.subtitle ?? ''))
+  );
+}
+
+function canReuseNodeLayout(
+  prev: (NodeLayout & TopologyNode) | undefined,
+  node: TopologyNode
+): prev is NodeLayout & TopologyNode {
+  if (!prev) {
+    return false;
+  }
+  return prev.x === node.x && prev.y === node.y && sameMeasureSource(prev, node);
+}
+
+/** Reusa w/h/texto da caixa anterior e só atualiza a posição — arraste não remede o mapa. */
+function layoutMovedTo(
+  prev: NodeLayout & TopologyNode,
+  node: TopologyNode
+): NodeLayout & TopologyNode {
+  return {
+    ...prev,
+    ...node,
+    x: node.x,
+    y: node.y,
+    w: prev.w,
+    h: prev.h,
+    label: prev.label,
+    sub: prev.sub,
+    subtitle: prev.subtitle,
+    detailLines: prev.detailLines,
+    labelFontSize: prev.labelFontSize,
+    subFontSize: prev.subFontSize,
+    labelY: prev.labelY,
+    subY: prev.subY,
+    detailLineYs: prev.detailLineYs,
+    iconCenterY: prev.iconCenterY,
+  };
+}
+
+function applySubmapStatsLayout(
+  positioned: NodeLayout & TopologyNode,
+  statsSubtitle: string,
+  prev: (NodeLayout & TopologyNode) | undefined,
+  layoutOpts: LayoutOpts
+): NodeLayout & TopologyNode {
+  const withStats = { ...positioned, subtitle: statsSubtitle };
+  if (prev && prev.subtitle === statsSubtitle && canReuseNodeLayout(prev, withStats)) {
+    return prev;
+  }
+  if (prev && prev.subtitle === statsSubtitle && sameMeasureSource(prev, withStats)) {
+    return layoutMovedTo(prev, withStats);
+  }
+  const layout = computeNodeLayout(withStats, layoutOpts);
+  return { ...positioned, ...layout, subtitle: statsSubtitle };
+}
 
 function measureNodeLayout(
   node: TopologyNode,
@@ -115,11 +181,34 @@ export function useNodeLayouts({
 
   const previousLayoutsRef = useRef<Map<string, NodeLayout & TopologyNode>>();
   const previousStatsRef = useRef<Map<string, RegionHostStats>>();
+  const previousNodesRef = useRef<TopologyNode[]>();
+  const statsInputRef = useRef({
+    hostDisplay,
+    hostDisplayByRefId,
+    submapHosts,
+    hostMetadata,
+    childMaps,
+    hostProblems,
+    queryReady,
+    linkMetricsByLink,
+    links: map.links,
+    layoutOpts,
+    templateOpts,
+  });
 
   const baseResult = useMemo(() => {
     const layouts = new Map<string, NodeLayout & TopologyNode>();
     for (const node of map.nodes) {
       const liveNode = withLiveZabbixMeta(node, hostMetadata);
+      const prevLayout = previousLayoutsRef.current?.get(node.id);
+      if (canReuseNodeLayout(prevLayout, liveNode)) {
+        layouts.set(node.id, prevLayout);
+        continue;
+      }
+      if (prevLayout && sameMeasureSource(prevLayout, liveNode)) {
+        layouts.set(node.id, layoutMovedTo(prevLayout, liveNode));
+        continue;
+      }
       layouts.set(
         node.id,
         measureNodeLayout(
@@ -134,21 +223,41 @@ export function useNodeLayouts({
       );
     }
 
-    const stats = mergeRegionTrafficStats(
-      buildRegionStatsMap(
-        map.nodes,
-        layouts,
-        hostDisplay ?? {},
-        submapHosts,
-        hostMetadata,
-        hostDisplayByRefId,
-        childMaps,
-        hostProblems
-      ),
-      map,
-      layouts,
-      linkMetricsByLink ?? {}
-    );
+    const statsInput = statsInputRef.current;
+    const previousStats = previousStatsRef.current;
+    const skipRegionStats =
+      Boolean(previousStats) &&
+      statsInput.hostDisplay === hostDisplay &&
+      statsInput.hostDisplayByRefId === hostDisplayByRefId &&
+      statsInput.submapHosts === submapHosts &&
+      statsInput.hostMetadata === hostMetadata &&
+      statsInput.childMaps === childMaps &&
+      statsInput.hostProblems === hostProblems &&
+      statsInput.queryReady === queryReady &&
+      statsInput.linkMetricsByLink === linkMetricsByLink &&
+      statsInput.links === map.links &&
+      statsInput.layoutOpts === layoutOpts &&
+      statsInput.templateOpts === templateOpts &&
+      nodesOnlyMoved(previousNodesRef.current ?? [], map.nodes);
+
+    const stats =
+      skipRegionStats && previousStats
+        ? previousStats
+        : mergeRegionTrafficStats(
+            buildRegionStatsMap(
+              map.nodes,
+              layouts,
+              hostDisplay ?? {},
+              submapHosts,
+              hostMetadata,
+              hostDisplayByRefId,
+              childMaps,
+              hostProblems
+            ),
+            map,
+            layouts,
+            linkMetricsByLink ?? {}
+          );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
         continue;
@@ -161,9 +270,9 @@ export function useNodeLayouts({
       if (!positioned) {
         continue;
       }
-      const withStats = { ...positioned, subtitle: formatRegionStats(region, queryReady, 'submap') };
-      const layout = computeNodeLayout(withStats, layoutOpts);
-      layouts.set(node.id, { ...positioned, ...layout, subtitle: withStats.subtitle });
+      const statsSubtitle = formatRegionStats(region, queryReady, 'submap');
+      const prevSubmap = previousLayoutsRef.current?.get(node.id);
+      layouts.set(node.id, applySubmapStatsLayout(positioned, statsSubtitle, prevSubmap, layoutOpts));
     }
 
     // Um host mudando de status remede **todos** os nós. Reaproveitar a caixa anterior de cada nó
@@ -173,6 +282,20 @@ export function useNodeLayouts({
     const sharedStats = structuralShareMap(stats, previousStatsRef.current);
     previousLayoutsRef.current = sharedLayouts;
     previousStatsRef.current = sharedStats;
+    previousNodesRef.current = map.nodes;
+    statsInputRef.current = {
+      hostDisplay,
+      hostDisplayByRefId,
+      submapHosts,
+      hostMetadata,
+      childMaps,
+      hostProblems,
+      queryReady,
+      linkMetricsByLink,
+      links: map.links,
+      layoutOpts,
+      templateOpts,
+    };
 
     return { nodeLayouts: sharedLayouts, regionStats: sharedStats };
     // `options` inteiro não entra: o layout só depende de `layoutOpts` (fonte/subtítulo). Com o

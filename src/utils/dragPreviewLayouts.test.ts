@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyNode } from '../types';
-import { applyDragPreviewToLayouts, LayoutMap } from './dragPreviewLayouts';
+import { applyDragPreviewToLayouts, dragPreviewCaughtUp, LayoutMap } from './dragPreviewLayouts';
 import { NodeLayout } from './nodeLayout';
 
 function box(id: string, x: number, y: number): NodeLayout & TopologyNode {
@@ -49,5 +49,31 @@ describe('applyDragPreviewToLayouts', () => {
     expect(next.get('a')?.w).toBe(120);
     expect(next.get('a')?.h).toBe(60);
     expect(next.get('b')).toBe(b);
+  });
+});
+
+describe('dragPreviewCaughtUp', () => {
+  it('preview nulo já está em dia com o mapa', () => {
+    expect(dragPreviewCaughtUp(layoutsOf(box('a', 0, 0)), null)).toBe(true);
+  });
+
+  it('posições do arraste só batem quando cada caixa já tem x/y gravados', () => {
+    const layouts = layoutsOf(box('a', 10, 20), box('b', 80, 0));
+    expect(dragPreviewCaughtUp(layouts, { positions: { a: { x: 10, y: 20 } } })).toBe(true);
+    expect(dragPreviewCaughtUp(layouts, { positions: { a: { x: 10.4, y: 20.4 } } })).toBe(true);
+    expect(dragPreviewCaughtUp(layouts, { positions: { a: { x: 11, y: 20 } } })).toBe(false);
+  });
+
+  it('resize só bate quando largura e altura já estão na caixa', () => {
+    const layouts = layoutsOf(box('a', 0, 0));
+    expect(dragPreviewCaughtUp(layouts, { nodeId: 'a', width: 40, height: 24 })).toBe(true);
+    expect(dragPreviewCaughtUp(layouts, { nodeId: 'a', width: 120, height: 60 })).toBe(false);
+  });
+
+  it('preview de waypoint de cabo não é comparado com caixas de nó', () => {
+    const layouts = layoutsOf(box('a', 0, 0));
+    expect(
+      dragPreviewCaughtUp(layouts, { linkWaypoints: { key: 'a->b', waypoints: [{ x: 1, y: 1 }] } })
+    ).toBe(false);
   });
 });
