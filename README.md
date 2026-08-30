@@ -2,8 +2,6 @@
 
 Plugin de painel para **Grafana 9+** que exibe mapas de topologia de rede, com status ao vivo via **Zabbix**.
 
-Repositório: [github.com/Luminous-Telecom/topology-panel](https://github.com/Luminous-Telecom/topology-panel)
-
 ## Funcionalidades
 
 - **Hosts** coloridos por status (ICMP / Perda de Pacotes do Zabbix)
@@ -25,36 +23,6 @@ Repositório: [github.com/Luminous-Telecom/topology-panel](https://github.com/Lu
 - Grafana **9+** (testado em Grafana 11/13)
 - Datasource Zabbix (obrigatório, para status e tráfego)
 - Windows + Winbox (para abrir Winbox a partir do navegador)
-
-## Instalação do plugin (Grafana)
-
-```bash
-git clone https://github.com/Luminous-Telecom/topology-panel.git
-cd topology-panel
-npm install
-npm run build
-```
-
-Copie o build para o servidor Grafana:
-
-```bash
-sudo mkdir -p /var/lib/grafana/plugins/luminous-topology-panel
-sudo cp -r dist/* /var/lib/grafana/plugins/luminous-topology-panel/
-sudo chown -R grafana:grafana /var/lib/grafana/plugins/luminous-topology-panel
-```
-
-Em `grafana.ini`:
-
-```ini
-[plugins]
-allow_loading_unsigned_plugins = luminous-topology-panel
-```
-
-Reinicie o Grafana:
-
-```bash
-sudo systemctl restart grafana-server
-```
 
 ## Abrir Winbox a partir do mapa (Windows)
 
@@ -176,17 +144,26 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
   "networksLocked": true,
   "nodes": [
     {
-      "id": "swv01",
-      "label": "SWV01-SWITCH",
-      "subtitle": "10.255.1.145",
-      "zabbixHost": "SWV01-SWITCH-S6730H",
+      "id": "host-a",
+      "label": "Host A",
+      "subtitle": "10.0.0.1",
+      "zabbixHost": "host-a",
       "type": "host",
       "x": 400,
       "y": 300
     },
     {
-      "id": "net-core",
-      "label": "CORE",
+      "id": "host-b",
+      "label": "Host B",
+      "subtitle": "10.0.0.2",
+      "zabbixHost": "host-b",
+      "type": "host",
+      "x": 520,
+      "y": 300
+    },
+    {
+      "id": "net-a",
+      "label": "Rede A",
       "type": "network",
       "x": 25,
       "y": 25,
@@ -194,17 +171,17 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
       "height": 250
     },
     {
-      "id": "sub-plw",
-      "label": "PORTALEGRE",
+      "id": "sub-a",
+      "label": "Submapa",
       "type": "submap",
-      "submapUid": "topo-plw",
+      "submapUid": "dash-a",
       "x": 700,
       "y": 200
     }
   ],
   "links": [
-    { "from": "swv01", "to": "sub-plw", "medium": "fiber" },
-    { "from": "swv01", "to": "liteap-01", "medium": "radio" }
+    { "from": "host-a", "to": "sub-a", "medium": "fiber" },
+    { "from": "host-a", "to": "host-b", "medium": "radio" }
   ]
 }
 ```
@@ -224,33 +201,6 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
 |----------|--------|
 | `fiber` | Linha reta contínua (padrão) |
 | `radio` | Linha tracejada |
-
-## Desenvolvimento
-
-O Grafana não carrega `src/` direto (só `module.js` AMD). O watch recompila o TypeScript
-na pasta do plugin; `dist/` é só o pacote de produção.
-
-```bash
-npm run dev        # watch src/ → /var/lib/grafana/plugins/luminous-topology-panel
-npm run typecheck  # TypeScript
-npm run build      # produção → dist/ (deploy)
-```
-
-## Estrutura do repositório
-
-```
-src/
-  components/     # TopologyCanvas, TopologyPanel, modais
-  editor/         # Editor JSON / nós / links
-  utils/          # Zabbix, mapEdits, hostTools
-  types.ts        # Tipos do mapa e opções
-  module.ts       # Registro do plugin Grafana
-extras/
-  winbox-protocol/  # Registrar winbox:// no Windows
-.config/            # Webpack
-```
-
-> Mapas de exemplo, dashboards Grafana e scripts de deploy interno **não** fazem parte deste repositório — ficam no ambiente Luminous.
 
 ## Licença
 
