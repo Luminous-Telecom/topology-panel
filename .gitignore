@@ -5,8 +5,10 @@ dist/
 
 # Artefatos locais
 scripts/
+packaging/out/
 *.tar.gz
 *.tgz
+*.zip
 .cache/
 coverage/
 

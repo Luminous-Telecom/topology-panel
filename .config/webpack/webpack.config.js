@@ -117,6 +117,8 @@ module.exports = (env) => {
         patterns: [
           { from: 'src/plugin.json', to: '.' },
           { from: 'src/img/plugin-icon.svg', to: 'img/plugin-icon.svg' },
+          { from: 'LICENSE', to: '.' },
+          { from: 'EULA.md', to: '.' },
         ],
       }),
     ],

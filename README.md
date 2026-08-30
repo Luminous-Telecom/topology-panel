@@ -204,4 +204,6 @@ Opções do painel → **Acesso remoto**: usuário/senha usados quando o host n�
 
 ## Licença
 
-Apache-2.0
+Software **proprietário** da Luminous Telecom. O uso exige aceitar o [EULA](EULA.md) e um ZIP assinado para o `root_url` do Grafana da Licenciada. Distribuição, revenda e instalação em outra instância são proibidas.
+
+Versões anteriores eventualmente publicadas sob Apache-2.0 continuam Apache-2.0 para quem as obteve naquela licença.

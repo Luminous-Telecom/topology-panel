@@ -9,11 +9,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sign": "bash scripts/sign.sh",
+    "pack:private": "bash packaging/build-private-zip.sh",
     "deploy": "bash scripts/deploy.sh homolog",
     "deploy:prod": "bash scripts/deploy.sh prod"
   },
   "author": "Luminous Telecom",
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN EULA.md",
   "devDependencies": {
     "@grafana/data": "^11.0.0",
     "@grafana/runtime": "^11.0.0",

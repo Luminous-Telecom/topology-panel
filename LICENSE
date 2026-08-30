@@ -1,0 +1,12 @@
+Copyright (c) Luminous Telecom. Todos os direitos reservados.
+
+O Topology Panel (luminous-topology-panel) é software proprietário.
+O uso é permitido somente nos termos do EULA.md e apenas na instância
+Grafana cujo root_url conste do MANIFEST.txt do ZIP assinado entregue
+à Licenciada.
+
+Distribuição, revenda, sublicença e instalação em outro Grafana são
+proibidas.
+
+Versões anteriores eventualmente publicadas sob Apache-2.0 permanecem
+sob Apache-2.0 para quem as tenha obtido naquela licença.

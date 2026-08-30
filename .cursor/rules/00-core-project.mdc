@@ -22,7 +22,8 @@ de topologia de rede com status vindo do Zabbix.
 - `react`, `react-dom` e `@grafana/data|ui|runtime|schema` são **externals** do webpack: vêm do host
   Grafana em runtime e não entram no bundle.
 - Scripts existentes: `npm run build`, `npm run dev`, `npm run typecheck`, `npm run test`,
-  `npm run test:watch`. **Não existe** script de lint — não sugira `npm run lint`.
+  `npm run test:watch`, `npm run pack:private` (ZIP privado por `root_url`; token só em env).
+  **Não existe** script de lint — não sugira `npm run lint`.
 
 ## Regras obrigatórias
 
