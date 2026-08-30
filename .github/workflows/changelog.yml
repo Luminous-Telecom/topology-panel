@@ -1,9 +1,12 @@
-name: Versão e changelog
+name: Versão, changelog e release
 
 on:
   pull_request:
   push:
     branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   check:
@@ -23,3 +26,29 @@ jobs:
             echo "CHANGELOG.md não tem entrada ## [${ver}]" >&2
             exit 1
           fi
+          node .config/changelog-notes.mjs "$ver" >/dev/null
+
+  release:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versão do plugin
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Publicar GitHub Release se a tag ainda não existe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.ver.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag já existe — nada a fazer."
+            exit 0
+          fi
+          node .config/changelog-notes.mjs "${{ steps.ver.outputs.version }}" > /tmp/release-notes.md
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes-file /tmp/release-notes.md \
+            --target "${{ github.sha }}"

@@ -41,6 +41,8 @@ Todo commit no git (GitHub) inclui versão e changelog:
    ambiente (ver `20-security.mdc`).
 3. Stage `CHANGELOG.md`, `package.json` e `src/plugin.json` junto com o diff da tarefa.
 4. Mensagem em português, imperativo, com escopo concreto; **sempre** encerre com `(vX.Y.Z)`.
+5. Push na `main`: o Actions cria a GitHub Release `vX.Y.Z` com as notas do `CHANGELOG.md`.
+   Não anexe ZIP privado. Não rode `gh release create` na mão, salvo se o Actions falhar.
 
 ## Faça / Não faça
 

@@ -208,4 +208,5 @@ Software **proprietário** da Luminous Telecom. O uso exige aceitar o [EULA](EUL
 
 Versões anteriores eventualmente publicadas sob Apache-2.0 continuam Apache-2.0 para quem as obteve naquela licença.
 
-O histórico de versões está no [CHANGELOG](CHANGELOG.md).
+O histórico de versões está no [CHANGELOG](CHANGELOG.md). Cada versão na `main` vira
+[GitHub Release](https://github.com/Luminous-Telecom/topology-panel/releases).

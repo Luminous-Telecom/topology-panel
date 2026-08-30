@@ -5,6 +5,12 @@ Todas as mudanças relevantes do Topology Panel ficam neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A versão em
 `package.json` e `src/plugin.json` sobe **no mesmo commit** que a entrada abaixo.
 
+## [1.4.390] - 2026-08-30
+
+### Adicionado
+
+- Push na `main` publica GitHub Release `vX.Y.Z` com as notas do changelog.
+
 ## [1.4.389] - 2026-08-30
 
 ### Adicionado

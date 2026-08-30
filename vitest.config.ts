@@ -17,7 +17,7 @@ export default defineConfig({
     // src/utils/*.test.ts que importam de utils.ts/mapEdits.ts precisam de DOM.
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', '.config/**/*.test.ts'],
     // @grafana/data (ESM) importa alguns módulos internos do react-use sem extensão —
     // falha na resolução ESM estrita do Node. Processar via transform do Vite (como um
     // bundler) resolve normalmente, em vez de deixar o Node carregar o pacote "cru".

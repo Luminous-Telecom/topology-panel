@@ -23,6 +23,7 @@ de topologia de rede com status vindo do Zabbix.
   Grafana em runtime e não entram no bundle.
 - Scripts existentes: `npm run build`, `npm run dev`, `npm run typecheck`, `npm run test`,
   `npm run test:watch`, `npm run version:bump` (patch em `package.json` + `src/plugin.json`),
+  `npm run changelog:notes` (corpo da versão para GitHub Release),
   `npm run pack:private` (ZIP privado por `root_url`; token só em env).
   **Não existe** script de lint — não sugira `npm run lint`.
 
@@ -40,7 +41,8 @@ de topologia de rede com status vindo do Zabbix.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).
 - Ao mudar a versão, faça bump de `package.json` e `src/plugin.json` **juntos**, com o mesmo
-  número, e uma entrada `## [X.Y.Z]` no `CHANGELOG.md` no mesmo commit.
+  número, e uma entrada `## [X.Y.Z]` no `CHANGELOG.md` no mesmo commit. Push na `main` publica
+  a GitHub Release `vX.Y.Z` (Actions, notas do changelog). Sem ZIP privado na release.
 - Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh`. Pedido de "deploy"
   (sem qualificador) publica em **homolog e prod**, nesta ordem. Se o commit já bumpou a
   versão, os dois alvos usam `SKIP_VERSION_BUMP=1`. Senão, um bump no primeiro alvo e
