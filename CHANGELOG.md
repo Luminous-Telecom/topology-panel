@@ -5,6 +5,14 @@ Todas as mudanças relevantes do Topology Panel ficam neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A versão em
 `package.json` e `src/plugin.json` sobe **no mesmo commit** que a entrada abaixo.
 
+## [Unreleased]
+
+## [1.4.391] - 2026-08-30
+
+### Alterado
+
+- Rules do Cursor passam a exigir bullet no changelog em toda tarefa e bump de versão em todo commit.
+
 ## [1.4.390] - 2026-08-30
 
 ### Adicionado

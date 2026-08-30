@@ -20,7 +20,10 @@ Toda tarefa e todo commit deste repositório.
 3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
 4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
 5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.
-6. **Não rode deploy** durante o desenvolvimento. Publicação só quando o usuário pedir
+6. **CHANGELOG:** se a tarefa mudou produto, correção ou fluxo, o `CHANGELOG.md` já tem o
+   bullet em `## [Unreleased]` (Adicionado / Alterado / Corrigido / Removido). Sem isso a
+   tarefa não está encerrada.
+7. **Não rode deploy** durante o desenvolvimento. Publicação só quando o usuário pedir
    explicitamente. "Deploy" (sem qualificador) = **homolog e prod**. Se o commit já bumpou a
    versão, os dois alvos usam `SKIP_VERSION_BUMP=1`. Senão: `./scripts/deploy.sh homolog` e
    `SKIP_VERSION_BUMP=1 ./scripts/deploy.sh prod`. Ambiente único só se o usuário disser
@@ -31,16 +34,16 @@ Toda tarefa e todo commit deste repositório.
 Só commite quando o usuário pedir. Antes de redigir a mensagem, rode e **leia**: `git status`,
 `git diff`, `git diff --staged` e `git log` (para seguir o estilo recente).
 
-Todo commit no git (GitHub) inclui versão e changelog:
+Todo commit no git (GitHub) inclui versão e changelog — **nunca commite sem os dois**:
 
-1. Compare `package.json` com o HEAD. Se a versão ainda é a do HEAD, rode
-   `npm run version:bump` (`package.json` + `src/plugin.json`, mesmo número). Não bumpa de
-   novo se o deploy desta tarefa já incrementou.
-2. Inclua no topo de `CHANGELOG.md` (depois do título) `## [X.Y.Z] - AAAA-MM-DD` e um
-   bullet em português em Adicionado, Alterado, Corrigido ou Removido. Sem inventário do
-   ambiente (ver `20-security.mdc`).
-3. Stage `CHANGELOG.md`, `package.json` e `src/plugin.json` junto com o diff da tarefa.
-4. Mensagem em português, imperativo, com escopo concreto; **sempre** encerre com `(vX.Y.Z)`.
+1. Confirme que `CHANGELOG.md` tem os bullets da tarefa em `## [Unreleased]`. Faltou? Escreva
+   agora. Sem inventário do ambiente (ver `20-security.mdc`).
+2. Compare `package.json` com o HEAD. Se a versão ainda é a do HEAD, rode
+   `npm run version:bump` (`package.json` + `src/plugin.json`). Não bumpa de novo se o deploy
+   desta tarefa já incrementou.
+3. Renomeie `## [Unreleased]` para `## [X.Y.Z] - AAAA-MM-DD` e deixe um `## [Unreleased]`
+   vazio acima (só o heading). Stage `CHANGELOG.md`, `package.json` e `src/plugin.json`.
+4. Mensagem em português, imperativo; **sempre** encerre com `(vX.Y.Z)`.
 5. Push na `main`: o Actions cria a GitHub Release `vX.Y.Z` com as notas do `CHANGELOG.md`.
    Não anexe ZIP privado. Não rode `gh release create` na mão, salvo se o Actions falhar.
 
