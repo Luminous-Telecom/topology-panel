@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { CanvasTool, TopologyLink, TopologyNode } from '../types';
 
 export type CanvasPendingLink = {
@@ -22,22 +22,25 @@ export type CanvasPingTarget = {
  */
 export function useCanvasSession(canEditCanvas: boolean) {
   const [tool, setTool] = useState<CanvasTool>(() => (canEditCanvas ? 'select' : 'pan'));
-  const panTool = tool === 'pan';
-  const toolRef = useRef(tool);
-  toolRef.current = tool;
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
   const [pendingLink, setPendingLink] = useState<CanvasPendingLink | null>(null);
   const [detailsLink, setDetailsLink] = useState<TopologyLink | null>(null);
   const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [pingTarget, setPingTarget] = useState<CanvasPingTarget | null>(null);
+  const toolRef = useRef<CanvasTool>(canEditCanvas ? 'select' : 'pan');
 
-  useEffect(() => {
-    setTool(canEditCanvas ? 'select' : 'pan');
-  }, [canEditCanvas]);
+  // Persistir pan no estado (ao destravar não volta a seta) e já devolver pan neste render
+  // — um effect pintava um frame com a seta ainda ativa.
+  if (!canEditCanvas && tool !== 'pan') {
+    setTool('pan');
+  }
+  const effectiveTool: CanvasTool = canEditCanvas ? tool : 'pan';
+  const panTool = effectiveTool === 'pan';
+  toolRef.current = effectiveTool;
 
   return {
-    tool,
+    tool: effectiveTool,
     setTool,
     toolRef,
     panTool,

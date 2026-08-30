@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { MutableRefObject } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
@@ -10,8 +10,7 @@ interface Props {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
-  editable: boolean;
-  panTool: boolean;
+  interactionRef: MutableRefObject<{ editable: boolean; panTool: boolean }>;
   selectedLink: TopologyLink | null;
   hoveredLinkKey: string | null;
   setHoveredLinkKey: (key: string | null) => void;
@@ -31,8 +30,7 @@ function LinksLayerComponent({
   renderLinks,
   nodeLayouts,
   options,
-  editable,
-  panTool,
+  interactionRef,
   selectedLink,
   hoveredLinkKey,
   setHoveredLinkKey,
@@ -61,17 +59,21 @@ function LinksLayerComponent({
           bundleOffset={bundleOffset}
           nodeLayouts={nodeLayouts}
           options={options}
-          editable={editable}
-          panTool={panTool}
           selected={selectedKey === lk}
           hovered={hoveredLinkKey === lk}
           runtimeMetrics={linkMetricsByLink[lk]}
           fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
           toHostOffline={isHostNodeOffline(nodeLayouts.get(link.to), hostDisplay, hostMetadata)}
-          onSelect={() => onLinkSelect(link)}
+          onSelect={() => {
+            const { panTool, editable } = interactionRef.current;
+            if (!panTool && !editable) {
+              onLinkSelect(link);
+            }
+          }}
           onHoverChange={(active) => setHoveredLinkKey(active ? lk : null)}
           onContextMenu={(e) => onLinkContextMenu(e, link)}
           onPathPointerDown={(e) => {
+            const { panTool, editable } = interactionRef.current;
             if (panTool || !editable) {
               // Mão: pan no cabo; seta em visualização: só seleciona.
               if (panTool && options.enablePan) {
@@ -84,7 +86,7 @@ function LinksLayerComponent({
             beginWaypointDragFromPath(e, link);
           }}
           onPathDoubleClick={(e) => {
-            if (!editable) {
+            if (!interactionRef.current.editable) {
               return;
             }
             e.stopPropagation();

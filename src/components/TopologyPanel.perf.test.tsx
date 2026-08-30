@@ -502,3 +502,54 @@ describe(`custo de soltar um nó (${HOST_COUNT} hosts)`, () => {
     expect(renderCounts.link).toBeLessThanOrEqual(2);
   });
 });
+
+describe('custo de travar o mapa', () => {
+  it('trava e destrava não redesenham hosts nem cabos', () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const { getByRole } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />
+    );
+
+    resetCounts();
+    fireEvent.click(getByRole('button', { name: 'Mapa editável' }));
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+
+    resetCounts();
+    fireEvent.click(getByRole('button', { name: 'Mapa travado' }));
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+  });
+
+  it('trava de redes não redesenha hosts nem cabos', () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const { getByRole } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />
+    );
+
+    resetCounts();
+    fireEvent.click(getByRole('button', { name: 'Redes travadas' }));
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+  });
+
+  it('trava não grava o Grafana no idle curto', async () => {
+    const map = buildMap(HOST_COUNT);
+    const options = perfOptions(map);
+    const onOptionsChange = vi.fn();
+    const { getByRole } = render(
+      <TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} onOptionsChange={onOptionsChange} />
+    );
+
+    onOptionsChange.mockClear();
+    fireEvent.click(getByRole('button', { name: 'Mapa editável' }));
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 450);
+      });
+    });
+    expect(onOptionsChange).not.toHaveBeenCalled();
+  });
+});

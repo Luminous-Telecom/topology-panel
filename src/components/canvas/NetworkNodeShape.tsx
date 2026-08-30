@@ -20,9 +20,6 @@ interface NetworkNodeShapeProps {
   queryReady?: boolean;
   resolveColor: ColorResolver;
   isSelected: boolean;
-  panTool: boolean;
-  editable: boolean;
-  networksLocked: boolean;
   onPointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
   onDoubleClick: (e: React.MouseEvent, node: TopologyNode) => void;
   onContextMenu: (e: React.MouseEvent, node: TopologyNode) => void;
@@ -46,9 +43,6 @@ function NetworkNodeShapeComponent({
   queryReady,
   resolveColor,
   isSelected,
-  panTool,
-  editable,
-  networksLocked,
   onPointerDown,
   onDoubleClick,
   onContextMenu,
@@ -68,20 +62,12 @@ function NetworkNodeShapeComponent({
   return (
     <g
       data-node-id={node.id}
+      data-node-type={node.type}
       className={networkOffline ? canvasStyles.offlineBlink : undefined}
       pointerEvents="auto"
       onPointerDown={(e) => onPointerDown(e, node)}
       onDoubleClick={(e) => onDoubleClick(e, node)}
       onContextMenu={(e) => onContextMenu(e, node)}
-      style={{
-        cursor: panTool
-          ? options.enablePan
-            ? 'grab'
-            : 'default'
-          : editable && !networksLocked
-            ? 'move'
-            : 'default',
-      }}
     >
       <rect
         x={x}
@@ -109,20 +95,19 @@ function NetworkNodeShapeComponent({
           {statsLabel}
         </text>
       )}
-      {editable && !networksLocked && (
-        <rect
-          x={x + w - 10}
-          y={y + h - 10}
-          width={10}
-          height={10}
-          fill="rgba(255,255,255,0.45)"
-          stroke="rgba(255,255,255,0.6)"
-          strokeWidth={1}
-          style={{ cursor: 'nwse-resize' }}
-          onPointerDown={(e) => onResizePointerDown(e, node)}
-          onPointerUp={(e) => onResizePointerUp(e)}
-        />
-      )}
+      <rect
+        className={`${canvasStyles.resizeHandle} ${canvasStyles.networkResizeHandle}`}
+        x={x + w - 10}
+        y={y + h - 10}
+        width={10}
+        height={10}
+        fill="rgba(255,255,255,0.45)"
+        stroke="rgba(255,255,255,0.6)"
+        strokeWidth={1}
+        style={{ cursor: 'nwse-resize' }}
+        onPointerDown={(e) => onResizePointerDown(e, node)}
+        onPointerUp={(e) => onResizePointerUp(e)}
+      />
     </g>
   );
 }

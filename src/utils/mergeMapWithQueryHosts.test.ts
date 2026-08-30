@@ -122,6 +122,30 @@ describe('patchDisplayMapPositions', () => {
     expect(patched!.nodes[1]).toMatchObject({ id: 'moved', x: 90, y: 40, label: 'Moved' });
   });
 
+  it('trava nova no mapa salvo reusa o display inteiro', () => {
+    const node = hostNode({ id: 'a', x: 1, y: 1 });
+    const prevDisplay = emptyMap({ nodes: [node], locked: false });
+    const nextStored = { ...prevDisplay, locked: true };
+    expect(patchDisplayMapPositions(prevDisplay, nextStored)).toBe(prevDisplay);
+  });
+
+  it('eco com a mesma trava devolve o display anterior', () => {
+    const node = hostNode({ id: 'a', x: 1, y: 1 });
+    const prevDisplay = emptyMap({ nodes: [node], locked: true });
+    const nextStored = { ...prevDisplay, locked: true };
+    expect(patchDisplayMapPositions(prevDisplay, nextStored)).toBe(prevDisplay);
+  });
+
+  it('dimensão nova no mapa salvo reusa os nós', () => {
+    const node = hostNode({ id: 'a', x: 1, y: 1 });
+    const prevDisplay = emptyMap({ nodes: [node], width: 800, height: 600 });
+    const nextStored = { ...prevDisplay, width: 1200 };
+    const patched = patchDisplayMapPositions(prevDisplay, nextStored);
+    expect(patched).not.toBe(prevDisplay);
+    expect(patched?.nodes[0]).toBe(node);
+    expect(patched?.width).toBe(1200);
+  });
+
   it('ignora id extra só no mapa salvo e ainda aplica o x/y', () => {
     const a = hostNode({ id: 'a', x: 1, y: 1 });
     const hidden = hostNode({ id: 'hidden', x: 0, y: 0 });

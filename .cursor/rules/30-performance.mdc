@@ -39,6 +39,12 @@ hooks de arraste/viewport.
 - Memoize com `useMemo`/`useCallback` tudo que é passado como prop para o canvas, minimapa ou lista
   de nós. Dependência precisa ser estável: não construa objeto ou array literal dentro do array de
   deps.
+- Trava do mapa e das redes não pode invalidar o `React.memo` das formas: flags vão em atributo do
+  container (`data-canvas-editable`, `data-networks-locked`) e o CSS esconde alça/cursor. `editable`,
+  `panTool` e `networksLocked` não descem para `HostNodeShape` / `NetworkNodeShape` / `LinkLine`.
+- Trava/dimensão (mesmos `nodes`/`links`) não chama `onOptionsChange` no clique: o JSON inteiro do
+  mapa congela o tráfego. `applyMap` local na hora; persist no próximo arraste, no flush, ao
+  salvar/sair do dashboard (`eventTargetRequestsDashboardFlush`) ou ao ocultar a aba.
 - Estado de alta frequência (pointermove, wheel, pan, resize) vai em `ref` + `requestAnimationFrame`:
   um commit por frame, nunca `setState` por evento de ponteiro. Preview de gesto usa
   `hooks/useGestureFrame.ts` + `utils/canvasGestureStore.ts` (não `useState` no `TopologyCanvas`):
@@ -59,6 +65,7 @@ hooks de arraste/viewport.
 - Todo efeito que registra listener, `setInterval`, `setTimeout`, `requestAnimationFrame`,
   `AbortController`, `MutationObserver` ou subscription do `eventBus` retorna cleanup que remove ou
   aborta o recurso — inclusive o controller guardado em `ref`: zerar a ref não aborta a requisição.
+  Observer do chrome Grafana (`observeGrafanaChrome`) ignora `SVGElement` e agrupa o resto num rAF.
 
 ## Imports e bundle
 

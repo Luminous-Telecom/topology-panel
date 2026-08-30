@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopologyMap } from '../types';
+import { eventTargetRequestsDashboardFlush } from '../utils/grafanaDashboardEdit';
 import { mapRevisionChanged, sameNodeGeometry } from '../utils/mapRevision';
 import { scheduleAfterPaint, scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 
@@ -16,6 +17,9 @@ function cloneMap(map: TopologyMap): TopologyMap {
  *
  * Com `persistRemote`, o pointerup **não** chama `applyMap` nem grava no Grafana: o preview
  * segura a posição. No idle entram o mapa local e, num idle seguinte, o JSON das opções.
+ * Troca só de trava/dimensão (mesmos `nodes`/`links`) aplica o mapa local na hora e **não**
+ * chama `onOptionsChange` no idle curto — o JSON inteiro congelava o tráfego. A gravação
+ * entra no próximo arraste, no flush, ao salvar/sair do dashboard ou ao ocultar a aba.
  */
 export function useMapHistory(
   currentMap: TopologyMap,
@@ -137,6 +141,34 @@ export function useMapHistory(
     [flushRemote]
   );
 
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        flushRemote();
+      }
+    };
+    const onClick = (event: MouseEvent) => {
+      if (eventTargetRequestsDashboardFlush(event.target)) {
+        flushRemote();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        flushRemote();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushRemote);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushRemote);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [flushRemote]);
+
   /** Mapa trocado externamente (dashboard recarregado) — zera histórico. */
   useEffect(() => {
     if (pendingLocalCommitRef.current) {
@@ -197,6 +229,14 @@ export function useMapHistory(
         committedJsonRef.current = nextJson;
       }
       if (persistRemoteRef.current) {
+        // Trava/dimensão: mesmos nodes/links — pinta na hora. Não gravar no Grafana
+        // agora: onOptionsChange do JSON inteiro congela o tráfego por alguns segundos.
+        if (prev.nodes === map.nodes && prev.links === map.links) {
+          applyMap(map);
+          pendingGrafanaRef.current = map;
+          bump();
+          return;
+        }
         scheduleRemote(map);
         return;
       }

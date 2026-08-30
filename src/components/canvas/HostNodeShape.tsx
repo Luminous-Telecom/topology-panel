@@ -41,10 +41,6 @@ interface HostNodeShapeProps {
   isSelectedLinkEndpoint: boolean;
   isLinkSource: boolean;
   isLinkTarget: boolean;
-  /** Está no modo "criar link" — muda o cursor para mira. */
-  linkMode: boolean;
-  panTool: boolean;
-  editable: boolean;
   onPointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
   onClick: (e: React.MouseEvent, node: TopologyNode) => void;
   onDoubleClick: (e: React.MouseEvent, node: TopologyNode) => void;
@@ -73,9 +69,6 @@ function HostNodeShapeComponent({
   isSelectedLinkEndpoint,
   isLinkSource,
   isLinkTarget,
-  linkMode,
-  panTool,
-  editable,
   onPointerDown,
   onClick,
   onDoubleClick,
@@ -127,6 +120,7 @@ function HostNodeShapeComponent({
   return (
     <g
       data-node-id={node.id}
+      data-node-type={node.type}
       className={isOfflineBlink ? canvasStyles.offlineBlink : undefined}
       opacity={dimmed ? 0.18 : 1}
       onPointerDown={(e) => onPointerDown(e, node)}
@@ -136,19 +130,6 @@ function HostNodeShapeComponent({
       onMouseEnter={(e) => onMouseEnter(e, node)}
       onMouseMove={(e) => onMouseMove(e, node)}
       onMouseLeave={(e) => onMouseLeave(e, node)}
-      style={{
-        cursor: panTool
-          ? options.enablePan
-            ? 'grab'
-            : 'default'
-          : linkMode
-            ? 'crosshair'
-            : isHostNode(node) || node.type === 'submap' || node.type === 'dashboard_picker'
-              ? 'pointer'
-              : editable
-                ? 'move'
-                : 'default',
-      }}
     >
       <rect
         x={x}
@@ -168,9 +149,9 @@ function HostNodeShapeComponent({
         strokeWidth={isSelected || isSelectedLinkEndpoint ? 3 : isLinkSource || isLinkTarget ? 2 : 1}
       />
       {hostIcon && <HostIconGlyph icon={hostIcon} x={iconX} y={iconY} />}
-      {editable &&
-        (node.type === 'static' || node.type === 'submap' || node.type === 'dashboard_picker') && (
+      {(node.type === 'static' || node.type === 'submap' || node.type === 'dashboard_picker') && (
         <rect
+          className={canvasStyles.resizeHandle}
           x={x + w - 10}
           y={y + h - 10}
           width={10}

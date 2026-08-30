@@ -81,6 +81,52 @@
   }
 }
 
+.resizeHandle {
+  cursor: nwse-resize;
+}
+
+.networkResizeHandle {}
+
+/* Trava e ferramenta ficam no container: o SVG dos nós/cabos não precisa redesenhar. */
+.wrap:not([data-canvas-editable='true']) .resizeHandle {
+  display: none;
+}
+
+.wrap[data-networks-locked='true'] .networkResizeHandle {
+  display: none;
+}
+
+.wrapPan [data-node-id],
+.wrapPan [data-link-hit] {
+  cursor: grab;
+}
+
+.wrapSelect [data-link-hit] {
+  cursor: pointer;
+}
+
+.wrapSelect[data-canvas-editable='true'][data-link-mode='true'] [data-node-id] {
+  cursor: crosshair;
+}
+
+.wrapSelect[data-canvas-editable='true'] [data-node-type='network'] {
+  cursor: move;
+}
+
+.wrapSelect[data-canvas-editable='true'][data-networks-locked='true'] [data-node-type='network'] {
+  cursor: default;
+}
+
+.wrapSelect[data-canvas-editable='true'] [data-node-type='static'] {
+  cursor: move;
+}
+
+.wrapSelect[data-canvas-editable='true'] [data-node-type='host'],
+.wrapSelect[data-canvas-editable='true'] [data-node-type='submap'],
+.wrapSelect[data-canvas-editable='true'] [data-node-type='dashboard_picker'] {
+  cursor: pointer;
+}
+
 .svg {
   display: block;
   user-select: none;

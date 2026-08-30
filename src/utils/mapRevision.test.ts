@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultOptions } from '../types';
-import { isPositionOnlyMapChange, mapRevisionChanged, nodesOnlyMoved, reuseMapsIfOnlyMoved, reuseResolvedOptionsIfOnlyMoved, sameNodeGeometry } from './mapRevision';
+import { isPositionOnlyMapChange, mapRevisionChanged, nodesOnlyMoved, reuseMapsIfOnlyMoved, reuseResolvedOptionsIfOnlyMoved, sameMapDocumentFlags, sameNodeGeometry } from './mapRevision';
 import { emptyMap, hostNode } from './testMapFixtures';
 
 describe('mapRevisionChanged', () => {
@@ -34,6 +34,26 @@ describe('sameNodeGeometry', () => {
   });
 });
 
+describe('sameMapDocumentFlags', () => {
+  it('trava diferente não é o mesmo documento', () => {
+    const a = emptyMap({ locked: false, networksLocked: true });
+    const b = emptyMap({ locked: true, networksLocked: true });
+    expect(sameMapDocumentFlags(a, b)).toBe(false);
+  });
+
+  it('mesma trava e dimensão casam', () => {
+    const a = emptyMap({ locked: true, networksLocked: false, width: 800, height: 600 });
+    const b = emptyMap({ locked: true, networksLocked: false, width: 800, height: 600 });
+    expect(sameMapDocumentFlags(a, b)).toBe(true);
+  });
+
+  it('trava de redes diferente não é o mesmo documento', () => {
+    const a = emptyMap({ locked: false, networksLocked: false });
+    const b = emptyMap({ locked: false, networksLocked: true });
+    expect(sameMapDocumentFlags(a, b)).toBe(false);
+  });
+});
+
 describe('nodesOnlyMoved / isPositionOnlyMapChange', () => {
   it('arraste (só x/y) é só movimento', () => {
     const a = hostNode({ id: 'a', x: 10, y: 20, label: 'A', zabbixHost: '10.0.0.1' });
@@ -56,6 +76,12 @@ describe('nodesOnlyMoved / isPositionOnlyMapChange', () => {
   it('mapa com os mesmos links e um host arrastado é mudança só de posição', () => {
     const prev = emptyMap({ nodes: [hostNode({ id: 'a', x: 0, y: 0 })] });
     const next = { ...prev, nodes: [{ ...prev.nodes[0], x: 12, y: 8 }] };
+    expect(isPositionOnlyMapChange(prev, next)).toBe(true);
+  });
+
+  it('trava ou dimensão do canvas ainda reusa o merge (não remonta hosts)', () => {
+    const prev = emptyMap({ nodes: [hostNode({ id: 'a', x: 0, y: 0 })], locked: false, networksLocked: true });
+    const next = { ...prev, locked: true, networksLocked: false, width: 1200 };
     expect(isPositionOnlyMapChange(prev, next)).toBe(true);
   });
 
@@ -99,6 +125,22 @@ describe('reuseResolvedOptionsIfOnlyMoved', () => {
       })
     ) as typeof previous;
     expect(reuseResolvedOptionsIfOnlyMoved(previous, cloned)).toBe(previous);
+  });
+
+  it('eco do Grafana só com trava reusa os nós e aplica o flag novo', () => {
+    const map = emptyMap({ nodes: [hostNode({ id: 'a' })], locked: false, networksLocked: true });
+    const previous = { ...defaultOptions(), map };
+    const cloned = JSON.parse(
+      JSON.stringify({
+        ...previous,
+        map: { ...map, locked: true, networksLocked: false },
+      })
+    ) as typeof previous;
+    const reused = reuseResolvedOptionsIfOnlyMoved(previous, cloned);
+    expect(reused.map.nodes).toBe(previous.map.nodes);
+    expect(reused.map.links).toBe(previous.map.links);
+    expect(reused.map.locked).toBe(true);
+    expect(reused.map.networksLocked).toBe(false);
   });
 
   it('não reusa quando um cabo muda', () => {

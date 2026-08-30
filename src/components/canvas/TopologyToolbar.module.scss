@@ -42,11 +42,6 @@
   background: rgba(46, 125, 50, 0.85);
 }
 
-.btnWarn {
-  background: rgba(0, 0, 0, 0.55);
-  color: #ffb74d;
-}
-
 .btnDisabled {
   color: rgba(255, 255, 255, 0.35);
   cursor: not-allowed;
@@ -56,6 +51,15 @@
 .iconBtn {
   padding: $space-1 $space-2;
   min-width: 30px;
+  justify-content: center;
+}
+
+.lockIcon {
+  display: flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  align-items: center;
   justify-content: center;
 }
 

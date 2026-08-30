@@ -30,6 +30,21 @@ export const DASHBOARD_EDIT_MODE_SELECTORS = [
   'button[aria-label="Descartar alterações do painel"]',
 ] as const;
 
+const DASHBOARD_DISCARD_SELECTORS = new Set<string>([
+  'button[aria-label="Discard panel changes button"]',
+  'button[aria-label="Descartar alterações do painel"]',
+]);
+
+/** True no clique de Salvar / Sair do modo edição — não no descarte. */
+export function eventTargetRequestsDashboardFlush(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return DASHBOARD_EDIT_MODE_SELECTORS.some(
+    (sel) => !DASHBOARD_DISCARD_SELECTORS.has(sel) && Boolean(target.closest(sel))
+  );
+}
+
 export function documentIndicatesDashboardEdit(root?: ParentNode | null): boolean {
   if (!root) {
     return false;

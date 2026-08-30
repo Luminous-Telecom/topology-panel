@@ -99,5 +99,6 @@ if (metadata && (await publishByItemIds(metadata, pending))) {
 
 ## Exceções
 
-Leitura de DOM do Grafana só em `hooks/useDashboardEditMode.ts` e
-`hooks/useGrafanaPlaylistPlayback.ts`. Não copie o padrão.
+Leitura de DOM do Grafana só via `observeGrafanaChrome`
+(`utils/grafanaChromeObserve.ts`), usado por `useDashboardEditMode` e
+`useGrafanaPlaylistPlayback` (`useGrafanaChromeFlag`). Não copie o padrão.

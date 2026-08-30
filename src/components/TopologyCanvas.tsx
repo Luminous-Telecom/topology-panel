@@ -229,7 +229,7 @@ export function TopologyCanvas({
   useLinkFlowAnimation(wrapRef);
   const savedView = savedViewProp ?? options.view;
   const canPersist = Boolean(onMapChange);
-  const canEditCanvas = canPersist && !map.locked;
+  const canEditCanvas = canPersist && !storedMap.locked;
   const editable = canEditCanvas;
   const networksLocked = areNetworksLocked(storedMap);
   const showMinimap = options.showMinimap !== false;
@@ -273,6 +273,9 @@ export function TopologyCanvas({
     options,
   });
 
+  const interactionRef = useRef({ editable: viewEditable, panTool });
+  interactionRef.current.editable = viewEditable;
+  interactionRef.current.panTool = panTool;
   const { toast, showToast } = useCanvasToast();
 
   /** Encaminha o cancelamento de drag para o pinch de 2 dedos — `useTopologyDragController` só
@@ -1286,6 +1289,9 @@ export function TopologyCanvas({
     <div
       ref={wrapRef}
       data-topology-canvas
+      data-canvas-editable={viewEditable ? 'true' : undefined}
+      data-networks-locked={networksLocked ? 'true' : undefined}
+      data-link-mode={linkFromId !== null ? 'true' : undefined}
       className={`${canvasStyles.wrap} ${panTool ? canvasStyles.wrapPan : canvasStyles.wrapSelect}${
         isFullscreen && chromeIdleHidden ? ` ${canvasStyles.chromeIdle}` : ''
       }`}
@@ -1345,6 +1351,7 @@ export function TopologyCanvas({
         canPaste={canEditCanvas && clipboardReady}
         canPersist={canPersist}
         editable={viewEditable}
+        locked={Boolean(storedMap.locked)}
         nocModeActive={effectiveNocMode}
         onToggleNocMode={onNocModeChange ? handleToggleNocMode : undefined}
         onUndo={onUndo}
@@ -1367,7 +1374,7 @@ export function TopologyCanvas({
         hostMetadata={hostMetadata}
         queryError={Boolean(queryError)}
         queryLoading={liveQueryLoading && !liveQueryReady && !liveQueryError}
-        onInsertBlueprint={canEditCanvas && !effectiveNocMode ? () => setBlueprintOpen(true) : undefined}
+        onInsertBlueprint={!effectiveNocMode && canPersist ? () => setBlueprintOpen(true) : undefined}
       />
 
       {!effectiveNocMode && showHostAlertList ? (
@@ -1445,9 +1452,7 @@ export function TopologyCanvas({
             queryReady={queryReady}
             resolveColor={resolveColor}
             selectedNodeIds={selectedNodeIds}
-            panTool={panTool}
-            editable={viewEditable}
-            networksLocked={networksLocked}
+            interactionRef={interactionRef}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
             badgesByNode={hostBadgesByNode}

@@ -39,7 +39,7 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 - Caixas de rede são **travadas por padrão** (`networksLocked !== false`).
 - Travada: o clique arrasta o **mapa**. Destravada: arrasta a **caixa**. Resize só pelo canto
   inferior direito.
-- A toolbar expõe "Mapa editável" e "Redes livres".
+- A toolbar expõe "Mapa" e "Redes" (cadeado = travado).
 - Grade com `gridSize: 10` e snap ativo; cobre a **área visível do painel**, não só
   `map.width`/`map.height`; linhas com `pointerEvents: none`.
 

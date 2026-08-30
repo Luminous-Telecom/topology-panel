@@ -45,7 +45,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
-| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` em `utils/mapRevision.ts` |
+| Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` / `sameMapDocumentFlags` em `utils/mapRevision.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |
 | RX/TX do cabo na orientação do mapa (origem vs destino) | `resolveLinkMapTrafficMetrics` em `utils/linkMetricsRuntime.ts` |
@@ -90,7 +90,8 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Recorte de nós/cabos pela viewport | `visibleWorldRect` em `utils/viewportCulling.ts` |
 | Wheel/toque sobre overlay do mapa (NOC, busca, alertas) | `eventTargetsElement`, `eventTargetsMapOverlay`, `wheelTargetsScrollableDescendant` em `utils/domScroll.ts` |
 | Copiar/colar nós e links | `utils/topologyClipboard.ts` + `hooks/useTopologyClipboardActions.ts` |
-| Undo/redo | `hooks/useMapHistory.ts` (`applyMap` depois do paint, `persistRemote` no idle via `scheduleWhenIdle`) |
+| Undo/redo | `hooks/useMapHistory.ts` (`applyMap` depois do paint, `persistRemote` no idle via `scheduleWhenIdle`; trava só local até flush/salvar) |
+| Clique Salvar/Sair do Grafana (flush da trava pendente) | `eventTargetRequestsDashboardFlush` em `utils/grafanaDashboardEdit.ts` |
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |
@@ -113,8 +114,9 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 |---|---|
 | Buscar dashboards (`dash-db`) com estado de loading | `hooks/useGrafanaDashboards.ts` |
 | Opções de `Select`/`MultiSelect` de dashboard, filtro por tag | `utils/grafanaDashboards.ts` |
-| Detectar modo de edição do dashboard | `hooks/useDashboardEditMode.ts` |
+| Detectar modo de edição do dashboard | `hooks/useDashboardEditMode.ts` (`useGrafanaChromeFlag`) |
 | Detectar lista de reprodução / kiosk | `hooks/useGrafanaPlaylistPlayback.ts` + `utils/grafanaPlaylist.ts` |
+| Observer do chrome Grafana (ignora SVG, rAF) | `observeGrafanaChrome` em `utils/grafanaChromeObserve.ts` |
 | Navegar por variável de dashboard | `hooks/useDashboardVariableNav.ts` |
 | Resolver cor de opção do painel (hex/rgb/nome de tema) | `resolvePanelColor` em `utils/panelColors.ts` |
 | Contraste de texto sobre fundo colorido | `utils/colorContrast.ts` |

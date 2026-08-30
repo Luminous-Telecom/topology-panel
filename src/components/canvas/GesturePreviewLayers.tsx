@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { MutableRefObject, useMemo } from 'react';
 import {
   HostDisplayMap,
   HostMetadataMap,
@@ -29,9 +29,7 @@ interface Props {
   queryReady?: boolean;
   resolveColor: ColorResolver;
   selectedNodeIds: string[];
-  panTool: boolean;
-  editable: boolean;
-  networksLocked: boolean;
+  interactionRef: MutableRefObject<{ editable: boolean; panTool: boolean }>;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   badgesByNode?: ReadonlyMap<string, HostNodeBadge[]>;
@@ -78,9 +76,7 @@ export function GesturePreviewLayers({
   queryReady,
   resolveColor,
   selectedNodeIds,
-  panTool,
-  editable,
-  networksLocked,
+  interactionRef,
   hostDisplay,
   hostMetadata,
   badgesByNode,
@@ -126,9 +122,6 @@ export function GesturePreviewLayers({
         queryReady={queryReady}
         resolveColor={resolveColor}
         selectedNodeIds={selectedNodeIds}
-        panTool={panTool}
-        editable={editable}
-        networksLocked={networksLocked}
         onPointerDown={onNetworkPointerDown}
         onDoubleClick={onNodeDoubleClick}
         onContextMenu={onNodeContextMenu}
@@ -140,8 +133,7 @@ export function GesturePreviewLayers({
         renderLinks={renderLinks}
         nodeLayouts={nodeLayouts}
         options={options}
-        editable={editable}
-        panTool={panTool}
+        interactionRef={interactionRef}
         selectedLink={selectedLink}
         hoveredLinkKey={hoveredLinkKey}
         setHoveredLinkKey={setHoveredLinkKey}
@@ -182,8 +174,6 @@ export function GesturePreviewLayers({
         selectedLink={selectedLink}
         linkFromId={linkFromId}
         linkHoverId={linkHoverId}
-        panTool={panTool}
-        editable={editable}
         onPointerDown={onNodePointerDown}
         onClick={onNodeClick}
         onDoubleClick={onNodeDoubleClick}

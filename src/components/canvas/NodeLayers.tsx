@@ -25,8 +25,6 @@ interface CommonProps {
   queryReady?: boolean;
   resolveColor: ColorResolver;
   selectedNodeIds: string[];
-  panTool: boolean;
-  editable: boolean;
   onDoubleClick: (e: React.MouseEvent, node: TopologyNode) => void;
   onContextMenu: (e: React.MouseEvent, node: TopologyNode) => void;
   onResizePointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
@@ -34,7 +32,6 @@ interface CommonProps {
 }
 
 interface NetworkNodesLayerProps extends CommonProps {
-  networksLocked: boolean;
   onPointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
 }
 
@@ -47,9 +44,6 @@ function NetworkNodesLayerComponent({
   queryReady,
   resolveColor,
   selectedNodeIds,
-  panTool,
-  editable,
-  networksLocked,
   onPointerDown,
   onDoubleClick,
   onContextMenu,
@@ -78,9 +72,6 @@ function NetworkNodesLayerComponent({
             queryReady={queryReady}
             resolveColor={resolveColor}
             isSelected={selectedIdSet.has(node.id)}
-            panTool={panTool}
-            editable={editable}
-            networksLocked={networksLocked}
             onPointerDown={onPointerDown}
             onDoubleClick={onDoubleClick}
             onContextMenu={onContextMenu}
@@ -175,8 +166,6 @@ function HostNodesLayerComponent({
   selectedLink,
   linkFromId,
   linkHoverId,
-  panTool,
-  editable,
   onPointerDown,
   onClick,
   onDoubleClick,
@@ -224,9 +213,6 @@ function HostNodesLayerComponent({
             }
             isLinkSource={linkFromId === node.id}
             isLinkTarget={linkFromId !== null && linkHoverId === node.id}
-            linkMode={linkFromId !== null}
-            panTool={panTool}
-            editable={editable}
             onPointerDown={onPointerDown}
             onClick={onClick}
             onDoubleClick={onDoubleClick}

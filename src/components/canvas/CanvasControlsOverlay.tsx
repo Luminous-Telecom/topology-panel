@@ -19,6 +19,7 @@ interface Props {
   canPaste: boolean;
   canPersist: boolean;
   editable: boolean;
+  locked: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
   onCopy: () => void;
@@ -64,6 +65,7 @@ export function CanvasControlsOverlay({
   canPaste,
   canPersist,
   editable,
+  locked,
   onUndo,
   onRedo,
   onCopy,
@@ -112,7 +114,7 @@ export function CanvasControlsOverlay({
         <TopologyToolbar
           tool={tool}
           onToolChange={setTool}
-          locked={Boolean(map.locked)}
+          locked={locked}
           networksLocked={networksLocked}
           canUndo={canUndo}
           canRedo={canRedo}

@@ -150,6 +150,10 @@ export function patchDisplayMapPositions(prevDisplay: TopologyMap, nextStored: T
     });
   }
   if (!moved) {
+    // Trava não entra no display: o SVG lê `storedMap`. Trocar o objeto aqui remontava o mapa.
+    if (prevDisplay.width === nextStored.width && prevDisplay.height === nextStored.height) {
+      return prevDisplay;
+    }
     return { ...nextStored, nodes: prevDisplay.nodes };
   }
   return { ...nextStored, nodes };

@@ -161,6 +161,52 @@ describe('useMapHistory', () => {
     expect(persistRemote).toHaveBeenCalledWith(changed);
   });
 
+  it('com persistRemote, troca só de trava aplica o mapa local na hora e não grava no Grafana no idle curto', async () => {
+    const applyMap = vi.fn();
+    const persistRemote = vi.fn();
+    const initial = map({ locked: false });
+    const { result } = renderHook(() => useMapHistory(initial, applyMap, persistRemote));
+    const locked = { ...initial, locked: true };
+    act(() => {
+      result.current.commitChange(locked);
+    });
+    expect(applyMap).toHaveBeenCalledTimes(1);
+    expect(applyMap).toHaveBeenCalledWith(locked);
+    expect(persistRemote).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 450);
+      });
+    });
+    expect(persistRemote).not.toHaveBeenCalled();
+    act(() => {
+      result.current.flushRemote();
+    });
+    expect(persistRemote).toHaveBeenCalledTimes(1);
+    expect(persistRemote).toHaveBeenCalledWith(locked);
+  });
+
+  it('com persistRemote, Salvar dashboard grava a trava pendente', () => {
+    const applyMap = vi.fn();
+    const persistRemote = vi.fn();
+    const initial = map({ locked: false, networksLocked: true });
+    const { result } = renderHook(() => useMapHistory(initial, applyMap, persistRemote));
+    const unlockedNetworks = { ...initial, networksLocked: false };
+    act(() => {
+      result.current.commitChange(unlockedNetworks);
+    });
+    expect(persistRemote).not.toHaveBeenCalled();
+    const save = document.createElement('button');
+    save.setAttribute('aria-label', 'Salvar dashboard');
+    document.body.appendChild(save);
+    act(() => {
+      save.click();
+    });
+    expect(persistRemote).toHaveBeenCalledTimes(1);
+    expect(persistRemote).toHaveBeenCalledWith(unlockedNetworks);
+    save.remove();
+  });
+
   it('eco do mesmo objeto de mapa não zera o histórico', () => {
     const initial = map();
     const applyMap = vi.fn();

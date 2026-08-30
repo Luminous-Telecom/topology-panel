@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from '@grafana/ui';
-import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
+import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaLock, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
 import { CanvasTool, HostMetadataMap, TopologyNode } from '../../types';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle, toolbarToolGroupStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
@@ -8,7 +8,7 @@ import styles from './TopologyToolbar.module.scss';
 
 function toolbarClass(
   kind: 'text' | 'icon',
-  opts?: { active?: boolean; warn?: boolean; disabled?: boolean }
+  opts?: { active?: boolean; disabled?: boolean }
 ): string {
   const parts = [toolbarOverlayButtonStyle, styles.btn];
   if (kind === 'icon') {
@@ -16,9 +16,6 @@ function toolbarClass(
   }
   if (opts?.active) {
     parts.push(styles.btnActive);
-  }
-  if (opts?.warn) {
-    parts.push(styles.btnWarn);
   }
   if (opts?.disabled) {
     parts.push(styles.btnDisabled);
@@ -171,32 +168,39 @@ export function TopologyToolbar({
           </button>
           <button
             type="button"
-            className={toolbarClass('text', { active: !locked, warn: Boolean(locked) })}
+            className={toolbarClass('text', { active: !locked })}
             onClick={onToggleLock}
             title={locked ? 'Destravar edição no mapa' : 'Travar edição no mapa'}
+            aria-label={locked ? 'Mapa travado' : 'Mapa editável'}
+            aria-pressed={!locked}
           >
-            <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
-            <span className={toolbarLabelStyle}>{locked ? 'Mapa travado' : 'Mapa editável'}</span>
+            <span className={styles.lockIcon} aria-hidden>
+              <FaLock size={13} />
+            </span>
+            <span className={toolbarLabelStyle}>Mapa</span>
           </button>
           <button
             type="button"
-            className={toolbarClass('text', { active: !networksLocked, warn: Boolean(networksLocked) })}
+            className={toolbarClass('text', { active: !networksLocked })}
             onClick={onToggleNetworksLock}
             title={
               networksLocked
                 ? 'Destravar caixas de rede para arrastar'
                 : 'Travar caixas de rede (só mover o mapa)'
             }
+            aria-label={networksLocked ? 'Redes travadas' : 'Redes livres'}
+            aria-pressed={!networksLocked}
           >
-            <Icon name={networksLocked ? 'lock' : 'unlock'} size="sm" />
-            <span className={toolbarLabelStyle}>
-              {networksLocked ? 'Redes travadas' : 'Redes livres'}
+            <span className={styles.lockIcon} aria-hidden>
+              <FaLock size={13} />
             </span>
+            <span className={toolbarLabelStyle}>Redes</span>
           </button>
           {onInsertBlueprint ? (
             <button
               type="button"
-              className={toolbarClass('text')}
+              className={toolbarClass('text', { disabled: Boolean(locked) })}
+              disabled={Boolean(locked)}
               onClick={onInsertBlueprint}
               title="Inserir modelo de topologia (POP, backbone, FTTH)"
             >

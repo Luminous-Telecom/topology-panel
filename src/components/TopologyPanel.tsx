@@ -16,7 +16,7 @@ import {
 import { enrichHostDisplayFromMaps, enrichHostMetadataFromMaps } from '../utils/hostLookup';
 import { activeChildMaps } from '../utils/childMapEdits';
 import { mergeMapWithQueryHosts, patchDisplayMapPositions } from '../utils/mapSync';
-import { isPositionOnlyMapChange, reuseMapsIfOnlyMoved, reuseResolvedOptionsIfOnlyMoved, sameNodeGeometry } from '../utils/mapRevision';
+import { isPositionOnlyMapChange, reuseMapsIfOnlyMoved, reuseResolvedOptionsIfOnlyMoved, sameMapDocumentFlags, sameNodeGeometry } from '../utils/mapRevision';
 import { parentMapHostKeys, submapHostListForNode } from '../utils/submapHosts';
 import { enrichQueryHostOptionsFromMap, extractQueryHostOptions, filterQueryHostOptionsByDisplayHosts } from '../utils/queryHostPicker';
 import { collectAllSubmapGroups, collectSubmapQueryRefIds, extractDisplayQueryHosts, flattenHostDisplayByRefId, resolveDisplayQueryRefIds } from '../utils/queryHosts';
@@ -470,6 +470,9 @@ export function TopologyPanel({
 
   useEffect(() => {
     if (!localMap || !sameNodeGeometry(localMap, activeStoredMap)) {
+      return;
+    }
+    if (!sameMapDocumentFlags(localMap, activeStoredMap)) {
       return;
     }
     const cache = mergeCacheRef.current;

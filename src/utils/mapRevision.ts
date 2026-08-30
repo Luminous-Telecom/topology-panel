@@ -46,6 +46,16 @@ export function sameNodeGeometry(left: TopologyMap, right: TopologyMap): boolean
   return true;
 }
 
+/** True quando trava e dimensões do canvas são iguais — o eco do Grafana não pode apagar a trava local. */
+export function sameMapDocumentFlags(left: TopologyMap, right: TopologyMap): boolean {
+  return (
+    left.locked === right.locked &&
+    left.networksLocked === right.networksLocked &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
 function sameNodeIdentity(left: TopologyNode, right: TopologyNode): boolean {
   return (
     left.type === right.type &&
@@ -81,16 +91,12 @@ export function nodesOnlyMoved(prev: TopologyNode[], next: TopologyNode[]): bool
 }
 
 /**
- * True quando o mapa seguinte só mexeu caixas (posição/tamanho) — `links` e o resto do
- * documento continuam a mesma identidade. O merge com a Query pode só copiar x/y.
+ * True quando o merge com a Query pode só copiar x/y (e trava/dimensão do canvas).
+ * Links, hosts ocultos e ícones precisam ser a mesma identidade — trava e width/height podem diferir.
  */
 export function isPositionOnlyMapChange(prev: TopologyMap, next: TopologyMap): boolean {
   if (
     prev.links !== next.links ||
-    prev.width !== next.width ||
-    prev.height !== next.height ||
-    prev.locked !== next.locked ||
-    prev.networksLocked !== next.networksLocked ||
     prev.hiddenHosts !== next.hiddenHosts ||
     prev.hostIcons !== next.hostIcons ||
     prev.schemaVersion !== next.schemaVersion
@@ -121,6 +127,27 @@ export function reuseMapsIfOnlyMoved(previous: TopologyMap[] | undefined, next: 
   return previous;
 }
 
+/** Nós/links iguais (ou só caixas mexidas). Trava e dimensões podem diferir. */
+function mapsContentMatches(prev: TopologyMap | undefined, next: TopologyMap | undefined): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (!prev || !next) {
+    return false;
+  }
+  if (prev.schemaVersion !== next.schemaVersion) {
+    return false;
+  }
+  if (!nodesOnlyMoved(prev.nodes, next.nodes)) {
+    return false;
+  }
+  return (
+    sameStructure(prev.links, next.links) &&
+    sameStructure(prev.hiddenHosts, next.hiddenHosts) &&
+    sameStructure(prev.hostIcons, next.hostIcons)
+  );
+}
+
 function mapsOnlyMovedForOptions(prev: TopologyMap | undefined, next: TopologyMap | undefined): boolean {
   if (prev === next) {
     return true;
@@ -132,19 +159,29 @@ function mapsOnlyMovedForOptions(prev: TopologyMap | undefined, next: TopologyMa
     prev.width !== next.width ||
     prev.height !== next.height ||
     prev.locked !== next.locked ||
-    prev.networksLocked !== next.networksLocked ||
-    prev.schemaVersion !== next.schemaVersion
+    prev.networksLocked !== next.networksLocked
   ) {
     return false;
   }
-  if (!nodesOnlyMoved(prev.nodes, next.nodes)) {
-    return false;
+  return mapsContentMatches(prev, next);
+}
+
+function patchMapDocumentFlags(base: TopologyMap, from: TopologyMap): TopologyMap {
+  if (
+    base.locked === from.locked &&
+    base.networksLocked === from.networksLocked &&
+    base.width === from.width &&
+    base.height === from.height
+  ) {
+    return base;
   }
-  return (
-    sameStructure(prev.links, next.links) &&
-    sameStructure(prev.hiddenHosts, next.hiddenHosts) &&
-    sameStructure(prev.hostIcons, next.hostIcons)
-  );
+  return {
+    ...base,
+    locked: from.locked,
+    networksLocked: from.networksLocked,
+    width: from.width,
+    height: from.height,
+  };
 }
 
 function childMapsOnlyMoved(
@@ -170,8 +207,9 @@ function childMapsOnlyMoved(
 }
 
 /**
- * Eco do Grafana após um arraste: o JSON volta clonado e um `options` novo redesenhava cada host.
+ * Eco do Grafana após arraste ou trava: o JSON volta clonado e um `options` novo redesenhava cada host.
  * Quando só as caixas mudaram, devolve o objeto anterior — o canvas já pinta pelo `displayMap`.
+ * Quando só trava/dimensão mudou, reusa os nós e aplica os flags novos.
  */
 export function reuseResolvedOptionsIfOnlyMoved(
   previous: TopologyPanelOptions | undefined,
@@ -189,8 +227,18 @@ export function reuseResolvedOptionsIfOnlyMoved(
       return next;
     }
   }
-  if (!mapsOnlyMovedForOptions(previous.map, next.map) || !childMapsOnlyMoved(previous.childMaps, next.childMaps)) {
+  if (!childMapsOnlyMoved(previous.childMaps, next.childMaps)) {
     return next;
   }
-  return previous;
+  if (mapsOnlyMovedForOptions(previous.map, next.map)) {
+    return previous;
+  }
+  if (!previous.map || !next.map || !mapsContentMatches(previous.map, next.map)) {
+    return next;
+  }
+  const patchedMap = patchMapDocumentFlags(previous.map, next.map);
+  if (patchedMap === previous.map) {
+    return previous;
+  }
+  return { ...previous, map: patchedMap };
 }

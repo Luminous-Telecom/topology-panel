@@ -46,8 +46,6 @@ interface LinkLineProps {
   bundleOffset?: number;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
-  editable: boolean;
-  panTool: boolean;
   selected: boolean;
   hovered: boolean;
   runtimeMetrics?: LinkRuntimeMetrics;
@@ -128,8 +126,6 @@ function LinkLineComponent({
   bundleOffset = 0,
   nodeLayouts,
   options,
-  editable,
-  panTool,
   selected,
   hovered,
   runtimeMetrics,
@@ -235,7 +231,7 @@ function LinkLineComponent({
     <g
       className={linkDown ? canvasStyles.offlineBlink : undefined}
       data-link-offline={linkDown ? 'true' : undefined}
-      onContextMenu={editable ? onContextMenu : undefined}
+      onContextMenu={onContextMenu}
       onMouseEnter={(e) => {
         onHoverChange(true);
         setHoverPoint({ x: e.clientX, y: e.clientY });
@@ -261,22 +257,17 @@ function LinkLineComponent({
         strokeWidth={hitWidth}
         fill="none"
         pointerEvents="stroke"
-        style={{ cursor: panTool ? 'grab' : 'pointer' }}
+        data-link-hit="true"
         onPointerDown={(e) => {
           e.stopPropagation();
           onPathPointerDown(e);
         }}
         onClick={(e) => {
           e.stopPropagation();
-          // Seleção quando a mão não captura o ponteiro.
-          if (!panTool && !editable) {
-            onSelect();
-          }
+          onSelect();
         }}
         onDoubleClick={(e) => {
-          if (editable) {
-            onPathDoubleClick(e);
-          }
+          onPathDoubleClick(e);
         }}
       />
       <path
@@ -417,9 +408,7 @@ function sameWaypoints(prev: LinkPoint[], next: LinkPoint[]): boolean {
 export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (
     prev.selected !== next.selected ||
-    prev.hovered !== next.hovered ||
-    prev.editable !== next.editable ||
-    prev.panTool !== next.panTool
+    prev.hovered !== next.hovered
   ) {
     return false;
   }

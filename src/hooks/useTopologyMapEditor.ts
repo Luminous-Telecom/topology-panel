@@ -23,7 +23,8 @@ export function useTopologyMapEditor({ value, onChange, context }: EditorProps) 
   const datasourceUid = panelOptions?.zabbixDatasourceUid;
   const locked = Boolean(map.locked);
   const [jsonMode, setJsonMode] = useState(false);
-  const [jsonText, setJsonText] = useState(() => topologyToJson(map));
+  /** Só preenche ao abrir o modo texto — `topologyToJson` no mount congelava o editor. */
+  const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [openNodes, setOpenNodes] = useState<Record<string, boolean>>({});
 

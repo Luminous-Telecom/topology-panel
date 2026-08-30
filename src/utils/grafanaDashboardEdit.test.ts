@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canPersistTopologyPanelOptions,
   documentIndicatesDashboardEdit,
+  eventTargetRequestsDashboardFlush,
   searchIndicatesDashboardEdit,
 } from './grafanaDashboardEdit';
 
@@ -26,6 +27,20 @@ describe('documentIndicatesDashboardEdit', () => {
     btn.setAttribute('aria-label', 'Salvar dashboard');
     root.appendChild(btn);
     expect(documentIndicatesDashboardEdit(root)).toBe(true);
+  });
+});
+
+describe('eventTargetRequestsDashboardFlush', () => {
+  it('detecta Salvar dashboard e ignora descarte', () => {
+    const save = document.createElement('button');
+    save.setAttribute('aria-label', 'Salvar dashboard');
+    expect(eventTargetRequestsDashboardFlush(save)).toBe(true);
+
+    const discard = document.createElement('button');
+    discard.setAttribute('aria-label', 'Descartar alterações do painel');
+    expect(eventTargetRequestsDashboardFlush(discard)).toBe(false);
+
+    expect(eventTargetRequestsDashboardFlush(null)).toBe(false);
   });
 });
 
