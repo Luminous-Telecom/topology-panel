@@ -116,7 +116,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Opções de `Select`/`MultiSelect` de dashboard, filtro por tag | `utils/grafanaDashboards.ts` |
 | Detectar modo de edição do dashboard | `hooks/useDashboardEditMode.ts` (`useGrafanaChromeFlag`) |
 | Detectar lista de reprodução / kiosk | `hooks/useGrafanaPlaylistPlayback.ts` + `utils/grafanaPlaylist.ts` |
-| Observer do chrome Grafana (ignora SVG, rAF) | `observeGrafanaChrome` em `utils/grafanaChromeObserve.ts` |
+| Observer do chrome Grafana (ignora SVG e o canvas do mapa, rAF, um observer compartilhado) | `observeGrafanaChrome` / `matchesAnySelector` / `chromeContainsSelector` em `utils/grafanaChromeObserve.ts` |
 | Navegar por variável de dashboard | `hooks/useDashboardVariableNav.ts` |
 | Resolver cor de opção do painel (hex/rgb/nome de tema) | `resolvePanelColor` em `utils/panelColors.ts` |
 | Contraste de texto sobre fundo colorido | `utils/colorContrast.ts` |

@@ -28,6 +28,21 @@ describe('documentIndicatesDashboardEdit', () => {
     root.appendChild(btn);
     expect(documentIndicatesDashboardEdit(root)).toBe(true);
   });
+
+  it('detecta Salvar mesmo com a Nav toolbar vazia no documento', () => {
+    const toolbar = document.createElement('div');
+    toolbar.setAttribute('data-testid', 'data-testid Nav toolbar');
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', 'Sair do modo de edição');
+    document.body.appendChild(toolbar);
+    document.body.appendChild(btn);
+    try {
+      expect(documentIndicatesDashboardEdit(document)).toBe(true);
+    } finally {
+      toolbar.remove();
+      btn.remove();
+    }
+  });
 });
 
 describe('eventTargetRequestsDashboardFlush', () => {

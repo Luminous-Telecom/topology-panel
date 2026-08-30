@@ -1,4 +1,5 @@
 import { UrlQueryMap } from '@grafana/data';
+import { chromeContainsSelector } from './grafanaChromeObserve';
 
 /**
  * Query params that Grafana's PlaylistSrv keeps across dashboard rotations
@@ -52,8 +53,5 @@ export function searchIndicatesPlaylistPlayback(search: UrlQueryMap): boolean {
 
 /** True quando os controles nativos da playlist estão no documento. */
 export function documentHasPlaylistControls(root?: ParentNode | null): boolean {
-  if (!root) {
-    return false;
-  }
-  return PLAYLIST_CONTROL_SELECTORS.some((sel) => Boolean(root.querySelector(sel)));
+  return chromeContainsSelector(root, PLAYLIST_CONTROL_SELECTORS);
 }

@@ -13,7 +13,8 @@ export function useGrafanaChromeFlag(read: () => boolean): boolean {
 
   useEffect(() => {
     const sync = () => {
-      setValue(readRef.current());
+      const next = readRef.current();
+      setValue((prev) => (prev === next ? prev : next));
     };
     sync();
 

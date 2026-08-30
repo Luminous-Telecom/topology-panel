@@ -68,7 +68,9 @@ hooks de arraste/viewport.
 - Todo efeito que registra listener, `setInterval`, `setTimeout`, `requestAnimationFrame`,
   `AbortController`, `MutationObserver` ou subscription do `eventBus` retorna cleanup que remove ou
   aborta o recurso — inclusive o controller guardado em `ref`: zerar a ref não aborta a requisição.
-  Observer do chrome Grafana (`observeGrafanaChrome`) ignora `SVGElement` e agrupa o resto num rAF.
+  Observer do chrome Grafana (`observeGrafanaChrome`) ignora `SVGElement` e o canvas do mapa,
+  agrupa o resto num rAF e compartilha um observer entre edição e playlist. O `querySelector`
+  do modo edição usa `chromeContainsSelector` (toolbar e, se faltar, o documento).
 
 ## Imports e bundle
 

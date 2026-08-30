@@ -51,6 +51,7 @@ import {
   collectMapsLinks,
 } from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
+import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -67,6 +68,8 @@ export function TopologyPanel({
 
   const latestOptionsRef = useRef(options);
   const pendingNocModeRef = useRef<boolean | undefined>(undefined);
+  /** O Grafana passa 0×0 na transição de edição — sem isto o canvas desmontava e remontava. */
+  const lastGoodPanelSizeRef = useRef({ width, height });
   latestOptionsRef.current =
     pendingNocModeRef.current === undefined
       ? options
@@ -225,39 +228,45 @@ export function TopologyPanel({
     if (!canPersistOptions || !onOptionsChange || !querySource.ready) {
       return;
     }
-    const itemIdByKey = itemIdByKeyFromLastValues(querySource.lastValues);
-    mergeItemIdByKey(itemIdByKey, querySource.interfaceItems);
-    if (!itemIdByKey.size) {
-      return;
-    }
-    const current = latestOptionsRef.current;
-    if (!current.map) {
-      return;
-    }
-    const nextMap = applyResolvedMetricItemIds(current.map, itemIdByKey, dataMeta);
-    let childChanged = false;
-    let nextChildMaps = current.childMaps;
-    if (current.childMaps) {
-      const updated = { ...current.childMaps };
-      for (const [id, child] of Object.entries(activeChildMaps(current.childMaps))) {
-        const next = applyResolvedMetricItemIds(child, itemIdByKey, dataMeta);
-        if (next !== child) {
-          updated[id] = next;
-          childChanged = true;
+    /**
+     * Entrar em edição dispara este efeito. `onOptionsChange` do JSON inteiro no mesmo
+     * turno em que o Grafana monta a toolbar congela o canvas — espera o idle.
+     */
+    return scheduleWhenIdle(() => {
+      const itemIdByKey = itemIdByKeyFromLastValues(querySource.lastValues);
+      mergeItemIdByKey(itemIdByKey, querySource.interfaceItems);
+      if (!itemIdByKey.size) {
+        return;
+      }
+      const current = latestOptionsRef.current;
+      if (!current.map) {
+        return;
+      }
+      const nextMap = applyResolvedMetricItemIds(current.map, itemIdByKey, dataMeta);
+      let childChanged = false;
+      let nextChildMaps = current.childMaps;
+      if (current.childMaps) {
+        const updated = { ...current.childMaps };
+        for (const [id, child] of Object.entries(activeChildMaps(current.childMaps))) {
+          const next = applyResolvedMetricItemIds(child, itemIdByKey, dataMeta);
+          if (next !== child) {
+            updated[id] = next;
+            childChanged = true;
+          }
+        }
+        if (childChanged) {
+          nextChildMaps = updated;
         }
       }
-      if (childChanged) {
-        nextChildMaps = updated;
+      if (nextMap === current.map && !childChanged) {
+        return;
       }
-    }
-    if (nextMap === current.map && !childChanged) {
-      return;
-    }
-    onOptionsChange({
-      ...current,
-      map: nextMap,
-      ...(childChanged ? { childMaps: nextChildMaps } : {}),
-    });
+      onOptionsChange({
+        ...current,
+        map: nextMap,
+        ...(childChanged ? { childMaps: nextChildMaps } : {}),
+      });
+    }, 400);
   }, [
     canPersistOptions,
     dataMeta,
@@ -426,15 +435,17 @@ export function TopologyPanel({
     if (!canPersistOptions) {
       return;
     }
-    const merged = {
-      ...defaultOptions(),
-      ...options,
-      ...(options.map ? { map: options.map } : {}),
-    };
-    const { options: normalized, changed } = normalizeStoredPanelColors(merged, theme);
-    if (changed) {
-      onOptionsChange(normalized);
-    }
+    return scheduleWhenIdle(() => {
+      const merged = {
+        ...defaultOptions(),
+        ...options,
+        ...(options.map ? { map: options.map } : {}),
+      };
+      const { options: normalized, changed } = normalizeStoredPanelColors(merged, theme);
+      if (changed) {
+        onOptionsChange(normalized);
+      }
+    }, 400);
   }, [canPersistOptions, options, theme, onOptionsChange]);
 
 
@@ -597,7 +608,13 @@ export function TopologyPanel({
     [canPersistOptions, onOptionsChange]
   );
 
-  if (width < 1 || height < 1) {
+  if (width >= 1 && height >= 1) {
+    lastGoodPanelSizeRef.current = { width, height };
+  }
+  const panelWidth = width >= 1 ? width : lastGoodPanelSizeRef.current.width;
+  const panelHeight = height >= 1 ? height : lastGoodPanelSizeRef.current.height;
+
+  if (panelWidth < 1 || panelHeight < 1) {
     return null;
   }
 
@@ -605,8 +622,8 @@ export function TopologyPanel({
     return (
       <div
         style={{
-          width,
-          height,
+          width: panelWidth,
+          height: panelHeight,
           background: theme.colors.background.primary,
           color: theme.colors.error.text,
           overflow: 'auto',
@@ -629,8 +646,8 @@ export function TopologyPanel({
   return (
     <div
       style={{
-        width,
-        height,
+        width: panelWidth,
+        height: panelHeight,
         background: theme.colors.background.primary,
         overflow: 'hidden',
         overscrollBehavior: 'none',

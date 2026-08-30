@@ -42,13 +42,13 @@ function emptyPanelData(state: LoadingState = LoadingState.Done): PanelData {
   return { state, series: [], timeRange: getDefaultTimeRange() };
 }
 
-function renderTopologyPanel(
+function topologyPanelProps(
   options: TopologyPanelOptions,
   overrides?: Partial<TopologyPanelProps>
-): ReturnType<typeof render> {
+): TopologyPanelProps {
   const fieldConfig: FieldConfigSource = { defaults: {}, overrides: [] };
   const timeRange: TimeRange = getDefaultTimeRange();
-  const props: TopologyPanelProps = {
+  return {
     id: 1,
     data: emptyPanelData(),
     timeRange,
@@ -67,7 +67,13 @@ function renderTopologyPanel(
     onChangeTimeRange: vi.fn(),
     ...overrides,
   };
-  return render(<TopologyPanel {...props} />);
+}
+
+function renderTopologyPanel(
+  options: TopologyPanelOptions,
+  overrides?: Partial<TopologyPanelProps>
+): ReturnType<typeof render> {
+  return render(<TopologyPanel {...topologyPanelProps(options, overrides)} />);
 }
 
 describe('TopologyPanel — inicialização de mapas', () => {
@@ -132,5 +138,15 @@ describe('TopologyPanel — inicialização de mapas', () => {
     const cable = document.querySelector('[data-link-key]');
     expect(cable).toBeTruthy();
     expect(networkName.compareDocumentPosition(cable as Node) & Node.DOCUMENT_POSITION_PRECEDING).not.toBe(0);
+  });
+
+  it('não desmonta o canvas quando o Grafana passa tamanho zero na transição de edição', () => {
+    const options = defaultOptions();
+    options.map = { width: 1200, height: 800, nodes: [], links: [] };
+    const view = renderTopologyPanel(options, { width: 800, height: 600 });
+    expect(view.container.querySelector('[data-topology-canvas]')).not.toBeNull();
+
+    view.rerender(<TopologyPanel {...topologyPanelProps(options, { width: 0, height: 0 })} />);
+    expect(view.container.querySelector('[data-topology-canvas]')).not.toBeNull();
   });
 });

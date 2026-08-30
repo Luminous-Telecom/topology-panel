@@ -1,4 +1,5 @@
 import { UrlQueryMap } from '@grafana/data';
+import { chromeContainsSelector } from './grafanaChromeObserve';
 
 /** Query params que indicam edição de dashboard ou painel no Grafana. */
 export function searchIndicatesDashboardEdit(search: UrlQueryMap): boolean {
@@ -46,10 +47,7 @@ export function eventTargetRequestsDashboardFlush(target: EventTarget | null): b
 }
 
 export function documentIndicatesDashboardEdit(root?: ParentNode | null): boolean {
-  if (!root) {
-    return false;
-  }
-  return DASHBOARD_EDIT_MODE_SELECTORS.some((sel) => Boolean(root.querySelector(sel)));
+  return chromeContainsSelector(root, DASHBOARD_EDIT_MODE_SELECTORS);
 }
 
 /** True quando o painel pode gravar opções no dashboard (API + modo edição ativo). */
