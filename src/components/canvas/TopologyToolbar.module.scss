@@ -54,15 +54,6 @@
   justify-content: center;
 }
 
-.version {
-  pointer-events: auto;
-  padding: 0 6px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: $font-xs;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .lockIcon {
   display: flex;
   width: 14px;

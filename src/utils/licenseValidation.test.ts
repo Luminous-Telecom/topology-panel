@@ -4,7 +4,7 @@ import {
   licenseRejectMessage,
   resolveLicenseGate,
 } from './licenseValidation';
-import { licenseStatusUrl, maskLicenseKey, parseInstalledLicenseFile, pickAuthorizedIp } from './licenseInstall';
+import { licenseStatusUrl, maskLicenseKey, parseInstalledLicenseFile, matchAuthorizedGrafanaIp, resolveGrafanaServerIp } from './licenseInstall';
 
 describe('isAllowedLicenseApiUrl', () => {
   it('aceita só http e https', () => {
@@ -61,11 +61,25 @@ describe('licenseInstall', () => {
       licenseKey: 'LUM-1',
       licenseApiUrl: 'https://loja.example/api/license/validate',
     });
+    expect(
+      parseInstalledLicenseFile({
+        licenseKey: 'LUM-1',
+        licenseApiUrl: 'https://loja.example/api/license/validate',
+        grafanaIp: '203.0.113.10',
+      })
+    ).toEqual({
+      licenseKey: 'LUM-1',
+      licenseApiUrl: 'https://loja.example/api/license/validate',
+      grafanaIp: '203.0.113.10',
+    });
     expect(parseInstalledLicenseFile({})).toBeUndefined();
   });
 
-  it('mascara a chave e escolhe o primeiro IPv4 da loja', () => {
+  it('só valida se o IP deste Grafana estiver na lista da licença', () => {
     expect(maskLicenseKey('LUM-B5973B4F-5E02AC64-5CDA9387-47CAD0A6')).toMatch(/^LUM-B59…/);
-    expect(pickAuthorizedIp(['not-an-ip', '203.0.113.10'])).toBe('203.0.113.10');
+    expect(resolveGrafanaServerIp('grafana.example', '203.0.113.10')).toBe('203.0.113.10');
+    expect(resolveGrafanaServerIp('10.0.0.8', '203.0.113.10')).toBe('10.0.0.8');
+    expect(matchAuthorizedGrafanaIp('203.0.113.10', ['10.0.0.1', '203.0.113.10'])).toBe('203.0.113.10');
+    expect(matchAuthorizedGrafanaIp('10.0.0.8', ['203.0.113.10'])).toBeUndefined();
   });
 });

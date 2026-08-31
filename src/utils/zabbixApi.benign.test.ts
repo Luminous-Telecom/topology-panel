@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBenignZabbixFetchError } from './zabbixApi';
+import { isBenignZabbixFetchError, zabbixUserFacingError } from './zabbixApi';
 
 describe('isBenignZabbixFetchError', () => {
   it('reconhece abort e falha de rede', () => {
@@ -20,5 +20,17 @@ describe('isBenignZabbixFetchError', () => {
 
   it('não trata erro de API como transitório', () => {
     expect(isBenignZabbixFetchError(new Error('Falha ao consultar o Zabbix.'))).toBe(false);
+  });
+});
+
+describe('zabbixUserFacingError', () => {
+  it('explica URL vazia no datasource (erro Go do plugin Zabbix)', () => {
+    expect(zabbixUserFacingError(new Error('Post "": unsupported protocol scheme ""'))).toMatch(
+      /URL do Zabbix/
+    );
+  });
+
+  it('mantém a mensagem genérica nos demais casos', () => {
+    expect(zabbixUserFacingError(new Error('connection refused'))).toBe('Falha ao consultar o Zabbix.');
   });
 });

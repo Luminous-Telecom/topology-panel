@@ -28,6 +28,15 @@ export function isBenignZabbixFetchError(err: unknown): boolean {
   );
 }
 
+/** Mensagem para a UI: o backend Go do Zabbix devolve "Post \"\": unsupported protocol scheme \"\"" se a URL do datasource estiver vazia. */
+export function zabbixUserFacingError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  if (/unsupported protocol scheme/i.test(msg)) {
+    return 'A URL do Zabbix no datasource está vazia. Em Conexões, abra o datasource e preencha http://IP-DO-ZABBIX/zabbix/api_jsonrpc.php.';
+  }
+  return 'Falha ao consultar o Zabbix.';
+}
+
 function throwIfAborted(abortSignal?: AbortSignal): void {
   if (abortSignal?.aborted) {
     throw new Error('abort');
@@ -65,14 +74,14 @@ export async function zabbixCall<T>(
     if (isBenignZabbixFetchError(err)) {
       throw err;
     }
-    throw new Error('Falha ao consultar o Zabbix.');
+    throw new Error(zabbixUserFacingError(err));
   } finally {
     window.clearTimeout(timer);
     callOptions.abortSignal?.removeEventListener('abort', abortFromParent);
   }
 
   if (response && typeof response === 'object' && 'error' in response && response.error) {
-    throw new Error(response.error.message ?? 'Falha ao consultar o Zabbix.');
+    throw new Error(zabbixUserFacingError(response.error.message ?? 'Falha ao consultar o Zabbix.'));
   }
   if (response && typeof response === 'object' && 'result' in response) {
     return (response as ZabbixApiResponse<T>).result as T;

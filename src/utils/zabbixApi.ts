@@ -4,7 +4,7 @@
  * Ping/ICMP vive em `zabbixApi/ping.ts` e **não** é reexportado aqui — o chunk principal
  * (`useZabbixDirectIndex`) não pode puxar `script.execute` no first load.
  */
-export { isBenignZabbixFetchError } from './zabbixApi/client';
+export { isBenignZabbixFetchError, zabbixUserFacingError } from './zabbixApi/client';
 export {
   isNumericZabbixItemId,
   itemIdByKeyFromLastValues,

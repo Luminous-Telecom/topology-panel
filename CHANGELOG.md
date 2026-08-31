@@ -7,6 +7,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.397] - 2026-08-31
+
+### Alterado
+
+- Número da versão do plugin fica nas opções (Licença), não no mapa.
+- A licença só valida se o IP deste Grafana for o mesmo cadastrado na licença (Minha conta), não o IP do servidor da loja.
+
+### Corrigido
+
+- Erro `Post "": unsupported protocol scheme ""` vira aviso para preencher a URL do datasource Zabbix.
+
 ## [1.4.396] - 2026-08-31
 
 ### Alterado

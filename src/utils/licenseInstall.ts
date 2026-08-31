@@ -4,6 +4,8 @@ import { TOPOLOGY_PLUGIN_ID } from './licenseValidation';
 export type InstalledLicenseFile = {
   licenseKey: string;
   licenseApiUrl: string;
+  /** IP público do servidor Grafana, gravado na instalação. Não é o IP da loja. */
+  grafanaIp?: string;
 };
 
 export function installedLicenseFileUrl(): string {
@@ -22,13 +24,18 @@ export function parseInstalledLicenseFile(raw: unknown): InstalledLicenseFile | 
   if (!raw || typeof raw !== 'object') {
     return undefined;
   }
-  const rec = raw as { licenseKey?: unknown; licenseApiUrl?: unknown };
+  const rec = raw as { licenseKey?: unknown; licenseApiUrl?: unknown; grafanaIp?: unknown };
   const licenseKey = typeof rec.licenseKey === 'string' ? rec.licenseKey.trim() : '';
   const licenseApiUrl = typeof rec.licenseApiUrl === 'string' ? rec.licenseApiUrl.trim() : '';
   if (!licenseKey || !licenseApiUrl) {
     return undefined;
   }
-  return { licenseKey, licenseApiUrl };
+  const grafanaIp = typeof rec.grafanaIp === 'string' ? rec.grafanaIp.trim() : '';
+  return {
+    licenseKey,
+    licenseApiUrl,
+    ...(isIpv4(grafanaIp) ? { grafanaIp } : {}),
+  };
 }
 
 export function maskLicenseKey(key: string): string {
@@ -39,10 +46,27 @@ export function maskLicenseKey(key: string): string {
   return `${trimmed.slice(0, 7)}…${trimmed.slice(-4)}`;
 }
 
-export function pickAuthorizedIp(ips: string[]): string | undefined {
-  for (const ip of ips) {
-    if (isIpv4(ip)) {
-      return ip;
+/** IP deste Grafana: host da página se for IPv4, senão o IP gravado na instalação. */
+export function resolveGrafanaServerIp(pageHostname: string, installedGrafanaIp?: string): string | undefined {
+  const host = pageHostname.trim();
+  if (isIpv4(host)) {
+    return host;
+  }
+  const installed = installedGrafanaIp?.trim() ?? '';
+  return isIpv4(installed) ? installed : undefined;
+}
+
+/** Só valida se o IP deste Grafana está na lista da licença (Minha conta), não o IP do servidor da loja. */
+export function matchAuthorizedGrafanaIp(
+  grafanaIp: string | undefined,
+  authorizedIps: string[]
+): string | undefined {
+  if (!grafanaIp || !isIpv4(grafanaIp)) {
+    return undefined;
+  }
+  for (const ip of authorizedIps) {
+    if (ip.trim() === grafanaIp) {
+      return grafanaIp;
     }
   }
   return undefined;

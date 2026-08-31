@@ -6,7 +6,7 @@ import {
   type LicenseFetchResult,
 } from '../services/licenseClient';
 import { isLicenseEnforced, resolveLicenseGate } from '../utils/licenseValidation';
-import { pickAuthorizedIp } from '../utils/licenseInstall';
+import { matchAuthorizedGrafanaIp, resolveGrafanaServerIp } from '../utils/licenseInstall';
 
 export type LicenseCheckState =
   | { status: 'skipped' }
@@ -16,7 +16,9 @@ export type LicenseCheckState =
 
 export function useLicenseValidation(): LicenseCheckState {
   const [fileState, setFileState] = useState<
-    { status: 'loading' } | { status: 'missing' } | { status: 'ready'; licenseKey: string; apiUrl: string }
+    | { status: 'loading' }
+    | { status: 'missing' }
+    | { status: 'ready'; licenseKey: string; apiUrl: string; grafanaIp?: string }
   >({ status: 'loading' });
   const [result, setResult] = useState<LicenseFetchResult | undefined>(undefined);
 
@@ -33,7 +35,12 @@ export function useLicenseValidation(): LicenseCheckState {
         setFileState({ status: 'missing' });
         return;
       }
-      setFileState({ status: 'ready', licenseKey: file.licenseKey, apiUrl: file.licenseApiUrl });
+      setFileState({
+        status: 'ready',
+        licenseKey: file.licenseKey,
+        apiUrl: file.licenseApiUrl,
+        grafanaIp: file.grafanaIp,
+      });
     });
     return () => {
       cancelled = true;
@@ -48,6 +55,9 @@ export function useLicenseValidation(): LicenseCheckState {
 
   const readyUrl = gate.status === 'ready' ? gate.apiUrl : '';
   const readyKey = gate.status === 'ready' ? gate.licenseKey : '';
+  const installedIp = fileState.status === 'ready' ? fileState.grafanaIp : undefined;
+  const pageHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  const grafanaIp = resolveGrafanaServerIp(pageHost, installedIp);
 
   useEffect(() => {
     if (!readyUrl || !readyKey) {
@@ -65,12 +75,14 @@ export function useLicenseValidation(): LicenseCheckState {
           setResult({ kind: 'invalid', message: status.message, retryable: status.retryable });
           return undefined;
         }
-        const ip = pickAuthorizedIp(status.authorizedIps);
+        const ip = matchAuthorizedGrafanaIp(grafanaIp, status.authorizedIps);
         if (!ip) {
           setResult({
             kind: 'invalid',
             retryable: false,
-            message: 'Cadastre o IP deste Grafana em Minha conta na loja. O painel não edita IP.',
+            message: grafanaIp
+              ? `O IP deste Grafana (${grafanaIp}) não está na licença. Cadastre esse IP em Minha conta.`
+              : 'Cadastre o IP deste servidor Grafana em Minha conta na loja.',
           });
           return undefined;
         }
@@ -93,7 +105,7 @@ export function useLicenseValidation(): LicenseCheckState {
     return () => {
       cancelled = true;
     };
-  }, [readyUrl, readyKey]);
+  }, [readyUrl, readyKey, grafanaIp]);
 
   if (gate.status === 'skip') {
     return { status: 'skipped' };
