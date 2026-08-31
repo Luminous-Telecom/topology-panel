@@ -30,7 +30,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
       .addCustomEditor({
         id: 'licenseInfo',
         path: 'licenseKey',
-        name: 'Licença',
+        name: 'IP do Grafana',
         editor: LicenseStatusEditor,
         category: ['Licença'],
         defaultValue: '',

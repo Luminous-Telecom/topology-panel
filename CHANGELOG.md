@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.396] - 2026-08-31
+
+### Alterado
+
+- Opções do painel mostram só o IP do Grafana; chave e URL da loja não aparecem.
+
 ## [1.4.395] - 2026-08-31
 
 ### Alterado
