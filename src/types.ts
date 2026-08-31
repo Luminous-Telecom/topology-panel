@@ -478,12 +478,8 @@ export interface TopologyPanelOptions {
   nocMode?: boolean;
   /** Badges de problemas/tráfego nos hosts. */
   showHostBadges?: boolean;
-  /** Chave gerada na Luminous Store. */
+  /** Âncora do editor de licença (somente leitura). Chave e URL vêm de license.json. */
   licenseKey?: string;
-  /** POST /api/license/validate da loja. */
-  licenseApiUrl?: string;
-  /** IP público deste Grafana, igual ao cadastrado na loja. */
-  licenseIp?: string;
 }
 
 export const defaultTopologyMap = (): TopologyMap => ({
@@ -579,9 +575,6 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   legendHostTypes: true,
   nocMode: false,
   showHostBadges: true,
-  licenseKey: '',
-  licenseApiUrl: '',
-  licenseIp: '',
 });
 
 /** Cor/texto do status mapeado por host (valor da Query + mapeamento do painel). */

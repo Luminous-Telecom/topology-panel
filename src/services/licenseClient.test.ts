@@ -9,19 +9,25 @@ describe('fetchLicenseValidation', () => {
   });
 
   it('aceita resposta válida deste plugin', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ valid: true, reason: null, pluginId: TOPOLOGY_PLUGIN_ID }),
-      })
-    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        valid: true,
+        reason: null,
+        pluginId: TOPOLOGY_PLUGIN_ID,
+        pluginVersion: '1.9.0',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const result = await fetchLicenseValidation(
       'https://loja.example/api/license/validate',
       'key-ok',
       '203.0.113.10'
     );
-    expect(result).toEqual({ kind: 'valid' });
+    expect(result).toEqual({ kind: 'valid', storeVersion: '1.9.0' });
+    const init = fetchMock.mock.calls[0][1] as { body: string };
+    const body = JSON.parse(init.body) as { pluginVersion: string };
+    expect(body.pluginVersion).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it('rejeita chave de outro plugin', async () => {
@@ -59,6 +65,8 @@ describe('fetchLicenseValidation', () => {
   });
 
   it('chave de cache separa URL, chave e IP', () => {
-    expect(licenseCacheKey('https://a', 'k', '1.1.1.1')).not.toBe(licenseCacheKey('https://b', 'k', '1.1.1.1'));
+    expect(licenseCacheKey('https://a', 'k', '1.1.1.1', '1.0.0')).not.toBe(
+      licenseCacheKey('https://b', 'k', '1.1.1.1', '1.0.0')
+    );
   });
 });

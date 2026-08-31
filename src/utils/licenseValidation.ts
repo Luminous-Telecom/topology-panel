@@ -1,11 +1,9 @@
-import { isIpv4 } from './ipv4';
-
 export const TOPOLOGY_PLUGIN_ID = 'luminous-topology-panel';
 
 export type LicenseGate =
   | { status: 'skip' }
   | { status: 'blocked'; message: string }
-  | { status: 'ready'; licenseKey: string; apiUrl: string; ip: string };
+  | { status: 'ready'; licenseKey: string; apiUrl: string };
 
 export function isLicenseEnforced(): boolean {
   return process.env.NODE_ENV === 'production';
@@ -20,24 +18,10 @@ export function isAllowedLicenseApiUrl(value: string): boolean {
   }
 }
 
-export function resolveLicenseIp(licenseIp: string | undefined, pageHostname: string): string | undefined {
-  const fromOption = licenseIp?.trim() ?? '';
-  if (fromOption && isIpv4(fromOption)) {
-    return fromOption;
-  }
-  const host = pageHostname.trim();
-  if (isIpv4(host)) {
-    return host;
-  }
-  return undefined;
-}
-
 export function resolveLicenseGate(input: {
   enforced: boolean;
   licenseKey?: string;
   licenseApiUrl?: string;
-  licenseIp?: string;
-  pageHostname: string;
 }): LicenseGate {
   if (!input.enforced) {
     return { status: 'skip' };
@@ -47,7 +31,7 @@ export function resolveLicenseGate(input: {
   if (!licenseKey) {
     return {
       status: 'blocked',
-      message: 'Informe a chave de licença nas opções do painel (Licença).',
+      message: 'Rode o comando de instalação da loja neste Grafana. A chave não vai nas opções do painel.',
     };
   }
 
@@ -55,27 +39,19 @@ export function resolveLicenseGate(input: {
   if (!apiUrl || !isAllowedLicenseApiUrl(apiUrl)) {
     return {
       status: 'blocked',
-      message: 'Informe a URL de validação da loja nas opções do painel (Licença).',
+      message: 'Rode o comando de instalação da loja neste Grafana. A URL da loja é gravada na instalação.',
     };
   }
 
-  const ip = resolveLicenseIp(input.licenseIp, input.pageHostname);
-  if (!ip) {
-    return {
-      status: 'blocked',
-      message: 'Informe o IP público deste Grafana nas opções do painel (Licença), igual ao cadastrado na loja.',
-    };
-  }
-
-  return { status: 'ready', licenseKey, apiUrl, ip };
+  return { status: 'ready', licenseKey, apiUrl };
 }
 
 export function licenseRejectMessage(reason: string | null | undefined): string {
   switch (reason) {
     case 'not_found':
-      return 'Licença não encontrada. Confira a chave nas opções do painel.';
+      return 'Licença não encontrada. Rode de novo o comando de instalação da loja.';
     case 'ip_not_authorized':
-      return 'IP não autorizado. Cadastre este IP na loja (Minha conta) e use o mesmo valor no painel.';
+      return 'IP não autorizado. Cadastre o IP deste Grafana em Minha conta na loja.';
     case 'expired':
       return 'Licença expirada.';
     case 'status_pending':
@@ -85,8 +61,8 @@ export function licenseRejectMessage(reason: string | null | undefined): string 
     case 'status_cancelled':
       return 'Licença cancelada.';
     case 'invalid_payload':
-      return 'A loja recusou o pedido de validação. Confira chave e IP.';
+      return 'A loja recusou o pedido de validação. Cadastre o IP em Minha conta na loja.';
     default:
-      return 'Licença inválida. Confira chave, URL da loja e IP nas opções do painel.';
+      return 'Licença inválida. Confira a instalação e o IP em Minha conta na loja.';
   }
 }

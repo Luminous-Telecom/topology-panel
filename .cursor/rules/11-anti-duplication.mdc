@@ -126,14 +126,17 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
 | Select de interface do cabo (Novo link / Editar link) | `components/LinkInterfaceSelectField.tsx` (`interfaceOptionValue`) |
 | Chrome visual de modal e overlay do mapa | `components/chrome/overlayChrome.ts` + `components/TopologyModal.tsx` (`OVERLAY_DIVIDER`, `overlayStackedItemStyle`) |
-| Editores da aba de opções (grupos, mapeamento de status, cores por ícone) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `StatusValueMappingsEditor.tsx`, `HostTypeColorsEditor.tsx` |
+| Editores da aba de opções (grupos, mapeamento de status, cores por ícone, licença) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `StatusValueMappingsEditor.tsx`, `HostTypeColorsEditor.tsx`, `LicenseStatusEditor.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
 | Encaixar overlay ao lado da âncora sem sair do painel | `fitOverlayBesideAnchor` / `overlayClipBox` / `overlayPortalParent` em `utils/overlayPortal.ts` |
 | Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |
 | Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
-| Validar chave/URL/IP da loja (sem fetch) | `resolveLicenseGate` / `resolveLicenseIp` / `licenseRejectMessage` em `utils/licenseValidation.ts` |
+| Validar chave/URL da loja (sem fetch) | `resolveLicenseGate` / `licenseRejectMessage` em `utils/licenseValidation.ts` |
+| Arquivo `license.json` da instalação | `parseInstalledLicenseFile` / `licenseStatusUrl` em `utils/licenseInstall.ts` |
 | POST `/api/license/validate` (cache + dedupe) | `fetchLicenseValidation` em `services/licenseClient.ts` via `asyncCache` |
+| GET IPs cadastrados na loja | `fetchLicenseStatus` em `services/licenseClient.ts` |
+| Comparar versão instalada × loja | `PLUGIN_VERSION` / `pluginVersionIsNewer` em `utils/pluginVersion.ts` |
 | Estado de licença no painel | `hooks/useLicenseValidation.ts` + overlay `components/LicenseGate.tsx` |
 
 ## Exceções

@@ -54,6 +54,11 @@ const LazyZabbixStatusItemEditor = lazy(() =>
     default: m.ZabbixStatusItemEditor,
   }))
 );
+const LazyLicenseStatusEditor = lazy(() =>
+  import('../components/editors/LicenseStatusEditor').then((m) => ({
+    default: m.LicenseStatusEditor,
+  }))
+);
 
 export function TopologyLayoutEditor(
   props: ComponentProps<typeof LazyTopologyLayoutEditor>
@@ -159,6 +164,14 @@ export function ZabbixStatusItemEditor(
   return (
     <Suspense fallback={loading}>
       <LazyZabbixStatusItemEditor {...props} />
+    </Suspense>
+  );
+}
+
+export function LicenseStatusEditor(): JSX.Element {
+  return (
+    <Suspense fallback={loading}>
+      <LazyLicenseStatusEditor />
     </Suspense>
   );
 }

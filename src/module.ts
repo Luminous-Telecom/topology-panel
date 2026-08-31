@@ -3,6 +3,7 @@ import { TopologyPanel } from './components/TopologyPanel';
 import {
   ChildMapsEditor,
   HostTypeColorsEditor,
+  LicenseStatusEditor,
   QueryDisplayRefIdsEditor,
   StatusValueMappingsEditor,
   TopologyHostsEditor,
@@ -26,27 +27,14 @@ import {
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
   .setPanelOptions((builder) => {
     builder
-      .addTextInput({
+      .addCustomEditor({
+        id: 'licenseInfo',
         path: 'licenseKey',
-        name: 'Chave de licença',
-        description: 'Chave gerada na Luminous Store após a compra.',
-        defaultValue: '',
+        name: 'Licença',
+        description: 'A instalação da loja grava a chave e a URL. O IP só se altera em Minha conta.',
+        editor: LicenseStatusEditor,
         category: ['Licença'],
-      })
-      .addTextInput({
-        path: 'licenseApiUrl',
-        name: 'URL de validação',
-        description: 'Endpoint POST da loja (…/api/license/validate). Copie no assistente de instalação.',
         defaultValue: '',
-        category: ['Licença'],
-      })
-      .addTextInput({
-        path: 'licenseIp',
-        name: 'IP do Grafana',
-        description:
-          'IP público deste servidor, igual ao cadastrado na loja. Se vazio, usa o host da URL quando for IPv4.',
-        defaultValue: '',
-        category: ['Licença'],
       })
       .addCustomEditor({
         id: 'zabbixDatasourceUid',

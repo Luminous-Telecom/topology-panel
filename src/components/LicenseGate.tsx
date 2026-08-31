@@ -1,5 +1,6 @@
 import React from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
+import { PLUGIN_VERSION } from '../utils/pluginVersion';
 import type { LicenseCheckState } from '../hooks/useLicenseValidation';
 
 export function LicenseGate({
@@ -40,6 +41,7 @@ export function LicenseGate({
     >
       <strong>{title}</strong>
       <div style={{ marginTop: 8 }}>{body}</div>
+      <div style={{ marginTop: 16, color: theme.colors.text.secondary }}>Topology Panel v{PLUGIN_VERSION}</div>
     </div>
   );
 }

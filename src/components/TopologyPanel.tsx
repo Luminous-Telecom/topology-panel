@@ -54,6 +54,8 @@ import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks }
 import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { useLicenseValidation } from '../hooks/useLicenseValidation';
 import { LicenseGate } from './LicenseGate';
+import { TopologyUpdateBadge } from './canvas/TopologyUpdateBadge';
+import { PLUGIN_VERSION, pluginVersionIsNewer } from '../utils/pluginVersion';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -67,11 +69,7 @@ export function TopologyPanel({
   const dashboardEditing = useDashboardEditMode();
   const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
-  const licenseCheck = useLicenseValidation({
-    licenseKey: options.licenseKey,
-    licenseApiUrl: options.licenseApiUrl,
-    licenseIp: options.licenseIp,
-  });
+  const licenseCheck = useLicenseValidation();
 
   const latestOptionsRef = useRef(options);
   const pendingNocModeRef = useRef<boolean | undefined>(undefined);
@@ -625,6 +623,13 @@ export function TopologyPanel({
     return null;
   }
 
+  const storeUpdateVersion =
+    licenseCheck.status === 'valid' &&
+    licenseCheck.storeVersion &&
+    pluginVersionIsNewer(licenseCheck.storeVersion, PLUGIN_VERSION)
+      ? licenseCheck.storeVersion
+      : undefined;
+
   const canvas = mapValidationErrors.length > 0 ? (
       <div
         style={{
@@ -649,6 +654,7 @@ export function TopologyPanel({
     ) : (
     <div
       style={{
+        position: 'relative',
         width: panelWidth,
         height: panelHeight,
         background: theme.colors.background.primary,
@@ -694,6 +700,7 @@ export function TopologyPanel({
         canRedo={canPersistOptions && canRedo}
         hideOverlayControls={playlistPlayback}
       />
+      <TopologyUpdateBadge storeVersion={storeUpdateVersion} />
     </div>
     );
 

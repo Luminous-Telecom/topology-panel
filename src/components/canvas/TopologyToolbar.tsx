@@ -4,6 +4,7 @@ import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaLock, FaMap, FaPaste, FaTri
 import { CanvasTool, HostMetadataMap, TopologyNode } from '../../types';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle, toolbarToolGroupStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
+import { PLUGIN_VERSION } from '../../utils/pluginVersion';
 import styles from './TopologyToolbar.module.scss';
 
 function toolbarClass(
@@ -278,6 +279,9 @@ export function TopologyToolbar({
       >
         <Icon name={isFullscreen ? 'compress-arrows' : 'expand-arrows-alt'} size="sm" />
       </button>
+      <span className={styles.version} title={`Topology Panel ${PLUGIN_VERSION}`}>
+        v{PLUGIN_VERSION}
+      </span>
     </div>
   );
 }

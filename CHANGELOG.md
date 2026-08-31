@@ -5,6 +5,19 @@ Todas as mudanças relevantes do Topology Panel ficam neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A versão em
 `package.json` e `src/plugin.json` sobe **no mesmo commit** que a entrada abaixo.
 
+## [Unreleased]
+
+## [1.4.394] - 2026-08-31
+
+### Adicionado
+
+- Número da versão do plugin na barra do mapa e aviso quando a loja tem uma versão mais nova.
+- A instalação grava chave e URL da loja; o painel só mostra o IP cadastrado em Minha conta.
+
+### Alterado
+
+- Opções de Licença no Grafana são somente leitura (chave, URL e IP não se editam no painel).
+
 ## [1.4.393] - 2026-08-31
 
 ### Corrigido
