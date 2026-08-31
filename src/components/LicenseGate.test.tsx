@@ -4,6 +4,17 @@ import { describe, expect, it } from 'vitest';
 import { LicenseGate } from './LicenseGate';
 
 describe('LicenseGate', () => {
+  it('mostra o mapa enquanto o backend consulta a loja', () => {
+    render(
+      <LicenseGate state={{ status: 'loading' }} width={400} height={300}>
+        <div>mapa</div>
+      </LicenseGate>
+    );
+    expect(screen.getByText('mapa')).toBeInTheDocument();
+    expect(screen.queryByText('Validando licença…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('mostra o mapa quando a licença é válida', () => {
     render(
       <LicenseGate state={{ status: 'valid' }} width={400} height={300}>

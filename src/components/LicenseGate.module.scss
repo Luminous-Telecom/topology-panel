@@ -40,19 +40,6 @@
   color: #ef9a9a;
 }
 
-.spinner {
-  animation: topology-license-spin 1s linear infinite;
-}
-
-@keyframes topology-license-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .title {
   margin: 0;
   font-size: $font-md;

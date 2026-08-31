@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.401] - 2026-08-31
+
+### Alterado
+
+- O mapa abre na hora; o aviso de licença só aparece se a loja recusar a chave.
+
 ## [1.4.400] - 2026-08-31
 
 ### Alterado

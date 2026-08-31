@@ -15,33 +15,20 @@ export function LicenseGate({
   height: number;
   children: React.ReactNode;
 }) {
-  if (state.status === 'skipped' || state.status === 'valid') {
+  if (state.status !== 'blocked') {
     return <>{children}</>;
   }
 
-  const loading = state.status === 'loading';
-  const title = loading ? 'Validando licença…' : 'Licença necessária';
-  const body = loading
-    ? 'Consultando a loja. O mapa abre quando a chave for aceita.'
-    : state.message;
-
   return (
-    <div
-      className={styles.shell}
-      style={{ width, height }}
-      role={loading ? 'status' : 'alert'}
-      aria-live={loading ? 'polite' : 'assertive'}
-    >
+    <div className={styles.shell} style={{ width, height }} role="alert" aria-live="assertive">
       <div className={`${overlayCardStyle} ${styles.card}`}>
         <div className={overlayCardHeaderStyle}>Licença</div>
         <div className={styles.body}>
-          <div className={`${styles.icon} ${loading ? '' : styles.iconBlocked}`}>
-            <span className={loading ? styles.spinner : undefined}>
-              <Icon name={loading ? 'sync' : 'lock'} size="lg" />
-            </span>
+          <div className={`${styles.icon} ${styles.iconBlocked}`}>
+            <Icon name="lock" size="lg" />
           </div>
-          <h2 className={styles.title}>{title}</h2>
-          <p className={styles.message}>{body}</p>
+          <h2 className={styles.title}>Licença necessária</h2>
+          <p className={styles.message}>{state.message}</p>
         </div>
       </div>
     </div>
