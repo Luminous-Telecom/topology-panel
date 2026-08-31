@@ -6,6 +6,7 @@ import {
   parseInstalledLicenseFile,
   type InstalledLicenseFile,
 } from '../utils/licenseInstall';
+import { verifyLicenseTicket } from '../utils/licenseTicket';
 import { PLUGIN_VERSION } from '../utils/pluginVersion';
 
 export type LicenseFetchResult =
@@ -144,6 +145,7 @@ async function requestLicenseValidation(
       reason?: string | null;
       pluginId?: string | null;
       pluginVersion?: string | null;
+      ticket?: string | null;
     };
     if (body.valid === true) {
       if (body.pluginId && body.pluginId !== TOPOLOGY_PLUGIN_ID) {
@@ -151,6 +153,15 @@ async function requestLicenseValidation(
           kind: 'invalid',
           retryable: false,
           message: 'Esta chave não é do Topology Panel.',
+        };
+      }
+      const ticket = typeof body.ticket === 'string' ? body.ticket : '';
+      const signed = await verifyLicenseTicket(ticket, { licenseKey, ip, pluginId: TOPOLOGY_PLUGIN_ID });
+      if (!signed) {
+        return {
+          kind: 'invalid',
+          retryable: false,
+          message: 'A loja não assinou esta licença. Confira a instalação e a URL da loja.',
         };
       }
       return {
@@ -173,3 +184,4 @@ async function requestLicenseValidation(
     clearTimeout(timer);
   }
 }
+

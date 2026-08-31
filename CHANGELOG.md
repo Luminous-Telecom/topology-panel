@@ -7,6 +7,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.398] - 2026-08-31
+
+### Alterado
+
+- Aviso de licença (IP não cadastrado, chave ausente, validando) fica centralizado no painel, no visual dos overlays.
+
+### Adicionado
+
+- Licença só vale com ticket ES256 da loja. A URL continua a da instalação (`license.json`).
+
 ## [1.4.397] - 2026-08-31
 
 ### Alterado

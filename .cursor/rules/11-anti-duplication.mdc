@@ -133,6 +133,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
 | Validar chave/URL da loja (sem fetch) | `resolveLicenseGate` / `licenseRejectMessage` em `utils/licenseValidation.ts` |
+| Ticket ES256 da loja | `verifyLicenseTicket` em `utils/licenseTicket.ts` |
 | Arquivo `license.json` da instalação | `parseInstalledLicenseFile` / `licenseStatusUrl` / `resolveGrafanaServerIp` / `matchAuthorizedGrafanaIp` em `utils/licenseInstall.ts` |
 | POST `/api/license/validate` (cache + dedupe) | `fetchLicenseValidation` em `services/licenseClient.ts` via `asyncCache` |
 | GET IPs cadastrados na loja | `fetchLicenseStatus` em `services/licenseClient.ts` |

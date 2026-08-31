@@ -695,7 +695,7 @@ export function TopologyPanel({
     );
 
   return (
-    <LicenseGate state={licenseCheck} width={panelWidth} height={panelHeight} theme={theme}>
+    <LicenseGate state={licenseCheck} width={panelWidth} height={panelHeight}>
       {canvas}
     </LicenseGate>
   );
