@@ -3,6 +3,8 @@
   "name": "Topology Panel",
   "id": "luminous-topology-panel",
   "skipDataQuery": true,
+  "backend": true,
+  "executable": "gpx_topology",
   "info": {
     "description": "Manual network topology maps with Zabbix host status, links between nodes, and submap navigation",
     "author": {
@@ -18,7 +20,7 @@
       "small": "img/plugin-icon.svg",
       "large": "img/plugin-icon.svg"
     },
-    "version": "1.4.398",
+    "version": "1.4.399",
     "updated": "2026-08-31"
   },
   "dependencies": {

@@ -30,7 +30,9 @@ module.exports = (env) => {
       library: {
         type: 'amd',
       },
-      clean: true,
+      clean: {
+        keep: (asset) => /(?:^|\/)(?:gpx_topology[^/]*|license\.json|MANIFEST\.txt)$/.test(asset),
+      },
     },
     externals: [
       'lodash',

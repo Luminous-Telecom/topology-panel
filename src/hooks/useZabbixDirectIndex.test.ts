@@ -9,6 +9,12 @@ import {
   fetchZabbixTrafficLastValues,
 } from '../utils/zabbixApi';
 import { useZabbixDirectIndex, dropZabbixLiveIndex } from './useZabbixDirectIndex';
+import { fetchLiveSnapshot, persistLiveSnapshot } from '../services/pluginBackend';
+
+vi.mock('../services/pluginBackend', () => ({
+  fetchLiveSnapshot: vi.fn(async () => undefined),
+  persistLiveSnapshot: vi.fn(async () => {}),
+}));
 import {
   clearZabbixSnapshotCache,
   dropZabbixSnapshotMemory,
@@ -95,6 +101,8 @@ describe('useZabbixDirectIndex', () => {
     fetchSignalInventory.mockResolvedValue([]);
     fetchResolvedGroups.mockReset();
     fetchResolvedGroups.mockResolvedValue({ resolvedGroups: ['Backbone'], groupIds: ['10'] });
+    vi.mocked(fetchLiveSnapshot).mockResolvedValue(undefined);
+    vi.mocked(persistLiveSnapshot).mockResolvedValue();
   });
 
   afterEach(() => {
@@ -1268,5 +1276,36 @@ describe('useZabbixDirectIndex', () => {
     });
     expect(fetchLastValues).toHaveBeenCalledTimes(2);
     expect(fetchLastValues).toHaveBeenLastCalledWith('ds', ['11', '10001'], expect.any(AbortSignal), [], ['1']);
+  });
+
+  it('pinta o lastvalue do backend Go antes do item.get', async () => {
+    vi.mocked(fetchLiveSnapshot).mockResolvedValue({
+      savedAt: 1,
+      metadata: {
+        hosts: [host('1', 'Backbone')],
+        resolvedGroups: ['Backbone'],
+        groupIds: ['10'],
+      },
+      knownStatusItems: statusItems('1'),
+      lastValues: { '10001': { itemid: '10001', lastvalue: '1', lastclock: '1000' } },
+      interfaceItems: [],
+      problems: {},
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(true);
+    expect(result.current.index.hosts).toContain('host-1');
+    expect(fetchStatus).not.toHaveBeenCalled();
+    expect(fetchMetadata).not.toHaveBeenCalled();
   });
 });

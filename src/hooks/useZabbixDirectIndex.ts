@@ -8,6 +8,7 @@ import {
   zabbixSnapshotCacheKey,
   ZabbixItemIdCatalog,
 } from '../services/zabbixSnapshotCache';
+import { fetchLiveSnapshot, persistLiveSnapshot, type BackendLiveSnapshot } from '../services/pluginBackend';
 import {
   fetchZabbixDirectMetadata,
   fetchZabbixProblems,
@@ -47,10 +48,10 @@ import {
  * descoberta — o grafana-zabbix aceita um método por POST, e três chamadas no intervalo
  * pintavam o Network. O relógio mora fora do React — remontar o painel não dispara outro ciclo.
  *
- * A primeira pintura espera o lastvalue **ao vivo** do `item.get` — não hidrata lastvalue de
- * localStorage. Sem isso o mapa abria com valor velho ou com caixas cinza (`host.get` sozinho).
- * Catálogo de itemids (sem lastvalue) só acelera o POST: em regime e no F5 frio o `item.get` vai
- * por id. `host.get` e problemas não repetem no intervalo.
+ * A primeira pintura usa o snapshot do backend Go se ainda estiver quente (outro operador ou
+ * F5 neste Grafana). Sem isso espera o lastvalue **ao vivo** do `item.get` — não hidrata
+ * lastvalue de localStorage (caixa cinza). Catálogo de itemids só acelera o POST. `host.get`
+ * e problemas não repetem no intervalo.
  *
  * Lastvalue igual: não redesenha o índice. Lastvalue de cabo novo reusa o índice de hosts.
  */
@@ -562,6 +563,14 @@ export function useZabbixDirectIndex({
         const prevLive = prevSession?.state;
         if (prevLive?.ready && sameLastValuesForPaint(traffic.lastValues, prevLive.lastValues)) {
           persistCatalog(statusItems, traffic);
+          void persistLiveSnapshot(snapshotKey, {
+            savedAt: Date.now(),
+            metadata: meta,
+            knownStatusItems: statusItems,
+            lastValues: traffic.lastValues,
+            interfaceItems: traffic.interfaceItems,
+            problems: currentProblems,
+          });
           if (!sameHostProblems(currentProblems, prevLive.problems)) {
             const next: DirectState = { ...prevLive, problems: currentProblems };
             liveSessionByKey.set(snapshotKey, {
@@ -601,6 +610,14 @@ export function useZabbixDirectIndex({
         });
         setState(next);
         persistCatalog(statusItems, traffic);
+        void persistLiveSnapshot(snapshotKey, {
+          savedAt: Date.now(),
+          metadata: meta,
+          knownStatusItems: statusItems,
+          lastValues: traffic.lastValues,
+          interfaceItems: traffic.interfaceItems,
+          problems: currentProblems,
+        });
         return true;
       };
       const publishByItemIds = async (
@@ -731,25 +748,88 @@ export function useZabbixDirectIndex({
       }
     };
 
+    const applyRemoteSnapshot = (remote: BackendLiveSnapshot): boolean => {
+      if (!remote.metadata.resolvedGroups.length) {
+        return false;
+      }
+      const statusItems = remote.knownStatusItems;
+      if (remote.metadata.hosts.length && !statusItems.length) {
+        return false;
+      }
+      metadata = remote.metadata;
+      knownStatusItems = statusItems;
+      currentProblems = remote.problems ?? EMPTY_PROBLEMS;
+      lastTraffic = coalesceLinkTraffic(
+        {
+          lastValues: remote.lastValues ?? EMPTY_LAST_VALUES,
+          interfaceItems: remote.interfaceItems ?? EMPTY_INTERFACE_ITEMS,
+        },
+        lastTraffic
+      );
+      rememberTrafficItems(statusItems);
+      rememberTrafficItems(lastTraffic.interfaceItems);
+      const next: DirectState = {
+        index: buildZabbixDirectIndex({
+          datasourceUid: datasourceUid ?? '',
+          groupNames: groupsRef.current,
+          statusItemKey: itemKey,
+          hosts: metadata.hosts,
+          statusItems,
+        }),
+        lastValues: lastTraffic.lastValues,
+        interfaceItems: lastTraffic.interfaceItems,
+        problems: currentProblems,
+        ready: true,
+        loading: false,
+        error: undefined,
+      };
+      liveSessionByKey.set(snapshotKey, {
+        state: next,
+        metadata,
+        knownStatusItems: statusItems,
+      });
+      persistCatalog(statusItems, lastTraffic);
+      setState(next);
+      if (remote.savedAt > 0) {
+        markPollStarted(clockKey, remote.savedAt);
+        markPollFinished(clockKey);
+      }
+      return true;
+    };
+
     /*
      * Só busca na hora se esta chave ainda não largou um ciclo. Senão espera o resto do
      * intervalo — o Grafana remonta o painel e um `void fetchSnapshot()` aqui virava +4 POSTs.
+     * Snapshot quente do backend (F5 / outro operador) pinta antes do `item.get`.
      */
     let intervalId: number | undefined;
+    let timeoutId: number | undefined;
     const startInterval = () => {
       intervalId = window.setInterval(() => void fetchSnapshot(), intervalMs);
     };
-    const waitMs = msUntilNextPoll(clockKey, intervalMs, Date.now());
-    let timeoutId: number | undefined;
-    if (waitMs <= 0) {
-      void fetchSnapshot();
-      startInterval();
-    } else {
+    const armPoll = () => {
+      const waitMs = msUntilNextPoll(clockKey, intervalMs, Date.now());
+      if (waitMs <= 0) {
+        void fetchSnapshot();
+        startInterval();
+        return;
+      }
       timeoutId = window.setTimeout(() => {
         void fetchSnapshot();
         startInterval();
       }, waitMs);
-    }
+    };
+    void (async () => {
+      if (!live?.state.ready) {
+        const remote = await fetchLiveSnapshot(snapshotKey);
+        if (!cancelled && remote && !liveSessionByKey.get(snapshotKey)?.state.ready) {
+          applyRemoteSnapshot(remote);
+        }
+      }
+      if (!cancelled) {
+        armPoll();
+      }
+    })();
 
     return () => {
       cancelled = true;

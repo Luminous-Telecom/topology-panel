@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Field, Input, Stack } from '@grafana/ui';
-import { fetchInstalledLicenseFile, fetchLicenseStatus } from '../../services/licenseClient';
-import { matchAuthorizedGrafanaIp, resolveGrafanaServerIp } from '../../utils/licenseInstall';
+import { fetchPluginLicense } from '../../services/pluginBackend';
 import { PLUGIN_VERSION, pluginVersionIsNewer } from '../../utils/pluginVersion';
 
 /** IP deste Grafana (somente leitura) e versão do plugin. */
@@ -12,27 +11,16 @@ export function LicenseStatusEditor() {
   useEffect(() => {
     let cancelled = false;
     const pageHost = typeof window !== 'undefined' ? window.location.hostname : '';
-    fetchInstalledLicenseFile().then((file) => {
+    fetchPluginLicense(pageHost).then((license) => {
       if (cancelled) {
         return;
       }
-      const resolved = resolveGrafanaServerIp(pageHost, file?.grafanaIp);
-      if (resolved) {
-        setGrafanaIp(resolved);
+      if (license.grafanaIp) {
+        setGrafanaIp(license.grafanaIp);
       }
-      if (!file) {
-        return;
+      if (license.status === 'valid' && license.storeVersion) {
+        setStoreVersion(license.storeVersion);
       }
-      fetchLicenseStatus(file.licenseApiUrl, file.licenseKey).then((status) => {
-        if (cancelled || status.kind !== 'ok') {
-          return;
-        }
-        setStoreVersion(status.storeVersion);
-        const matched = matchAuthorizedGrafanaIp(resolved, status.authorizedIps);
-        if (matched) {
-          setGrafanaIp(matched);
-        }
-      });
     });
     return () => {
       cancelled = true;

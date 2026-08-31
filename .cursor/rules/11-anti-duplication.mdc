@@ -132,11 +132,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |
 | Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
-| Validar chave/URL da loja (sem fetch) | `resolveLicenseGate` / `licenseRejectMessage` em `utils/licenseValidation.ts` |
-| Ticket ES256 da loja | `verifyLicenseTicket` em `utils/licenseTicket.ts` |
-| Arquivo `license.json` da instalação | `parseInstalledLicenseFile` / `licenseStatusUrl` / `resolveGrafanaServerIp` / `matchAuthorizedGrafanaIp` em `utils/licenseInstall.ts` |
-| POST `/api/license/validate` (cache + dedupe) | `fetchLicenseValidation` em `services/licenseClient.ts` via `asyncCache` |
-| GET IPs cadastrados na loja | `fetchLicenseStatus` em `services/licenseClient.ts` |
+| Validar chave/URL da loja (sem fetch) | `resolveLicenseGate` / `licenseRejectMessage` em `utils/licenseValidation.ts` (espelhado no backend Go) |
+| Ticket ES256 da loja | `verifyLicenseTicket` em `utils/licenseTicket.ts` (produção verifica em `pkg/plugin/ticket.go`) |
+| Arquivo `license.json` da instalação | `parseInstalledLicenseFile` / `licenseStatusUrl` / `resolveGrafanaServerIp` / `matchAuthorizedGrafanaIp` em `utils/licenseInstall.ts` — o processo Go lê o arquivo no disco |
+| Licença e snapshot no Grafana | `fetchPluginLicense` / `fetchLiveSnapshot` / `persistLiveSnapshot` em `services/pluginBackend.ts` (`/api/plugins/luminous-topology-panel/resources/*`) |
 | Comparar versão instalada × loja | `PLUGIN_VERSION` / `pluginVersionIsNewer` em `utils/pluginVersion.ts` |
 | Estado de licença no painel | `hooks/useLicenseValidation.ts` + overlay `components/LicenseGate.tsx` |
 

@@ -20,9 +20,20 @@ Plugin de painel para **Grafana 9+** que exibe mapas de topologia de rede, com s
 ## Requisitos
 
 - Node.js **18+**
-- Grafana **9+** (testado em Grafana 11/13)
+- Go **1.22+** (só para build; o ZIP da loja já traz o binário)
+- Grafana **10+** (testado em Grafana 11/13)
 - Datasource Zabbix (obrigatório, para status e tráfego)
 - Windows + Winbox (para abrir Winbox a partir do navegador)
+
+## Build
+
+```bash
+npm install
+npm run build    # JS de produção + binários Go (linux, darwin, windows)
+npm test
+```
+
+`npm run dev` só recompila o JS. Depois de mudar Go: `BACKEND_OUT=/var/lib/grafana/plugins/luminous-topology-panel npm run build:backend` e reinicie o Grafana.
 
 ## Abrir Winbox a partir do mapa (Windows)
 

@@ -7,6 +7,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.399] - 2026-08-31
+
+### Adicionado
+
+- Backend Go no plugin: valida a licença na loja (ticket ES256) e guarda o lastvalue em memória.
+  Reabrir o mapa pinta na hora; o intervalo do Zabbix continua no painel.
+
+### Alterado
+
+- `pack:store` e `pack:private` apagam ZIPs e a pasta de staging antigos; em `packaging/out` fica só o pacote da vez.
+
 ## [1.4.398] - 2026-08-31
 
 ### Alterado

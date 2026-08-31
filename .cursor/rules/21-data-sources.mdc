@@ -51,8 +51,9 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
   desses consumidores — exceto os testes. `ping.ts` só o `PingModal` e o teste ICMP.
 - Polling: `useZabbixDirectIndex.ts` **só** no `zabbixRefreshSec` do painel (primeira busca +
   `setInterval`). Sem `RefreshEvent` do Grafana, sem `visibilitychange`, sem relógio interno de
-  identidade/sinal. Primeira pintura espera o `item.get` ao vivo — não pinta lastvalue de
-  localStorage nem caixas cinza só com o `host.get`. Com itemids conhecidos (catálogo, 7 dias):
+  identidade/sinal. Snapshot quente do backend Go (`fetchLiveSnapshot`) pode pintar no F5; sem
+  isso a primeira pintura espera o `item.get` ao vivo — não pinta lastvalue de localStorage.
+  Com itemids conhecidos (catálogo, 7 dias):
   por itemid depois do `host.get`. Com chave de cabo ainda sem id: `item.get` por key no mesmo
   ciclo, sem misturar `itemids` e `key_` no mesmo POST. Itemids de cabo **não** entram na chave
   do efeito.

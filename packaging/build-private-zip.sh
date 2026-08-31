@@ -84,16 +84,15 @@ OUT_DIR="${ROOT}/packaging/out"
 STAGE="${OUT_DIR}/${PLUGIN_ID}"
 ZIP_NAME="${PLUGIN_ID}-${VERSION}-${SLUG}.zip"
 
-rm -rf "$STAGE"
+rm -rf "$OUT_DIR"
 mkdir -p "$STAGE"
 cp -a dist/. "$STAGE/"
 
-mkdir -p "$OUT_DIR"
 (
   cd "$OUT_DIR"
-  rm -f "$ZIP_NAME"
   zip -qr "$ZIP_NAME" "$PLUGIN_ID"
 )
+rm -rf "$STAGE"
 
 echo "==> ZIP: ${OUT_DIR}/${ZIP_NAME}"
 echo "    Instale a pasta ${PLUGIN_ID}/ (ou o ZIP extraído) em plugins/ do Grafana cujo root_url seja exatamente o informado."

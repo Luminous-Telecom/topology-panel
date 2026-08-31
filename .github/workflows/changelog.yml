@@ -13,6 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
       - name: CHANGELOG inclui a versão de package.json e plugin.json
         run: |
           set -euo pipefail
@@ -27,6 +34,8 @@ jobs:
             exit 1
           fi
           node .config/changelog-notes.mjs "$ver" >/dev/null
+      - name: Testes do backend Go
+        run: go test ./pkg/...
 
   release:
     needs: check
@@ -38,6 +47,9 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
       - name: Versão do plugin
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"

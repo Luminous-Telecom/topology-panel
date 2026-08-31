@@ -7,14 +7,16 @@ fica para entrega manual, fora da Luminous Store.
 
 Um arquivo por versão, sem `MANIFEST.txt` de `root_url`. O Grafana do cliente
 precisa de `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=luminous-topology-panel`.
+Reinicie o Grafana depois de instalar — o backend Go sobe junto com o servidor.
 A chave de licença entra nas opções do painel; o plugin chama a loja.
 
 ```bash
 npm run pack:store
 ```
 
-O arquivo sai em `packaging/out/luminous-topology-panel-<versão>.zip`. O
-GitHub Actions anexa esse ZIP na Release ao fazer push na `main`.
+O arquivo sai em `packaging/out/luminous-topology-panel-<versão>.zip` (a pasta
+`out/` é limpa a cada pack — só fica esse ZIP). O GitHub Actions anexa esse
+ZIP na Release ao fazer push na `main`.
 
 `SKIP_BUILD=1` reusa um `dist/` já compilado. **Não** rode `npm run build`
 depois de assinar um ZIP privado no mesmo `dist/` — o webpack limpa a pasta.
@@ -44,7 +46,8 @@ Vários endereços no mesmo ZIP (vírgula):
 npm run pack:private -- https://grafana.cliente.example,http://10.0.0.1:3000
 ```
 
-O arquivo sai em `packaging/out/luminous-topology-panel-<versão>-<host>.zip` (pasta ignorada pelo git).
+O arquivo sai em `packaging/out/luminous-topology-panel-<versão>-<host>.zip`
+(pasta ignorada pelo git; `out/` é limpa a cada pack).
 
 `SKIP_BUILD=1` reusa um `dist/` já compilado. **Não** rode `npm run build` depois de assinar: o webpack limpa o `dist/` e apaga o `MANIFEST.txt`.
 

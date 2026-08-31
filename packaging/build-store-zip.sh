@@ -27,17 +27,19 @@ if [[ ! -f dist/module.js ]]; then
   echo "dist/module.js não existe — rode npm run build ou omita SKIP_BUILD=1." >&2
   exit 1
 fi
+if [[ ! -f dist/gpx_topology_linux_amd64 ]]; then
+  echo "dist/gpx_topology_linux_amd64 não existe — o ZIP da loja precisa do backend Go." >&2
+  exit 1
+fi
 
-rm -rf "$STAGE"
+rm -rf "$OUT_DIR"
 mkdir -p "$STAGE"
 cp -a dist/. "$STAGE/"
 # ZIP da loja não leva assinatura privada (outro root_url).
 rm -f "$STAGE/MANIFEST.txt"
 
-mkdir -p "$OUT_DIR"
 (
   cd "$OUT_DIR"
-  rm -f "$ZIP_NAME"
   if command -v zip >/dev/null 2>&1; then
     zip -qr "$ZIP_NAME" "$PLUGIN_ID"
   else
@@ -53,6 +55,7 @@ with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as archive:
 PY
   fi
 )
+rm -rf "$STAGE"
 
 echo "==> ZIP: ${OUT_DIR}/${ZIP_NAME}"
 echo "    Anexe este arquivo no GitHub Release. Não use pack:private na loja."
