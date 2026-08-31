@@ -28,7 +28,7 @@ import {
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { applyResolvedMetricItemIds } from '../utils/mapLinkEdits';
 import { useStableIdentity } from '../hooks/useStableIdentity';
-import { validateTopologyMap } from '../utils/mapValidation';
+import { isUninitializedTopologyMap, validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaDashboardFlush } from '../hooks/useGrafanaDashboardFlush';
@@ -81,19 +81,19 @@ export function TopologyPanel({
       : { ...options, nocMode: pendingNocModeRef.current };
 
   /**
-   * Erros estruturais em `options.map` (JSON editado à mão, fora do `TopologyEditor`) — `nodes`/
-   * `links` não são arrays, ou `width`/`height` não são números positivos. Quando não vazio, o
-   * painel mostra um erro explícito em vez de montar o canvas (ver `no-fallbacks.mdc`).
+   * Erros estruturais em `options.map` (JSON editado à mão). `map: {}` do Grafana (painel novo)
+   * não entra aqui — é `isUninitializedTopologyMap`, e o canvas usa o mapa padrão.
    */
+  const mapUninitialized = isUninitializedTopologyMap(options.map);
   const mapValidationErrors = useMemo(
-    () => (options.map ? validateTopologyMap(options.map) : []),
-    [options.map]
+    () => (mapUninitialized || !options.map ? [] : validateTopologyMap(options.map)),
+    [mapUninitialized, options.map]
   );
 
   const resolvedOptionsRaw = useMemo(() => {
     // Mapa malformado nunca é usado para renderizar — só evita que os hooks abaixo quebrem antes
     // do erro explícito (ver `mapValidationErrors`) ser mostrado.
-    const useIncomingMap = Boolean(options.map) && mapValidationErrors.length === 0;
+    const useIncomingMap = Boolean(options.map) && !mapUninitialized && mapValidationErrors.length === 0;
     const rawMap = useIncomingMap ? ensureUniqueNodeIds(options.map as TopologyMap) : defaultOptions().map;
     const migratedMap =
       (rawMap.schemaVersion ?? 1) < CURRENT_MAP_SCHEMA_VERSION ? migrateTopologyMap(rawMap) : rawMap;
@@ -106,7 +106,7 @@ export function TopologyPanel({
     return {
       ...colored,
     };
-  }, [options, theme, mapValidationErrors]);
+  }, [options, theme, mapUninitialized, mapValidationErrors]);
   const resolvedOptionsPrevRef = useRef<TopologyPanelOptions>();
   const resolvedOptions = reuseResolvedOptionsIfOnlyMoved(resolvedOptionsPrevRef.current, resolvedOptionsRaw);
   resolvedOptionsPrevRef.current = resolvedOptions;

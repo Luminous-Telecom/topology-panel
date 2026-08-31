@@ -69,7 +69,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Excluir cabo entre submapas em cascata (espelhos e hops órfãos) | `removeInterSubmapCounterpartLinks` / `removeMissingInterSubmapCounterparts` em `utils/interSubmapLinks.ts` |
 | Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
 | Traduzir o formulário de propriedades em patch do nó | `buildNodeEditPayload` em `utils/nodeEditPayload.ts` |
-| Validar estrutura do mapa | `validateTopologyMap` em `utils/mapValidation.ts` |
+| Validar estrutura do mapa | `validateTopologyMap` / `isUninitializedTopologyMap` / `topologyMapOrDefault` em `utils/mapValidation.ts` |
 | Busca do mapa | filtro em `components/canvas/TopologyMapSearch.tsx` |
 | Converter coordenada de tela para coordenada do mapa | `utils/mapCoords.ts` |
 | Posições do grupo arrastado, limites e vizinhos das guias | `utils/dragMove.ts` |

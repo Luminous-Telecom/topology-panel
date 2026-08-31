@@ -7,6 +7,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.395] - 2026-08-31
+
+### Alterado
+
+- Opções de Licença no Grafana mostram só chave, URL e IP, sem textos de ajuda.
+
+### Corrigido
+
+- Painel novo com `map: {}` do Grafana abre o mapa padrão em vez de "Mapa de topologia inválido".
+
 ## [1.4.394] - 2026-08-31
 
 ### Adicionado

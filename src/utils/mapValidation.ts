@@ -31,6 +31,25 @@ export function validateTopologyMap(map: TopologyMap | null | undefined): string
 }
 
 /**
+ * Painel novo: o Grafana aninha `options.map` como `{}` (sem nodes/links/width/height).
+ * Isso não é JSON editado à mão — o canvas e o editor usam o mapa padrão.
+ */
+export function isUninitializedTopologyMap(map: unknown): boolean {
+  if (map == null) {
+    return true;
+  }
+  if (typeof map !== 'object' || Array.isArray(map)) {
+    return false;
+  }
+  const rec = map as { nodes?: unknown; links?: unknown; width?: unknown; height?: unknown };
+  const hasNodes = Array.isArray(rec.nodes);
+  const hasLinks = Array.isArray(rec.links);
+  const hasWidth = typeof rec.width === 'number' && Number.isFinite(rec.width) && rec.width > 0;
+  const hasHeight = typeof rec.height === 'number' && Number.isFinite(rec.height) && rec.height > 0;
+  return !hasNodes && !hasLinks && !hasWidth && !hasHeight;
+}
+
+/**
  * Mapa usável no editor da aba de opções. Painel novo no Grafana chega com `map` ausente ou `{}`
  * (nested options) — isso não é JSON corrompido pelo usuário; o editor usa o mapa padrão.
  */

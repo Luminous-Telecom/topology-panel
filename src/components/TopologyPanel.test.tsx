@@ -110,6 +110,13 @@ describe('TopologyPanel — inicialização de mapas', () => {
     expect(screen.queryByText(/mapa de topologia inválido/i)).not.toBeInTheDocument();
   });
 
+  it('map vazio do Grafana ({}) usa o mapa padrão em vez do erro de JSON', () => {
+    const options = defaultOptions();
+    options.map = {} as TopologyMap;
+    expect(() => renderTopologyPanel(options)).not.toThrow();
+    expect(screen.queryByText(/mapa de topologia inválido/i)).not.toBeInTheDocument();
+  });
+
   it('erro do Zabbix não deixa a UI sem indicação', () => {
     queryIndexMock.error = 'Falha ao consultar o Zabbix.';
     const options = defaultOptions();

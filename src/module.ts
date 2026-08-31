@@ -31,7 +31,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
         id: 'licenseInfo',
         path: 'licenseKey',
         name: 'Licença',
-        description: 'A instalação da loja grava a chave e a URL. O IP só se altera em Minha conta.',
         editor: LicenseStatusEditor,
         category: ['Licença'],
         defaultValue: '',
