@@ -36,8 +36,8 @@ export function QueryDisplayRefIdsEditor({ value, onChange, context }: Props) {
   const queryRefs = useMemo(() => resolveAvailableQueryRefs(context), [context]);
 
   const submapRefIds = useMemo(
-    () => collectSubmapQueryRefIds(context.options.map),
-    [context.options.map]
+    () => collectSubmapQueryRefIds(context.options?.map),
+    [context.options?.map]
   );
 
   const commitSelection = (next: Set<string>) => {

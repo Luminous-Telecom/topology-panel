@@ -182,9 +182,9 @@ export function findSubmapNodeForChildMap(
 }
 
 /** RefIds de grupo reservados a submapas (não desenham hosts no mapa pai). */
-export function collectSubmapQueryRefIds(map: TopologyMap): Set<string> {
+export function collectSubmapQueryRefIds(map: TopologyMap | undefined): Set<string> {
   const refs = new Set<string>();
-  for (const node of map.nodes ?? []) {
+  for (const node of map?.nodes ?? []) {
     for (const refId of submapQueryRefIds(node)) {
       refs.add(directRefId(refId));
     }

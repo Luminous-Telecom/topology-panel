@@ -5,11 +5,11 @@ import {
   TopologyMap,
   TopologyNode,
   TopologyPanelOptions,
-  defaultTopologyMap,
   parseTopologyJson,
   topologyToJson,
 } from '../types';
 import { activeChildMaps } from '../utils/childMapEdits';
+import { topologyMapOrDefault } from '../utils/mapValidation';
 import { inferLinkMedium } from '../utils/linkMedium';
 import { findNodeById, isHostNode } from '../utils/topologyNodes';
 import { LinkEditField } from '../editor/sections/LinksSection';
@@ -19,7 +19,7 @@ type EditorProps = StandardEditorProps<TopologyMap, TopologyPanelOptions>;
 export function useTopologyMapEditor({ value, onChange, context }: EditorProps) {
   const uid = useId();
   const panelOptions = context.options;
-  const map = value ?? panelOptions.map ?? defaultTopologyMap();
+  const map = topologyMapOrDefault(value, panelOptions?.map);
   const datasourceUid = panelOptions?.zabbixDatasourceUid;
   const locked = Boolean(map.locked);
   const [jsonMode, setJsonMode] = useState(false);
@@ -31,8 +31,8 @@ export function useTopologyMapEditor({ value, onChange, context }: EditorProps) 
   const hostNodes = useMemo(() => map.nodes.filter((n) => isHostNode(n)), [map.nodes]);
   const submapNodes = useMemo(() => map.nodes.filter((n) => n.type === 'submap'), [map.nodes]);
   const childMapIds = useMemo(
-    () => Object.keys(activeChildMaps(panelOptions.childMaps)).sort(),
-    [panelOptions.childMaps]
+    () => Object.keys(activeChildMaps(panelOptions?.childMaps)).sort(),
+    [panelOptions?.childMaps]
   );
   const dashboardPickerNodes = useMemo(
     () => map.nodes.filter((n) => n.type === 'dashboard_picker'),

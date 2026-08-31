@@ -1,4 +1,4 @@
-import { TopologyMap } from '../types';
+import { TopologyMap, defaultTopologyMap } from '../types';
 
 /**
  * Valida a forma estrutural mínima de um `TopologyMap` vindo de `options.map` (JSON editado à mão
@@ -28,4 +28,19 @@ export function validateTopologyMap(map: TopologyMap | null | undefined): string
     errors.push('"height" precisa ser um número maior que zero.');
   }
   return errors;
+}
+
+/**
+ * Mapa usável no editor da aba de opções. Painel novo no Grafana chega com `map` ausente ou `{}`
+ * (nested options) — isso não é JSON corrompido pelo usuário; o editor usa o mapa padrão.
+ */
+export function topologyMapOrDefault(
+  ...candidates: Array<TopologyMap | null | undefined>
+): TopologyMap {
+  for (const candidate of candidates) {
+    if (candidate && validateTopologyMap(candidate).length === 0) {
+      return candidate;
+    }
+  }
+  return defaultTopologyMap();
 }

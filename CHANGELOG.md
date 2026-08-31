@@ -5,6 +5,12 @@ Todas as mudanças relevantes do Topology Panel ficam neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A versão em
 `package.json` e `src/plugin.json` sobe **no mesmo commit** que a entrada abaixo.
 
+## [1.4.393] - 2026-08-31
+
+### Corrigido
+
+- Abrir um painel novo não quebra mais o editor de Layout quando o Grafana ainda não gravou `options.map`.
+
 ## [1.4.392] - 2026-08-31
 
 ### Adicionado
