@@ -5,7 +5,16 @@ Todas as mudanças relevantes do Topology Panel ficam neste arquivo.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A versão em
 `package.json` e `src/plugin.json` sobe **no mesmo commit** que a entrada abaixo.
 
-## [Unreleased]
+## [1.4.392] - 2026-08-31
+
+### Adicionado
+
+- ZIP genérico da `dist/` (`pack:store`) anexado na GitHub Release para a Luminous Store.
+- Validação de licença da loja no painel (chave, URL e IP nas opções); build de produção bloqueia o mapa sem chave válida.
+
+### Alterado
+
+- `pack:store` gera o zip com Python quando o comando `zip` não está instalado.
 
 ## [1.4.391] - 2026-08-30
 

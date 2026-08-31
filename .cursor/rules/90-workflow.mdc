@@ -44,8 +44,9 @@ Todo commit no git (GitHub) inclui versão e changelog — **nunca commite sem o
 3. Renomeie `## [Unreleased]` para `## [X.Y.Z] - AAAA-MM-DD` e deixe um `## [Unreleased]`
    vazio acima (só o heading). Stage `CHANGELOG.md`, `package.json` e `src/plugin.json`.
 4. Mensagem em português, imperativo; **sempre** encerre com `(vX.Y.Z)`.
-5. Push na `main`: o Actions cria a GitHub Release `vX.Y.Z` com as notas do `CHANGELOG.md`.
-   Não anexe ZIP privado. Não rode `gh release create` na mão, salvo se o Actions falhar.
+5. Push na `main`: o Actions cria a GitHub Release `vX.Y.Z` com as notas do `CHANGELOG.md`
+   e o ZIP genérico `luminous-topology-panel-X.Y.Z.zip` (`pack:store`). Não anexe ZIP
+   privado. Não rode `gh release create` na mão, salvo se o Actions falhar.
 
 ## Faça / Não faça
 

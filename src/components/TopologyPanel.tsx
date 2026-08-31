@@ -52,6 +52,8 @@ import {
 } from '../utils/linkMetricsRuntime';
 import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks } from '../utils/interSubmapLinks';
 import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
+import { useLicenseValidation } from '../hooks/useLicenseValidation';
+import { LicenseGate } from './LicenseGate';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -65,6 +67,11 @@ export function TopologyPanel({
   const dashboardEditing = useDashboardEditMode();
   const canPersistOptions = canPersistTopologyPanelOptions(onOptionsChange, dashboardEditing);
   const playlistPlayback = useGrafanaPlaylistPlayback();
+  const licenseCheck = useLicenseValidation({
+    licenseKey: options.licenseKey,
+    licenseApiUrl: options.licenseApiUrl,
+    licenseIp: options.licenseIp,
+  });
 
   const latestOptionsRef = useRef(options);
   const pendingNocModeRef = useRef<boolean | undefined>(undefined);
@@ -618,8 +625,7 @@ export function TopologyPanel({
     return null;
   }
 
-  if (mapValidationErrors.length > 0) {
-    return (
+  const canvas = mapValidationErrors.length > 0 ? (
       <div
         style={{
           width: panelWidth,
@@ -640,10 +646,7 @@ export function TopologyPanel({
         </ul>
         <div>Corrija o JSON do mapa no editor do painel (aba do plugin) e salve novamente.</div>
       </div>
-    );
-  }
-
-  return (
+    ) : (
     <div
       style={{
         width: panelWidth,
@@ -692,5 +695,11 @@ export function TopologyPanel({
         hideOverlayControls={playlistPlayback}
       />
     </div>
+    );
+
+  return (
+    <LicenseGate state={licenseCheck} width={panelWidth} height={panelHeight} theme={theme}>
+      {canvas}
+    </LicenseGate>
   );
 }

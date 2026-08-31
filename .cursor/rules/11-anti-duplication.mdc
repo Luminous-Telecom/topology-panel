@@ -132,6 +132,9 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |
 | Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
+| Validar chave/URL/IP da loja (sem fetch) | `resolveLicenseGate` / `resolveLicenseIp` / `licenseRejectMessage` em `utils/licenseValidation.ts` |
+| POST `/api/license/validate` (cache + dedupe) | `fetchLicenseValidation` em `services/licenseClient.ts` via `asyncCache` |
+| Estado de licença no painel | `hooks/useLicenseValidation.ts` + overlay `components/LicenseGate.tsx` |
 
 ## Exceções
 

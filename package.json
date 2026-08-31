@@ -1,6 +1,6 @@
 {
   "name": "luminous-topology-panel",
-  "version": "1.4.391",
+  "version": "1.4.392",
   "description": "Topology Panel — Grafana panel for network maps with Zabbix status, links and submaps",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.js --env production",
@@ -11,6 +11,7 @@
     "version:bump": "node .config/bump-plugin-version.mjs",
     "changelog:notes": "node .config/changelog-notes.mjs",
     "sign": "bash scripts/sign.sh",
+    "pack:store": "bash packaging/build-store-zip.sh",
     "pack:private": "bash packaging/build-private-zip.sh",
     "deploy": "bash scripts/deploy.sh homolog",
     "deploy:prod": "bash scripts/deploy.sh prod"

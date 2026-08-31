@@ -24,6 +24,7 @@ de topologia de rede com status vindo do Zabbix.
 - Scripts existentes: `npm run build`, `npm run dev`, `npm run typecheck`, `npm run test`,
   `npm run test:watch`, `npm run version:bump` (patch em `package.json` + `src/plugin.json`),
   `npm run changelog:notes` (corpo da versão para GitHub Release),
+  `npm run pack:store` (ZIP genérico da dist/ para a loja),
   `npm run pack:private` (ZIP privado por `root_url`; token só em env).
   **Não existe** script de lint — não sugira `npm run lint`.
 
@@ -45,7 +46,7 @@ de topologia de rede com status vindo do Zabbix.
   `## [Unreleased]` **antes de encerrar a tarefa**, mesmo sem commit. Sem inventário do
   ambiente. No commit: `npm run version:bump` (`package.json` + `src/plugin.json`) e
   promove `Unreleased` para `## [X.Y.Z] - AAAA-MM-DD`. Push na `main` publica a GitHub
-  Release. Sem ZIP privado na release.
+  Release com o ZIP genérico da dist/ (`pack:store`). Sem ZIP privado na release.
 - Deploy é **manual** e só quando o usuário pedir: `./scripts/deploy.sh`. Pedido de "deploy"
   (sem qualificador) publica em **homolog e prod**, nesta ordem. Se o commit já bumpou a
   versão, os dois alvos usam `SKIP_VERSION_BUMP=1`. Senão, um bump no primeiro alvo e

@@ -34,6 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
       - name: Versão do plugin
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
@@ -47,8 +51,11 @@ jobs:
             echo "Release $tag já existe — nada a fazer."
             exit 0
           fi
+          npm ci
+          bash packaging/build-store-zip.sh
           node .config/changelog-notes.mjs "${{ steps.ver.outputs.version }}" > /tmp/release-notes.md
           gh release create "$tag" \
             --title "$tag" \
             --notes-file /tmp/release-notes.md \
-            --target "${{ github.sha }}"
+            --target "${{ github.sha }}" \
+            "packaging/out/luminous-topology-panel-${{ steps.ver.outputs.version }}.zip"

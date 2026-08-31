@@ -1,6 +1,27 @@
-# ZIP privado por `root_url`
+# ZIP para distribuição
 
-Cada cliente recebe um ZIP **assinado só para o `root_url` do Grafana dele**. Noutra instância o Grafana recusa o plugin (assinatura private). Isso não substitui a EULA: a revenda continua proibida por contrato.
+Há dois pacotes. A loja usa **só** o ZIP genérico (`pack:store`). O ZIP privado
+fica para entrega manual, fora da Luminous Store.
+
+## ZIP da loja (`pack:store`)
+
+Um arquivo por versão, sem `MANIFEST.txt` de `root_url`. O Grafana do cliente
+precisa de `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=luminous-topology-panel`.
+A chave de licença entra nas opções do painel; o plugin chama a loja.
+
+```bash
+npm run pack:store
+```
+
+O arquivo sai em `packaging/out/luminous-topology-panel-<versão>.zip`. O
+GitHub Actions anexa esse ZIP na Release ao fazer push na `main`.
+
+`SKIP_BUILD=1` reusa um `dist/` já compilado. **Não** rode `npm run build`
+depois de assinar um ZIP privado no mesmo `dist/` — o webpack limpa a pasta.
+
+## ZIP privado por `root_url` (`pack:private`)
+
+Cada cliente recebe um ZIP **assinado só para o `root_url` do Grafana dele**. Noutra instância o Grafana recusa o plugin (assinatura private). Isso não substitui a EULA: a revenda continua proibida por contrato. **Não anexe este ZIP na GitHub Release nem na loja.**
 
 Revise `EULA.md` com advogado antes de vender.
 
