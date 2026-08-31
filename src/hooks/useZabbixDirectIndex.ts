@@ -49,9 +49,9 @@ import {
  * pintavam o Network. O relógio mora fora do React — remontar o painel não dispara outro ciclo.
  *
  * A primeira pintura usa o snapshot do backend Go se ainda estiver quente (outro operador ou
- * F5 neste Grafana). Sem isso espera o lastvalue **ao vivo** do `item.get` — não hidrata
- * lastvalue de localStorage (caixa cinza). Catálogo de itemids só acelera o POST. `host.get`
- * e problemas não repetem no intervalo.
+ * F5 neste Grafana). Sem snapshot o badge “Consultando status no Zabbix” só aparece na hora
+ * do `item.get`. Catálogo de itemids só acelera o POST. `host.get` e problemas não repetem
+ * no intervalo.
  *
  * Lastvalue igual: não redesenha o índice. Lastvalue de cabo novo reusa o índice de hosts.
  */
@@ -267,7 +267,7 @@ export function useZabbixDirectIndex({
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
       return IDLE_STATE;
     }
-    return liveSessionByKey.get(snapshotKey)?.state ?? { ...IDLE_STATE, loading: true };
+    return liveSessionByKey.get(snapshotKey)?.state ?? IDLE_STATE;
   });
 
   useLayoutEffect(() => {
@@ -277,6 +277,7 @@ export function useZabbixDirectIndex({
     }
 
     const live = liveSessionByKey.get(snapshotKey);
+    const pageHost = typeof window !== 'undefined' ? window.location.hostname : '';
     setState((prev) => {
       if (live) {
         return { ...live.state, loading: false };
@@ -284,7 +285,8 @@ export function useZabbixDirectIndex({
       if (prev.ready) {
         return { ...prev, loading: true };
       }
-      return { ...IDLE_STATE, loading: true };
+      // F5: mapa cinza sem o badge do Zabbix até o snapshot do Go ou o item.get.
+      return IDLE_STATE;
     });
 
     let cancelled = false;
@@ -570,7 +572,7 @@ export function useZabbixDirectIndex({
             lastValues: traffic.lastValues,
             interfaceItems: traffic.interfaceItems,
             problems: currentProblems,
-          });
+          }, pageHost);
           if (!sameHostProblems(currentProblems, prevLive.problems)) {
             const next: DirectState = { ...prevLive, problems: currentProblems };
             liveSessionByKey.set(snapshotKey, {
@@ -617,7 +619,7 @@ export function useZabbixDirectIndex({
           lastValues: traffic.lastValues,
           interfaceItems: traffic.interfaceItems,
           problems: currentProblems,
-        });
+        }, pageHost);
         return true;
       };
       const publishByItemIds = async (
@@ -800,7 +802,8 @@ export function useZabbixDirectIndex({
     /*
      * Só busca na hora se esta chave ainda não largou um ciclo. Senão espera o resto do
      * intervalo — o Grafana remonta o painel e um `void fetchSnapshot()` aqui virava +4 POSTs.
-     * Snapshot quente do backend (F5 / outro operador) pinta antes do `item.get`.
+     * Snapshot quente do backend (F5 / outro operador) pinta antes do `item.get`. O badge do
+     * Zabbix só aparece se o snapshot não existir.
      */
     let intervalId: number | undefined;
     let timeoutId: number | undefined;
@@ -821,10 +824,15 @@ export function useZabbixDirectIndex({
     };
     void (async () => {
       if (!live?.state.ready) {
-        const remote = await fetchLiveSnapshot(snapshotKey);
-        if (!cancelled && remote && !liveSessionByKey.get(snapshotKey)?.state.ready) {
-          applyRemoteSnapshot(remote);
+        const remote = await fetchLiveSnapshot(snapshotKey, pageHost);
+        if (cancelled) {
+          return;
         }
+        if (remote && !liveSessionByKey.get(snapshotKey)?.state.ready && applyRemoteSnapshot(remote)) {
+          armPoll();
+          return;
+        }
+        setState((prev) => (prev.ready ? prev : { ...prev, loading: true }));
       }
       if (!cancelled) {
         armPoll();

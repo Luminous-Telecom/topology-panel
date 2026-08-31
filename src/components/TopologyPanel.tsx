@@ -198,7 +198,7 @@ export function TopologyPanel({
 
   /** Status e lastvalue dos cabos no mesmo ciclo. */
   const querySource = useTopologyQueryIndex({
-    enabled: licenseCheck.status !== 'blocked',
+    enabled: licenseCheck.status === 'valid' || licenseCheck.status === 'skipped',
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: statusGroupNames,
     statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,

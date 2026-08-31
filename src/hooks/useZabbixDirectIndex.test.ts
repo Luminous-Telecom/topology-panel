@@ -942,6 +942,7 @@ describe('useZabbixDirectIndex', () => {
       })
     );
 
+    await flush();
     expect(second.result.current.ready).toBe(false);
     expect(second.result.current.loading).toBe(true);
     expect(second.result.current.index.byRefId.get('BACKBONE')?.lastValues.get('host-1')).toBeUndefined();
@@ -1280,7 +1281,7 @@ describe('useZabbixDirectIndex', () => {
 
   it('pinta o lastvalue do backend Go antes do item.get', async () => {
     vi.mocked(fetchLiveSnapshot).mockResolvedValue({
-      savedAt: 1,
+      savedAt: Date.now(),
       metadata: {
         hosts: [host('1', 'Backbone')],
         resolvedGroups: ['Backbone'],
@@ -1304,8 +1305,55 @@ describe('useZabbixDirectIndex', () => {
 
     await flush();
     expect(result.current.ready).toBe(true);
+    expect(result.current.loading).toBe(false);
     expect(result.current.index.hosts).toContain('host-1');
     expect(fetchStatus).not.toHaveBeenCalled();
     expect(fetchMetadata).not.toHaveBeenCalled();
+  });
+
+  it('não consulta o Zabbix nem mostra loading enquanto hidrata o snapshot do Go', async () => {
+    let finishSnap: (value: Awaited<ReturnType<typeof fetchLiveSnapshot>>) => void = () => undefined;
+    vi.mocked(fetchLiveSnapshot).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSnap = resolve;
+        })
+    );
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.loading).toBe(false);
+    expect(fetchStatus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishSnap({
+        savedAt: Date.now(),
+        metadata: {
+          hosts: [host('1', 'Backbone')],
+          resolvedGroups: ['Backbone'],
+          groupIds: ['10'],
+        },
+        knownStatusItems: statusItems('1'),
+        lastValues: { '10001': { itemid: '10001', lastvalue: '1', lastclock: '1000' } },
+        interfaceItems: [],
+        problems: {},
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(fetchStatus).not.toHaveBeenCalled();
   });
 });

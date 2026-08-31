@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.402] - 2026-08-31
+
+### Alterado
+
+- Recarregar o painel pinta o lastvalue do backend Go; o Zabbix só entra se o snapshot não estiver quente.
+
 ## [1.4.401] - 2026-08-31
 
 ### Alterado

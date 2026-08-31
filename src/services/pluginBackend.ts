@@ -107,13 +107,20 @@ export async function fetchPluginLicense(pageHost = ''): Promise<PluginLicenseSt
   }
 }
 
-export async function fetchLiveSnapshot(key: string): Promise<BackendLiveSnapshot | undefined> {
+export async function fetchLiveSnapshot(
+  key: string,
+  pageHost = ''
+): Promise<BackendLiveSnapshot | undefined> {
+  const host = pageHost.trim();
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 1_500);
+  const timer = window.setTimeout(() => controller.abort(), 8_000);
   try {
     const data = await backendFetch<BackendLiveSnapshot>({
       url: `${PLUGIN_RESOURCES}/snapshot`,
-      params: { key: encodeSnapshotKey(key) },
+      params: {
+        key: encodeSnapshotKey(key),
+        ...(host ? { host } : {}),
+      },
       abortSignal: controller.signal,
     });
     if (!data?.metadata || !Array.isArray(data.knownStatusItems)) {
@@ -127,11 +134,17 @@ export async function fetchLiveSnapshot(key: string): Promise<BackendLiveSnapsho
   }
 }
 
-export async function persistLiveSnapshot(key: string, snapshot: BackendLiveSnapshot): Promise<void> {
+export async function persistLiveSnapshot(
+  key: string,
+  snapshot: BackendLiveSnapshot,
+  pageHost = ''
+): Promise<void> {
+  const host = pageHost.trim();
   try {
     await backendFetch<unknown>({
       url: `${PLUGIN_RESOURCES}/snapshot`,
       method: 'POST',
+      params: host ? { host } : undefined,
       data: { ...snapshot, key: encodeSnapshotKey(key) },
     });
   } catch {

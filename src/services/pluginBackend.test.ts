@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchPluginLicense, encodeSnapshotKey, PLUGIN_RESOURCES } from './pluginBackend';
+import { fetchPluginLicense, fetchLiveSnapshot, encodeSnapshotKey, PLUGIN_RESOURCES } from './pluginBackend';
 
 const subscribe = vi.hoisted(() => vi.fn());
 
@@ -53,5 +53,30 @@ describe('pluginBackend', () => {
       expect(result.retryable).toBe(true);
       expect(result.message).toMatch(/backend/);
     }
+  });
+
+  it('fetchLiveSnapshot manda a chave e o host do Grafana', async () => {
+    subscribe.mockImplementation(
+      (_request: unknown, handlers: { next: (value: unknown) => void }) => {
+        handlers.next({
+          data: {
+            savedAt: 10,
+            metadata: { hosts: [], resolvedGroups: ['Backbone'], groupIds: ['10'] },
+            knownStatusItems: [],
+            lastValues: {},
+            interfaceItems: [],
+            problems: {},
+          },
+        });
+      }
+    );
+    await fetchLiveSnapshot('ds\u0000Backbone\u0000icmpping', 'grafana.example');
+    const request = subscribe.mock.calls[0][0] as {
+      url: string;
+      params?: { key?: string; host?: string };
+    };
+    expect(request.url).toBe(`${PLUGIN_RESOURCES}/snapshot`);
+    expect(request.params?.host).toBe('grafana.example');
+    expect(request.params?.key).toBe(encodeSnapshotKey('ds\u0000Backbone\u0000icmpping'));
   });
 });
