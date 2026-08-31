@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	storeTimeout   = 15 * time.Second
-	licenseCacheTTL = 10 * time.Minute
+	storeTimeout = 15 * time.Second
+	// Curto de propósito: tirar o IP na loja tem que valer sem reiniciar o Grafana.
+	licenseCacheTTL = 30 * time.Second
 )
 
 type LicenseResponse struct {

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { fetchPluginLicense } from '../services/pluginBackend';
 import { isLicenseEnforced } from '../utils/licenseValidation';
 
+/** Alinhado ao `licenseCacheTTL` do backend Go — a loja é consultada de novo sem reiniciar o Grafana. */
+export const LICENSE_REFRESH_MS = 30_000;
+
 export type LicenseCheckState =
   | { status: 'skipped' }
   | { status: 'loading' }
@@ -20,18 +23,23 @@ export function useLicenseValidation(): LicenseCheckState {
     }
     let cancelled = false;
     const pageHost = typeof window !== 'undefined' ? window.location.hostname : '';
-    fetchPluginLicense(pageHost).then((next) => {
-      if (cancelled) {
-        return;
-      }
-      if (next.status === 'valid') {
-        setState({ status: 'valid', storeVersion: next.storeVersion });
-        return;
-      }
-      setState({ status: 'blocked', message: next.message });
-    });
+    const refresh = () => {
+      fetchPluginLicense(pageHost).then((next) => {
+        if (cancelled) {
+          return;
+        }
+        if (next.status === 'valid') {
+          setState({ status: 'valid', storeVersion: next.storeVersion });
+          return;
+        }
+        setState({ status: 'blocked', message: next.message });
+      });
+    };
+    refresh();
+    const intervalId = window.setInterval(refresh, LICENSE_REFRESH_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, []);
 

@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.400] - 2026-08-31
+
+### Alterado
+
+- Licença reconsulta a loja a cada 30 s. Tirar o IP em Minha conta bloqueia o mapa sem reiniciar o Grafana.
+
 ## [1.4.399] - 2026-08-31
 
 ### Adicionado

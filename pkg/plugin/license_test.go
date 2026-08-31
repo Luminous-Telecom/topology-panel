@@ -77,6 +77,73 @@ func TestLicenseCheckerAcceptsSignedTicket(t *testing.T) {
 	}
 }
 
+func TestLicenseCheckerRevalidatesAfterTTL(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemText := publicPEM(t, key)
+	dir := t.TempDir()
+	authorized := []string{"203.0.113.10"}
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/license/status" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authorizedIps": authorized,
+				"pluginId":      ID,
+			})
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/api/license/validate" {
+			now := time.Now()
+			ticket := signTestTicket(t, key, ticketClaims{
+				PluginID: ID,
+				IP:       "203.0.113.10",
+				KeyHash:  licenseKeyHash("LUM-TEST"),
+				RegisteredClaims: jwt.RegisteredClaims{
+					Issuer:    ticketIssuer,
+					Audience:  jwt.ClaimStrings{ID},
+					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(now),
+				},
+			})
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"valid":    true,
+				"pluginId": ID,
+				"ticket":   ticket,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer store.Close()
+	if err := os.WriteFile(filepath.Join(dir, "license.json"), []byte(`{
+		"licenseKey":"LUM-TEST",
+		"licenseApiUrl":"`+store.URL+`/api/license/validate",
+		"grafanaIp":"203.0.113.10"
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 31, 16, 0, 0, 0, time.UTC)
+	checker := newLicenseChecker(dir, store.Client(), "1.4.399")
+	checker.now = func() time.Time { return now }
+	checker.verify = func(ticket, licenseKey, ip, pluginID string) bool {
+		return verifyLicenseTicket(ticket, licenseKey, ip, pluginID, pemText)
+	}
+	if !checker.check("203.0.113.10").Valid {
+		t.Fatal("primeira validação")
+	}
+	authorized = nil
+	if !checker.check("203.0.113.10").Valid {
+		t.Fatal("ainda no TTL da cache")
+	}
+	now = now.Add(licenseCacheTTL + time.Second)
+	got := checker.check("203.0.113.10")
+	if got.Valid {
+		t.Fatalf("IP removido na loja ainda passou: %+v", got)
+	}
+}
+
 func TestHandlerSnapshotRequiresLicense(t *testing.T) {
 	dir := t.TempDir()
 	h := New(dir)
