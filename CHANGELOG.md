@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.410] - 2026-09-01
+
+### Alterado
+
+- O lockfile de desenvolvimento força DOMPurify 3.4.14, Immutable 5.1.9, js-cookie 3.0.8, uuid 11.1.1, react-router 7.18.3 e OpenTelemetry Core 2.11.0 (transitivas do Grafana; o bundle do painel continua a usar os pacotes do host).
+
 ## [1.4.409] - 2026-09-01
 
 ### Corrigido

@@ -1,6 +1,6 @@
 {
   "name": "luminous-topology-panel",
-  "version": "1.4.409",
+  "version": "1.4.410",
   "description": "Topology Panel — Grafana panel for network maps with Zabbix status, links and submaps",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.js --env production && bash .config/build-backend.sh",
@@ -47,6 +47,16 @@
     "@grafana/ui": "*",
     "react": "^18.0.0",
     "react-dom": "^18.0.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.14",
+    "immutable": "5.1.9",
+    "js-cookie": "3.0.8",
+    "uuid": "11.1.1",
+    "@opentelemetry/core": "2.11.0",
+    "react-router-dom-v5-compat": {
+      "react-router": "7.18.3"
+    }
   },
   "engines": {
     "node": ">=18"
