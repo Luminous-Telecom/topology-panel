@@ -430,6 +430,11 @@ export interface TopologyPanelOptions {
   /** Frequência de busca de status e tráfego, em segundos. */
   zabbixRefreshSec?: number;
   /**
+   * Encaminha o poll de status/tráfego ao backend Go (`POST /zabbix-status`).
+   * Desligado = o navegador consulta o Zabbix direto (comportamento atual).
+   */
+  zabbixPollViaBackend?: boolean;
+  /**
    * Grupos (refIds virtuais) que importam hosts ao mapa (opt-in).
    * Vazio = nenhum grupo adiciona hosts automaticamente.
    */
@@ -530,6 +535,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
   zabbixStatusItemKey: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   zabbixRefreshSec: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
+  zabbixPollViaBackend: false,
   colorOnline: '#28eb0e',
   colorOffline: '#ff0101',
   colorAlert: '#ff7300',

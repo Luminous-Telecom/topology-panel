@@ -109,6 +109,14 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },
+      })
+      .addBooleanSwitch({
+        path: 'zabbixPollViaBackend',
+        name: 'Consultar status pelo backend (experimental)',
+        description:
+          'O plugin consulta o Zabbix no servidor Grafana e devolve status e totais de rede já agregados. Desligado, o navegador consulta o datasource direto (comportamento atual).',
+        defaultValue: false,
+        category: ['Fonte de dados'],
       });
 
     addMapSection(builder, ['Layout'], (section) => {

@@ -28,7 +28,8 @@ colocados ao lado do código.
 - Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
   `vitest.setup.ts`.
 - Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` / `zabbixQuery.ts` /
-  `zabbixPoll.ts` são mockados com `vi.mock`. Status: mocke `runZabbixPoll`. Ping/ICMP: mocke
+  `zabbixPoll.ts` / `zabbixBackendStatus.ts` são mockados com `vi.mock`. Status no browser: mocke
+  `runZabbixPoll`. Status pelo backend: mocke `fetchZabbixBackendStatus`. Ping/ICMP: mocke
   `runZabbixPing` (não chame o datasource).
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.

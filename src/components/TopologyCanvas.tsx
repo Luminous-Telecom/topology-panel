@@ -111,6 +111,7 @@ interface Props {
   linkMetricsByLink?: LinkRuntimeMetricsMap;
   /** Problemas Zabbix para badges NOC */
   hostProblems?: HostProblemsMap;
+  backendRegionStats?: Map<string, RegionHostStats>;
   onNocModeChange?: (enabled: boolean) => void;
   onMapChange?: (map: TopologyMap, context?: { interSubmapLink?: TopologyLink }) => void;
   onViewChange?: (view: TopologyView) => void;
@@ -163,6 +164,7 @@ export function TopologyCanvas({
   zabbixDatasourceUid,
   linkMetricsByLink: liveLinkMetricsByLink = NO_LINK_METRICS,
   hostProblems: liveHostProblems,
+  backendRegionStats: liveBackendRegionStats,
   onNocModeChange,
   onMapChange,
   onViewChange,
@@ -202,6 +204,7 @@ export function TopologyCanvas({
       submapHosts: liveSubmapHosts,
       linkMetricsByLink: liveLinkMetricsByLink,
       hostProblems: liveHostProblems,
+      backendRegionStats: liveBackendRegionStats,
     },
     isGestureActiveRef
   );
@@ -215,6 +218,7 @@ export function TopologyCanvas({
     submapHosts,
     linkMetricsByLink,
     hostProblems,
+    backendRegionStats,
   } = frozenData;
   const statusLoading = liveQueryLoading && !queryReady && !queryError;
   const liveStatusLoading = liveQueryLoading && !liveQueryReady && !liveQueryError;
@@ -545,14 +549,20 @@ export function TopologyCanvas({
     childMaps: childMapsById,
     hostProblems,
     queryReady,
+    backendRegionStats,
   });
   const previousTrafficStatsRef = useRef(baseRegionStats);
   const regionStats = useMemo(() => {
+    if (backendRegionStats) {
+      const shared = structuralShareMap(baseRegionStats, previousTrafficStatsRef.current);
+      previousTrafficStatsRef.current = shared;
+      return shared;
+    }
     const merged = mergeRegionTrafficStats(baseRegionStats, map, nodeLayouts, linkMetricsByLink);
     const shared = structuralShareMap(merged, previousTrafficStatsRef.current);
     previousTrafficStatsRef.current = shared;
     return shared;
-  }, [baseRegionStats, map, nodeLayouts, linkMetricsByLink]);
+  }, [backendRegionStats, baseRegionStats, map, nodeLayouts, linkMetricsByLink]);
   const previousHostRegionStatsRef = useRef<Map<string, RegionHostStats>>();
   const hostRegionStats = useMemo(() => {
     const next = new Map<string, RegionHostStats>();

@@ -55,6 +55,7 @@ import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks }
 import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { useLicenseValidation } from '../hooks/useLicenseValidation';
 import { LicenseGate } from './LicenseGate';
+import { compactPollLayout, regionLayoutKeyFromMap, type ZabbixBackendPollLayout } from '../utils/zabbixBackendLayout';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -203,6 +204,8 @@ export function TopologyPanel({
   const [localMap, setLocalMap] = useState<TopologyMap | null>(null);
   const storedForUi = localMap ?? activeStoredMap;
   const persistTargetMapIdRef = useRef(currentMapId);
+  const zabbixBackendLayoutRef = useRef<ZabbixBackendPollLayout | undefined>(undefined);
+  const zabbixRegionLayoutKey = useMemo(() => regionLayoutKeyFromMap(storedForUi), [storedForUi]);
 
   const statusColorOptions = useMemo(
     () => ({
@@ -248,6 +251,10 @@ export function TopologyPanel({
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
     trafficItemIds,
     trafficKeys,
+    pollViaBackend: Boolean(resolvedOptions.zabbixPollViaBackend),
+    statusValueMappings: resolvedOptions.statusValueMappings,
+    layoutRef: zabbixBackendLayoutRef,
+    regionLayoutKey: zabbixRegionLayoutKey,
   });
 
   const queryIndex = querySource.index;
@@ -444,6 +451,10 @@ export function TopologyPanel({
     return result;
   }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, parentHostKeys, hostMetadata]);
   const submapHosts = useStableIdentity(submapHostsRaw);
+  zabbixBackendLayoutRef.current = {
+    ...compactPollLayout(storedForUi, resolvedOptions.childMaps),
+    submapHosts,
+  };
 
   useEffect(() => {
     if (!canPersistOptions) {
@@ -694,6 +705,7 @@ export function TopologyPanel({
         zabbixDatasourceUid={zabbixDatasourceUid}
         linkMetricsByLink={linkMetricsByLink}
         hostProblems={hostProblems}
+        backendRegionStats={resolvedOptions.zabbixPollViaBackend ? querySource.regionStats : undefined}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? handleMapChange : undefined}
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}

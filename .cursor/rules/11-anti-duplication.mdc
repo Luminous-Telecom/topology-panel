@@ -29,12 +29,12 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`. No intervalo, `applyStatusValuesToIndex` só patcha lastvalue — não remonta metadata/hosts |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` via `runZabbixPoll`. Em regime: **um** `item.get` por itemid. O intervalo é o `setInterval` do hook e **não** empilha ciclo novo enquanto o anterior está no ar. |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` via `runZabbixPoll` (flag desligada) ou `fetchZabbixBackendStatus` (`POST /zabbix-status`, flag `zabbixPollViaBackend`). Em regime: **um** `item.get` por itemid. O intervalo é o `setInterval` do hook e **não** empilha ciclo novo enquanto o anterior está no ar. HTTP 404 do resource volta ao poll do browser |
 | Aplicar lastvalue aos itens de status | `applyLastValuesToStatusItems` / `statusLastValuesPresent` / `sameStatusItemValues` em `services/zabbixPoll.ts` |
 | Inventário de itens de interface | `hooks/useZabbixHostInterfaces.ts` via `fetchHostInterfaceItems` (`item.get` por `hostids`). Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` — sem `host.get` por nome |
 | Relógio do polling | `hooks/useZabbixDirectIndex.ts` (`setInterval` com `zabbixRefreshSec`) |
 | Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Primeira pintura do status (lastvalue) | `runZabbixPoll` na abertura do hook. Sem cache do último JSON. |
+| Primeira pintura do status (lastvalue) | `runZabbixPoll` na abertura do hook (flag desligada). Com a flag, `POST /zabbix-status` — o cache do Go reusa o snapshot dentro de `refreshSec` |
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` (também ignora lastvalue vazio) |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
@@ -45,7 +45,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
-| Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` |
+| Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` (`buildRegionStatsMap`); com a flag, totais prontos via `regionStatsFromBackend` (espelho em `pkg/plugin/direct_region.go`) |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` / `sameMapDocumentFlags` em `utils/mapRevision.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |

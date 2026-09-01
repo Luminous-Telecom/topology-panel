@@ -491,3 +491,41 @@ export function mergeRegionTrafficStats(
   }
   return merged;
 }
+
+/** Converte totais do backend (up/down/degraded) para o formato do canvas. */
+export function regionStatsFromBackend(
+  rows:
+    | Array<{
+        nodeId: string;
+        up: number;
+        down: number;
+        degraded: number;
+        unknown: number;
+        total: number;
+        rxBps?: number;
+        txBps?: number;
+        loadFailed?: boolean;
+        loadPending?: boolean;
+      }>
+    | undefined
+): Map<string, RegionHostStats> {
+  const result = new Map<string, RegionHostStats>();
+  for (const row of rows ?? []) {
+    const nodeId = row.nodeId?.trim();
+    if (!nodeId) {
+      continue;
+    }
+    result.set(nodeId, {
+      online: row.up,
+      offline: row.down,
+      alert: row.degraded,
+      unknown: row.unknown,
+      total: row.total,
+      rxBps: row.rxBps,
+      txBps: row.txBps,
+      loadFailed: row.loadFailed,
+      loadPending: row.loadPending,
+    });
+  }
+  return result;
+}

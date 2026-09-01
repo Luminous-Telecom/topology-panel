@@ -7,6 +7,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.407] - 2026-09-01
+
+### Adicionado
+
+- Opção experimental **Consultar status pelo backend**: o poll de status/tráfego e os totais de
+  rede/submapa passam a rodar no processo Go (`POST /zabbix-status`), com cache compartilhado entre
+  dashboards da mesma chave. Desligada por padrão — o navegador continua consultando o Zabbix
+  direto.
+
+### Alterado
+
+- Com a opção ligada, o canvas pinta a partir do resumo do backend (status por host e totais por
+  rede) em vez de agregar `buildRegionStatsMap` no cliente; se o resource não existir (HTTP 404),
+  o poll volta ao browser.
+
 ## [1.4.406] - 2026-09-01
 
 ### Alterado
