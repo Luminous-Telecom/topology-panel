@@ -12,7 +12,7 @@ import (
 func main() {
 	handler := plugin.New("")
 	if err := backend.Manage(plugin.ID, backend.ServeOpts{
-		CallResourceHandler: handler.ResourceHandlerWithStatus(),
+		CallResourceHandler: handler.ResourceHandler(),
 		CheckHealthHandler:  handler,
 	}); err != nil {
 		log.DefaultLogger.Error(err.Error())

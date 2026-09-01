@@ -1,87 +1,32 @@
-import { TopologyHostStatus, TopologyPanelOptions, TopologyStatusValueMapping } from '../types';
+import { TopologyHostStatus, TopologyPanelOptions } from '../types';
 
-export type StatusColorOptions = Pick<
-  TopologyPanelOptions,
-  'colorOnline' | 'colorOffline' | 'colorAlert' | 'statusValueMappings'
->;
+export type StatusColorOptions = Pick<TopologyPanelOptions, 'colorOnline' | 'colorOffline' | 'colorAlert'>;
 
-function mappingBound(raw: unknown): number | undefined {
-  if (typeof raw === 'number') {
-    return Number.isFinite(raw) ? raw : undefined;
-  }
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function isExactMapping(entry: TopologyStatusValueMapping): boolean {
-  return mappingBound(entry.value) !== undefined;
-}
-
-function mappingMatchesValue(entry: TopologyStatusValueMapping, value: number): boolean {
-  const exact = mappingBound(entry.value);
-  if (exact !== undefined) {
-    return value === exact;
-  }
-  const from = mappingBound(entry.from);
-  const to = mappingBound(entry.to);
-  // Faixa aberta "acima de 0" não inclui Down — senão 0 pinta online e o problema vira alerta.
-  if (from === 0 && to === undefined && value === 0) {
-    return false;
-  }
-  return value >= (from ?? Number.NEGATIVE_INFINITY) && value <= (to ?? Number.POSITIVE_INFINITY);
-}
-
-function matchingMapping(
-  value: number,
-  mappings: TopologyStatusValueMapping[]
-): TopologyStatusValueMapping | undefined {
-  for (const entry of mappings) {
-    if (isExactMapping(entry) && mappingMatchesValue(entry, value)) {
-      return entry;
-    }
-  }
-  for (const entry of mappings) {
-    if (!isExactMapping(entry) && mappingMatchesValue(entry, value)) {
-      return entry;
-    }
-  }
-  return undefined;
-}
-
-function isMappedStatus(status: string | undefined): status is TopologyHostStatus {
-  return status === 'online' || status === 'offline' || status === 'alert';
-}
-
-/** Resolve status online/offline a partir do valor da Query e dos mapeamentos do painel. */
-export function resolveHostStatusFromValue(
-  value: number,
-  mappings: TopologyStatusValueMapping[]
-): TopologyHostStatus | undefined {
-  if (!Number.isFinite(value)) {
+/** Latência ICMP: 0 = offline; acima de 0 = online. */
+export function resolveHostStatusFromValue(value: number): TopologyHostStatus | undefined {
+  if (!Number.isFinite(value) || value < 0) {
     return undefined;
   }
-  const matched = matchingMapping(value, mappings);
-  if (isMappedStatus(matched?.status)) {
-    return matched.status;
-  }
-  // 0 = Down quando nenhuma regra casou (faixa online "acima de 0" não cobre o ping down).
-  if (value === 0) {
-    return 'offline';
-  }
-  return undefined;
+  return value === 0 ? 'offline' : 'online';
 }
 
-export function resolveStatusColor(
-  status: TopologyHostStatus,
-  options: StatusColorOptions
-): string {
+/**
+ * Status efetivo do display: lastvalue 0 é sempre offline, mesmo se o campo `status`
+ * ainda disser online (merge de alias / poll anterior). Sem isso o problema Zabbix pinta alerta.
+ */
+export function statusFromHostDisplay(
+  info: { value?: number; status?: TopologyHostStatus } | undefined
+): TopologyHostStatus | undefined {
+  if (info == null) {
+    return undefined;
+  }
+  if (info.value != null) {
+    return resolveHostStatusFromValue(info.value);
+  }
+  return info.status;
+}
+
+export function resolveStatusColor(status: TopologyHostStatus, options: StatusColorOptions): string {
   if (status === 'online') {
     return options.colorOnline;
   }
@@ -91,17 +36,6 @@ export function resolveStatusColor(
   return options.colorOffline;
 }
 
-export function resolveMappingLabel(
-  value: number,
-  mappings: TopologyStatusValueMapping[]
-): string | undefined {
-  const matched = matchingMapping(value, mappings);
-  if (matched) {
-    return matched.label?.trim() || undefined;
-  }
-  return undefined;
-}
-
 interface ResolvedHostStatusDisplay {
   value: number;
   status: TopologyHostStatus;
@@ -109,12 +43,12 @@ interface ResolvedHostStatusDisplay {
   text?: string;
 }
 
-/** Valor da Query → cor/texto via mapeamentos do painel (sem Field config Grafana). */
+/** Latência ICMP → cor/texto (0 = offline, acima de 0 = online). */
 export function resolveHostStatusDisplay(
   value: number,
   options: StatusColorOptions
 ): ResolvedHostStatusDisplay | undefined {
-  const status = resolveHostStatusFromValue(value, options.statusValueMappings);
+  const status = resolveHostStatusFromValue(value);
   if (!status) {
     return undefined;
   }
@@ -122,6 +56,6 @@ export function resolveHostStatusDisplay(
     value,
     status,
     color: resolveStatusColor(status, options),
-    text: resolveMappingLabel(value, options.statusValueMappings),
+    text: status === 'offline' ? 'Offline' : 'Online',
   };
 }

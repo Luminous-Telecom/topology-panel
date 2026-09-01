@@ -3,11 +3,11 @@ import {
   HostMetadataMap,
   TopologyNode,
   TopologyPanelOptions,
-  TopologyHostStatus,
 } from '../types';
 import { RegionHostStats, regionFillColor } from './networkStats';
 import { hostTypeFillColor } from './panelColors';
 import { lookupHostDisplay } from './queryHosts';
+import { statusFromHostDisplay } from './statusMapping';
 import { resolveHostProblemSummary } from './noc/topologyFilters';
 import { HostProblemsMap } from './noc/types';
 
@@ -33,23 +33,10 @@ function isNodeStatusFillPending(
   return !queryReady || queryLoading || Boolean(region?.loadPending);
 }
 
-function resolveEffectiveHostStatus(
-  node: TopologyNode,
-  mappedStatus: TopologyHostStatus | undefined
-): TopologyHostStatus | undefined {
-  if (mappedStatus === 'offline') {
-    return 'offline';
-  }
-  if (mappedStatus === 'alert') {
-    return 'alert';
-  }
-  return mappedStatus;
-}
-
 /**
  * Cor de preenchimento de um host: status da Query e problemas Zabbix (Warning+).
  *
- * Offline (`colorOffline`) vence alerta. Alerta da Query ou problema Zabbix usam `colorAlert`.
+ * Offline (`colorOffline`) vence alerta. Problema Zabbix (Warning+) em host online usa `colorAlert`.
  */
 export function hostNodeFill(
   node: TopologyNode,
@@ -75,16 +62,17 @@ export function hostNodeFill(
     zabbixHost: node.zabbixHost,
     subtitle: node.subtitle,
     label: node.label,
+    zabbixHostId: node.zabbixHostId,
   };
   const mapped = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  const status = resolveEffectiveHostStatus(node, mapped?.status);
+  const status = statusFromHostDisplay(mapped);
   const hasZabbixProblem = resolveHostProblemSummary(node, hostMetadata, hostProblems) !== undefined;
   const typeFill = hostTypeFillColor(node.icon, options.hostTypeColors);
   if (status === 'offline') {
     const offlineColor = resolveMappedColor?.(options.colorOffline);
     return offlineColor ?? options.colorOffline;
   }
-  if (status === 'alert' || hasZabbixProblem) {
+  if (status === 'alert' || (status === 'online' && hasZabbixProblem)) {
     const alertColor = resolveMappedColor?.(options.colorAlert);
     return alertColor ?? options.colorAlert;
   }

@@ -1,5 +1,7 @@
 # Topology Panel — instruções do agente
 
+- **Offline sobrepõe tudo.** Lastvalue 0 vence problema Zabbix, alerta e cor de tipo — cor, lista,
+  badges, região e piscar. Use `statusFromHostDisplay`; sem lastvalue não pinte alerta.
 - **Changelog em toda tarefa.** Mudou produto, correção ou fluxo → bullet em português em
   `CHANGELOG.md` na seção `## [Unreleased]` **antes de encerrar**, mesmo sem o usuário pedir
   commit. Seções: Adicionado, Alterado, Corrigido, Removido. Sem host, IP, key Zabbix nem senha.

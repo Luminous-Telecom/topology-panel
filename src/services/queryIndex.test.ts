@@ -39,7 +39,6 @@ const STATUS_OPTIONS: StatusColorOptions = {
   colorOnline: '#2E7D32',
   colorOffline: '#C62828',
   colorAlert: '#F9A825',
-  statusValueMappings: [],
 };
 
 describe('buildQueryIndex', () => {

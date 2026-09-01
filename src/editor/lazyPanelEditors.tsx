@@ -34,11 +34,6 @@ const LazyQueryDisplayRefIdsEditor = lazy(() =>
 const LazyHostTypeColorsEditor = lazy(() =>
   import('../components/editors/HostTypeColorsEditor').then((m) => ({ default: m.HostTypeColorsEditor }))
 );
-const LazyStatusValueMappingsEditor = lazy(() =>
-  import('../components/editors/StatusValueMappingsEditor').then((m) => ({
-    default: m.StatusValueMappingsEditor,
-  }))
-);
 const LazyTopologyTemplatesEditor = lazy(() =>
   import('../components/TopologyTemplatesEditor').then((m) => ({
     default: m.TopologyTemplatesEditor,
@@ -47,11 +42,6 @@ const LazyTopologyTemplatesEditor = lazy(() =>
 const LazyZabbixDatasourceEditor = lazy(() =>
   import('../components/ZabbixDatasourceEditor').then((m) => ({
     default: m.ZabbixDatasourceEditor,
-  }))
-);
-const LazyZabbixStatusItemEditor = lazy(() =>
-  import('../components/ZabbixStatusItemEditor').then((m) => ({
-    default: m.ZabbixStatusItemEditor,
   }))
 );
 const LazyLicenseStatusEditor = lazy(() =>
@@ -128,16 +118,6 @@ export function HostTypeColorsEditor(
   );
 }
 
-export function StatusValueMappingsEditor(
-  props: ComponentProps<typeof LazyStatusValueMappingsEditor>
-): JSX.Element {
-  return (
-    <Suspense fallback={loading}>
-      <LazyStatusValueMappingsEditor {...props} />
-    </Suspense>
-  );
-}
-
 export function TopologyTemplatesEditor(
   props: ComponentProps<typeof LazyTopologyTemplatesEditor>
 ): JSX.Element {
@@ -154,16 +134,6 @@ export function ZabbixDatasourceEditor(
   return (
     <Suspense fallback={loading}>
       <LazyZabbixDatasourceEditor {...props} />
-    </Suspense>
-  );
-}
-
-export function ZabbixStatusItemEditor(
-  props: ComponentProps<typeof LazyZabbixStatusItemEditor>
-): JSX.Element {
-  return (
-    <Suspense fallback={loading}>
-      <LazyZabbixStatusItemEditor {...props} />
     </Suspense>
   );
 }

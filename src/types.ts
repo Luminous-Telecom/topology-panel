@@ -319,26 +319,13 @@ export type CanvasTool = 'select' | 'pan';
 
 export type TopologyHostStatus = 'online' | 'offline' | 'alert';
 
-/** Mapeamento de valor do item de status → online/offline/alerta (configurado no painel). */
-export interface TopologyStatusValueMapping {
-  /** Valor exato — se definido, ignora from/to */
-  value?: number;
-  /** Início do intervalo inclusivo (omitir = −∞) */
-  from?: number;
-  /** Fim do intervalo inclusivo (omitir = +∞) */
-  to?: number;
-  status: TopologyHostStatus;
-  /** Rótulo opcional no hover/legenda */
-  label?: string;
-}
-
 /** Piso do intervalo de busca no Zabbix — protege o servidor de polling agressivo. */
 export const ZABBIX_DIRECT_MIN_REFRESH_SEC = 5;
 
 export const ZABBIX_DIRECT_DEFAULT_REFRESH_SEC = 60;
 
-/** Item lido em cada host para decidir online/offline. */
-export const ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY = 'icmpping';
+/** Item de latência ICMP lido em cada host para decidir online/offline. */
+export const ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY = 'icmppingsec';
 
 export interface TopologyPanelOptions {
   map: TopologyMap;
@@ -349,16 +336,14 @@ export interface TopologyPanelOptions {
   /** Posição e zoom por mapa filho (persiste ao salvar o dashboard) */
   childMapViews?: Record<string, TopologyView>;
   /** Colors */
-  /** Host online (mapeamento de valor) */
+  /** Host online (latência ICMP acima de 0) */
   colorOnline: string;
-  /** Host offline (mapeamento de valor) */
+  /** Host offline (latência ICMP igual a 0) */
   colorOffline: string;
-  /** Host em alerta (mapeamento de valor ou problema Zabbix) */
+  /** Host em alerta (problema Zabbix) */
   colorAlert: string;
   /** Host sem cor de status */
   colorUnknown: string;
-  /** Valor do item de status → online/offline/alerta */
-  statusValueMappings: TopologyStatusValueMapping[];
   /**
    * Cor do card do host por tipo/ícone — vale só quando online.
    * Offline/alerta continuam com colorOffline / colorAlert; sem dado de status
@@ -397,8 +382,6 @@ export interface TopologyPanelOptions {
   showSubtitle: boolean;
   /** Datasource Zabbix consultado pelo mapa. */
   zabbixDatasourceUid?: string;
-  /** Chave do item lido em cada host para resolver o status. */
-  zabbixStatusItemKey?: string;
   /**
    * Trecho da key Zabbix usado na busca de itens RX de interface.
    * Sem RX, TX, status ou capacidade o seletor de interface não consulta o Zabbix.
@@ -429,11 +412,6 @@ export interface TopologyPanelOptions {
   zabbixTxPowerItemKeyword?: string;
   /** Frequência de busca de status e tráfego, em segundos. */
   zabbixRefreshSec?: number;
-  /**
-   * Encaminha o poll de status/tráfego ao backend Go (`POST /zabbix-status`).
-   * Desligado = o navegador consulta o Zabbix direto (comportamento atual).
-   */
-  zabbixPollViaBackend?: boolean;
   /**
    * Grupos (refIds virtuais) que importam hosts ao mapa (opt-in).
    * Vazio = nenhum grupo adiciona hosts automaticamente.
@@ -515,11 +493,6 @@ export const defaultTopologyMap = (): TopologyMap => ({
   links: [],
 });
 
-export const defaultStatusValueMappings = (): TopologyStatusValueMapping[] => [
-  { value: 0, status: 'offline', label: 'Down' },
-  { from: 0, status: 'online', label: 'Up' },
-];
-
 /** Cores por tipo — padrão atual dos mapas no Grafana. */
 export const defaultHostTypeColors = (): NonNullable<TopologyPanelOptions['hostTypeColors']> => ({
   camera: '#84078b',
@@ -533,14 +506,11 @@ export const defaultHostTypeColors = (): NonNullable<TopologyPanelOptions['hostT
 
 export const defaultOptions = (): TopologyPanelOptions => ({
   map: defaultTopologyMap(),
-  zabbixStatusItemKey: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   zabbixRefreshSec: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
-  zabbixPollViaBackend: false,
   colorOnline: '#28eb0e',
   colorOffline: '#ff0101',
   colorAlert: '#ff7300',
   colorUnknown: '#616161',
-  statusValueMappings: defaultStatusValueMappings(),
   hostTypeColors: defaultHostTypeColors(),
   colorStatic: '#8f3bb8',
   colorSubmap: '#56A64B',
@@ -583,7 +553,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   showHostBadges: true,
 });
 
-/** Cor/texto do status mapeado por host (valor da Query + mapeamento do painel). */
+/** Cor/texto do status do host (latência ICMP: 0 = offline, acima de 0 = online). */
 export interface HostDisplayInfo {
   value: number;
   color?: string;

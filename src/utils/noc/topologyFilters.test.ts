@@ -170,10 +170,9 @@ describe('topologyFilters', () => {
       options: { linkUtilThresholdHigh: 75 },
     };
     const entries = collectAlertHostEntries(ctx);
-    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'core', 'sw']);
+    expect(entries.map((entry) => entry.nodeId)).toEqual(['olt', 'sw']);
     expect(entries[0]?.reason).toBe('offline');
     expect(entries[1]?.reason).toBe('alert');
-    expect(entries[2]?.reason).toBe('alert');
   });
 
   it('offline vence problema Zabbix na lista de alertas', () => {
@@ -192,6 +191,33 @@ describe('topologyFilters', () => {
     expect(entries[0]?.problems).toBeUndefined();
     expect(alertListStatusLabel(entries[0]!)).toBe('OFFLINE');
     expect(alertListHoverText(entries[0]!)).toBe('Offline');
+  });
+
+  it('lastvalue 0 vence problema Zabbix mesmo se o display ainda disser online', () => {
+    const ctx = {
+      map,
+      hostDisplay: {
+        '10.0.0.1': { value: 0, status: 'online' as const },
+      },
+      hostProblems: { hostid1: { count: 1, maxSeverity: 4, names: ['ICMP timeout'] } },
+      hostMetadata: { '10.0.0.1': { name: 'OLT', hostid: 'hostid1' } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntries(ctx);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.reason).toBe('offline');
+    expect(alertListStatusLabel(entries[0]!)).toBe('OFFLINE');
+  });
+
+  it('problema Zabbix sem lastvalue não entra na lista de alertas', () => {
+    const ctx = {
+      map,
+      hostDisplay: {},
+      hostProblems: { hostid1: { count: 1, maxSeverity: 4, names: ['ICMP timeout'] } },
+      hostMetadata: { '10.0.0.1': { name: 'OLT', hostid: 'hostid1' } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    expect(collectAlertHostEntries(ctx)).toEqual([]);
   });
 
   it('lista host online com problemas Zabbix na lista de alertas', () => {

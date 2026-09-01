@@ -86,14 +86,7 @@ export function resolvePanelQueryRefInfos(
   return directRefInfosFromGroups([...groupNames]);
 }
 
-/**
- * Escolhe, entre os itens que casaram com a busca, o que realmente representa o status.
- *
- * `search: { key_: 'icmpping' }` no Zabbix também devolve `icmppingloss` e `icmppingsec`. Só valem
- * a chave exata e a forma parametrizada (`icmpping[...]`); qualquer sufixo alfanumérico é outro
- * item e é descartado em vez de virar um status errado.
- */
-/** Prioridade da chave do item em relação ao item de status configurado no painel. */
+/** Prioridade da chave: exata, parametrizada (`key[...]`) ou prefixo sem sufixo alfanumérico. */
 export function statusItemRank(itemKey: string, wantedKey: string): number | undefined {
   if (itemKey === wantedKey) {
     return 0;
@@ -105,33 +98,6 @@ export function statusItemRank(itemKey: string, wantedKey: string): number | und
     return undefined;
   }
   return /^[a-z0-9_.]/.test(itemKey.slice(wantedKey.length)) ? undefined : 2;
-}
-
-/**
- * Mesma prioridade de `statusItemRank`, também pelo nome do campo Item do editor.
- * Sem isso, um nome com espaços descarta a série (a frame traz `key_` diferente).
- */
-export function statusItemMatchRank(
-  item: { key_?: string; name?: string },
-  wantedKey: string
-): number | undefined {
-  const wanted = wantedKey.trim().toLowerCase();
-  if (!wanted) {
-    return undefined;
-  }
-  const key = item.key_?.trim().toLowerCase() ?? '';
-  const byKey = statusItemRank(key, wanted);
-  if (byKey !== undefined) {
-    return byKey;
-  }
-  const name = item.name?.trim().toLowerCase();
-  if (name && name === wanted) {
-    return 3;
-  }
-  if (key && !/^[a-z][a-z0-9_.]*$/i.test(wanted)) {
-    return 4;
-  }
-  return undefined;
 }
 
 function numericLastValue(item: ZabbixInterfaceItem): number | undefined {
@@ -170,7 +136,7 @@ export function statusValuesByHostId(
 
   for (const item of items) {
     const hostid = item.hostid?.trim();
-    const rank = statusItemMatchRank(item, wanted);
+    const rank = statusItemRank(item.key_?.trim().toLowerCase() ?? '', wanted);
     const value = numericLastValue(item);
     if (!hostid || rank === undefined || value === undefined) {
       continue;

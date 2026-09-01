@@ -1,5 +1,6 @@
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyHostStatus, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { HostLookupRef, resolveHostLookupKey, resolveHostZabbixId, enrichHostDisplayFromMap } from './hostLookup';
+import { statusFromHostDisplay } from './statusMapping';
 import { linkKey } from './mapLinkEdits';
 import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { NodeLayout } from './nodeLayout';
@@ -98,10 +99,7 @@ function resolveRegionHostStatus(
     return 'unknown';
   }
   const display = lookupHostDisplay(hostDisplay, { zabbixHost: key }, hostMetadata);
-  if (!display?.status) {
-    return 'unknown';
-  }
-  return display.status;
+  return statusFromHostDisplay(display) ?? 'unknown';
 }
 
 function hostKeyHasZabbixProblem(
@@ -151,7 +149,7 @@ function countRegionStats(
     const hasProblem = hostKeyHasZabbixProblem(key, hostMetadata, hostProblems);
     if (st === 'offline') {
       offline++;
-    } else if (st === 'alert' || hasProblem) {
+    } else if (st === 'alert' || (st === 'online' && hasProblem)) {
       alert++;
     } else if (st === 'online') {
       online++;
@@ -372,12 +370,10 @@ export function resolveHostNodeStatus(
     zabbixHost: node.zabbixHost,
     subtitle: node.subtitle,
     label: node.label,
+    zabbixHostId: node.zabbixHostId,
   };
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
-  if (!display?.status) {
-    return 'unknown';
-  }
-  return display.status;
+  return statusFromHostDisplay(display) ?? 'unknown';
 }
 
 /** Host do mapa com status offline na Query — cabos que saem dele herdam a falha. */
@@ -490,42 +486,4 @@ export function mergeRegionTrafficStats(
     merged.set(regionId, { ...stats, ...traffic });
   }
   return merged;
-}
-
-/** Converte totais do backend (up/down/degraded) para o formato do canvas. */
-export function regionStatsFromBackend(
-  rows:
-    | Array<{
-        nodeId: string;
-        up: number;
-        down: number;
-        degraded: number;
-        unknown: number;
-        total: number;
-        rxBps?: number;
-        txBps?: number;
-        loadFailed?: boolean;
-        loadPending?: boolean;
-      }>
-    | undefined
-): Map<string, RegionHostStats> {
-  const result = new Map<string, RegionHostStats>();
-  for (const row of rows ?? []) {
-    const nodeId = row.nodeId?.trim();
-    if (!nodeId) {
-      continue;
-    }
-    result.set(nodeId, {
-      online: row.up,
-      offline: row.down,
-      alert: row.degraded,
-      unknown: row.unknown,
-      total: row.total,
-      rxBps: row.rxBps,
-      txBps: row.txBps,
-      loadFailed: row.loadFailed,
-      loadPending: row.loadPending,
-    });
-  }
-  return result;
 }

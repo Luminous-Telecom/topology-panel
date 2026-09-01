@@ -73,20 +73,6 @@ function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
 
-function uniquePreserve(values: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    out.push(trimmed);
-  }
-  return out;
-}
-
 function asNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -170,19 +156,10 @@ function indexLastValues(rows: ItemRow[]): {
   return { lastValues, itemIdByKey };
 }
 
-export function statusItemSearch(statusItemKey: string): { keyFilter: string; nameFilter: string } {
-  let trimmed = statusItemKey.trim();
-  const wrapped = /^\/(.+)\/[a-z]*$/.exec(trimmed);
-  if (wrapped?.[1]) {
-    trimmed = wrapped[1].trim();
-  }
-  if (!trimmed) {
-    return { keyFilter: '', nameFilter: '' };
-  }
-  if (/^[A-Za-z][A-Za-z0-9_.]*$/.test(trimmed)) {
-    return { keyFilter: trimmed, nameFilter: '' };
-  }
-  return { keyFilter: '', nameFilter: trimmed };
+/** Identificador de `key_` Zabbix (ex.: `icmppingsec`). Texto livre não vira filtro. */
+export function statusItemSearch(statusItemKey: string): string {
+  const trimmed = statusItemKey.trim();
+  return /^[A-Za-z][A-Za-z0-9_.]*$/.test(trimmed) ? trimmed : '';
 }
 
 export async function fetchHostGroupNames(datasourceUid: string, call: ZabbixRpc = zabbixCall): Promise<string[]> {
@@ -312,23 +289,18 @@ export async function fetchStatusLastValues(
   call: ZabbixRpc = zabbixCall,
   groupids: string[] = []
 ): Promise<ZabbixInterfaceItem[]> {
-  const { keyFilter, nameFilter } = statusItemSearch(statusItemKey);
+  const keyFilter = statusItemSearch(statusItemKey);
   const extra = uniqueSorted(extraKeys);
-  const filter: Record<string, string | string[]> = {};
-  if (keyFilter) {
-    const keys = uniqueSorted([keyFilter, ...extra]);
-    filter.key_ = keys.length === 1 ? keys[0] : keys;
-  } else if (nameFilter) {
-    filter.name = nameFilter;
-  }
   const scopedHosts = hostids.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id));
   const scopedGroups = groupids.map((id) => id.trim()).filter((id) => isNumericZabbixItemId(id));
-  if (!Object.keys(filter).length || (!scopedHosts.length && !scopedGroups.length)) {
+  if (!keyFilter || (!scopedHosts.length && !scopedGroups.length)) {
     return [];
   }
+  const keys = uniqueSorted([keyFilter, ...extra]);
   const params: ZabbixParams = {
     output: TRAFFIC_OUTPUT,
-    filter,
+    search: { key_: keys.length === 1 ? keys[0] : keys },
+    searchByAny: true,
   };
   if (scopedHosts.length) {
     params.hostids = scopedHosts;
@@ -626,41 +598,6 @@ export async function fetchProblems(
     active.length > 0 && active.some((row) => problemHostIds(row).length === 0);
   const withHosts = needsHost ? await attachProblemHosts(datasourceUid, active, call) : active;
   return parseProblems(withHosts, ids);
-}
-
-export async function fetchItemNames(
-  datasourceUid: string,
-  groupNames: string[],
-  call: ZabbixRpc = zabbixCall
-): Promise<string[]> {
-  const wanted = uniquePreserve(groupNames);
-  if (!wanted.length) {
-    return [];
-  }
-  const resolved = await fetchResolvedGroups(datasourceUid, wanted, undefined, call);
-  const groupIdByName = new Map<string, string>();
-  resolved.resolvedGroups.forEach((name, index) => {
-    const id = resolved.groupIds[index];
-    if (id) {
-      groupIdByName.set(name.toUpperCase(), id);
-    }
-  });
-  for (const groupName of wanted) {
-    const groupid = groupIdByName.get(groupName.toUpperCase());
-    if (!isNumericZabbixItemId(groupid)) {
-      continue;
-    }
-    const rows = await call<Array<{ name?: string }>>(datasourceUid, 'item.get', {
-      groupids: [groupid],
-      output: ['name'],
-      monitored: true,
-    });
-    const names = uniqueSorted(rows.map((row) => row.name ?? ''));
-    if (names.length) {
-      return names;
-    }
-  }
-  return [];
 }
 
 export async function fetchHostInterfaceItems(

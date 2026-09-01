@@ -29,23 +29,22 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts`. No intervalo, `applyStatusValuesToIndex` só patcha lastvalue — não remonta metadata/hosts |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` via `runZabbixPoll` (flag desligada) ou `fetchZabbixBackendStatus` (`POST /zabbix-status`, flag `zabbixPollViaBackend`). Em regime: **um** `item.get` por itemid. O intervalo é o `setInterval` do hook e **não** empilha ciclo novo enquanto o anterior está no ar. HTTP 404 do resource volta ao poll do browser |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` via `runZabbixPoll`. Em regime: **um** `item.get` por itemid. O intervalo é o `setInterval` do hook e **não** empilha ciclo novo enquanto o anterior está no ar |
 | Aplicar lastvalue aos itens de status | `applyLastValuesToStatusItems` / `statusLastValuesPresent` / `sameStatusItemValues` em `services/zabbixPoll.ts` |
 | Inventário de itens de interface | `hooks/useZabbixHostInterfaces.ts` via `fetchHostInterfaceItems` (`item.get` por `hostids`). Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` — sem `host.get` por nome |
 | Relógio do polling | `hooks/useZabbixDirectIndex.ts` (`setInterval` com `zabbixRefreshSec`) |
-| Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Primeira pintura do status (lastvalue) | `runZabbixPoll` na abertura do hook (flag desligada). Com a flag, `POST /zabbix-status` — o cache do Go reusa o snapshot dentro de `refreshSec` |
+| Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces` e `useZabbixHostGroups` (TTL 60 s) |
+| Primeira pintura do status (lastvalue) | `runZabbixPoll` na abertura do hook |
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` (também ignora lastvalue vazio) |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue no poll (`hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | descoberta em `fetchProblems` (`services/zabbixQuery.ts`; espelho em `pkg/plugin/direct_query.go`): `problem.get` (sem `selectHosts`) + `trigger.get` (`status: 0`) para ignorar trigger desativado + `event.get` para o host do evento (`trigger.get` se faltar). Junto com `host.get` e o lastvalue (`groupids`). Casar nó↔problema **só** pelo `hostid` |
+| Problemas Warning+ | descoberta em `fetchProblems` (`services/zabbixQuery.ts`): `problem.get` (sem `selectHosts`) + `trigger.get` (`status: 0`) para ignorar trigger desativado + `event.get` para o host do evento (`trigger.get` se faltar). Junto com `host.get` e o lastvalue (`groupids`). Casar nó↔problema **só** pelo `hostid` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`hostgroup.get`) |
-| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
-| Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`; valor exato vence faixa; 0 sem regra = offline). Espelho em `pkg/plugin/direct_query.go` |
-| Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` (`buildRegionStatsMap`); com a flag, totais prontos via `regionStatsFromBackend` (espelho em `pkg/plugin/direct_region.go`) |
+| Status/cor/rótulo a partir da latência ICMP | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `statusFromHostDisplay`, `resolveStatusColor`; lastvalue 0 = offline mesmo se o display ainda disser online) |
+| Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` (`buildRegionStatsMap`) |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` / `sameMapDocumentFlags` em `utils/mapRevision.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
 | Inventário de interface por extremo do cabo | `hooks/useLinkPeerInterfaces.ts` (`combinePeerInterfaceLoadError`); palavras-chave via `panelInterfaceKeywords` em `useZabbixHostInterfaces.ts` |
@@ -103,7 +102,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Layout dos nós e estatística das regiões (tráfego das redes entra depois, em `mergeRegionTrafficStats`) | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
 | Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
-| Preenchimento de host/submapa (status vs espera visível) | `resolveNodeFill` / `NODE_FILL_WAITING` em `utils/nodeFillColors.ts` (espera sem cor de tipo/submapa; **offline vence** problema Zabbix na cor, na lista `collectAlertHostEntries` e nos badges); contraste em `textOnBackground` (`utils/colorContrast.ts`) |
+| Preenchimento de host/submapa (status vs espera visível) | `resolveNodeFill` / `NODE_FILL_WAITING` em `utils/nodeFillColors.ts` (espera sem cor de tipo/submapa; **lastvalue 0 / offline vence** problema Zabbix na cor, na lista `collectAlertHostEntries` e nos badges — `statusFromHostDisplay`; problema sem lastvalue **não** pinta alerta); contraste em `textOnBackground` (`utils/colorContrast.ts`) |
 | Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys`, `innerHostsForSubmapNode`, `shouldOpenLinkInterfaceModal` em `utils/submapHosts.ts` |
 | Caixa da região no outro submapa (não a caixa batizada com host) | `pickCounterpartSubmapBox` em `utils/submapHosts.ts` |
 | Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |
@@ -127,7 +126,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Rótulo de bloco quando o conteúdo não é um único form control | `components/FieldReadout.tsx` |
 | Select de interface do cabo (Novo link / Editar link) | `components/LinkInterfaceSelectField.tsx` (`interfaceOptionValue`) |
 | Chrome visual de modal e overlay do mapa | `components/chrome/overlayChrome.ts` + `components/TopologyModal.tsx` (`OVERLAY_DIVIDER`, `overlayStackedItemStyle`) |
-| Editores da aba de opções (grupos, mapeamento de status, cores por ícone, licença) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `StatusValueMappingsEditor.tsx`, `HostTypeColorsEditor.tsx`, `LicenseStatusEditor.tsx` |
+| Editores da aba de opções (grupos, cores por ícone, licença) | `components/editors/QueryDisplayRefIdsEditor.tsx`, `HostTypeColorsEditor.tsx`, `LicenseStatusEditor.tsx` |
 | Portal de overlay em tela cheia | `overlayPortalRoot` em `utils/overlayPortal.ts` |
 | Encaixar overlay ao lado da âncora sem sair do painel | `fitOverlayBesideAnchor` / `overlayClipBox` / `overlayPortalParent` em `utils/overlayPortal.ts` |
 | Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |

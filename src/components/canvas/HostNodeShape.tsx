@@ -277,6 +277,7 @@ function sameResolvedHostDisplay(prev: HostNodeShapeProps, next: HostNodeShapePr
     zabbixHost: next.node.zabbixHost,
     subtitle: next.node.subtitle,
     label: next.node.label,
+    zabbixHostId: next.node.zabbixHostId,
   };
   return sameStructure(
     hostDisplayPaintSlice(lookupHostDisplay(next.hostDisplay, lookupRef, next.hostMetadata)),

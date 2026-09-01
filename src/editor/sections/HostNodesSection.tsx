@@ -36,7 +36,7 @@ function HostNodesSectionComponent({ hostNodes }: Props) {
       <Stack direction="column" gap={1}>
         {hostNodes.length === 0 && (
           <div style={{ color: theme.colors.text.secondary, fontSize: 13 }}>
-            Configure a aba <strong>Query</strong> do painel e o <strong>mapeamento de status</strong> nas opções do painel (Aparência) para cores dos hosts.
+            Configure o datasource Zabbix nas opções do painel. Online e offline vêm da latência ICMP.
           </div>
         )}
         {hostNodes.map((node) => (

@@ -5,23 +5,19 @@ import {
   HostTypeColorsEditor,
   LicenseStatusEditor,
   QueryDisplayRefIdsEditor,
-  StatusValueMappingsEditor,
   TopologyHostsEditor,
   TopologyLayoutEditor,
   TopologyLinksEditor,
   TopologySubmapsEditor,
   TopologyTemplatesEditor,
   ZabbixDatasourceEditor,
-  ZabbixStatusItemEditor,
 } from './editor/lazyPanelEditors';
 import { addMapSection, MAP_SECTION_ROOT } from './editor/mapSectionNested';
 import {
   TopologyPanelOptions,
   ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
-  ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
   ZABBIX_DIRECT_MIN_REFRESH_SEC,
   defaultHostTypeColors,
-  defaultStatusValueMappings,
 } from './types';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
@@ -43,16 +39,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
         editor: ZabbixDatasourceEditor,
         category: ['Fonte de dados'],
         defaultValue: undefined,
-      })
-      .addCustomEditor({
-        id: 'zabbixStatusItemKey',
-        path: 'zabbixStatusItemKey',
-        name: 'Item de status',
-        description:
-          'Nome ou chave do item de status no Zabbix. O valor passa pelo mapeamento de status em Aparência.',
-        editor: ZabbixStatusItemEditor,
-        category: ['Fonte de dados'],
-        defaultValue: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
       })
       .addTextInput({
         path: 'zabbixRxItemKeyword',
@@ -109,14 +95,6 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
         defaultValue: ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
         category: ['Fonte de dados'],
         settings: { min: ZABBIX_DIRECT_MIN_REFRESH_SEC, integer: true },
-      })
-      .addBooleanSwitch({
-        path: 'zabbixPollViaBackend',
-        name: 'Consultar status pelo backend (experimental)',
-        description:
-          'O plugin consulta o Zabbix no servidor Grafana e devolve status e totais de rede já agregados. Desligado, o navegador consulta o datasource direto (comportamento atual).',
-        defaultValue: false,
-        category: ['Fonte de dados'],
       });
 
     addMapSection(builder, ['Layout'], (section) => {
@@ -242,7 +220,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
       .addBooleanSwitch({
         path: 'showHostAlertList',
         name: 'Lista de hosts com alerta',
-        description: 'Hosts offline, em alerta da Query ou com problema Zabbix no canto inferior esquerdo',
+        description: 'Hosts offline ou com problema Zabbix no canto inferior esquerdo',
         defaultValue: true,
         category: ['Interação'],
       })
@@ -275,37 +253,28 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
       .addColorPicker({
         path: 'colorOnline',
         name: 'Cor online',
-        description: 'Hosts com valor mapeado como online',
+        description: 'Hosts com latência ICMP acima de 0',
         defaultValue: '#28eb0e',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorOffline',
         name: 'Cor offline',
-        description: 'Hosts com valor mapeado como offline',
+        description: 'Hosts com latência ICMP igual a 0',
         defaultValue: '#ff0101',
         category: ['Aparência'],
       })
       .addColorPicker({
         path: 'colorAlert',
         name: 'Cor alerta',
-        description: 'Hosts com valor mapeado como alerta ou com problema Zabbix (Warning+)',
+        description: 'Hosts com problema Zabbix (Warning+)',
         defaultValue: '#ff7300',
         category: ['Aparência'],
-      })
-      .addCustomEditor({
-        id: 'statusValueMappings',
-        path: 'statusValueMappings',
-        name: 'Mapeamento de status',
-        description: 'Valor da Query Zabbix → online, offline ou alerta (0 = offline; acima de 0 = online)',
-        editor: StatusValueMappingsEditor,
-        category: ['Aparência'],
-        defaultValue: defaultStatusValueMappings(),
       })
       .addColorPicker({
         path: 'colorUnknown',
         name: 'Cor sem dados',
-        description: 'Host sem valor de status ou sem regra de mapeamento',
+        description: 'Host sem valor de latência ICMP',
         defaultValue: '#616161',
         category: ['Aparência'],
       })

@@ -1,5 +1,5 @@
 ---
-description: De onde vêm os dados — Zabbix no browser ou via backend Go, licença no Go
+description: De onde vêm os dados — Zabbix no browser, licença no Go
 globs: src/**/*
 alwaysApply: false
 ---
@@ -8,10 +8,8 @@ alwaysApply: false
 
 ## Objetivo
 
-O painel consulta o Zabbix com a sessão do Grafana. Sem a flag `zabbixPollViaBackend`, o JSON-RPC
-sai do browser. Com a flag, o resource Go `POST /zabbix-status` reencaminha a mesma sessão ao
-proxy do datasource — o processo nunca vê senha do grafana-zabbix. Editor, ping e inventário de
-interface continuam no browser.
+O painel consulta o Zabbix com a sessão do Grafana. O JSON-RPC sai do browser. O processo Go
+só serve a licença (`GET /license`) — nunca vê senha do grafana-zabbix.
 
 ## Escopo
 
@@ -20,40 +18,33 @@ Qualquer arquivo em `src/`.
 ## Regras obrigatórias
 
 JSON-RPC Zabbix (`/resources/zabbix-api`) no browser sai de `services/zabbixCall.ts` via
-`getBackendSrv()`. Proibido `fetch`/`XMLHttpRequest`. O Go **não** lê
-`DataSourceInstanceSettings` (panel plugin); autentica reencaminhando Cookie / Authorization /
-`X-Grafana-Id` a `{GF_APP_URL}/api/datasources/uid/{uid}/resources/zabbix-api`.
+`getBackendSrv()`. Proibido `fetch`/`XMLHttpRequest`.
 
 O front fala com o plugin e com o datasource assim:
 
 | Recurso | Quem chama | Conteúdo |
 |---|---|---|
-| `zabbix-api` | `zabbixCall` / `zabbixQuery` / `zabbixPoll` | JSON-RPC no browser (flag desligada; editor, ping, grupos, interfaces) |
-| `POST /zabbix-status` | `fetchZabbixBackendStatus` (`useZabbixDirectIndex` com a flag) | Poll + merge + totais de rede no Go |
+| `zabbix-api` | `zabbixCall` / `zabbixQuery` / `zabbixPoll` | JSON-RPC no browser (status, ping, grupos, interfaces) |
 | `GET /license` | `useLicenseValidation` | ticket da loja |
 
 - Status, cores, contagem de submapa e listas de host vêm do lastvalue do Zabbix. O front monta o
   `QueryIndex` em `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`).
-- Com a flag, totais de rede/submapa vêm em `regionStats` do backend; `buildRegionStatsMap` fica
-  de fallback (flag desligada, 404 do resource, edição sem poll).
+- Totais de rede/submapa saem de `buildRegionStatsMap`.
 - Consumidor novo recebe `QueryIndex` por parâmetro. Nunca lê `data.series`.
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
-- Cor e rótulo saem de `utils/statusMapping.ts`. Hover lê o mesmo lastvalue via `hostDisplay`.
+- Cor e rótulo saem de `utils/statusMapping.ts` via `statusFromHostDisplay` (lastvalue 0 = offline,
+  acima de 0 = online). Hover lê o mesmo lastvalue via `hostDisplay`.
 - Problemas Warning+ vêm na descoberta (`fetchProblems`), disparados junto com `host.get` e o
   lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Depois, `trigger.get` com
   `filter.status: 0` descarta trigger desativado (o `event.get` ainda traz o host). Sem hostid
   na linha, o host sai de `event.get` (`selectHosts`); outro `trigger.get` só se o evento não
   trouxer host. O intervalo não relê. Casa o nó pelo `hostid`. Falha do filtro de trigger
-  mantém as linhas. Falha da descoberta mantém o resumo. No Go, a primeira resposta HTTP espera
-  problemas (não há `onSnapshot` em duas fases).
+  mantém as linhas. Falha da descoberta mantém o resumo.
 - O intervalo do poll mora no browser (`useZabbixDirectIndex`). Em regime: um `item.get` pelos
   itemids, mesmo se algum host do grupo não tiver o item de status. `host.get` / `problem.get` /
   `event.get` / `trigger.get` só na descoberta, em paralelo (`trigger.get` depois do `problem.get`).
-  O intervalo não empilha poll. Com a flag, o cache do Go compartilha o snapshot entre dashboards
-  com a mesma chave (`datasourceUid` + grupos + item de status) e não consulta o Zabbix mais
-  rápido que `refreshSec`. Host e
-  problema casam pelo `hostid`, nunca `filter.host` / nome. Ping e inventário de interface
-  também exigem `hostid`.
+  O intervalo não empilha poll. Host e problema casam pelo `hostid`, nunca `filter.host` / nome.
+  Ping e inventário de interface também exigem `hostid`.
 - O painel declara `skipDataQuery` em `plugin.json`.
 - Ampliar a superfície (`trend.get`, `history.get`) exige **aprovação explícita**.
 - Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`.
@@ -73,13 +64,18 @@ O front fala com o plugin e com o datasource assim:
 
 ```typescript
 // ❌ BAD — fetch cru, sem a sessão do Grafana
-await fetch(`${PLUGIN_RESOURCES}/zabbix-status`, { method: 'POST', body: JSON.stringify(req) });
+await fetch(`${PLUGIN_RESOURCES}/license`);
 
-// ✅ GOOD — flag ligada: o Go reencaminha a sessão ao proxy do grafana-zabbix
-await grafanaFetch({ url: `${PLUGIN_RESOURCES}/zabbix-status`, method: 'POST', data: req });
-
-// ✅ GOOD — flag desligada / editor / ping: a sessão do browser autentica o grafana-zabbix
+// ✅ GOOD — a sessão do browser autentica o grafana-zabbix
 await zabbixCall(uid, 'hostgroup.get', { output: ['groupid', 'name'] });
+
+// ❌ BAD — problema Zabbix pinta alerta por cima do lastvalue 0
+if (hasZabbixProblem) return options.colorAlert;
+
+// ✅ GOOD — lastvalue 0 / offline vence; alerta só em host já online
+const status = statusFromHostDisplay(mapped);
+if (status === 'offline') return options.colorOffline;
+if (status === 'online' && hasZabbixProblem) return options.colorAlert;
 ```
 
 ## Exceções

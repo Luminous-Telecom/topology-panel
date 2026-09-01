@@ -27,6 +27,12 @@ describe('preferHostDisplayInfo', () => {
     expect(preferHostDisplayInfo(onlineAtTs, offlineAtTs)).toEqual(offlineAtTs);
     expect(preferHostDisplayInfo(offlineAtTs, onlineAtTs)).toEqual(offlineAtTs);
   });
+
+  it('lastvalue 0 vence online mesmo se o status do display ainda disser online', () => {
+    const staleOnline: HostDisplayInfo = { value: 0, status: 'online', color: '#0f0' };
+    expect(preferHostDisplayInfo(online, staleOnline)).toEqual(staleOnline);
+    expect(preferHostDisplayInfo(staleOnline, online)).toEqual(staleOnline);
+  });
 });
 
 describe('lookupHostDisplay', () => {
@@ -56,6 +62,14 @@ describe('lookupHostDisplay', () => {
       {
         '100.126.32.6': { name: 'CAM - INTERNO', ip: '100.126.32.6', hostid: '10860' },
       }
+    );
+    expect(info?.status).toBe('offline');
+  });
+
+  it('casa status pelo hostid do nó', () => {
+    const info = lookupHostDisplay(
+      { hid1: { value: 0, status: 'offline' as const, color: '#f00' } },
+      { zabbixHost: 'monitor-a', zabbixHostId: 'hid1' }
     );
     expect(info?.status).toBe('offline');
   });

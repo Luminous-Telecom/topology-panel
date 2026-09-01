@@ -234,6 +234,7 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
   }
 
   if (hostId) {
+    add(hostId);
     const metaById = metadata?.[hostId];
     if (metaById) {
       if (metaById.ip && isIpv4(metaById.ip)) {
@@ -340,10 +341,10 @@ export function preferHostDisplayInfo(
   if (incomingTs !== currentTs) {
     return incomingTs > currentTs ? incoming : current;
   }
-  if (incoming.value === 0 && incoming.status === 'offline') {
+  if (incoming.value === 0) {
     return incoming;
   }
-  if (current.value === 0 && current.status === 'offline') {
+  if (current.value === 0) {
     return current;
   }
   if (incoming.value != null && current.value == null) {
@@ -373,7 +374,12 @@ export function enrichHostDisplayFromMap(
       continue;
     }
 
-    const ref = { zabbixHost: node.zabbixHost, subtitle: node.subtitle, label: node.label };
+    const ref = {
+      zabbixHost: node.zabbixHost,
+      subtitle: node.subtitle,
+      label: node.label,
+      zabbixHostId: node.zabbixHostId,
+    };
     const source = result ?? display;
     let alias: HostDisplayInfo | undefined;
     for (const key of collectHostLookupCandidates(ref, metadata)) {

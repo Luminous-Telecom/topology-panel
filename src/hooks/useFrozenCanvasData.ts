@@ -1,7 +1,6 @@
 import { MutableRefObject, useMemo } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
-import { RegionHostStats } from '../utils/networkStats';
 import { useDeferredDuringGesture } from './useDeferredDuringGesture';
 
 export interface CanvasData {
@@ -14,7 +13,6 @@ export interface CanvasData {
   submapHosts: Record<string, string[] | null | undefined>;
   linkMetricsByLink: LinkRuntimeMetricsMap;
   hostProblems?: HostProblemsMap;
-  backendRegionStats?: Map<string, RegionHostStats>;
 }
 
 /**
@@ -31,7 +29,7 @@ export function useFrozenCanvasData(
     () => live,
     [live.map, live.hostDisplay, live.hostDisplayByRefId, live.queryReady,
      live.queryError, live.hostMetadata, live.submapHosts, live.linkMetricsByLink,
-     live.hostProblems, live.backendRegionStats]
+     live.hostProblems]
   );
   return useDeferredDuringGesture(stable, isGestureActiveRef);
 }

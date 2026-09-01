@@ -16,7 +16,7 @@ export interface UseZabbixHostGroupsResult {
   loadError?: string;
 }
 
-/** Grupos de host do Zabbix — alimenta o MultiSelect do submapa e o item de status. */
+/** Grupos de host do Zabbix — alimenta o MultiSelect do submapa. */
 export function useZabbixHostGroups(datasourceUid?: string): UseZabbixHostGroupsResult {
   const [groups, setGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);

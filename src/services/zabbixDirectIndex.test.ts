@@ -45,14 +45,6 @@ describe('statusValuesByHostId', () => {
     expect(values.has('10')).toBe(false);
   });
 
-  it('aceita o item quando o campo do painel é o nome, não a key_', () => {
-    const values = statusValuesByHostId(
-      [{ ...item('10', 'icmppingsec', '0.012'), name: 'Status item' }],
-      'Status item'
-    );
-    expect(values.get('10')?.value).toBe(0.012);
-  });
-
   it('com mesmo rank, prefere lastclock mais recente e depois falha (0)', () => {
     const values = statusValuesByHostId(
       [
@@ -174,7 +166,6 @@ describe('buildZabbixDirectIndex', () => {
         colorOnline: defaultOptions().colorOnline,
         colorOffline: defaultOptions().colorOffline,
         colorAlert: defaultOptions().colorAlert,
-        statusValueMappings: defaultOptions().statusValueMappings,
       })
     );
     expect(display['RB-CORE']?.status).toBe('online');
@@ -244,19 +235,6 @@ describe('directRefInfosFromGroups', () => {
       { refId: 'BACKBONE', hint: 'Grupo Zabbix: Backbone' },
       { refId: 'BORDA', hint: 'Grupo Zabbix: borda' },
     ]);
-  });
-});
-
-describe('buildZabbixDirectIndex com nome de item', () => {
-  it('indexa lastValues quando o campo do painel é o nome, não a key_', () => {
-    const index = buildZabbixDirectIndex({
-      datasourceUid: 'zbx',
-      groupNames: ['Backbone'],
-      statusItemKey: 'Status item',
-      hosts: [host({ hostid: '10', name: 'host-a', host: 'host-a', ip: '10.0.0.1', groups: ['Backbone'] })],
-      statusItems: [{ ...item('10', 'icmppingsec', '0.012'), name: 'Status item' }],
-    });
-    expect(index.byRefId.get('BACKBONE')?.lastValues.get('host-a')).toBe(0.012);
   });
 });
 

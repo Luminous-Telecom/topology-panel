@@ -1,6 +1,6 @@
 ---
 description: Identidade visual do mapa — links, redes, grade, cores e ícones (não alterar sem pedido)
-globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/components/canvas/links/**,src/components/canvas/LinkMarkers.tsx,src/utils/panelColors.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
+globs: src/components/TopologyCanvas.tsx,src/components/TopologyMinimap.tsx,src/components/canvas/links/**,src/components/canvas/LinkMarkers.tsx,src/utils/panelColors.ts,src/utils/nodeFillColors.ts,src/utils/statusMapping.ts,src/utils/hostIcons.tsx,src/utils/networkIcons.tsx,src/utils/customIcons.ts,src/img/topology/**/*
 alwaysApply: false
 ---
 
@@ -45,6 +45,8 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 
 ## Cores
 
+- **Offline sobrepõe tudo** no preenchimento do host: lastvalue 0 (`statusFromHostDisplay` /
+  `hostNodeFill`) vence problema Zabbix, alerta e cor de tipo. Sem lastvalue não pinta alerta.
 - Defaults em `types.ts` sempre em **hex** (`#2E7D32`, `#C62828`, …).
 - O color picker do Grafana pode salvar nome de paleta (`light-green`, `semi-dark-red`) — isso é
   esperado.

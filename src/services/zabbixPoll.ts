@@ -10,6 +10,7 @@ import {
 import { aliasLastValuesByItemKey, coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
 import type { ZabbixLiveSnapshot } from '../utils/zabbixApi';
 import { zabbixCall, type ZabbixRpc } from './zabbixCall';
+import { statusItemRank } from './zabbixDirectIndex';
 import {
   fetchDirectMetadata,
   fetchProblems,
@@ -23,7 +24,7 @@ export const ZABBIX_GENERIC_ERROR =
   'Falha ao consultar o Zabbix. Verifique o datasource e os grupos configurados.';
 export const ZABBIX_NO_GROUPS_ERROR = 'Nenhum dos grupos configurados existe no Zabbix.';
 export const ZABBIX_NO_STATUS_ITEMS_ERROR =
-  'Nenhum host dos grupos respondeu com o item de status. Confira o nome do item em "Item de status".';
+  'Nenhum host dos grupos respondeu com o item de latência ICMP.';
 
 export type ZabbixPollInput = {
   datasourceUid: string;
@@ -268,7 +269,7 @@ export async function runZabbixPoll(
     };
   }
 
-  const { keyFilter } = statusItemSearch(input.statusItemKey);
+  const keyFilter = statusItemSearch(input.statusItemKey);
   const extraInStatus = keyFilter ? pendingKeys : [];
   const metadataP = fetchDirectMetadata(
     input.datasourceUid,
@@ -312,8 +313,13 @@ export async function runZabbixPoll(
   let extraLastValues: Record<string, ZabbixItemLastValue> = {};
   let extraItems: ZabbixInterfaceItem[] = [];
   if (keyFilter && extraInStatus.length) {
-    statusItems = fetchedStatus.filter((item) => item.key_ === keyFilter);
-    extraItems = fetchedStatus.filter((item) => item.key_ !== keyFilter);
+    const wanted = keyFilter.toLowerCase();
+    statusItems = fetchedStatus.filter(
+      (item) => statusItemRank(item.key_?.trim().toLowerCase() ?? '', wanted) !== undefined
+    );
+    extraItems = fetchedStatus.filter(
+      (item) => statusItemRank(item.key_?.trim().toLowerCase() ?? '', wanted) === undefined
+    );
     mergeItemIdByKey(itemIdByKey, extraItems);
     for (const item of extraItems) {
       const id = item.itemid.trim();

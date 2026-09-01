@@ -382,7 +382,7 @@ function collectAlertHostEntriesForMap(
     let reason: HostAlertListReason | null = null;
     if (status === 'offline') {
       reason = 'offline';
-    } else if (status === 'alert' || problemSummary) {
+    } else if (status === 'alert' || (status === 'online' && problemSummary)) {
       reason = 'alert';
     }
 

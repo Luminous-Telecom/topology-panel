@@ -55,7 +55,6 @@ import { removeMissingInterSubmapCounterparts, syncInterSubmapCounterpartLinks }
 import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 import { useLicenseValidation } from '../hooks/useLicenseValidation';
 import { LicenseGate } from './LicenseGate';
-import { compactPollLayout, regionLayoutKeyFromMap, type ZabbixBackendPollLayout } from '../utils/zabbixBackendLayout';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
 
@@ -204,22 +203,14 @@ export function TopologyPanel({
   const [localMap, setLocalMap] = useState<TopologyMap | null>(null);
   const storedForUi = localMap ?? activeStoredMap;
   const persistTargetMapIdRef = useRef(currentMapId);
-  const zabbixBackendLayoutRef = useRef<ZabbixBackendPollLayout | undefined>(undefined);
-  const zabbixRegionLayoutKey = useMemo(() => regionLayoutKeyFromMap(storedForUi), [storedForUi]);
 
   const statusColorOptions = useMemo(
     () => ({
       colorOnline: resolvedOptions.colorOnline,
       colorOffline: resolvedOptions.colorOffline,
       colorAlert: resolvedOptions.colorAlert,
-      statusValueMappings: resolvedOptions.statusValueMappings,
     }),
-    [
-      resolvedOptions.colorOnline,
-      resolvedOptions.colorOffline,
-      resolvedOptions.colorAlert,
-      resolvedOptions.statusValueMappings,
-    ]
+    [resolvedOptions.colorOnline, resolvedOptions.colorOffline, resolvedOptions.colorAlert]
   );
 
   const statusGroupNamesRaw = useMemo(
@@ -247,14 +238,10 @@ export function TopologyPanel({
     enabled: licenseCheck.status !== 'blocked',
     datasourceUid: resolvedOptions.zabbixDatasourceUid,
     groupNames: statusGroupNames,
-    statusItemKey: resolvedOptions.zabbixStatusItemKey ?? ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
+    statusItemKey: ZABBIX_DIRECT_DEFAULT_STATUS_ITEM_KEY,
     refreshSec: resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC,
     trafficItemIds,
     trafficKeys,
-    pollViaBackend: Boolean(resolvedOptions.zabbixPollViaBackend),
-    statusValueMappings: resolvedOptions.statusValueMappings,
-    layoutRef: zabbixBackendLayoutRef,
-    regionLayoutKey: zabbixRegionLayoutKey,
   });
 
   const queryIndex = querySource.index;
@@ -451,10 +438,6 @@ export function TopologyPanel({
     return result;
   }, [submapNodes, hostDisplayByRefId, queryHostsByRefId, queryReady, parentHostKeys, hostMetadata]);
   const submapHosts = useStableIdentity(submapHostsRaw);
-  zabbixBackendLayoutRef.current = {
-    ...compactPollLayout(storedForUi, resolvedOptions.childMaps),
-    submapHosts,
-  };
 
   useEffect(() => {
     if (!canPersistOptions) {
@@ -705,7 +688,6 @@ export function TopologyPanel({
         zabbixDatasourceUid={zabbixDatasourceUid}
         linkMetricsByLink={linkMetricsByLink}
         hostProblems={hostProblems}
-        backendRegionStats={resolvedOptions.zabbixPollViaBackend ? querySource.regionStats : undefined}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? handleMapChange : undefined}
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}

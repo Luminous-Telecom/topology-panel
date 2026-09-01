@@ -1,7 +1,6 @@
 /**
  * Tipos e helpers puros do lastvalue Zabbix. A consulta JSON-RPC vive em
- * `services/zabbixCall.ts`. Com `zabbixPollViaBackend`, o merge equivalente roda no Go
- * (`POST /zabbix-status`); editor e ping continuam no browser.
+ * `services/zabbixCall.ts`. Editor e ping usam o mesmo caminho.
  */
 export {
   isNumericZabbixItemId,

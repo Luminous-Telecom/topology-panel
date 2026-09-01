@@ -39,10 +39,11 @@ de topologia de rede com status vindo do Zabbix.
 - Atualização automática: o intervalo mora no browser (`useZabbixDirectIndex`). Em regime faz
   **um** `item.get` pelos itemids — sem `problem.get`, `event.get`, `trigger.get`, `host.get` nem segundo
   `item.get` no intervalo. Host sem o item de status não dispara descoberta de novo. Na
-  descoberta, depois dos grupos, `host.get`, lastvalue, problemas e tráfego saem juntos. Com a
-  flag `zabbixPollViaBackend`, esse ciclo roda no Go (`POST /zabbix-status`) e o cache compartilha
-  o snapshot entre requisições da mesma chave; editor e ping continuam no `zabbixCall`. Ver
+  descoberta, depois dos grupos, `host.get`, lastvalue, problemas e tráfego saem juntos. Ver
   `21-data-sources.mdc`.
+- **Offline sobrepõe tudo.** Lastvalue 0 (`statusFromHostDisplay`) vence problema Zabbix, alerta, cor
+  de tipo e `status: 'online'` leftover. Vale na cor (`hostNodeFill`), lista, badges, região e piscar.
+  Problema sem lastvalue não pinta alerta. Não pinte `colorAlert` sem conferir lastvalue 0.
 - Faça o **menor diff possível**: não refatore, renomeie nem reformate fora do escopo pedido.
 - Nunca commite segredos, `.env`, `examples/` ou `dashboards/` — são locais por decisão do projeto
   (ver `.gitignore`).

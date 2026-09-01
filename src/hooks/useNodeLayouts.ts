@@ -26,8 +26,6 @@ export interface NodeLayoutsParams {
   childMaps?: Record<string, TopologyMap | undefined>;
   hostProblems?: HostProblemsMap;
   queryReady?: boolean;
-  /** Totais prontos do backend — quando definido, não chama `buildRegionStatsMap`. */
-  backendRegionStats?: Map<string, RegionHostStats>;
 }
 
 export interface NodeLayoutsResult {
@@ -170,7 +168,6 @@ export function useNodeLayouts({
   childMaps,
   hostProblems,
   queryReady,
-  backendRegionStats,
 }: NodeLayoutsParams): NodeLayoutsResult {
   const uplinkCountByNode = useMemo(() => {
     const counts = new Map<string, number>();
@@ -192,7 +189,6 @@ export function useNodeLayouts({
     childMaps,
     hostProblems,
     queryReady,
-    backendRegionStats,
     links: map.links,
     layoutOpts,
     templateOpts,
@@ -236,18 +232,15 @@ export function useNodeLayouts({
       statsInput.childMaps === childMaps &&
       statsInput.hostProblems === hostProblems &&
       statsInput.queryReady === queryReady &&
-      statsInput.backendRegionStats === backendRegionStats &&
       statsInput.links === map.links &&
       statsInput.layoutOpts === layoutOpts &&
       statsInput.templateOpts === templateOpts &&
       nodesOnlyMoved(previousNodesRef.current ?? [], map.nodes);
 
     const stats =
-      backendRegionStats !== undefined
-        ? backendRegionStats
-        : skipRegionStats && previousStats
-          ? previousStats
-          : buildRegionStatsMap(
+      skipRegionStats && previousStats
+        ? previousStats
+        : buildRegionStatsMap(
               map.nodes,
               layouts,
               hostDisplay ?? {},
@@ -290,7 +283,6 @@ export function useNodeLayouts({
       childMaps,
       hostProblems,
       queryReady,
-      backendRegionStats,
       links: map.links,
       layoutOpts,
       templateOpts,
@@ -312,7 +304,6 @@ export function useNodeLayouts({
     childMaps,
     hostProblems,
     queryReady,
-    backendRegionStats,
     uplinkCountByNode,
   ]);
 

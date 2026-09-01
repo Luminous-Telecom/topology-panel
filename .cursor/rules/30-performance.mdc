@@ -25,15 +25,11 @@ hooks de arraste/viewport.
   chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).
 - Atualização automática: o intervalo é o `setInterval` de `useZabbixDirectIndex`. Em regime o
   `item.get` pelos itemids já conhecidos — host sem o item de status não dispara descoberta de novo.
-  Sem `host.get`, `problem.get`, `event.get`, `trigger.get` nem `item.get` extra no intervalo. Com
-  `zabbixPollViaBackend`, esse `item.get` sai do Go (`POST /zabbix-status`); o cache do processo
-  compartilha o snapshot entre dashboards da mesma chave e não consulta o Zabbix mais rápido que
-  `refreshSec`. `useNodeLayouts` não chama `buildRegionStatsMap` quando `backendRegionStats` veio
-  na resposta. O tick seguinte espera o poll atual terminar. `item.get` por itemids vai em fatias
+  Sem `host.get`, `problem.get`, `event.get`, `trigger.get` nem `item.get` extra no intervalo.
+  O tick seguinte espera o poll atual terminar. `item.get` por itemids vai em fatias
   (`ZABBIX_ITEM_GET_BATCH`). Trocar cabo não dispara ciclo novo antes do `zabbixRefreshSec`.
   Abrir ou remontar o painel consulta o Zabbix.
-- O lastvalue da tela é o da última consulta Zabbix desta sessão do hook. Com a flag, o Go guarda
-  o snapshot anterior na memória do processo (não no browser).
+- O lastvalue da tela é o da última consulta Zabbix desta sessão do hook.
 - Lastclock novo sem lastvalue novo não precisa redesenhar o SVG (o memo do nó ignora
   `updatedAtSec`). No intervalo, com a mesma lista de hosts, `applyStatusValuesToIndex` reusa o
   `QueryIndex` quando o número do status não mudou (`"1"` vs `"1.0"` conta como igual) e só

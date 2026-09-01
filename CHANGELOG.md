@@ -7,6 +7,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.412] - 2026-09-01
+
+### Alterado
+
+- Online/offline passam a usar a latência ICMP (`icmppingsec`): 0 = offline, acima de 0 = online.
+  O mapeamento de status e o seletor de item saíram das opções do painel.
+
+### Removido
+
+- Opção experimental **Consultar status pelo backend**: o poll continua só no navegador.
+- Match de status pelo nome visível do item (resto do seletor removido): o poll casa só pela `key_`.
+
+### Corrigido
+
+- Lastvalue 0 pinta offline mesmo se o display ainda disser online: problema Zabbix não cobre o vermelho.
+- Problema Zabbix sem lastvalue de latência não pinta o host de alerta: só host já online fica laranja.
+
 ## [1.4.411] - 2026-09-01
 
 ### Corrigido

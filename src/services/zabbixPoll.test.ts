@@ -172,6 +172,47 @@ describe('runZabbixPoll', () => {
     expect(result.snapshot.knownStatusItems[0]?.lastvalue).toBe('1');
   });
 
+  it('na descoberta guarda icmppingsec parametrizado como status, não como tráfego', async () => {
+    const call: ZabbixRpc = async (_uid, method) => {
+      if (method === 'hostgroup.get') {
+        return [{ groupid: '10', name: 'Backbone' }] as never;
+      }
+      if (method === 'host.get') {
+        return [
+          {
+            hostid: '1',
+            host: 'host-1',
+            name: 'host-1',
+            hostgroups: [{ name: 'Backbone' }],
+          },
+        ] as never;
+      }
+      if (method === 'item.get') {
+        return [
+          { itemid: '10001', key_: 'icmppingsec[,,,,]', hostid: '1', lastvalue: '0', lastclock: '10' },
+          { itemid: '20001', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '10' },
+        ] as never;
+      }
+      if (method === 'problem.get') {
+        return [] as never;
+      }
+      throw new Error(method);
+    };
+    const result = await runZabbixPoll(
+      {
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmppingsec',
+        trafficItemIds: [],
+        trafficKeys: ['vendor.metric.rx[10]'],
+      },
+      call
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.snapshot.knownStatusItems.map((item) => item.key_)).toEqual(['icmppingsec[,,,,]']);
+    expect(result.snapshot.knownStatusItems[0]?.lastvalue).toBe('0');
+  });
+
   it('na descoberta dispara host, item e problema no mesmo instante', async () => {
     const started: string[] = [];
     let release: () => void = () => undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RegionHostStats, buildRegionStatsMap, formatRegionStats, isHostNodeOffline, mergeRegionTrafficStats, regionFillColor, regionStatsFromBackend } from './networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats, isHostNodeOffline, mergeRegionTrafficStats, regionFillColor } from './networkStats';
 import { defaultOptions } from '../types';
 import { computeNodeLayout } from './nodeLayout';
 import { TopologyNode } from '../types';
@@ -290,6 +290,44 @@ describe('buildRegionStatsMap — submapa com mapa interno', () => {
       regionFillColor(stats.get('sm1'), defaultOptions(), 'submap', true)
     ).toBe(defaultOptions().colorAlert);
   });
+
+  it('problema Zabbix sem lastvalue não conta como alerta da região', () => {
+    const nodes: TopologyNode[] = [
+      {
+        id: 'sm1',
+        type: 'submap',
+        label: 'SEPS',
+        x: 0,
+        y: 0,
+        submapChildMapId: 'seps',
+      },
+    ];
+    const childMaps = {
+      seps: {
+        width: 800,
+        height: 600,
+        nodes: [{ id: 'h1', type: 'host' as const, zabbixHost: '10.0.0.1', x: 0, y: 0 }],
+        links: [],
+      },
+    };
+    const stats = buildRegionStatsMap(
+      nodes,
+      new Map(),
+      {},
+      {},
+      { '10.0.0.1': { name: 'h1', hostid: 'hid1' } },
+      {},
+      childMaps,
+      { hid1: { count: 1, maxSeverity: 2, names: ['ICMP timeout'] } }
+    );
+    expect(stats.get('sm1')).toEqual({
+      total: 1,
+      offline: 0,
+      alert: 0,
+      online: 0,
+      unknown: 1,
+    });
+  });
 });
 
 describe('buildRegionStatsMap — submapa', () => {
@@ -349,76 +387,9 @@ describe('isHostNodeOffline', () => {
   it('é true só quando o host está offline na Query', () => {
     const node = hostNode({ id: 'h1', zabbixHost: 'host-a' });
     expect(isHostNodeOffline(node, { 'host-a': { value: 0, status: 'offline' } })).toBe(true);
+    expect(isHostNodeOffline(node, { 'host-a': { value: 0, status: 'online' } })).toBe(true);
     expect(isHostNodeOffline(node, { 'host-a': { value: 1, status: 'online' } })).toBe(false);
     expect(isHostNodeOffline(node, {})).toBe(false);
     expect(isHostNodeOffline(undefined, { 'host-a': { value: 0, status: 'offline' } })).toBe(false);
-  });
-});
-
-describe('regionStatsFromBackend', () => {
-  it('mapeia up/down/degraded para online/offline/alert', () => {
-    const stats = regionStatsFromBackend([
-      { nodeId: 'net1', up: 3, down: 1, degraded: 2, unknown: 0, total: 6, rxBps: 100, txBps: 50 },
-    ]);
-    expect(stats.get('net1')).toEqual({
-      online: 3,
-      offline: 1,
-      alert: 2,
-      unknown: 0,
-      total: 6,
-      rxBps: 100,
-      txBps: 50,
-      loadFailed: undefined,
-      loadPending: undefined,
-    });
-  });
-
-  it('custo de buildRegionStatsMap vs aplicar stats do backend (300 hosts)', () => {
-    const HOST_COUNT = 300;
-    const nodes: TopologyNode[] = [
-      { id: 'net1', type: 'network', x: 0, y: 0, width: 4000, height: 4000 },
-      ...Array.from({ length: HOST_COUNT }, (_, i) =>
-        hostNode({
-          id: `h${i}`,
-          x: 10 + (i % 20) * 40,
-          y: 10 + Math.floor(i / 20) * 30,
-          zabbixHost: `10.0.0.${(i % 250) + 1}`,
-          networkId: 'net1',
-        })
-      ),
-    ];
-    const layouts = new Map(
-      nodes.map((node) => [
-        node.id,
-        {
-          ...node,
-          w: node.width ?? 80,
-          h: node.height ?? 40,
-          label: node.label ?? node.id,
-          sub: node.subtitle ?? '',
-        },
-      ])
-    );
-    const hostDisplay = Object.fromEntries(
-      nodes
-        .filter((node) => node.type === 'host')
-        .map((node) => [node.zabbixHost as string, { value: 1, status: 'online' as const }])
-    );
-    const backendRows = [{ nodeId: 'net1', up: HOST_COUNT, down: 0, degraded: 0, unknown: 0, total: HOST_COUNT }];
-
-    const clientStart = performance.now();
-    const clientStats = buildRegionStatsMap(nodes, layouts as never, hostDisplay);
-    const clientMs = performance.now() - clientStart;
-
-    const backendStart = performance.now();
-    const backendStats = regionStatsFromBackend(backendRows);
-    const backendMs = performance.now() - backendStart;
-
-    expect(clientStats.get('net1')?.online).toBeGreaterThan(0);
-    expect(backendStats.get('net1')?.online).toBe(HOST_COUNT);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[perf] regionStats ${HOST_COUNT} hosts: buildRegionStatsMap ${clientMs.toFixed(2)}ms, regionStatsFromBackend ${backendMs.toFixed(2)}ms`
-    );
   });
 });

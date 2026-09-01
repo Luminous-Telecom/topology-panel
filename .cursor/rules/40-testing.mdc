@@ -22,14 +22,15 @@ colocados ao lado do código.
 - Importe explicitamente de `vitest` (`import { describe, expect, it } from 'vitest'`). O projeto
   **não** usa `globals: true`.
 - `describe` nomeia a função ou hook sob teste; `it` descreve o comportamento **em português**,
-  incluindo o caso de borda ("valor não finito não casa com nenhum mapeamento").
+  incluindo o caso de borda ("valor não finito não resolve status").
 - Cubra com teste toda lógica pura nova ou alterada em `utils/`, `utils.ts`, `services/` e `hooks/`
   — principalmente status, geometria, coordenadas, undo/redo e mutações do mapa.
+- Mudança de cor, lista, badge ou região de host inclui caso **lastvalue 0 vence problema Zabbix**
+  (`statusFromHostDisplay` / `hostNodeFill`).
 - Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
   `vitest.setup.ts`.
 - Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` / `zabbixQuery.ts` /
-  `zabbixPoll.ts` / `zabbixBackendStatus.ts` são mockados com `vi.mock`. Status no browser: mocke
-  `runZabbixPoll`. Status pelo backend: mocke `fetchZabbixBackendStatus`. Ping/ICMP: mocke
+  `zabbixPoll.ts` são mockados com `vi.mock`. Status: mocke `runZabbixPoll`. Ping/ICMP: mocke
   `runZabbixPing` (não chame o datasource).
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.
@@ -54,9 +55,14 @@ it('works', async () => {
 vi.mock('../services/zabbixQuery', () => ({ fetchHostGroupNames: vi.fn().mockResolvedValue([]) }));
 
 describe('resolveHostStatusFromValue', () => {
-  it('casa por faixa from/to com limites inclusivos', () => {
-    expect(resolveHostStatusFromValue(5, [{ from: 1, to: 5, status: 'alert' }])).toBe('alert');
+  it('latência 0 é offline e acima de 0 é online', () => {
+    expect(resolveHostStatusFromValue(0)).toBe('offline');
+    expect(resolveHostStatusFromValue(0.0006)).toBe('online');
   });
+});
+
+it('lastvalue 0 pinta offline mesmo se o display ainda disser online', () => {
+  expect(statusFromHostDisplay({ value: 0, status: 'online' })).toBe('offline');
 });
 ```
 

@@ -5,7 +5,6 @@ import {
   fetchDirectMetadata,
   fetchHostGroupNames,
   fetchHostInterfaceItems,
-  fetchItemNames,
   fetchProblems,
   fetchStatusLastValues,
   fetchTrafficLastValues,
@@ -26,11 +25,11 @@ function fakeCall(handlers: Record<string, unknown>): ZabbixRpc {
 
 describe('statusItemSearch', () => {
   it('trata identificador simples como filtro de key', () => {
-    expect(statusItemSearch('icmpping')).toEqual({ keyFilter: 'icmpping', nameFilter: '' });
+    expect(statusItemSearch('icmppingsec')).toBe('icmppingsec');
   });
 
-  it('trata texto livre como filtro de nome', () => {
-    expect(statusItemSearch('ICMP ping')).toEqual({ keyFilter: '', nameFilter: 'ICMP ping' });
+  it('ignora texto que não é key_', () => {
+    expect(statusItemSearch('ICMP ping')).toBe('');
   });
 });
 
@@ -234,6 +233,24 @@ describe('fetchStatusLastValues', () => {
     expect(items[0]?.lastvalue).toBe('0');
     expect(items[0]?.lastclock).toBe('1700');
   });
+
+  it('busca a key por prefixo (icmppingsec e icmppingsec[…])', async () => {
+    let search: unknown;
+    await fetchStatusLastValues(
+      'ds',
+      'icmppingsec',
+      ['10001'],
+      [],
+      async (_uid, method, params) => {
+        if (method !== 'item.get') {
+          throw new Error(method);
+        }
+        search = params.search;
+        return [{ itemid: '10', key_: 'icmppingsec[,,,,]', hostid: '10001', lastvalue: 0 }] as never;
+      }
+    );
+    expect(search).toEqual({ key_: 'icmppingsec' });
+  });
 });
 
 describe('fetchTrafficLastValues', () => {
@@ -327,21 +344,6 @@ describe('fetchHostGroupNames', () => {
         })
       )
     ).resolves.toEqual(['Backbone', 'Borda']);
-  });
-});
-
-describe('fetchItemNames', () => {
-  it('lista nomes de item do primeiro grupo com resultado', async () => {
-    await expect(
-      fetchItemNames(
-        'ds',
-        ['Backbone'],
-        fakeCall({
-          'hostgroup.get': [{ groupid: '10', name: 'Backbone' }],
-          'item.get': [{ name: 'Status item' }, { name: 'Status item' }],
-        })
-      )
-    ).resolves.toEqual(['Status item']);
   });
 });
 

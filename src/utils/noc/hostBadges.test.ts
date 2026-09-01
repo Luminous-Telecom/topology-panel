@@ -17,6 +17,7 @@ describe('buildHostNodeBadgeMap', () => {
   it('resolve badge de problemas só para os hosts', () => {
     const badges = buildHostNodeBadgeMap({
       map,
+      hostDisplay: { '10.0.0.1': { value: 1, status: 'online' } },
       hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
       hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
     });
@@ -25,10 +26,29 @@ describe('buildHostNodeBadgeMap', () => {
     expect(badges.has('regiao')).toBe(false);
   });
 
+  it('não mostra badge de problema sem lastvalue', () => {
+    const badges = buildHostNodeBadgeMap({
+      map,
+      hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
+      hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
+    });
+    expect(badges.has('core')).toBe(false);
+  });
+
   it('não mostra badge de problema quando o host está offline', () => {
     const badges = buildHostNodeBadgeMap({
       map,
       hostDisplay: { '10.0.0.1': { value: 0, status: 'offline' } },
+      hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
+      hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
+    });
+    expect(badges.has('core')).toBe(false);
+  });
+
+  it('não mostra badge de problema quando lastvalue é 0 mesmo com status online', () => {
+    const badges = buildHostNodeBadgeMap({
+      map,
+      hostDisplay: { '10.0.0.1': { value: 0, status: 'online' } },
       hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
       hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
     });

@@ -2,7 +2,6 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 import { runZabbixPoll } from '../services/zabbixPoll';
-import { fetchZabbixBackendStatus } from '../services/zabbixBackendStatus';
 import type { ZabbixLiveSnapshot } from '../utils/zabbixApi';
 
 vi.mock('../services/zabbixPoll', async () => {
@@ -13,18 +12,7 @@ vi.mock('../services/zabbixPoll', async () => {
   };
 });
 
-vi.mock('../services/zabbixBackendStatus', async () => {
-  const actual = await vi.importActual<typeof import('../services/zabbixBackendStatus')>(
-    '../services/zabbixBackendStatus'
-  );
-  return {
-    ...actual,
-    fetchZabbixBackendStatus: vi.fn(),
-  };
-});
-
 const poll = vi.mocked(runZabbixPoll);
-const backend = vi.mocked(fetchZabbixBackendStatus);
 
 function host(id: string, group: string) {
   return {
@@ -86,7 +74,6 @@ describe('useZabbixDirectIndex', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     poll.mockReset();
-    backend.mockReset();
   });
 
   afterEach(() => {
@@ -413,7 +400,7 @@ describe('useZabbixDirectIndex', () => {
             interfaceItems: [],
             problems: {},
           },
-          'Nenhum host dos grupos respondeu com o item de status. Confira o nome do item em "Item de status".'
+          'Nenhum host dos grupos respondeu com o item de latência ICMP.'
         )
       );
 
@@ -438,7 +425,7 @@ describe('useZabbixDirectIndex', () => {
 
     expect(result.current.ready).toBe(true);
     expect(result.current.lastValues['10001']?.lastvalue).toBe('1');
-    expect(result.current.error).toMatch(/item de status/);
+    expect(result.current.error).toMatch(/latência ICMP/);
   });
 
   it('remontar o hook consulta o Zabbix de novo', async () => {
@@ -465,67 +452,5 @@ describe('useZabbixDirectIndex', () => {
     expect(second.result.current.index.hosts).toContain('host-1');
     expect(poll).toHaveBeenCalledTimes(1);
     expect(poll.mock.calls[0]?.[0].previous).toBeUndefined();
-  });
-
-  it('com a flag, consulta o resource do backend e não chama runZabbixPoll', async () => {
-    backend.mockResolvedValue({
-      savedAt: Date.now(),
-      hosts: [
-        {
-          hostId: '1',
-          host: 'host-1',
-          name: 'host-1',
-          ip: '10.0.0.1',
-          groups: ['Backbone'],
-          lastvalue: '1',
-          lastclock: '1000',
-          itemId: '10001',
-        },
-      ],
-      regionStats: [{ nodeId: 'net1', up: 1, down: 0, degraded: 0, unknown: 0, total: 1 }],
-      problems: {},
-      lastValues: { '10001': { itemid: '10001', lastvalue: '1', lastclock: '1000' } },
-      interfaceItems: [],
-    });
-
-    const { result } = renderHook(() =>
-      useZabbixDirectIndex({
-        enabled: true,
-        datasourceUid: 'ds',
-        groupNames: ['Backbone'],
-        statusItemKey: 'icmpping',
-        refreshSec: 60,
-        pollViaBackend: true,
-      })
-    );
-
-    await flush();
-    expect(result.current.ready).toBe(true);
-    expect(result.current.index.hosts).toContain('host-1');
-    expect(result.current.regionStats?.get('net1')?.online).toBe(1);
-    expect(backend).toHaveBeenCalledTimes(1);
-    expect(poll).not.toHaveBeenCalled();
-  });
-
-  it('HTTP 404 do backend volta ao poll do browser', async () => {
-    backend.mockRejectedValue({ status: 404 });
-    poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
-
-    const { result } = renderHook(() =>
-      useZabbixDirectIndex({
-        enabled: true,
-        datasourceUid: 'ds',
-        groupNames: ['Backbone'],
-        statusItemKey: 'icmpping',
-        refreshSec: 60,
-        pollViaBackend: true,
-      })
-    );
-
-    await flush();
-    expect(result.current.ready).toBe(true);
-    expect(result.current.index.hosts).toContain('host-1');
-    expect(backend).toHaveBeenCalledTimes(1);
-    expect(poll).toHaveBeenCalledTimes(1);
   });
 });
