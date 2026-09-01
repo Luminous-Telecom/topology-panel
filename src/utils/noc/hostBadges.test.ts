@@ -25,6 +25,16 @@ describe('buildHostNodeBadgeMap', () => {
     expect(badges.has('regiao')).toBe(false);
   });
 
+  it('não mostra badge de problema quando o host está offline', () => {
+    const badges = buildHostNodeBadgeMap({
+      map,
+      hostDisplay: { '10.0.0.1': { value: 0, status: 'offline' } },
+      hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
+      hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
+    });
+    expect(badges.has('core')).toBe(false);
+  });
+
   it('não cria entrada para host sem nada a mostrar', () => {
     expect(buildHostNodeBadgeMap({ map }).size).toBe(0);
   });

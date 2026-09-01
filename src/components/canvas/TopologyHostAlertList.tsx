@@ -41,6 +41,9 @@ function alertRowAriaLabel(entry: HostAlertListEntry): string {
 }
 
 function alertHoverHeading(entry: HostAlertListEntry): string {
+  if (entry.reason === 'offline') {
+    return reasonLabel(entry);
+  }
   const problems = visibleHostProblemNames(entry.problems);
   const total = problems.visible.length + problems.hidden;
   if (total === 1) {
@@ -113,7 +116,10 @@ function TopologyHostAlertListComponent({
     return null;
   }
 
-  const hoverProblems = hoverTip ? visibleHostProblemNames(hoverTip.entry.problems) : undefined;
+  const hoverProblems =
+    hoverTip && hoverTip.entry.reason !== 'offline'
+      ? visibleHostProblemNames(hoverTip.entry.problems)
+      : undefined;
   const tooltipOrigin = hoverTip ? overlayLocalPosition(tipPos, hoverTip.clip) : tipPos;
 
   return (

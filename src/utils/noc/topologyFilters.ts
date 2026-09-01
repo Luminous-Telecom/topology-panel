@@ -259,6 +259,9 @@ export function visibleHostProblemNames(names: string[] | undefined): {
 
 /** Texto do hover/aria da linha de alerta: problemas Zabbix, ou o motivo da lista. */
 export function alertListHoverText(entry: HostAlertListEntry): string {
+  if (entry.reason === 'offline') {
+    return 'Offline';
+  }
   const problems = visibleHostProblemNames(entry.problems);
   if (problems.visible.length) {
     if (problems.hidden > 0) {
@@ -266,14 +269,14 @@ export function alertListHoverText(entry: HostAlertListEntry): string {
     }
     return problems.visible.join('\n');
   }
-  if (entry.reason === 'offline') {
-    return 'Offline';
-  }
   return 'Alerta';
 }
 
 /** Rótulo da linha da lista: nome do problema Zabbix, ou OFFLINE/ALERTA. */
 export function alertListStatusLabel(entry: HostAlertListEntry): string {
+  if (entry.reason === 'offline') {
+    return 'OFFLINE';
+  }
   const problems = visibleHostProblemNames(entry.problems);
   if (problems.visible.length === 1 && problems.hidden === 0) {
     return problems.visible[0];
@@ -281,7 +284,7 @@ export function alertListStatusLabel(entry: HostAlertListEntry): string {
   if (problems.visible.length) {
     return `${problems.visible.length + problems.hidden} problemas`;
   }
-  return entry.reason === 'offline' ? 'OFFLINE' : 'ALERTA';
+  return 'ALERTA';
 }
 
 export interface NocHostListEntry {
@@ -394,7 +397,7 @@ function collectAlertHostEntriesForMap(
       label: hostDisplayLabel(node),
       reason,
     };
-    if (problemSummary?.names?.length) {
+    if (reason === 'alert' && problemSummary?.names?.length) {
       entry.problems = problemSummary.names;
     }
     entries.push(entry);

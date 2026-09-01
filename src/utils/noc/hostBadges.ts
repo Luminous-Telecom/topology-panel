@@ -26,8 +26,9 @@ export function resolveHostNodeBadges(params: {
   }
 
   const badges: HostNodeBadge[] = [];
+  const status = resolveHostNodeStatus(node, params.hostDisplay, hostMetadata);
 
-  if (showProblems !== false && hostProblems) {
+  if (showProblems !== false && hostProblems && status !== 'offline') {
     const summary = resolveHostProblemSummary(node, hostMetadata, hostProblems);
     if (summary) {
       badges.push({
@@ -38,7 +39,6 @@ export function resolveHostNodeBadges(params: {
     }
   }
 
-  const status = resolveHostNodeStatus(node, params.hostDisplay, hostMetadata);
   if (status === 'alert' && !badges.some((b) => b.kind === 'problems')) {
     badges.push({
       kind: 'alert',

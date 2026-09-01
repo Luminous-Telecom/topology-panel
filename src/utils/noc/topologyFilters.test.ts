@@ -176,6 +176,24 @@ describe('topologyFilters', () => {
     expect(entries[2]?.reason).toBe('alert');
   });
 
+  it('offline vence problema Zabbix na lista de alertas', () => {
+    const ctx = {
+      map,
+      hostDisplay: {
+        '10.0.0.1': { value: 0, status: 'offline' as const },
+      },
+      hostProblems: { hostid1: { count: 1, maxSeverity: 4, names: ['ICMP timeout'] } },
+      hostMetadata: { '10.0.0.1': { name: 'OLT', hostid: 'hostid1' } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const entries = collectAlertHostEntries(ctx);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.reason).toBe('offline');
+    expect(entries[0]?.problems).toBeUndefined();
+    expect(alertListStatusLabel(entries[0]!)).toBe('OFFLINE');
+    expect(alertListHoverText(entries[0]!)).toBe('Offline');
+  });
+
   it('lista host online com problemas Zabbix na lista de alertas', () => {
     const ctx = {
       map,
@@ -353,6 +371,7 @@ describe('topologyFilters', () => {
         mapLabel: '',
         label: 'host-a',
         reason: 'offline',
+        problems: ['ICMP timeout'],
       })
     ).toBe('Offline');
   });
@@ -377,6 +396,16 @@ describe('topologyFilters', () => {
         reason: 'alert',
       })
     ).toBe('ALERTA');
+    expect(
+      alertListStatusLabel({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'offline',
+        problems: ['ICMP timeout'],
+      })
+    ).toBe('OFFLINE');
   });
 
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {

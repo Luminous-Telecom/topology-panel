@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.409] - 2026-09-01
+
+### Corrigido
+
+- Host offline deixa de aparecer como alerta na lista, nos badges e no hover: o lastvalue Down
+  prevalece sobre problema Zabbix ativo.
+
 ## [1.4.408] - 2026-09-01
 
 ### Corrigido

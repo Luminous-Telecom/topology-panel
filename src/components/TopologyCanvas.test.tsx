@@ -366,6 +366,35 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(tooltip.closest('[data-topology-canvas]')).not.toBeNull();
   });
 
+  it('host offline na lista mostra OFFLINE mesmo com problema Zabbix', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1', zabbixHost: 'host-a' })],
+    });
+    const options = { ...defaultOptions(), map, showHostAlertList: true };
+    const hostDisplayByRefId: Record<string, HostDisplayMap> = {
+      A: { 'host-a': { value: 0, status: 'offline' } },
+    };
+
+    const { getByText, queryByText } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={hostDisplayByRefId}
+        hostMetadata={{ 'host-a': { name: 'host-a', hostid: 'hid-a' } }}
+        hostProblems={{
+          'hid-a': { count: 1, maxSeverity: 4, names: ['ICMP timeout'] },
+        }}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+      />
+    );
+
+    expect(getByText('OFFLINE')).toBeInTheDocument();
+    expect(queryByText('ICMP timeout')).toBeNull();
+  });
+
   it('mantém voltar, avançar e breadcrumb com a toolbar oculta', () => {
     const map = emptyMap({
       nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1' })],

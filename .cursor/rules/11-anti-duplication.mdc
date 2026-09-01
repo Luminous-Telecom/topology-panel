@@ -103,7 +103,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Layout dos nós e estatística das regiões (tráfego das redes entra depois, em `mergeRegionTrafficStats`) | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
 | Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
-| Preenchimento de host/submapa (status vs espera visível) | `resolveNodeFill` / `NODE_FILL_WAITING` em `utils/nodeFillColors.ts` (espera sem cor de tipo/submapa); contraste em `textOnBackground` (`utils/colorContrast.ts`) |
+| Preenchimento de host/submapa (status vs espera visível) | `resolveNodeFill` / `NODE_FILL_WAITING` em `utils/nodeFillColors.ts` (espera sem cor de tipo/submapa; **offline vence** problema Zabbix na cor, na lista `collectAlertHostEntries` e nos badges); contraste em `textOnBackground` (`utils/colorContrast.ts`) |
 | Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys`, `innerHostsForSubmapNode`, `shouldOpenLinkInterfaceModal` em `utils/submapHosts.ts` |
 | Caixa da região no outro submapa (não a caixa batizada com host) | `pickCounterpartSubmapBox` em `utils/submapHosts.ts` |
 | Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |

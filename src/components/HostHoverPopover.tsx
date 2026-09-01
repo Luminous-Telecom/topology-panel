@@ -69,7 +69,10 @@ export function HostHoverPopover({
   const description = resolveHostDescription(node, hostMetadata);
   const statusLabel = display?.text?.trim();
   const collectedAt = formatLastClock(display?.updatedAtSec);
-  const problemSummary = resolveHostProblemSummary(node, hostMetadata, hostProblems);
+  const problemSummary =
+    display?.status === 'offline'
+      ? undefined
+      : resolveHostProblemSummary(node, hostMetadata, hostProblems);
   const problems = visibleHostProblemNames(problemSummary?.names);
 
   useLayoutEffect(() => {
