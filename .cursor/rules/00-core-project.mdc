@@ -18,7 +18,7 @@ Todas as tarefas deste repositório.
 Plugin de painel Grafana (`luminous-topology-panel`, definido em `src/plugin.json`) que desenha mapas
 de topologia de rede com status vindo do Zabbix.
 
-- Stack: TypeScript 5.5 + React 18, build webpack 5 + `swc-loader`, testes Vitest 2 em jsdom.
+- Stack: TypeScript 5.5 + React 18, build webpack 5 + `swc-loader`, testes Vitest 4 em jsdom.
 - `react`, `react-dom` e `@grafana/data|ui|runtime|schema` são **externals** do webpack: vêm do host
   Grafana em runtime e não entram no bundle.
 - Scripts existentes: `npm run build` (JS de produção + binários Go nas 5 arch),

@@ -20,7 +20,7 @@ Plugin de painel para **Grafana 9+** que exibe mapas de topologia de rede, com s
 ## Requisitos
 
 - Node.js **18+**
-- Go **1.22+** (só para build; o ZIP da loja já traz o binário)
+- Go **1.25+** (só para build; o ZIP da loja já traz o binário; `GOTOOLCHAIN` baixa a toolchain se o Go local for mais antigo)
 - Grafana **10+** (testado em Grafana 11/13)
 - Datasource Zabbix (obrigatório, para status e tráfego)
 - Windows + Winbox (para abrir Winbox a partir do navegador)

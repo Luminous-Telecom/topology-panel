@@ -20,7 +20,7 @@ if [[ ! -x "$ROOT/node_modules/.bin/webpack" ]]; then
   exit 1
 fi
 if ! command -v go >/dev/null 2>&1; then
-  echo "Go é necessário para o backend (golang.org, 1.22+)." >&2
+  echo "Go é necessário para o backend (golang.org, 1.25+)." >&2
   exit 1
 fi
 

@@ -12,7 +12,7 @@ Proteger a lógica pura do mapa e do status com testes rápidos, sem rede e sem 
 
 ## Escopo
 
-Tudo que roda em `npm run test` (Vitest 2 + jsdom **e** `go test ./pkg/...`), com testes
+Tudo que roda em `npm run test` (Vitest 4 + jsdom **e** `go test ./pkg/...`), com testes
 colocados ao lado do código.
 
 ## Regras obrigatórias

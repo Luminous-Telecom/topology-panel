@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.406] - 2026-09-01
+
+### Alterado
+
+- Backend Go passa a exigir toolchain 1.25 e sobe as transitivas de produção do plugin SDK: `grpc` 1.82.1, `kin-openapi` 0.144.0, `otel/sdk` 1.43.0 e `x/net` 0.55.0 (CVEs de autorização, panic/DoS e parser HTML).
+- Testes usam Vitest 4 (Vite 8 / sem esbuild) e o build usa `copy-webpack-plugin` 14 (`serialize-javascript` 7.1.1).
+
 ## [1.4.405] - 2026-09-01
 
 ### Alterado
