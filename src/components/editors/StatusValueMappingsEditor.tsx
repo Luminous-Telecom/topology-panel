@@ -74,7 +74,7 @@ export function StatusValueMappingsEditor({ value, onChange }: Props) {
     <Stack direction="column" gap={1}>
       <div className={styles.hint} style={{ color: theme.colors.text.secondary }}>
         Valores da Query Zabbix: 0 = offline; acima de 0 = online; alerta via regra própria.
-        A primeira regra que bater define a cor — offline (valor exato 0) deve vir antes do intervalo online.
+        O valor exato (0 = Down) vence a faixa online, mesmo se a faixa estiver primeiro.
       </div>
 
       {mappings.length > 0 ? (

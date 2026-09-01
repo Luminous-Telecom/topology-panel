@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HostDisplayMap, HostMetadataMap, TopologyNode, TopologyPanelOptions, defaultOptions } from '../types';
 import { RegionHostStats } from './networkStats';
 import { hostNodeFill, NODE_FILL_WAITING, resolveNetworkFill, resolveNodeFill } from './nodeFillColors';
+import { resolveHostStatusFromValue } from './statusMapping';
 
 const options: TopologyPanelOptions = defaultOptions();
 /** No painel real quem resolve é o tema; aqui basta a identidade. */
@@ -64,6 +65,23 @@ describe('hostNodeFill', () => {
     };
     const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
     const problems = { hid1: { count: 2, maxSeverity: 4 } };
+    expect(
+      hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
+    ).toBe(options.colorOffline);
+  });
+
+  it('lastvalue 0 com faixa online primeiro pinta offline e vence o problema', () => {
+    const mappings = [
+      { from: 0, status: 'online' as const },
+      { value: 0, status: 'offline' as const },
+    ];
+    const status = resolveHostStatusFromValue(0, mappings);
+    const display: HostDisplayMap = {
+      'rb-01': { status, color: '#00ff00', value: 0 },
+    };
+    const metadata: HostMetadataMap = { 'rb-01': { name: 'rb-01', hostid: 'hid1' } };
+    const problems = { hid1: { count: 1, maxSeverity: 4 } };
+    expect(status).toBe('offline');
     expect(
       hostNodeFill(node({ zabbixHost: 'rb-01' }), options, metadata, display, identity, problems)
     ).toBe(options.colorOffline);

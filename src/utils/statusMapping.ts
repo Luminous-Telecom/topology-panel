@@ -5,17 +5,58 @@ export type StatusColorOptions = Pick<
   'colorOnline' | 'colorOffline' | 'colorAlert' | 'statusValueMappings'
 >;
 
+function mappingBound(raw: unknown): number | undefined {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : undefined;
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 function isExactMapping(entry: TopologyStatusValueMapping): boolean {
-  return entry.value != null;
+  return mappingBound(entry.value) !== undefined;
 }
 
 function mappingMatchesValue(entry: TopologyStatusValueMapping, value: number): boolean {
-  if (isExactMapping(entry)) {
-    return value === entry.value;
+  const exact = mappingBound(entry.value);
+  if (exact !== undefined) {
+    return value === exact;
   }
-  const from = entry.from ?? Number.NEGATIVE_INFINITY;
-  const to = entry.to ?? Number.POSITIVE_INFINITY;
-  return value >= from && value <= to;
+  const from = mappingBound(entry.from);
+  const to = mappingBound(entry.to);
+  // Faixa aberta "acima de 0" não inclui Down — senão 0 pinta online e o problema vira alerta.
+  if (from === 0 && to === undefined && value === 0) {
+    return false;
+  }
+  return value >= (from ?? Number.NEGATIVE_INFINITY) && value <= (to ?? Number.POSITIVE_INFINITY);
+}
+
+function matchingMapping(
+  value: number,
+  mappings: TopologyStatusValueMapping[]
+): TopologyStatusValueMapping | undefined {
+  for (const entry of mappings) {
+    if (isExactMapping(entry) && mappingMatchesValue(entry, value)) {
+      return entry;
+    }
+  }
+  for (const entry of mappings) {
+    if (!isExactMapping(entry) && mappingMatchesValue(entry, value)) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
+function isMappedStatus(status: string | undefined): status is TopologyHostStatus {
+  return status === 'online' || status === 'offline' || status === 'alert';
 }
 
 /** Resolve status online/offline a partir do valor da Query e dos mapeamentos do painel. */
@@ -26,10 +67,13 @@ export function resolveHostStatusFromValue(
   if (!Number.isFinite(value)) {
     return undefined;
   }
-  for (const entry of mappings) {
-    if (mappingMatchesValue(entry, value)) {
-      return entry.status;
-    }
+  const matched = matchingMapping(value, mappings);
+  if (isMappedStatus(matched?.status)) {
+    return matched.status;
+  }
+  // 0 = Down quando nenhuma regra casou (faixa online "acima de 0" não cobre o ping down).
+  if (value === 0) {
+    return 'offline';
   }
   return undefined;
 }
@@ -51,10 +95,9 @@ export function resolveMappingLabel(
   value: number,
   mappings: TopologyStatusValueMapping[]
 ): string | undefined {
-  for (const entry of mappings) {
-    if (mappingMatchesValue(entry, value)) {
-      return entry.label?.trim() || undefined;
-    }
+  const matched = matchingMapping(value, mappings);
+  if (matched) {
+    return matched.label?.trim() || undefined;
   }
   return undefined;
 }

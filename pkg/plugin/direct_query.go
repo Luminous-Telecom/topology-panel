@@ -891,13 +891,29 @@ func resolveHostStatusFromValue(value float64, mappings []statusValueMapping) st
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return ""
 	}
-	for _, entry := range mappings {
-		if mappingMatchesValue(entry, value) {
+	pick := func(exact bool) string {
+		for _, entry := range mappings {
+			if (entry.Value != nil) != exact {
+				continue
+			}
+			if !mappingMatchesValue(entry, value) {
+				continue
+			}
 			switch entry.Status {
 			case "online", "offline", "alert":
 				return entry.Status
 			}
 		}
+		return ""
+	}
+	if status := pick(true); status != "" {
+		return status
+	}
+	if status := pick(false); status != "" {
+		return status
+	}
+	if value == 0 {
+		return "offline"
 	}
 	return ""
 }
@@ -908,11 +924,17 @@ func mappingMatchesValue(entry statusValueMapping, value float64) bool {
 	}
 	from := math.Inf(-1)
 	to := math.Inf(1)
-	if entry.From != nil {
+	hasFrom := entry.From != nil
+	hasTo := entry.To != nil
+	if hasFrom {
 		from = *entry.From
 	}
-	if entry.To != nil {
+	if hasTo {
 		to = *entry.To
+	}
+	// Faixa aberta "acima de 0" não inclui Down.
+	if hasFrom && !hasTo && from == 0 && value == 0 {
+		return false
 	}
 	return value >= from && value <= to
 }

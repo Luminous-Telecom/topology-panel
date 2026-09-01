@@ -568,6 +568,19 @@ func TestResolveHostStatusFromValue(t *testing.T) {
 	if got := resolveHostStatusFromValue(0.99, []statusValueMapping{{From: ptr(1.0), To: ptr(5.0), Status: "alert"}}); got != "" {
 		t.Fatalf("fora da faixa: %s", got)
 	}
+	reversed := []statusValueMapping{{From: ptr(0.0), Status: "online"}, {Value: ptr(0.0), Status: "offline"}}
+	if got := resolveHostStatusFromValue(0, reversed); got != "offline" {
+		t.Fatalf("0 com faixa online primeiro: %s", got)
+	}
+	if got := resolveHostStatusFromValue(1, reversed); got != "online" {
+		t.Fatalf("1 com faixa online primeiro: %s", got)
+	}
+	if got := resolveHostStatusFromValue(0, []statusValueMapping{{From: ptr(0.0), Status: "online"}}); got != "offline" {
+		t.Fatalf("0 só com faixa online: %s", got)
+	}
+	if got := resolveHostStatusFromValue(0, nil); got != "offline" {
+		t.Fatalf("0 sem mapeamento: %s", got)
+	}
 }
 
 func TestRegionStatsRedePorNetworkId(t *testing.T) {

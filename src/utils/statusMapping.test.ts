@@ -47,6 +47,38 @@ describe('resolveHostStatusFromValue', () => {
     expect(resolveHostStatusFromValue(1000, openEnd)).toBe('online');
   });
 
+  it('valor exato 0 (Down) vence a faixa online mesmo se ela vier primeiro', () => {
+    const mappings: TopologyStatusValueMapping[] = [
+      { from: 0, status: 'online', label: 'Up' },
+      { value: 0, status: 'offline', label: 'Down' },
+    ];
+    expect(resolveHostStatusFromValue(0, mappings)).toBe('offline');
+    expect(resolveHostStatusFromValue(1, mappings)).toBe('online');
+    expect(resolveMappingLabel(0, mappings)).toBe('Down');
+  });
+
+  it('lastvalue 0 é offline quando a faixa online começa em 0 e não há regra exata', () => {
+    expect(resolveHostStatusFromValue(0, [{ from: 0, status: 'online' }])).toBe('offline');
+    expect(resolveHostStatusFromValue(0, [])).toBe('offline');
+  });
+
+  it('casa valor exato gravado como texto no JSON do Grafana', () => {
+    const mappings = [
+      { value: '0' as unknown as number, status: 'offline' as const },
+      { from: 0, status: 'online' as const },
+    ];
+    expect(resolveHostStatusFromValue(0, mappings)).toBe('offline');
+  });
+
+  it('mapeamento padrão pinta ping 0 como offline e 1 como online', () => {
+    const mappings: TopologyStatusValueMapping[] = [
+      { value: 0, status: 'offline', label: 'Down' },
+      { from: 0, status: 'online', label: 'Up' },
+    ];
+    expect(resolveHostStatusFromValue(0, mappings)).toBe('offline');
+    expect(resolveHostStatusFromValue(1, mappings)).toBe('online');
+  });
+
   it('usa a primeira regra que casa, ignorando as seguintes', () => {
     const mappings: TopologyStatusValueMapping[] = [
       { from: 0, to: 10, status: 'online' },

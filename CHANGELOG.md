@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.411] - 2026-09-01
+
+### Corrigido
+
+- Lastvalue 0 (Down) pinta offline mesmo quando a faixa “acima de 0 = online” vem primeiro no
+  mapeamento: o host down deixa de aparecer como alerta por causa do problema Zabbix.
+
 ## [1.4.410] - 2026-09-01
 
 ### Alterado

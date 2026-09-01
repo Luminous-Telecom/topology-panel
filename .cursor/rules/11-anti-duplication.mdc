@@ -44,7 +44,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
-| Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
+| Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`; valor exato vence faixa; 0 sem regra = offline). Espelho em `pkg/plugin/direct_query.go` |
 | Estatísticas agregadas de rede/submapa | `utils/networkStats.ts` (`buildRegionStatsMap`); com a flag, totais prontos via `regionStatsFromBackend` (espelho em `pkg/plugin/direct_region.go`) |
 | Casar hosts do mapa com hosts do índice | `mergeMapWithQueryHosts` / `patchDisplayMapPositions` / `resolveHostDescription` / `resolveHostVisibleName` em `utils/mapSync.ts`; `isPositionOnlyMapChange` / `nodesOnlyMoved` / `sameMapDocumentFlags` em `utils/mapRevision.ts` |
 | Resolver IP/chave de um host do mapa | `utils/hostLookup.ts` (`collectHostLookupCandidates`, `resolveHostZabbixId`, `enrichHostMetadataFromMaps` / `enrichHostDisplayFromMaps` na árvore inteira, `collectHostMetadataForMaps` para problemas) |
