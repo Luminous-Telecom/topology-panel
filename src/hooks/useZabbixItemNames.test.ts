@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
 
-vi.mock('../utils/zabbixApi', () => ({
-  fetchZabbixItemNames: (...args: unknown[]) => fetchMock(...args),
+vi.mock('../services/pluginBackend', () => ({
+  fetchBackendItemNames: (...args: unknown[]) => fetchMock(...args),
 }));
 
 import { useZabbixItemNames } from './useZabbixItemNames';

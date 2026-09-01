@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,14 +145,21 @@ func TestLicenseCheckerRevalidatesAfterTTL(t *testing.T) {
 	}
 }
 
-func TestHandlerSnapshotRequiresLicense(t *testing.T) {
-	dir := t.TempDir()
-	h := New(dir)
-	req := httptest.NewRequest(http.MethodGet, "/snapshot?key=YQ", nil)
+func TestHandlerSnapshotRoundTripWithoutLicenseFile(t *testing.T) {
+	h := New(t.TempDir())
+	body := `{"key":"YQ","savedAt":1,"metadata":{"hosts":[],"resolvedGroups":["Backbone"],"groupIds":["10"]},"knownStatusItems":[],"lastValues":{},"interfaceItems":[],"problems":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/snapshot", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	h.handleSnapshot(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("sem licença: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST: %d %s", rec.Code, rec.Body.String())
+	}
+
+	lookup := httptest.NewRequest(http.MethodPost, "/snapshot", strings.NewReader(`{"key":"YQ"}`))
+	lookupRec := httptest.NewRecorder()
+	h.handleSnapshot(lookupRec, lookup)
+	if lookupRec.Code != http.StatusOK {
+		t.Fatalf("lookup: %d %s", lookupRec.Code, lookupRec.Body.String())
 	}
 }
 
@@ -168,7 +176,7 @@ func TestHandlerLicenseMissingFile(t *testing.T) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Valid || parsed.Message == "" {
-		t.Fatalf("esperava bloqueio: %+v", parsed)
+	if !parsed.Valid {
+		t.Fatalf("sem license.json = desenvolvimento local: %+v", parsed)
 	}
 }

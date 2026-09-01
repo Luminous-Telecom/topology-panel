@@ -111,8 +111,12 @@ export function resolveNodeFill(
   hostMetadata: HostMetadataMap | undefined,
   hostDisplay: HostDisplayMap | undefined,
   resolveColor: ColorResolver,
-  hostProblems?: HostProblemsMap
+  hostProblems?: HostProblemsMap,
+  queryLoading = false
 ): string {
+  if (queryLoading && !queryReady && (node.type === 'submap' || node.type === 'host')) {
+    return 'transparent';
+  }
   const fillOverride =
     node.type === 'submap' ? regionFillColor(region, options, 'submap', queryReady) : undefined;
   const fillRaw =

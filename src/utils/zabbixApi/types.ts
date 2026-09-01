@@ -15,6 +15,11 @@ export interface ZabbixHostInterfaceItems {
   items: ZabbixInterfaceItem[];
 }
 
+export interface ZabbixInterfaceHostRef {
+  hostKey: string;
+  hostid?: string;
+}
+
 export interface ZabbixItemLastValue {
   itemid: string;
   lastvalue?: string;

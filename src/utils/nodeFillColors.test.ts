@@ -121,4 +121,23 @@ describe('resolveNodeFill', () => {
       resolveNodeFill(node({ type: 'submap', label: 'Filial' }), undefined, options, false, {}, {}, identity)
     ).toBe(options.colorUnknown);
   });
+
+  it('submapa e host ficam transparentes enquanto o status carrega', () => {
+    expect(
+      resolveNodeFill(
+        node({ type: 'submap', label: 'Filial' }),
+        undefined,
+        options,
+        false,
+        {},
+        {},
+        identity,
+        undefined,
+        true
+      )
+    ).toBe('transparent');
+    expect(
+      resolveNodeFill(node({ zabbixHost: 'rb-01' }), undefined, options, false, {}, {}, identity, undefined, true)
+    ).toBe('transparent');
+  });
 });

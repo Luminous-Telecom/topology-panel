@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  itemIdByKeyFromLastValues,
-  mergeItemIdByKey,
-  sameLastValuesForPaint,
-  sameStatusItemsLastValue,
-  zabbixHostItemKey,
-} from './itemIds';
+import { itemIdByKeyFromLastValues, mergeItemIdByKey, zabbixHostItemKey } from './itemIds';
 
 describe('itemIdByKeyFromLastValues', () => {
   it('só indexa entradas hostid:key com itemid numérico', () => {
@@ -29,54 +23,5 @@ describe('mergeItemIdByKey', () => {
     ]);
     expect(into.get(zabbixHostItemKey('1', 'vendor.metric.rx[10]'))).toBe('77');
     expect(into.size).toBe(1);
-  });
-});
-
-describe('sameLastValuesForPaint', () => {
-  it('ignora lastclock quando itemid e lastvalue são iguais', () => {
-    expect(
-      sameLastValuesForPaint(
-        { '10': { itemid: '10', lastvalue: '1', lastclock: '1000' } },
-        { '10': { itemid: '10', lastvalue: '1', lastclock: '2000' } }
-      )
-    ).toBe(true);
-  });
-
-  it('detecta lastvalue diferente', () => {
-    expect(
-      sameLastValuesForPaint(
-        { '10': { itemid: '10', lastvalue: '1' } },
-        { '10': { itemid: '10', lastvalue: '0' } }
-      )
-    ).toBe(false);
-  });
-
-  it('detecta chave nova', () => {
-    expect(
-      sameLastValuesForPaint({ '10': { itemid: '10', lastvalue: '1' } }, {
-        '10': { itemid: '10', lastvalue: '1' },
-        '11': { itemid: '11', lastvalue: '1' },
-      })
-    ).toBe(false);
-  });
-});
-
-describe('sameStatusItemsLastValue', () => {
-  it('ignora lastclock quando o lastvalue de status é o mesmo', () => {
-    expect(
-      sameStatusItemsLastValue(
-        [{ itemid: '10001', lastvalue: '1' }],
-        [{ itemid: '10001', lastvalue: '1' }]
-      )
-    ).toBe(true);
-  });
-
-  it('detecta host que mudou de status', () => {
-    expect(
-      sameStatusItemsLastValue(
-        [{ itemid: '10001', lastvalue: '1' }],
-        [{ itemid: '10001', lastvalue: '0' }]
-      )
-    ).toBe(false);
   });
 });

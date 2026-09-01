@@ -1,37 +1,19 @@
 /**
- * Superfície pública do JSON-RPC Zabbix (poll, catálogo do editor e problemas).
- *
- * Ping/ICMP vive em `zabbixApi/ping.ts` e **não** é reexportado aqui — o chunk principal
- * (`useZabbixDirectIndex`) não pode puxar `script.execute` no first load.
+ * Tipos e helpers puros do lastvalue Zabbix. A consulta JSON-RPC vive no backend Go;
+ * o painel só consome `services/pluginBackend.ts`.
  */
-export { isBenignZabbixFetchError, zabbixUserFacingError } from './zabbixApi/client';
 export {
   isNumericZabbixItemId,
   itemIdByKeyFromLastValues,
   mergeItemIdByKey,
-  sameLastValuesForPaint,
-  sameStatusItemsLastValue,
   zabbixHostItemKey,
 } from './zabbixApi/itemIds';
 export type {
   ZabbixDirectHost,
   ZabbixDirectMetadata,
   ZabbixHostInterfaceItems,
+  ZabbixInterfaceHostRef,
   ZabbixInterfaceItem,
   ZabbixItemLastValue,
   ZabbixResolvedGroups,
 } from './zabbixApi/types';
-export {
-  fetchZabbixDirectMetadata,
-  fetchZabbixHostGroupNames,
-  fetchZabbixResolvedGroups,
-  fetchZabbixSignalInventory,
-  fetchZabbixStatusLastValues,
-  fetchZabbixTrafficLastValues,
-  resolveZabbixItemIdsByKeys,
-  statusItemSearch,
-} from './zabbixApi/poll';
-export { fetchZabbixHostInterfaceItems, fetchZabbixItemNames } from './zabbixApi/catalog';
-export type { ZabbixInterfaceHostRef } from './zabbixApi/catalog';
-export { fetchZabbixProblems, parseZabbixProblems, sameHostProblems } from './zabbixApi/problems';
-export type { ZabbixProblemRow } from './zabbixApi/problems';

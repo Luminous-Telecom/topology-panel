@@ -7,6 +7,34 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.403] - 2026-08-31
+
+### Alterado
+
+- `npm run dev` observa o JS (webpack development) e o backend Go (só a plataforma local) e grava na pasta do plugin no Grafana; não precisa de `npm run build` a cada save.
+- Toda consulta Zabbix passa pelo backend Go (`/poll`, `/groups`, `/item-names`, `/interfaces`, `/ping`); o painel só desenha o JSON devolvido.
+
+### Removido
+
+- Cache de lastvalue no navegador, gate de poll no front e verificação de ticket da loja no browser (fica no processo Go).
+- Scripts `watch:plugin`, `sign` e `deploy` do `package.json`.
+- Rotas GET `/snapshot` e POST `/snapshot/lookup` — a leitura é `POST /snapshot` só com a chave.
+
+### Corrigido
+
+- O backend Go reencaminha a sessão do Grafana (`Cookie`, `X-Grafana-Id`) ao proxy do datasource Zabbix; sem isso o poll voltava 401 e o mapa mostrava “Falha na fonte de dados”.
+- Abrir o mapa com snapshot quente não consulta o Zabbix — hidrata por `POST /snapshot` e o `POST /poll` só entra no intervalo.
+- Desenvolvimento local sem `license.json` não bloqueia o mapa; com instalação da loja a validação continua obrigatória.
+- Status, tráfego e problemas saem do backend Go (`POST /poll`); o front só desenha o mapa com o snapshot retornado.
+- O painel deixa de ficar 1–2 s em “Carregando painel do plug-in…”: o `TopologyPanel` carrega em chunk assíncrono e o `npm run dev` deixa de empurrar ~9 MB no entry.
+- O mapa pinta no primeiro frame com o lastvalue do snapshot do backend; o Go reconcilia em seguida sem cinza nem espera de ~2 s.
+- O snapshot do lastvalue grava em disco na pasta do plugin (7 dias) — após reiniciar o Grafana o F5 já pinta sem esperar o Zabbix.
+- Abrir o mapa pai pinta o lastvalue da RAM do Grafana (POST `/snapshot` só com a chave). Query string, path extra, abort de 2 s e `item.get` na hora (savedAt velho) faziam o badge “Consultando status no Zabbix” aparecer antes da cor.
+- Enquanto o snapshot hidrata, as caixas não pintam `colorUnknown` — o primeiro preenchimento já é o status.
+- A chave com todos os grupos da árvore passava de 512 bytes e o GET 404; o teto vai a 8 KiB.
+- Gravar o lastvalue na RAM do Grafana não exige mais `license.json`; o POST 403 impedia o cache no `npm run dev`.
+- A consulta de status começa enquanto a licença ainda valida — não espera o ticket da loja para hidratar o mapa.
+
 ## [1.4.402] - 2026-08-31
 
 ### Alterado

@@ -12,7 +12,8 @@ Proteger a lógica pura do mapa e do status com testes rápidos, sem rede e sem 
 
 ## Escopo
 
-Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado do código.
+Tudo que roda em `npm run test` (Vitest 2 + jsdom **e** `go test ./pkg/...`), com testes
+colocados ao lado do código.
 
 ## Regras obrigatórias
 
@@ -26,8 +27,8 @@ Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado
   — principalmente status, geometria, coordenadas, undo/redo e mutações do mapa.
 - Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
   `vitest.setup.ts`.
-- Nada de rede em teste: `getBackendSrv` e `utils/zabbixApi.ts` são mockados com `vi.mock`.
-  Ping/ICMP: importe e mocke `utils/zabbixApi/ping.ts` (não entra no barrel do poll).
+- Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` são mockados com `vi.mock`.
+  Ping/ICMP: mocke `fetchBackendPing` (não chame o datasource).
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.
 - Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em
@@ -43,12 +44,12 @@ Tudo que roda em `npm run test` (Vitest 2 + jsdom), com testes colocados ao lado
 ```typescript
 // ❌ BAD — depende de rede e não diz o que valida
 it('works', async () => {
-  const r = await fetchZabbixHostMetadata('uid', ['host-a']);
+  const r = await fetchBackendHostGroups('uid');
   expect(r).toBeTruthy();
 });
 
 // ✅ GOOD — comportamento nomeado, dependência externa isolada
-vi.mock('./zabbixApi', () => ({ fetchZabbixHostMetadata: vi.fn().mockResolvedValue({}) }));
+vi.mock('../services/pluginBackend', () => ({ fetchBackendHostGroups: vi.fn().mockResolvedValue([]) }));
 
 describe('resolveHostStatusFromValue', () => {
   it('casa por faixa from/to com limites inclusivos', () => {

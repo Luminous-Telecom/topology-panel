@@ -1,5 +1,5 @@
 ---
-description: De onde vêm os dados — API Zabbix e APIs oficiais do Grafana
+description: De onde vêm os dados — backend Go do plugin e APIs oficiais do Grafana
 globs: src/**/*
 alwaysApply: false
 ---
@@ -8,8 +8,7 @@ alwaysApply: false
 
 ## Objetivo
 
-Manter uma fonte única para o status do mapa — o `QueryIndex` — e a API Zabbix restrita a exceções
-nomeadas.
+O painel só desenha. Toda consulta Zabbix sai do processo Go; o front consome JSON pronto.
 
 ## Escopo
 
@@ -17,65 +16,38 @@ Qualquer arquivo em `src/`.
 
 ## Regras obrigatórias
 
-Status, cores, contagem de submapa e listas de host vêm **só** do `QueryIndex`, montado em
-`buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`, via `hooks/useZabbixDirectIndex.ts`):
-metadados (`hostgroup.get` + `host.get` só de hosts monitorados) e lastvalue via `item.get`
-(`fetchZabbixStatusLastValues`) pelos **hostids** já resolvidos. Sem `item.get` de status por
-`groupids` — em produção isso varre icmpping de todos os CPE do grupo. Os grupos de **toda a
-árvore** (`collectAllSubmapGroups` em `utils/queryHosts.ts`) alimentam o índice antes de abrir o
-submapa. Atalho interno herda os grupos do nó dono; o rótulo curto sozinho não consulta o Zabbix.
+JSON-RPC Zabbix (`/resources/zabbix-api`) é exclusivo do backend (`pkg/plugin/zabbix`). Proibido
+`zabbixCall`, `getBackendSrv().post(.../zabbix-api)` e `fetch`/`XMLHttpRequest` em `src/`.
 
-- Consumidor novo recebe `QueryIndex` por parâmetro e nunca lê `data.series` nem chama a API por
-  conta própria.
+O front só fala com o plugin via `services/pluginBackend.ts` (`getBackendSrv()`):
+
+| Recurso | Quem chama | Conteúdo |
+|---|---|---|
+| `POST /poll` | `useZabbixDirectIndex` | status, tráfego, problemas (descoberta), snapshot |
+| `POST /snapshot` | `useZabbixDirectIndex` | leitura do cache RAM/disco (só `{ key }`); o Go persiste no poll |
+| `POST /groups` | `useZabbixHostGroups` | nomes de grupo (editor) |
+| `POST /item-names` | `useZabbixItemNames` | nomes de item (seletor de status) |
+| `POST /interfaces` | `useZabbixHostInterfaces` | itens de interface do cabo |
+| `POST /ping` | `PingModal` | script Ping + lastvalue ICMP |
+| `GET /license` | `useLicenseValidation` | ticket da loja |
+
+- Status, cores, contagem de submapa e listas de host vêm do snapshot de `/poll`. O front monta o
+  `QueryIndex` em `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`).
+- Consumidor novo recebe `QueryIndex` por parâmetro. Nunca lê `data.series` nem chama o Zabbix.
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
-- Cor e rótulo saem de `utils/statusMapping.ts` (`resolveHostStatusDisplay`).
-- O hover lê o mesmo lastvalue via `hostDisplay` — proibido JSON-RPC ao passar o mouse.
-- Problemas Warning+ (`fetchZabbixProblems`) pintam `colorAlert` e entram na lista de alertas.
-  **Só na descoberta** — o intervalo não relê. `problem.get` pelos groupids + `trigger.get` para
-  casar objectid→hostid (`filter.status: 0`, `recent: false`, `suppressed: false`). `problem.get`
-  **não** aceita `selectHosts` (HTTP 500). Casa o nó pelo `hostid` resolvido. Falha mantém o resumo.
-- O painel declara `skipDataQuery` em `plugin.json`: não há aba Query nem `DataSourceApi.query()`.
-
-`utils/zabbixApi/` e `utils/zabbixApi.ts` (poll + catalog + problems, **sem** ping) são o **único**
-lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `PingModal` (lazy) importa.
-
-| Consumidor autorizado | Uso permitido |
-|---|---|
-| `components/PingModal.tsx` | `executeHostPingScript` e `fetchHostIcmpStatus` via `zabbixApi/ping.ts` |
-| `hooks/useZabbixHostInterfaces.ts` | `fetchZabbixHostInterfaceItems` (`item.get` por hostid e termo; sem hostid no índice, `host.get` exato por nome/técnico/IP — sem `groupids`) |
-| `hooks/useZabbixDirectIndex.ts` | `fetchZabbixResolvedGroups`, `fetchZabbixDirectMetadata`, `fetchZabbixStatusLastValues` (descoberta, só hostids), `fetchZabbixTrafficLastValues` (regime: um `item.get` por itemid), `fetchZabbixProblems` (só descoberta) |
-| `hooks/useZabbixHostGroups.ts` | `fetchZabbixHostGroupNames` (`hostgroup.get`) |
-| `hooks/useZabbixItemNames.ts` | `fetchZabbixItemNames` (`item.get` `output: name` por grupo) |
-
-- Proibido importar `zabbixApi.ts` / `poll.ts` / `client.ts` / `catalog.ts` / `problems.ts` fora
-  desses consumidores — exceto os testes. `ping.ts` só o `PingModal` e o teste ICMP.
-- Polling: `useZabbixDirectIndex.ts` **só** no `zabbixRefreshSec` do painel (primeira busca +
-  `setInterval`). Sem `RefreshEvent` do Grafana, sem `visibilitychange`, sem relógio interno de
-  identidade/sinal. Snapshot quente do backend Go (`fetchLiveSnapshot`) pode pintar no F5; sem
-  isso a primeira pintura espera o `item.get` ao vivo — não pinta lastvalue de localStorage.
-  Com itemids conhecidos (catálogo, 7 dias):
-  por itemid depois do `host.get`. Com chave de cabo ainda sem id: `item.get` por key no mesmo
-  ciclo, sem misturar `itemids` e `key_` no mesmo POST. Itemids de cabo **não** entram na chave
-  do efeito.
-  Ciclo em regime: **exatamente um** `zabbixCall` — `item.get` pelos itemids. Sem segundo POST
-  (`host.get`, `problem.get`, `trigger.get`, `item.get` por key, inventário de sinal, `Promise.all`
-  de métodos). O grafana-zabbix não faz batch: dois métodos = dois POSTs. Recover de alerta não
-  justifica POST extra no intervalo.
-  `item.get` de status por hostids só na descoberta (primeira carga sem catálogo, host novo).
-  Relógio do poll em `utils/pollingGate.ts` (sobrevive à remontagem do painel). Sem fetch extra
-  ao trocar cabo. Drawer lê `runtimeMetrics` do mesmo poll.
-  O intervalo não grava lastvalue no localStorage — só o catálogo de itemids, e só se os ids
-  mudaram. Lastclock sem lastvalue novo não pinta de novo. Só lastvalue de cabo novo reusa o
-  índice de hosts; lastvalue de status novo reconstrói o índice.
-- Ampliar a superfície (`trend.get`, `history.get`, metadata nova) exige **aprovação explícita**.
-  `problem.get` e o `trigger.get` de join (só em `zabbixApi/problems.ts`, `selectHosts: hostid`)
-  estão autorizados **só na descoberta** — nunca no intervalo.
-- Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`. Sem lista
-  fixa de key no código.
+- Cor e rótulo saem de `utils/statusMapping.ts`. Hover lê o mesmo lastvalue via `hostDisplay`.
+- Problemas Warning+ vêm no snapshot da descoberta (`pkg/plugin/zabbix/problems.go`). O intervalo
+  não relê. Casa o nó pelo `hostid`. Falha mantém o resumo.
+- O relógio do poll mora no Go (`pkg/plugin/poll_service.go`). Em regime: um `item.get` pelos
+  itemids. `problem.get` / `trigger.get` / `host.get` só na descoberta.
+- O painel declara `skipDataQuery` em `plugin.json`.
+- Ampliar a superfície (`trend.get`, `history.get`) exige **aprovação explícita**.
+- Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`.
 
 ## APIs do Grafana
 
-- Toda leitura passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
+- Toda leitura do plugin passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
+- Busca de dashboards (`/api/search`) continua na API do Grafana (`utils/grafanaDashboards.ts`).
 - Status e cabos são lastvalue; o painel não usa o seletor de tempo. Não crie `TimeRange`.
 - Navegação só por `openDashboardUrl`. Sem outro `window.location.href`.
 - Sem `document.querySelector` no chrome do Grafana. `document.createElement` só efêmero
@@ -86,16 +58,14 @@ lugar JSON-RPC. Ping (`script.execute`) fica em `zabbixApi/ping.ts`; só o `Ping
 ## Faça / Não faça
 
 ```typescript
-// ❌ BAD — segundo POST no intervalo (grafana-zabbix = um método por request)
-if (metadata && (await publishByItemIds(metadata, pending))) {
-  await loadProblems(metadata, abortSignal); // problem.get + trigger.get
-  return;
-}
+// ❌ BAD — JSON-RPC no browser
+await getBackendSrv().post(`/api/datasources/uid/${uid}/resources/zabbix-api`, {
+  method: 'item.get',
+  params,
+});
 
-// ✅ GOOD — regime é um item.get; problemas ficam na descoberta
-if (metadata && (await publishByItemIds(metadata, pending))) {
-  return;
-}
+// ✅ GOOD — o Go consulta; o painel só desenha
+const response = await fetchBackendPoll({ datasourceUid: uid, groupNames, statusItemKey, ... });
 ```
 
 ## Exceções

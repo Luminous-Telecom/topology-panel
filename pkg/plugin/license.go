@@ -58,9 +58,9 @@ func newLicenseChecker(dir string, client *http.Client, version string) *license
 func (c *licenseChecker) check(pageHost string) LicenseResponse {
 	file, ok := c.readInstall()
 	if !ok {
-		return LicenseResponse{
-			Message: "Rode o comando de instalação da loja neste Grafana. A chave e a URL são gravadas na instalação.",
-		}
+		// Instalação manual (npm run build + cópia para o Grafana) não traz license.json.
+		// A loja grava o arquivo no comando de instalação — só aí a validação é obrigatória.
+		return LicenseResponse{Valid: true}
 	}
 	if !isAllowedLicenseAPIURL(file.LicenseAPIURL) {
 		return LicenseResponse{

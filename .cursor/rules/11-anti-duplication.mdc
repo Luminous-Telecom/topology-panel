@@ -29,18 +29,18 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (polling) + `fetchZabbixStatusLastValues` / `fetchZabbixTrafficLastValues` em `utils/zabbixApi/poll.ts`. Ciclo em regime: **sempre um POST** (`item.get` por itemid). Sem `item.get` de status por `groupids`. Lastvalue igual: `sameLastValuesForPaint`. Status igual com tráfego novo: `sameStatusItemsLastValue` (reusa o índice). |
-| Inventário de itens de interface | `fetchZabbixHostInterfaceItems` em `utils/zabbixApi/catalog.ts` (`item.get` por hostid e termo; palavras-chave filtram a `key_`). Sem hostid: `host.get` exato (nome/técnico/IP), nunca por `groupids`. Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` |
-| Gate de intervalo/watchdog do polling | `canStartPolledFetch` / relógio `msUntilNextPoll` em `utils/pollingGate.ts` (sobrevive à remontagem) |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (`POST /poll`). Ciclo em regime no Go: **sempre um POST** (`item.get` por itemid). Lastvalue e lastclock iguais: o Go devolve o snapshot em cache sem novo `item.get`. |
+| Inventário de itens de interface | `hooks/useZabbixHostInterfaces.ts` via `fetchBackendHostInterfaces` (`POST /interfaces`). Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` |
+| Relógio e sessão do polling | `pkg/plugin/poll_service.go` (sobrevive à remontagem do painel). O front só dispara `POST /poll` no intervalo. |
 | Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Catálogo de itemids Zabbix (sem lastvalue; F5 relê ao vivo por id) | `services/zabbixSnapshotCache.ts` (`readZabbixItemIdCatalog` / `persistZabbixItemIdCatalog`) |
+| Primeira pintura do status (lastvalue) | `fetchLiveSnapshot` (`POST /snapshot` só com a chave). Persistência no Go no `POST /poll`. |
 | Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
-| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue via `fetchZabbixTrafficLastValues` em `utils/zabbixApi/poll.ts` (`item.get`, `hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | `fetchZabbixProblems` em `utils/zabbixApi/problems.ts` (`problem.get` pelos groupids + `trigger.get` objectid→hostid, só trigger habilitado `filter.status: 0`; `recent: false` e `suppressed: false`; `problem.get` não tem `selectHosts`) + `parseZabbixProblems` / `sameHostProblems`; casar nó↔problema **só** pelo `hostid` de `resolveHostZabbixId` via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts`. Só na descoberta — o intervalo não relê. |
-| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`hostgroup.get` via `fetchZabbixHostGroupNames`) |
-| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get` `output: name` via `fetchZabbixItemNames`) |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue no `POST /poll` (`hostid:key`; tráfego e sinal no mesmo ciclo) |
+| Problemas Warning+ | snapshot de `/poll` (`pkg/plugin/zabbix/problems.go`). Casar nó↔problema **só** pelo `hostid` de `resolveHostZabbixId` via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts`. Só na descoberta — o intervalo não relê. |
+| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`POST /groups`) |
+| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`POST /item-names`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
@@ -132,10 +132,10 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Overlay `fixed` ao lado do ponteiro (hover) | `clampFixedOverlayPosition` em `utils/overlayPortal.ts` |
 | Tooltip do cabo no hover | `buildLinkHoverTooltip` em `utils/linkHoverTooltip.ts` + `LinkHoverPopover` |
 | Ficha só leitura do host (duplo clique fora do editor) | `HostInfoModal` em `components/HostInfoModal.tsx` |
-| Validar chave/URL da loja (sem fetch) | `resolveLicenseGate` / `licenseRejectMessage` em `utils/licenseValidation.ts` (espelhado no backend Go) |
-| Ticket ES256 da loja | `verifyLicenseTicket` em `utils/licenseTicket.ts` (produção verifica em `pkg/plugin/ticket.go`) |
-| Arquivo `license.json` da instalação | `parseInstalledLicenseFile` / `licenseStatusUrl` / `resolveGrafanaServerIp` / `matchAuthorizedGrafanaIp` em `utils/licenseInstall.ts` — o processo Go lê o arquivo no disco |
-| Licença e snapshot no Grafana | `fetchPluginLicense` / `fetchLiveSnapshot` / `persistLiveSnapshot` em `services/pluginBackend.ts` (`/api/plugins/luminous-topology-panel/resources/*`) |
+| Validar chave/URL da loja | `GET /license` no backend (`pkg/plugin/license.go`); o painel só pinta `fetchPluginLicense` |
+| Ticket ES256 da loja | `verifyLicenseTicket` em `pkg/plugin/ticket.go` |
+| Arquivo `license.json` da instalação | `parseInstalledLicenseFile` em `pkg/plugin/install.go` — o processo Go lê o arquivo no disco |
+| Licença, poll e snapshot no Grafana | `fetchPluginLicense` / `fetchLiveSnapshot` / `fetchBackendPoll` / `fetchBackendHostGroups` / `fetchBackendItemNames` / `fetchBackendHostInterfaces` / `fetchBackendPing` em `services/pluginBackend.ts` |
 | Comparar versão instalada × loja | `PLUGIN_VERSION` / `pluginVersionIsNewer` em `utils/pluginVersion.ts` |
 | Estado de licença no painel | `hooks/useLicenseValidation.ts` (`LICENSE_REFRESH_MS` 30 s, igual ao TTL do Go) + overlay `components/LicenseGate.tsx` |
 

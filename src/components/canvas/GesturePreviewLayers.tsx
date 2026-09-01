@@ -27,6 +27,7 @@ interface Props {
   regionStats: Map<string, RegionHostStats>;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  queryLoading?: boolean;
   resolveColor: ColorResolver;
   selectedNodeIds: string[];
   interactionRef: MutableRefObject<{ editable: boolean; panTool: boolean }>;
@@ -74,6 +75,7 @@ export function GesturePreviewLayers({
   regionStats,
   options,
   queryReady,
+  queryLoading,
   resolveColor,
   selectedNodeIds,
   interactionRef,
@@ -120,6 +122,7 @@ export function GesturePreviewLayers({
         regionStats={regionStats}
         options={options}
         queryReady={queryReady}
+        queryLoading={queryLoading}
         resolveColor={resolveColor}
         selectedNodeIds={selectedNodeIds}
         onPointerDown={onNetworkPointerDown}
@@ -164,6 +167,7 @@ export function GesturePreviewLayers({
         regionStats={regionStats}
         options={options}
         queryReady={queryReady}
+        queryLoading={queryLoading}
         hostDisplay={hostDisplay}
         hostMetadata={hostMetadata}
         badgesByNode={badgesByNode}

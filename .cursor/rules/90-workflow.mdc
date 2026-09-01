@@ -16,7 +16,7 @@ Toda tarefa e todo commit deste repositório.
 ## Antes de encerrar a tarefa
 
 1. `npm run typecheck` — zero erros.
-2. `npm run test` — verde, se tocou em `src/`.
+2. `npm run test` — verde, se tocou em `src/` ou `pkg/`.
 3. `npm run build` — se tocou em `src/`, `package.json`, `.config/webpack/**` ou `tsconfig.json`.
 4. Nenhum `any`, `@ts-ignore`, `console.*` ou fallback silencioso novo.
 5. Nenhuma duplicação nova — confira o inventário de `11-anti-duplication.mdc`.

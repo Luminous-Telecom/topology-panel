@@ -31,6 +31,8 @@ interface HostNodeShapeProps {
   region: RegionHostStats | undefined;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  /** True enquanto o snapshot/Zabbix ainda não pintou — não usa colorUnknown. */
+  queryLoading?: boolean;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   hostProblems?: HostProblemsMap;
@@ -59,6 +61,7 @@ function HostNodeShapeComponent({
   region,
   options,
   queryReady,
+  queryLoading = false,
   hostDisplay,
   hostMetadata,
   hostProblems,
@@ -88,7 +91,8 @@ function HostNodeShapeComponent({
     hostMetadata,
     hostDisplay,
     resolveColor,
-    hostProblems
+    hostProblems,
+    queryLoading
   );
   const regionLabel = region ? formatRegionStats(region, queryReady, 'submap') : undefined;
   const labelColor =

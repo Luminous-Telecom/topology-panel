@@ -9,6 +9,7 @@ export interface MinimapColorsParams {
   regionStats: Map<string, RegionHostStats>;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  queryLoading?: boolean;
   hostMetadata?: HostMetadataMap;
   hostDisplay?: HostDisplayMap;
   hostProblems?: HostProblemsMap;
@@ -23,6 +24,7 @@ export function useMinimapColors({
   regionStats,
   options,
   queryReady,
+  queryLoading = false,
   hostMetadata,
   hostDisplay,
   hostProblems,
@@ -42,10 +44,11 @@ export function useMinimapColors({
         hostMetadata,
         hostDisplay,
         resolveColor,
-        hostProblems
+        hostProblems,
+        queryLoading
       );
     },
-    [regionStats, options, queryReady, hostMetadata, hostDisplay, hostProblems, resolveColor]
+    [regionStats, options, queryReady, queryLoading, hostMetadata, hostDisplay, hostProblems, resolveColor]
   );
 
   const resolveMiniNetworkStroke = useCallback(

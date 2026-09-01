@@ -25,15 +25,27 @@ Plugin de painel para **Grafana 9+** que exibe mapas de topologia de rede, com s
 - Datasource Zabbix (obrigatório, para status e tráfego)
 - Windows + Winbox (para abrir Winbox a partir do navegador)
 
-## Build
+## Desenvolvimento
 
 ```bash
 npm install
+npm run dev
+```
+
+`npm run dev` observa o JS **e** o backend Go e grava em
+`/var/lib/grafana/plugins/luminous-topology-panel/` (ou `GRAFANA_PLUGIN_DIR`).
+
+- **JS:** webpack em modo development (sem minify). Recarregue o dashboard (F5).
+- **Go:** recompila só a plataforma desta máquina (sem as 5 arch de produção) e recicla o
+  processo do plugin. Não precisa reiniciar o Grafana a cada save.
+
+Não use `npm run build` no ciclo diário — esse comando minifica o JS e gera os cinco
+binários Go da dist/.
+
+```bash
 npm run build    # JS de produção + binários Go (linux, darwin, windows)
 npm test
 ```
-
-`npm run dev` só recompila o JS. Depois de mudar Go: `BACKEND_OUT=/var/lib/grafana/plugins/luminous-topology-panel npm run build:backend` e reinicie o Grafana.
 
 ## Abrir Winbox a partir do mapa (Windows)
 

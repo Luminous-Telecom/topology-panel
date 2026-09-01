@@ -4,7 +4,7 @@ import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from 
 import { hostidFromLookupKey } from '../utils/hostLookup';
 import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { fetchZabbixHostInterfaceItems } from '../utils/zabbixApi';
+import { fetchBackendHostInterfaces } from '../services/pluginBackend';
 
 export interface UseZabbixHostInterfacesResult {
   interfacesByHost: Record<string, TopologyNetworkInterface[]>;
@@ -110,7 +110,7 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces — `item.get` por hostid e palavra-chave da key.
+ * Inventário de interfaces — `POST /interfaces` no backend Go.
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
@@ -174,7 +174,7 @@ export function useZabbixHostInterfaces(
     interfacesCache
       .get(cacheKey, async () => {
         const lookupKeys = hostKey.split('\0').filter(Boolean);
-        const entries = await fetchZabbixHostInterfaceItems(
+        const entries = await fetchBackendHostInterfaces(
           datasourceUid,
           lookupKeys.map((key) => ({
             hostKey: key,

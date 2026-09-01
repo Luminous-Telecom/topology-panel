@@ -23,6 +23,7 @@ interface CommonProps {
   regionStats: Map<string, RegionHostStats>;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  queryLoading?: boolean;
   resolveColor: ColorResolver;
   selectedNodeIds: string[];
   onDoubleClick: (e: React.MouseEvent, node: TopologyNode) => void;
@@ -42,6 +43,7 @@ function NetworkNodesLayerComponent({
   regionStats,
   options,
   queryReady,
+  queryLoading,
   resolveColor,
   selectedNodeIds,
   onPointerDown,
@@ -156,6 +158,7 @@ function HostNodesLayerComponent({
   regionStats,
   options,
   queryReady,
+  queryLoading,
   hostDisplay,
   hostMetadata,
   badgesByNode,
@@ -201,6 +204,7 @@ function HostNodesLayerComponent({
             region={node.type === 'submap' ? regionStats.get(node.id) : undefined}
             options={options}
             queryReady={queryReady}
+            queryLoading={queryLoading}
             hostDisplay={hostDisplay}
             hostMetadata={hostMetadata}
             hostProblems={filterContext?.hostProblems}

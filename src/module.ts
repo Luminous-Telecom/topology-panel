@@ -1,5 +1,5 @@
 import { PanelPlugin } from '@grafana/data';
-import { TopologyPanel } from './components/TopologyPanel';
+import { TopologyPanelLoader } from './TopologyPanelLoader';
 import {
   ChildMapsEditor,
   HostTypeColorsEditor,
@@ -24,7 +24,7 @@ import {
   defaultStatusValueMappings,
 } from './types';
 
-export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanel)
+export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
   .setPanelOptions((builder) => {
     builder
       .addCustomEditor({

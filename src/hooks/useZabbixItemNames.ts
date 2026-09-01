@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createAsyncCache } from '../services/asyncCache';
-import { fetchZabbixItemNames } from '../utils/zabbixApi';
+import { fetchBackendItemNames } from '../services/pluginBackend';
 
 /** A lista de itens muda pouco; o TTL evita uma chamada por remontagem do painel de opções. */
 const ITEMS_TTL_MS = 60_000;
@@ -42,7 +42,7 @@ export function useZabbixItemNames(
     setLoadError(undefined);
 
     itemsCache
-      .get(cacheKey, () => fetchZabbixItemNames(datasourceUid, groupsKey.split('\u0000')))
+      .get(cacheKey, () => fetchBackendItemNames(datasourceUid, groupsKey.split('\u0000')))
       .then((result) => {
         if (!cancelled) {
           setItems(result);

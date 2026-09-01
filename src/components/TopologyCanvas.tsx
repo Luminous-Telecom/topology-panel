@@ -215,6 +215,7 @@ export function TopologyCanvas({
     linkMetricsByLink,
     hostProblems,
   } = frozenData;
+  const statusLoading = liveQueryLoading && !queryReady && !queryError;
   const wrapRef = useRef<HTMLDivElement>(null);
   const gestureStoreRef = useRef<ReturnType<typeof createCanvasGestureStore> | null>(null);
   if (gestureStoreRef.current === null) {
@@ -1203,6 +1204,7 @@ export function TopologyCanvas({
     regionStats,
     options,
     queryReady,
+    queryLoading: statusLoading,
     hostMetadata,
     hostDisplay,
     hostProblems,
@@ -1466,6 +1468,7 @@ export function TopologyCanvas({
             regionStats={regionStats}
             options={options}
             queryReady={queryReady}
+            queryLoading={statusLoading}
             resolveColor={resolveColor}
             selectedNodeIds={selectedNodeIds}
             interactionRef={interactionRef}

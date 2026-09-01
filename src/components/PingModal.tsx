@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
 import { modalErrorStyle } from './chrome/overlayChrome';
-import { executeHostPingScript, fetchHostIcmpStatus, HostIcmpStatus } from '../utils/zabbixApi/ping';
+import { fetchBackendPing, type HostIcmpStatus } from '../services/pluginBackend';
 import { copyPingCommand } from '../utils/hostTools';
 import { FieldReadout } from './FieldReadout';
 import styles from './PingModal.module.scss';
@@ -95,28 +95,25 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
     setPingError(null);
 
     try {
-      const [scriptResult, icmp] = await Promise.all([
-        executeHostPingScript(datasourceUid, zabbixHost, 'panel'),
-        fetchHostIcmpStatus(datasourceUid, zabbixHost).catch(() => null),
-      ]);
+      const result = await fetchBackendPing(datasourceUid, zabbixHost, 'panel');
 
       if (!mountedRef.current) {
         return;
       }
 
-      if (icmp) {
-        setIcmpStatus(icmp);
+      if (result.icmp) {
+        setIcmpStatus(result.icmp);
       }
 
-      if (scriptResult.success && scriptResult.output) {
-        appendOutput(`--- ${stamp()} ---\n${scriptResult.output}\n`);
+      if (result.success && result.output) {
+        appendOutput(`--- ${stamp()} ---\n${result.output}\n`);
         setPingError(null);
-      } else if (scriptResult.output) {
-        appendOutput(`${scriptResult.output}\n`);
-        setPingError(scriptResult.error ?? null);
+      } else if (result.output) {
+        appendOutput(`${result.output}\n`);
+        setPingError(result.error ?? null);
       } else {
-        setPingError(scriptResult.error ?? null);
-        if (!scriptResult.error) {
+        setPingError(result.error ?? null);
+        if (!result.error) {
           appendOutput('Ping sem resposta do script Zabbix.\n');
         }
       }
