@@ -39,7 +39,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
 | Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue no poll (`hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | descoberta em `fetchProblems` (`services/zabbixQuery.ts`): `problem.get` (sem `selectHosts`) + `event.get` para o host do evento (`trigger.get` se faltar). Junto com `host.get` e o lastvalue (`groupids`). Casar nó↔problema **só** pelo `hostid` |
+| Problemas Warning+ | descoberta em `fetchProblems` (`services/zabbixQuery.ts`; espelho em `pkg/plugin/direct_query.go`): `problem.get` (sem `selectHosts`) + `trigger.get` (`status: 0`) para ignorar trigger desativado + `event.get` para o host do evento (`trigger.get` se faltar). Junto com `host.get` e o lastvalue (`groupids`). Casar nó↔problema **só** pelo `hostid` |
 | Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`hostgroup.get`) |
 | Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |

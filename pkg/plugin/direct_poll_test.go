@@ -153,9 +153,10 @@ func TestParseProblemsSemHostidsGuardaTodos(t *testing.T) {
 	}
 }
 
-func TestFetchProblemsNaoChamaTriggerQuandoHostidVeio(t *testing.T) {
+func TestFetchProblemsConfereTriggerAtivo(t *testing.T) {
 	fake := &fakeZabbix{handle: func(method string, params map[string]any) (any, error) {
-		if method == "problem.get" {
+		switch method {
+		case "problem.get":
 			if _, ok := params["selectHosts"]; ok {
 				t.Fatal("problem.get não pode enviar selectHosts")
 			}
@@ -163,15 +164,64 @@ func TestFetchProblemsNaoChamaTriggerQuandoHostidVeio(t *testing.T) {
 				t.Fatalf("hostids: %#v", params["hostids"])
 			}
 			return []map[string]any{{"name": "link down", "severity": 4, "hostid": "1001", "objectid": "9"}}, nil
+		case "trigger.get":
+			filter, _ := params["filter"].(map[string]any)
+			if fmt.Sprint(filter["status"]) != "0" {
+				t.Fatalf("filter: %#v", params["filter"])
+			}
+			if fmt.Sprint(asStringSlice(params["triggerids"])) != fmt.Sprint([]string{"9"}) {
+				t.Fatalf("triggerids: %#v", params["triggerids"])
+			}
+			return []map[string]any{{"triggerid": "9", "status": 0}}, nil
+		default:
+			return nil, fmt.Errorf("%s", method)
+		}
+	}}
+	summary, err := fetchProblems(context.Background(), fake.Call, grafanaSession{}, "ds", []string{"1001"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.methods(); fmt.Sprint(got) != fmt.Sprint([]string{"problem.get", "trigger.get"}) {
+		t.Fatalf("métodos: %v", got)
+	}
+	if summary["1001"].Count != 1 {
+		t.Fatalf("resumo: %+v", summary["1001"])
+	}
+}
+
+func TestFetchProblemsIgnoraTriggerDesativado(t *testing.T) {
+	fake := &fakeZabbix{handle: func(method string, _ map[string]any) (any, error) {
+		switch method {
+		case "problem.get":
+			return []map[string]any{{"name": "link down", "severity": 4, "hostid": "1001", "objectid": "9"}}, nil
+		case "trigger.get":
+			return []map[string]any{}, nil
+		default:
+			return nil, fmt.Errorf("%s", method)
+		}
+	}}
+	summary, err := fetchProblems(context.Background(), fake.Call, grafanaSession{}, "ds", []string{"1001"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := summary["1001"]; ok {
+		t.Fatalf("não deveria contar trigger desativado: %+v", summary["1001"])
+	}
+}
+
+func TestFetchProblemsMantemProblemaSeTriggerGetFalhar(t *testing.T) {
+	fake := &fakeZabbix{handle: func(method string, _ map[string]any) (any, error) {
+		if method == "problem.get" {
+			return []map[string]any{{"name": "link down", "severity": 4, "hostid": "1001", "objectid": "9"}}, nil
+		}
+		if method == "trigger.get" {
+			return nil, fmt.Errorf("timeout")
 		}
 		return nil, fmt.Errorf("%s", method)
 	}}
 	summary, err := fetchProblems(context.Background(), fake.Call, grafanaSession{}, "ds", []string{"1001"}, nil)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if got := fake.methods(); len(got) != 1 || got[0] != "problem.get" {
-		t.Fatalf("métodos: %v", got)
 	}
 	if summary["1001"].Count != 1 {
 		t.Fatalf("resumo: %+v", summary["1001"])
@@ -186,6 +236,12 @@ func TestFetchProblemsBuscaHostNoEventGet(t *testing.T) {
 				t.Fatal("problem.get não pode enviar selectHosts")
 			}
 			return []map[string]any{{"name": "link down", "severity": 4, "objectid": "9", "eventid": "99"}}, nil
+		case "trigger.get":
+			filter, _ := params["filter"].(map[string]any)
+			if fmt.Sprint(filter["status"]) != "0" {
+				t.Fatalf("filter: %#v", params["filter"])
+			}
+			return []map[string]any{{"triggerid": "9", "status": 0}}, nil
 		case "event.get":
 			if fmt.Sprint(asStringSlice(params["selectHosts"])) != fmt.Sprint([]string{"hostid"}) {
 				t.Fatalf("selectHosts: %#v", params["selectHosts"])
@@ -199,7 +255,7 @@ func TestFetchProblemsBuscaHostNoEventGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fake.methods(); fmt.Sprint(got) != fmt.Sprint([]string{"problem.get", "event.get"}) {
+	if got := fake.methods(); fmt.Sprint(got) != fmt.Sprint([]string{"problem.get", "trigger.get", "event.get"}) {
 		t.Fatalf("métodos: %v", got)
 	}
 	if summary["1001"].Count != 1 {
@@ -224,7 +280,7 @@ func TestFetchProblemsCaiNoTriggerGetSeEventoSemHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fake.methods(); fmt.Sprint(got) != fmt.Sprint([]string{"problem.get", "event.get", "trigger.get"}) {
+	if got := fake.methods(); fmt.Sprint(got) != fmt.Sprint([]string{"problem.get", "trigger.get", "event.get", "trigger.get"}) {
 		t.Fatalf("métodos: %v", got)
 	}
 	if summary["1001"].Count != 1 {
@@ -235,11 +291,15 @@ func TestFetchProblemsCaiNoTriggerGetSeEventoSemHost(t *testing.T) {
 func TestFetchProblemsUsaGroupidsQuandoNaoHaHostids(t *testing.T) {
 	var params map[string]any
 	fake := &fakeZabbix{handle: func(method string, next map[string]any) (any, error) {
-		if method == "problem.get" {
+		switch method {
+		case "problem.get":
 			params = next
 			return []map[string]any{{"name": "link down", "severity": 4, "hostid": "1001", "objectid": "9"}}, nil
+		case "trigger.get":
+			return []map[string]any{{"triggerid": "9", "status": 0}}, nil
+		default:
+			return nil, fmt.Errorf("%s", method)
 		}
-		return nil, fmt.Errorf("%s", method)
 	}}
 	summary, err := fetchProblems(context.Background(), fake.Call, grafanaSession{}, "ds", nil, []string{"10"})
 	if err != nil {

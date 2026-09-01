@@ -58,7 +58,7 @@ describe('parseProblems', () => {
 });
 
 describe('fetchProblems', () => {
-  it('consulta problem.get pelos hostids e não chama trigger.get quando o hostid já veio', async () => {
+  it('consulta problem.get pelos hostids e confere se o trigger está ativo', async () => {
     const methods: string[] = [];
     let params: ZabbixParams | undefined;
     const summary = await fetchProblems(
@@ -70,13 +70,52 @@ describe('fetchProblems', () => {
           params = next;
           return [{ name: 'link down', severity: 4, hostid: '1001', objectid: '9' }] as never;
         }
+        if (method === 'trigger.get') {
+          expect(next.filter).toEqual({ status: 0 });
+          expect(next.triggerids).toEqual(['9']);
+          return [{ triggerid: '9', status: 0 }] as never;
+        }
         throw new Error(method);
       }
     );
-    expect(methods).toEqual(['problem.get']);
+    expect(methods).toEqual(['problem.get', 'trigger.get']);
     expect(params?.hostids).toEqual(['1001']);
     expect(params).not.toHaveProperty('selectHosts');
     expect(params).not.toHaveProperty('groupids');
+    expect(summary['1001']?.count).toBe(1);
+  });
+
+  it('ignora problema cujo trigger está desativado mesmo com hostid', async () => {
+    const summary = await fetchProblems(
+      'ds',
+      ['1001'],
+      async (_uid, method) => {
+        if (method === 'problem.get') {
+          return [{ name: 'link down', severity: 4, hostid: '1001', objectid: '9' }] as never;
+        }
+        if (method === 'trigger.get') {
+          return [] as never;
+        }
+        throw new Error(method);
+      }
+    );
+    expect(summary['1001']).toBeUndefined();
+  });
+
+  it('mantém o problema se o trigger.get falhar', async () => {
+    const summary = await fetchProblems(
+      'ds',
+      ['1001'],
+      async (_uid, method) => {
+        if (method === 'problem.get') {
+          return [{ name: 'link down', severity: 4, hostid: '1001', objectid: '9' }] as never;
+        }
+        if (method === 'trigger.get') {
+          throw new Error('timeout');
+        }
+        throw new Error(method);
+      }
+    );
     expect(summary['1001']?.count).toBe(1);
   });
 
@@ -91,6 +130,10 @@ describe('fetchProblems', () => {
           expect(next).not.toHaveProperty('selectHosts');
           return [{ name: 'link down', severity: 4, objectid: '9', eventid: '99' }] as never;
         }
+        if (method === 'trigger.get') {
+          expect(next.filter).toEqual({ status: 0 });
+          return [{ triggerid: '9', status: 0 }] as never;
+        }
         if (method === 'event.get') {
           expect(next.selectHosts).toEqual(['hostid']);
           expect(next.eventids).toEqual(['99']);
@@ -100,7 +143,7 @@ describe('fetchProblems', () => {
       },
       ['10']
     );
-    expect(methods).toEqual(['problem.get', 'event.get']);
+    expect(methods).toEqual(['problem.get', 'trigger.get', 'event.get']);
     expect(summary['1001']?.count).toBe(1);
   });
 
@@ -114,17 +157,17 @@ describe('fetchProblems', () => {
         if (method === 'problem.get') {
           return [{ name: 'link down', severity: 4, objectid: '9', eventid: '99' }] as never;
         }
-        if (method === 'event.get') {
-          return [{ eventid: '99' }] as never;
-        }
         if (method === 'trigger.get') {
           return [{ triggerid: '9', status: 0, hosts: [{ hostid: '1001' }] }] as never;
+        }
+        if (method === 'event.get') {
+          return [{ eventid: '99' }] as never;
         }
         throw new Error(method);
       },
       ['10']
     );
-    expect(methods).toEqual(['problem.get', 'event.get', 'trigger.get']);
+    expect(methods).toEqual(['problem.get', 'trigger.get', 'event.get', 'trigger.get']);
     expect(summary['1001']?.count).toBe(1);
   });
 
@@ -137,6 +180,9 @@ describe('fetchProblems', () => {
         if (method === 'problem.get') {
           params = next;
           return [{ name: 'link down', severity: 4, hostid: '1001', objectid: '9' }] as never;
+        }
+        if (method === 'trigger.get') {
+          return [{ triggerid: '9', status: 0 }] as never;
         }
         throw new Error(method);
       },

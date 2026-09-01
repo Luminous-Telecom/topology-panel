@@ -40,13 +40,15 @@ O front fala com o plugin e com o datasource assim:
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
 - Cor e rótulo saem de `utils/statusMapping.ts`. Hover lê o mesmo lastvalue via `hostDisplay`.
 - Problemas Warning+ vêm na descoberta (`fetchProblems`), disparados junto com `host.get` e o
-  lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Sem hostid na linha, o host
-  sai de `event.get` (`selectHosts`); `trigger.get` só se o evento não trouxer host. O intervalo
-  não relê. Casa o nó pelo `hostid`. Falha mantém o resumo. No Go, a primeira resposta HTTP espera
+  lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Depois, `trigger.get` com
+  `filter.status: 0` descarta trigger desativado (o `event.get` ainda traz o host). Sem hostid
+  na linha, o host sai de `event.get` (`selectHosts`); outro `trigger.get` só se o evento não
+  trouxer host. O intervalo não relê. Casa o nó pelo `hostid`. Falha do filtro de trigger
+  mantém as linhas. Falha da descoberta mantém o resumo. No Go, a primeira resposta HTTP espera
   problemas (não há `onSnapshot` em duas fases).
 - O intervalo do poll mora no browser (`useZabbixDirectIndex`). Em regime: um `item.get` pelos
   itemids, mesmo se algum host do grupo não tiver o item de status. `host.get` / `problem.get` /
-  `event.get` / `trigger.get` só na descoberta, em paralelo (`event.get` depois do `problem.get`).
+  `event.get` / `trigger.get` só na descoberta, em paralelo (`trigger.get` depois do `problem.get`).
   O intervalo não empilha poll. Com a flag, o cache do Go compartilha o snapshot entre dashboards
   com a mesma chave (`datasourceUid` + grupos + item de status) e não consulta o Zabbix mais
   rápido que `refreshSec`. Host e

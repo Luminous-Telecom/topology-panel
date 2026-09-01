@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.408] - 2026-09-01
+
+### Corrigido
+
+- Lista e badges de alerta só contam problema cujo trigger está ativo; trigger desativado some
+  mesmo quando o `event.get` ainda traz o host.
+
 ## [1.4.407] - 2026-09-01
 
 ### Adicionado

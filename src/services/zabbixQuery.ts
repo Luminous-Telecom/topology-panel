@@ -510,6 +510,38 @@ async function attachProblemHosts(
   }
 }
 
+/** Descarta problema cujo trigger está desativado — o event.get ainda traz o host. */
+async function keepProblemsFromEnabledTriggers(
+  datasourceUid: string,
+  rows: ProblemRow[],
+  call: ZabbixRpc
+): Promise<ProblemRow[]> {
+  const triggerIds = numericIds(rows.map((row) => row.objectid));
+  if (!triggerIds.length) {
+    return rows;
+  }
+  try {
+    const triggers = await call<TriggerRow[]>(datasourceUid, 'trigger.get', {
+      triggerids: triggerIds,
+      output: ['triggerid', 'status'],
+      filter: { status: 0 },
+    });
+    const enabled = new Set<string>();
+    for (const trigger of Array.isArray(triggers) ? triggers : []) {
+      if (triggerIsDisabled(trigger.status)) {
+        continue;
+      }
+      const id = asItemString(trigger.triggerid) ?? '';
+      if (isNumericZabbixItemId(id)) {
+        enabled.add(id);
+      }
+    }
+    return rows.filter((row) => enabled.has(asItemString(row.objectid) ?? ''));
+  } catch {
+    return rows;
+  }
+}
+
 export function parseProblems(rows: ProblemRow[], hostids: string[]): HostProblemsMap {
   const wanted = new Set(hostids.map((id) => id.trim()).filter(Boolean));
   const summary: HostProblemsMap = {};
@@ -573,7 +605,7 @@ export async function fetchProblems(
     severities.push(sev);
   }
   // `problem.get` não aceita `selectHosts` — o Zabbix recusa e o proxy responde 500.
-  // Sem hostid na linha, o host do evento sai de `event.get` (`trigger.get` só se faltar).
+  // `trigger.get` (status 0) descarta trigger desativado; sem hostid, o host sai de `event.get`.
   const params: ZabbixParams = {
     output: ['eventid', 'objectid', 'name', 'severity'],
     severities,
@@ -589,9 +621,10 @@ export async function fetchProblems(
     params.groupids = gids;
   }
   const rows = await call<ProblemRow[]>(datasourceUid, 'problem.get', params);
+  const active = await keepProblemsFromEnabledTriggers(datasourceUid, rows, call);
   const needsHost =
-    rows.length > 0 && rows.some((row) => problemHostIds(row).length === 0);
-  const withHosts = needsHost ? await attachProblemHosts(datasourceUid, rows, call) : rows;
+    active.length > 0 && active.some((row) => problemHostIds(row).length === 0);
+  const withHosts = needsHost ? await attachProblemHosts(datasourceUid, active, call) : active;
   return parseProblems(withHosts, ids);
 }
 

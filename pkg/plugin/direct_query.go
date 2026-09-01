@@ -711,6 +711,49 @@ func attachProblemHosts(
 	return fromEvents, nil
 }
 
+// Descarta problema cujo trigger está desativado — o event.get ainda traz o host.
+func keepProblemsFromEnabledTriggers(
+	ctx context.Context,
+	call zabbixCallFn,
+	session grafanaSession,
+	datasourceUID string,
+	rows []map[string]any,
+) []map[string]any {
+	triggerIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		triggerIDs = append(triggerIDs, asItemString(row["objectid"]))
+	}
+	triggerIDs = numericIDs(uniqueSorted(triggerIDs))
+	if len(triggerIDs) == 0 {
+		return rows
+	}
+	triggers, err := zabbixRPC[[]map[string]any](ctx, call, session, datasourceUID, "trigger.get", map[string]any{
+		"triggerids": triggerIDs,
+		"output":     []string{"triggerid", "status"},
+		"filter":     map[string]any{"status": 0},
+	})
+	if err != nil {
+		return rows
+	}
+	enabled := map[string]struct{}{}
+	for _, trigger := range triggers {
+		if triggerIsDisabled(trigger["status"]) {
+			continue
+		}
+		id := asItemString(trigger["triggerid"])
+		if isNumericZabbixItemID(id) {
+			enabled[id] = struct{}{}
+		}
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if _, ok := enabled[asItemString(row["objectid"])]; ok {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 func parseProblems(rows []map[string]any, hostids []string) map[string]problemSummary {
 	wanted := map[string]struct{}{}
 	for _, id := range hostids {
@@ -807,6 +850,7 @@ func fetchProblems(
 		severities = append(severities, sev)
 	}
 	// problem.get não aceita selectHosts — o Zabbix recusa e o proxy responde 500.
+	// trigger.get (status 0) descarta trigger desativado; sem hostid, o host sai de event.get.
 	params := map[string]any{
 		"output":     []string{"eventid", "objectid", "name", "severity"},
 		"severities": severities,
@@ -825,16 +869,17 @@ func fetchProblems(
 	if err != nil {
 		return nil, err
 	}
+	active := keepProblemsFromEnabledTriggers(ctx, call, session, datasourceUID, rows)
 	needsHost := false
-	for _, row := range rows {
+	for _, row := range active {
 		if len(problemHostIDs(row)) == 0 {
 			needsHost = true
 			break
 		}
 	}
-	withHosts := rows
-	if needsHost && len(rows) > 0 {
-		withHosts, err = attachProblemHosts(ctx, call, session, datasourceUID, rows)
+	withHosts := active
+	if needsHost && len(active) > 0 {
+		withHosts, err = attachProblemHosts(ctx, call, session, datasourceUID, active)
 		if err != nil {
 			return nil, err
 		}
