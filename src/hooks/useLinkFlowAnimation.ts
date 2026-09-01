@@ -1,8 +1,11 @@
-import { RefObject, useEffect, useRef } from 'react';
+import { RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
 
 /** Anima os tracejados de download/upload dos links (velocidade via SNMP / utilização). */
-export function useLinkFlowAnimation(wrapRef: RefObject<HTMLDivElement>): void {
+export function useLinkFlowAnimation(
+  wrapRef: RefObject<HTMLDivElement>,
+  wakeKey?: string | number | boolean
+): void {
   const linkFlowRef = useRef<LinkFlowController | null>(null);
 
   useEffect(() => {
@@ -23,6 +26,9 @@ export function useLinkFlowAnimation(wrapRef: RefObject<HTMLDivElement>): void {
         linkFlowRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [wrapRef]);
+
+  useLayoutEffect(() => {
+    linkFlowRef.current?.wake();
+  }, [wakeKey]);
 }

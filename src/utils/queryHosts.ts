@@ -16,7 +16,7 @@ import { canonicalizeHostKeys, collectHostLookupCandidates, HostLookupRef, prefe
 
 /**
  * Helpers do índice de hosts (grupos Zabbix como refId virtual).
- * Status e listas vêm do `QueryIndex` montado pelo snapshot Zabbix — nada percorre `data.series`.
+ * Status e listas vêm do `QueryIndex` montado pelo lastvalue Zabbix — nada percorre `data.series`.
  */
 
 /** Bucket de status por refId (match case-insensitive). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sameStructure, structuralShare, structuralShareMap } from './structuralIdentity';
+import { sameStructure, shareHostDisplayByRefId, shareHostDisplayMap, structuralShare, structuralShareMap } from './structuralIdentity';
 
 describe('structuralShare', () => {
   it('devolve o objeto anterior quando o conteúdo é idêntico', () => {
@@ -124,5 +124,44 @@ describe('structuralShareMap', () => {
   it('sem Map anterior devolve o novo', () => {
     const next = new Map([['a', { x: 1 }]]);
     expect(structuralShareMap(next, undefined)).toBe(next);
+  });
+});
+
+describe('shareHostDisplayMap', () => {
+  it('reusa o mapa quando só o lastclock mudou', () => {
+    const previous = {
+      'host-a': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 100 },
+    };
+    const next = {
+      'host-a': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 200 },
+    };
+    expect(shareHostDisplayMap(next, previous)).toBe(previous);
+  });
+
+  it('troca só o host cujo lastvalue mudou', () => {
+    const previous = {
+      'host-a': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 100 },
+      'host-b': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 100 },
+    };
+    const next = {
+      'host-a': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 200 },
+      'host-b': { value: 0, status: 'offline' as const, color: '#f00', updatedAtSec: 200 },
+    };
+    const shared = shareHostDisplayMap(next, previous);
+    expect(shared).not.toBe(previous);
+    expect(shared['host-a']).toBe(previous['host-a']);
+    expect(shared['host-b']).toEqual(next['host-b']);
+  });
+});
+
+describe('shareHostDisplayByRefId', () => {
+  it('reusa o bucket quando só o lastclock mudou', () => {
+    const previous = {
+      A: { 'host-a': { value: 1, status: 'online' as const, updatedAtSec: 1 } },
+    };
+    const next = {
+      A: { 'host-a': { value: 1, status: 'online' as const, updatedAtSec: 2 } },
+    };
+    expect(shareHostDisplayByRefId(next, previous)).toBe(previous);
   });
 });

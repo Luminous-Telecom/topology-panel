@@ -23,10 +23,13 @@ hooks de arraste/viewport.
 - Derive display de status com `hostDisplayByRefIdFromIndex`: custo O(hosts), não O(hosts × pontos).
 - Não recalcule por nó dentro do laço de render. Monte `Map`/`Set` antes do laço e consulte por
   chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).
-- Atualização automática é **sempre um POST** ao backend (`POST /poll`): um `item.get` pelos
-  itemids já conhecidos. Sem `host.get`, `problem.get`, `trigger.get` nem `item.get` extra no
-  intervalo. Remontar o painel ou trocar cabo não dispara ciclo novo antes do `zabbixRefreshSec`.
-- Poll em regime não grava lastvalue no navegador — o cache vive na RAM/disco do processo Go.
+- Atualização automática: o intervalo é o `setInterval` de `useZabbixDirectIndex`. Em regime o
+  browser faz um `item.get` pelos itemids já conhecidos — host sem o item de status não dispara
+  descoberta de novo. Sem `host.get`, `problem.get`, `trigger.get` nem `item.get` extra no
+  intervalo. O tick seguinte espera o poll atual terminar. `item.get` por itemids vai em fatias
+  (`ZABBIX_ITEM_GET_BATCH`). Trocar cabo não dispara ciclo novo antes do `zabbixRefreshSec`.
+  Abrir ou remontar o painel consulta o Zabbix.
+- O lastvalue da tela é o da última consulta Zabbix desta sessão do hook — sem cache de JSON no Go.
 - Lastclock novo sem lastvalue novo não precisa redesenhar o SVG (o memo do nó ignora
   `updatedAtSec`). Problemas não entram no intervalo — o resumo da descoberta permanece até a
   próxima descoberta.
@@ -42,7 +45,8 @@ hooks de arraste/viewport.
 - Trava/dimensão (mesmos `nodes`/`links`) não chama `onOptionsChange` no clique: o JSON inteiro do
   mapa congela o tráfego. `applyMap` local na hora; persist no próximo arraste, no flush, ao
   salvar/sair do dashboard (`eventTargetRequestsDashboardFlush` / `useGrafanaDashboardFlush`) ou ao
-  ocultar a aba.
+  ocultar a aba. Itemid de tráfego no JSON segue a mesma regra — não grava no poll nem ao entrar
+  em edição.
 - Clique no modo NOC idem: override local na hora, sem `onOptionsChange`; a lista de equipamentos
   só monta depois do paint (`scheduleAfterPaint`). Persist no flush/salvar.
 - Estado de alta frequência (pointermove, wheel, pan, resize) vai em `ref` + `requestAnimationFrame`:

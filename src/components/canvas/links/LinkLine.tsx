@@ -213,8 +213,12 @@ function LinkLineComponent({
     thresholds
   );
   const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
-  const downloadFlowActive = !downloadOffline && (hasMetricBinding ? downloadSpeed > 0 : true);
-  const uploadFlowActive = !uploadOffline && (hasMetricBinding ? uploadSpeed > 0 : true);
+  const hasDownloadReading = displayTraffic.rxBps !== undefined;
+  const hasUploadReading = displayTraffic.txBps !== undefined;
+  const downloadFlowActive =
+    !downloadOffline && (hasMetricBinding ? hasDownloadReading && downloadSpeed > 0 : true);
+  const uploadFlowActive =
+    !uploadOffline && (hasMetricBinding ? hasUploadReading && uploadSpeed > 0 : true);
   const lk = linkKey(link);
   const downloadFlowSpeed = hasMetricBinding
     ? downloadSpeed

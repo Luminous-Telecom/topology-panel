@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { flattenHostDisplayByRefId } from '../utils/queryHosts';
+import { defaultOptions } from '../types';
+import { hostDisplayByRefIdFromIndex, queryHostsByRefIdFromIndex, STATUS_ORPHAN_REF_ID } from './queryIndex';
 import { buildZabbixDirectIndex, directRefId, directRefInfosFromGroups, resolvePanelQueryRefInfos, statusValuesByHostId } from './zabbixDirectIndex';
 import { ZabbixDirectHost, ZabbixInterfaceItem } from '../utils/zabbixApi';
 
@@ -93,6 +96,8 @@ describe('buildZabbixDirectIndex', () => {
   it('agrupa hosts e últimos valores por grupo', () => {
     expect([...(index.byRefId.get('BACKBONE')?.hosts ?? [])]).toEqual(['RB-CORE', 'RB-BORDA']);
     expect(index.byRefId.get('BACKBONE')?.lastValues.get('RB-CORE')).toBe(1);
+    expect(index.byRefId.get('BACKBONE')?.lastValues.get('rb-core')).toBe(1);
+    expect(index.byRefId.get('BACKBONE')?.lastValues.get('10')).toBe(1);
     expect(index.byRefId.get('BACKBONE')?.lastValues.get('10.0.0.1')).toBe(1);
     expect([...(index.byRefId.get('BORDA')?.hosts ?? [])]).toEqual(['RB-BORDA']);
     expect(index.byRefId.get('BORDA')?.lastValues.get('RB-BORDA')).toBe(0);
@@ -146,6 +151,36 @@ describe('buildZabbixDirectIndex', () => {
     expect(scoped.byRefId.get('BACKBONE')?.lastValues.get('RB-CORE')).toBe(1);
     expect(scoped.byRefId.get('BACKBONE')?.lastValues.has('RB-BORDA')).toBe(false);
     expect(scoped.metadata['RB-BORDA']).toBeUndefined();
+  });
+
+  it('pinta lastvalue mesmo quando o host veio sem nome de grupo', () => {
+    const orphan = buildZabbixDirectIndex({
+      datasourceUid: 'zbx',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts: [host({ hostid: '10', name: 'RB-CORE', host: 'rb-core', ip: '10.0.0.1', groups: [] })],
+      statusItems: [item('10', 'icmpping', '1')],
+    });
+    expect(orphan.refIds).toEqual(['BACKBONE']);
+    expect(orphan.byRefId.get('BACKBONE')?.lastValues.size).toBe(0);
+    expect(orphan.byRefId.get(STATUS_ORPHAN_REF_ID)?.lastValues.get('RB-CORE')).toBe(1);
+    expect(orphan.byRefId.get(STATUS_ORPHAN_REF_ID)?.lastValues.get('rb-core')).toBe(1);
+    expect(orphan.byRefId.get(STATUS_ORPHAN_REF_ID)?.lastValues.get('10')).toBe(1);
+    expect(orphan.byRefId.get(STATUS_ORPHAN_REF_ID)?.lastValues.get('10.0.0.1')).toBe(1);
+    expect(orphan.byRefId.get(STATUS_ORPHAN_REF_ID)?.hosts.size).toBe(0);
+    expect(queryHostsByRefIdFromIndex(orphan)).toEqual({ BACKBONE: [] });
+    const display = flattenHostDisplayByRefId(
+      hostDisplayByRefIdFromIndex(orphan, {
+        colorOnline: defaultOptions().colorOnline,
+        colorOffline: defaultOptions().colorOffline,
+        colorAlert: defaultOptions().colorAlert,
+        statusValueMappings: defaultOptions().statusValueMappings,
+      })
+    );
+    expect(display['RB-CORE']?.status).toBe('online');
+    expect(display['rb-core']?.status).toBe('online');
+    expect(display['10']?.status).toBe('online');
+    expect(display['10.0.0.1']?.status).toBe('online');
   });
 
   it('ignora grupo do host que não está configurado no painel', () => {

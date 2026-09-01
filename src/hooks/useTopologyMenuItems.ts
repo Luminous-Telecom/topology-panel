@@ -7,7 +7,7 @@ import {
   TopologyPanelOptions,
 } from '../types';
 import { ContextMenuItem } from '../components/TopologyContextMenu';
-import { resolveHostIp } from '../utils/hostLookup';
+import { resolveHostIp, resolveHostZabbixId } from '../utils/hostLookup';
 import { HOST_TOOLS, resolveToolAuth, runHostTool } from '../utils/hostTools';
 import {
   buildLinkMenuItems,
@@ -22,13 +22,7 @@ import {
 import { addDashboardPickerAt, addManualDeviceAt, addNetworkAt, addStaticAt, addSubmapAt } from '../utils/mapEdits';
 import { hasTopologyClipboard } from '../utils/topologyClipboard';
 import { isHostNode, isSubmapNode, submapHasChildMapId } from '../utils/topologyNodes';
-
-/** Alvo do modal de ping — host resolvido para IP. */
-export interface PingTarget {
-  label: string;
-  ip: string;
-  zabbixHost?: string;
-}
+import { PingTarget } from './useCanvasSession';
 
 export interface TopologyMenuItemsParams {
   storedMap: TopologyMap;
@@ -125,7 +119,7 @@ export function useTopologyMenuItems({
               setPingTarget({
                 label: node.label?.trim() ?? '',
                 ip,
-                zabbixHost: node.zabbixHost,
+                zabbixHostId: resolveHostZabbixId(node, hostMetadata),
               });
               return;
             }

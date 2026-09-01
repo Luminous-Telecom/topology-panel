@@ -26,6 +26,9 @@ import {
 
 export type QuerySource = PanelData | DataFrame[] | undefined;
 
+/** Bucket só de lastvalue — não é grupo do editor nem da importação de hosts. */
+export const STATUS_ORPHAN_REF_ID = '\u0000';
+
 export interface QueryRefBucket {
   /** Hosts com label na query, em ordem de aparição (inclui séries não numéricas). */
   hosts: Set<string>;
@@ -497,6 +500,9 @@ export function hostDisplayByRefIdFromIndex(
 export function queryHostsByRefIdFromIndex(index: QueryIndex): Record<string, string[]> {
   const result: Record<string, string[]> = {};
   for (const [refId, bucket] of index.byRefId) {
+    if (refId === STATUS_ORPHAN_REF_ID) {
+      continue;
+    }
     result[refId] = [...bucket.hosts];
   }
   return result;

@@ -1,3 +1,5 @@
+import { HostDisplayInfo, HostDisplayMap } from '../types';
+
 /**
  * Compartilhamento estrutural entre dois refreshes.
  *
@@ -93,6 +95,77 @@ export function structuralShareMap<K, V>(next: Map<K, V>, previous: Map<K, V> | 
     const shared = structuralShare(value, previous.get(key));
     merged.set(key, shared);
     if (!previous.has(key) || shared !== previous.get(key)) {
+      reusedAll = false;
+    }
+  }
+  return reusedAll ? previous : merged;
+}
+
+/**
+ * Lastclock (`updatedAtSec`) muda em todo poll mesmo com o mesmo lastvalue. Se entrar no
+ * `structuralShare`, o mapa de status inteiro troca de identidade e o canvas remonta hosts,
+ * badges e `filterContext` a cada intervalo.
+ */
+export function shareHostDisplayInfo(
+  next: HostDisplayInfo,
+  previous: HostDisplayInfo | undefined
+): HostDisplayInfo {
+  if (!previous) {
+    return next;
+  }
+  if (
+    previous.value === next.value &&
+    previous.color === next.color &&
+    previous.text === next.text &&
+    previous.status === next.status
+  ) {
+    return previous;
+  }
+  return next;
+}
+
+/** `HostDisplayMap` reaproveitando a entrada anterior quando só o lastclock mudou. */
+export function shareHostDisplayMap(
+  next: HostDisplayMap,
+  previous: HostDisplayMap | undefined
+): HostDisplayMap {
+  if (!previous) {
+    return next;
+  }
+  if (next === previous) {
+    return previous;
+  }
+  const nextKeys = Object.keys(next);
+  const merged: HostDisplayMap = {};
+  let reusedAll = nextKeys.length === Object.keys(previous).length;
+  for (const key of nextKeys) {
+    const shared = shareHostDisplayInfo(next[key], previous[key]);
+    merged[key] = shared;
+    if (shared !== previous[key] || !(key in previous)) {
+      reusedAll = false;
+    }
+  }
+  return reusedAll ? previous : merged;
+}
+
+/** Status por refId da Query — cada bucket ignora lastclock na identidade. */
+export function shareHostDisplayByRefId(
+  next: Record<string, HostDisplayMap>,
+  previous: Record<string, HostDisplayMap> | undefined
+): Record<string, HostDisplayMap> {
+  if (!previous) {
+    return next;
+  }
+  if (next === previous) {
+    return previous;
+  }
+  const nextKeys = Object.keys(next);
+  const merged: Record<string, HostDisplayMap> = {};
+  let reusedAll = nextKeys.length === Object.keys(previous).length;
+  for (const key of nextKeys) {
+    const shared = shareHostDisplayMap(next[key], previous[key]);
+    merged[key] = shared;
+    if (shared !== previous[key] || !(key in previous)) {
       reusedAll = false;
     }
   }

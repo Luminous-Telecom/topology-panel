@@ -4,10 +4,10 @@ import { TopologyMap, defaultTopologyMap } from '../types';
  * Valida a forma estrutural mínima de um `TopologyMap` vindo de `options.map` (JSON editado à mão
  * no dashboard, sem passar por `defaultTopologyMap`/`TopologyEditor`). Sem isso, `nodes`/`links`
  * fora do formato esperado quebram silenciosamente o cálculo de layout e o fit inicial do canvas
- * (ver `didInitialFitRef` em `TopologyCanvas.tsx`, que nunca dispara com `width`/`height` inválidos).
+ * (`lastFitViewportRef` em `TopologyCanvas.tsx` não encaixa com viewport 0).
  *
  * Retorna a lista de problemas encontrados (vazia = mapa válido). Não corrige nem substitui nada —
- * quem chama decide como mostrar o erro (ver `no-fallbacks.mdc`).
+ * quem chama decide como mostrar o erro.
  */
 export function validateTopologyMap(map: TopologyMap | null | undefined): string[] {
   const errors: string[] = [];

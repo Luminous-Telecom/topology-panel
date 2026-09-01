@@ -1,5 +1,5 @@
 /** Itemid do Zabbix é sempre dígitos; chave de item (`algo.if.in[iface]`) não serve em `itemids`. */
-export function isNumericZabbixItemId(value: string | undefined): boolean {
+export function isNumericZabbixItemId(value: string | undefined): value is string {
   return Boolean(value && /^\d+$/.test(value.trim()));
 }
 

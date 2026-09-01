@@ -78,6 +78,7 @@ import { useCanvasOverlayToggles } from '../hooks/useCanvasOverlayToggles';
 import { useCanvasSession } from '../hooks/useCanvasSession';
 import { useMinimapColors } from '../hooks/useMinimapColors';
 import { useNodeLayouts } from '../hooks/useNodeLayouts';
+import { mergeRegionTrafficStats, RegionHostStats } from '../utils/networkStats';
 import { useRenderLinks } from '../hooks/useRenderLinks';
 import { useTopologyMenuItems } from '../hooks/useTopologyMenuItems';
 
@@ -216,6 +217,7 @@ export function TopologyCanvas({
     hostProblems,
   } = frozenData;
   const statusLoading = liveQueryLoading && !queryReady && !queryError;
+  const liveStatusLoading = liveQueryLoading && !liveQueryReady && !liveQueryError;
   const wrapRef = useRef<HTMLDivElement>(null);
   const gestureStoreRef = useRef<ReturnType<typeof createCanvasGestureStore> | null>(null);
   if (gestureStoreRef.current === null) {
@@ -228,7 +230,7 @@ export function TopologyCanvas({
     scrollRef.current = node;
   }, []);
   const svgRef = useRef<SVGSVGElement>(null);
-  useLinkFlowAnimation(wrapRef);
+  useLinkFlowAnimation(wrapRef, queryReady);
   const savedView = savedViewProp ?? options.view;
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !storedMap.locked;
@@ -399,16 +401,17 @@ export function TopologyCanvas({
     [options.linkUtilThresholdHigh]
   );
 
+  const filterLinkMetrics = activeFilters.size ? linkMetricsByLink : NO_LINK_METRICS;
   const filterContext = useMemo<TopologyFilterContext>(
     () => ({
       map,
       hostDisplay,
       hostMetadata,
       hostProblems,
-      linkMetricsByLink,
+      linkMetricsByLink: filterLinkMetrics,
       options: filterOptions,
     }),
-    [map, hostDisplay, hostMetadata, hostProblems, linkMetricsByLink, filterOptions]
+    [map, hostDisplay, hostMetadata, hostProblems, filterLinkMetrics, filterOptions]
   );
 
   const previousBadgesRef = useRef<ReadonlyMap<string, HostNodeBadge[]>>();
@@ -533,7 +536,7 @@ export function TopologyCanvas({
     [gridStep, options.snapToGrid]
   );
 
-  const { nodeLayouts, regionStats } = useNodeLayouts({
+  const { nodeLayouts, regionStats: baseRegionStats } = useNodeLayouts({
     map,
     layoutOpts,
     templateOpts,
@@ -544,8 +547,30 @@ export function TopologyCanvas({
     childMaps: childMapsById,
     hostProblems,
     queryReady,
-    linkMetricsByLink,
   });
+  const previousTrafficStatsRef = useRef(baseRegionStats);
+  const regionStats = useMemo(() => {
+    const merged = mergeRegionTrafficStats(baseRegionStats, map, nodeLayouts, linkMetricsByLink);
+    const shared = structuralShareMap(merged, previousTrafficStatsRef.current);
+    previousTrafficStatsRef.current = shared;
+    return shared;
+  }, [baseRegionStats, map, nodeLayouts, linkMetricsByLink]);
+  const previousHostRegionStatsRef = useRef<Map<string, RegionHostStats>>();
+  const hostRegionStats = useMemo(() => {
+    const next = new Map<string, RegionHostStats>();
+    for (const node of map.nodes) {
+      if (node.type !== 'submap') {
+        continue;
+      }
+      const stats = regionStats.get(node.id);
+      if (stats) {
+        next.set(node.id, stats);
+      }
+    }
+    const shared = structuralShareMap(next, previousHostRegionStatsRef.current);
+    previousHostRegionStatsRef.current = shared;
+    return shared;
+  }, [regionStats, map.nodes]);
 
   /** Caixas medidas para callbacks que não devem trocar de identidade a cada refresh da Query. */
   const nodeLayoutsRef = useRef(nodeLayouts);
@@ -1390,7 +1415,7 @@ export function TopologyCanvas({
         onSearchFocusNode={focusNodeOnMap}
         hostMetadata={hostMetadata}
         queryError={Boolean(queryError)}
-        queryLoading={liveQueryLoading && !liveQueryReady && !liveQueryError}
+        queryLoading={liveStatusLoading}
         onInsertBlueprint={!effectiveNocMode && canPersist ? () => setBlueprintOpen(true) : undefined}
       />
 
@@ -1466,6 +1491,7 @@ export function TopologyCanvas({
             nodes={visibleNodes}
             baseNodeLayouts={nodeLayouts}
             regionStats={regionStats}
+            hostRegionStats={hostRegionStats}
             options={options}
             queryReady={queryReady}
             queryLoading={statusLoading}

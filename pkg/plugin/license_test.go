@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -142,24 +141,6 @@ func TestLicenseCheckerRevalidatesAfterTTL(t *testing.T) {
 	got := checker.check("203.0.113.10")
 	if got.Valid {
 		t.Fatalf("IP removido na loja ainda passou: %+v", got)
-	}
-}
-
-func TestHandlerSnapshotRoundTripWithoutLicenseFile(t *testing.T) {
-	h := New(t.TempDir())
-	body := `{"key":"YQ","savedAt":1,"metadata":{"hosts":[],"resolvedGroups":["Backbone"],"groupIds":["10"]},"knownStatusItems":[],"lastValues":{},"interfaceItems":[],"problems":{}}`
-	req := httptest.NewRequest(http.MethodPost, "/snapshot", strings.NewReader(body))
-	rec := httptest.NewRecorder()
-	h.handleSnapshot(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("POST: %d %s", rec.Code, rec.Body.String())
-	}
-
-	lookup := httptest.NewRequest(http.MethodPost, "/snapshot", strings.NewReader(`{"key":"YQ"}`))
-	lookupRec := httptest.NewRecorder()
-	h.handleSnapshot(lookupRec, lookup)
-	if lookupRec.Code != http.StatusOK {
-		t.Fatalf("lookup: %d %s", lookupRec.Code, lookupRec.Body.String())
 	}
 }
 

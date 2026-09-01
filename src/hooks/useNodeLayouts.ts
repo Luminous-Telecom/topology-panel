@@ -1,10 +1,10 @@
 import { useMemo, useRef } from 'react';
-import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
+import { HostDisplayMap, HostMetadataMap, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
 import { withLiveZabbixMeta } from '../utils/mapSync';
 import { isHostNode } from '../utils/topologyNodes';
 import { resolveNodeDisplayFromTemplates } from '../utils/topologyTemplates/nodeTemplateDisplay';
-import { RegionHostStats, buildRegionStatsMap, formatRegionStats, mergeRegionTrafficStats } from '../utils/networkStats';
+import { RegionHostStats, buildRegionStatsMap, formatRegionStats } from '../utils/networkStats';
 import { nodesOnlyMoved } from '../utils/mapRevision';
 import { structuralShareMap } from '../utils/structuralIdentity';
 import {
@@ -26,7 +26,6 @@ export interface NodeLayoutsParams {
   childMaps?: Record<string, TopologyMap | undefined>;
   hostProblems?: HostProblemsMap;
   queryReady?: boolean;
-  linkMetricsByLink?: LinkRuntimeMetricsMap;
 }
 
 export interface NodeLayoutsResult {
@@ -155,7 +154,8 @@ function measureNodeLayout(
  * `GesturePreviewLayers`, para o pointermove não remediar o mapa inteiro.
  *
  * Os dois saem do mesmo memo porque o submapa é medido duas vezes: a contagem de hosts vira o
- * subtítulo dele, e o subtítulo muda a altura da caixa.
+ * subtítulo dele, e o subtítulo muda a altura da caixa. Tráfego das redes (`rxBps`/`txBps`) não
+ * entra aqui — `mergeRegionTrafficStats` no canvas, senão cada poll remedia o mapa inteiro.
  */
 export function useNodeLayouts({
   map,
@@ -168,7 +168,6 @@ export function useNodeLayouts({
   childMaps,
   hostProblems,
   queryReady,
-  linkMetricsByLink,
 }: NodeLayoutsParams): NodeLayoutsResult {
   const uplinkCountByNode = useMemo(() => {
     const counts = new Map<string, number>();
@@ -190,7 +189,6 @@ export function useNodeLayouts({
     childMaps,
     hostProblems,
     queryReady,
-    linkMetricsByLink,
     links: map.links,
     layoutOpts,
     templateOpts,
@@ -234,7 +232,6 @@ export function useNodeLayouts({
       statsInput.childMaps === childMaps &&
       statsInput.hostProblems === hostProblems &&
       statsInput.queryReady === queryReady &&
-      statsInput.linkMetricsByLink === linkMetricsByLink &&
       statsInput.links === map.links &&
       statsInput.layoutOpts === layoutOpts &&
       statsInput.templateOpts === templateOpts &&
@@ -243,20 +240,15 @@ export function useNodeLayouts({
     const stats =
       skipRegionStats && previousStats
         ? previousStats
-        : mergeRegionTrafficStats(
-            buildRegionStatsMap(
-              map.nodes,
-              layouts,
-              hostDisplay ?? {},
-              submapHosts,
-              hostMetadata,
-              hostDisplayByRefId,
-              childMaps,
-              hostProblems
-            ),
-            map,
+        : buildRegionStatsMap(
+            map.nodes,
             layouts,
-            linkMetricsByLink ?? {}
+            hostDisplay ?? {},
+            submapHosts,
+            hostMetadata,
+            hostDisplayByRefId,
+            childMaps,
+            hostProblems
           );
     for (const node of map.nodes) {
       if (node.type !== 'submap') {
@@ -291,7 +283,6 @@ export function useNodeLayouts({
       childMaps,
       hostProblems,
       queryReady,
-      linkMetricsByLink,
       links: map.links,
       layoutOpts,
       templateOpts,
@@ -314,7 +305,6 @@ export function useNodeLayouts({
     hostProblems,
     queryReady,
     uplinkCountByNode,
-    linkMetricsByLink,
   ]);
 
   return baseResult;

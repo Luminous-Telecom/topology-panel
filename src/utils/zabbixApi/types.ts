@@ -1,3 +1,5 @@
+import type { HostProblemsMap } from '../noc/types';
+
 export interface ZabbixInterfaceItem {
   itemid: string;
   key_: string;
@@ -53,3 +55,13 @@ export interface ZabbixDirectMetadata {
 
 /** Grupos já resolvidos num ciclo anterior — dispensa repetir o `hostgroup.get`. */
 export type ZabbixResolvedGroups = Pick<ZabbixDirectMetadata, 'resolvedGroups' | 'groupIds'>;
+
+/** Lastvalue desta consulta Zabbix — usado no poll em regime (itemids já conhecidos). */
+export interface ZabbixLiveSnapshot {
+  savedAt: number;
+  metadata: ZabbixDirectMetadata;
+  knownStatusItems: ZabbixInterfaceItem[];
+  lastValues: Record<string, ZabbixItemLastValue>;
+  interfaceItems: ZabbixInterfaceItem[];
+  problems: HostProblemsMap;
+}

@@ -7,6 +7,36 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.404] - 2026-09-01
+
+### Alterado
+
+- A consulta Zabbix volta ao browser (`getBackendSrv` no proxy do datasource). O backend Go fica só com a licença.
+- Host, problema, ping e inventário de interface no Zabbix passam a usar só `hostid` (sem busca por nome ou IP).
+- Na abertura o lastvalue pinta assim que o `item.get` chega — problemas Warning+ entram em paralelo, sem segurar a cor.
+- Na descoberta `host.get`, lastvalue, problemas e tráfego saem juntos (depois de resolver os grupos).
+- Itemid de tráfego no JSON do mapa só entra ao persistir (arraste/flush/salvar), não a cada poll nem ao abrir o modo edição.
+
+### Corrigido
+
+- Tráfego dos cabos deixa de travar e voltar com o painel aberto: o intervalo não empilha poll, host sem item de status não dispara descoberta de novo, lastvalue vazio não zera o cabo e falha no ciclo mantém o último tráfego.
+- Recarregar o dashboard não pinta status sem lastvalue: o card fica no fundo de espera (visível, sem cor de tipo/submapa) e o submapa mostra “Carregando…” até o Zabbix responder.
+- O lastclock do poll não remonta o mapa: status igual reusa a identidade dos hosts, o layout não remede no bps e a camada de hosts ignora o tráfego das redes.
+- O tráfego dos cabos não para no tick do contador: o React não regrava `offset-path` nem remonta os pulsos a cada lastvalue.
+- Submapa transparente mostra `0 / 0 / N` (parado / alerta / online), não `N hosts`.
+- Ao pintar o lastvalue, o tráfego dos cabos anda no mesmo instante — a animação não espera a varredura dormente de 250 ms.
+- Snapshot antigo sem lastvalue não bloqueia mais o poll: o browser consulta o Zabbix de novo e os hosts voltam a pintar online.
+- Submapa volta a pintar quando o host do snapshot não tem nome de grupo (casing ou `hostgroups` vazio): o lastvalue entra no índice mesmo assim.
+
+### Removido
+
+- Cliente HTTP do Go ao Grafana (cookie, conta de serviço `iam`) e as rotas `/groups`, `/item-names`, `/interfaces` e `/ping`.
+- Criptografia e tipos de catálogo/ping no processo Go — o backend só valida a licença.
+- Wrappers `fetchBackend*` que só reencaminhavam grupo, item, interface e ping; tipo de ping duplicado; seletor de item de status sem uso.
+- Badge morto de atualização da loja no canvas (`TopologyUpdateBadge`).
+- Cache do último snapshot (RAM/disco, `POST /snapshot` e persistência no `/poll`). O mapa pinta só com lastvalue do Zabbix.
+- Relógio `POST /poll` no processo Go — o intervalo do Zabbix fica no painel.
+
 ## [1.4.403] - 2026-08-31
 
 ### Alterado

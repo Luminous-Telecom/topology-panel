@@ -25,22 +25,22 @@ describe('formatRegionStats — submapa', () => {
     expect(text).toBe('Carregando…');
   });
 
-  it('mostra os hosts do mapa interno antes do status Zabbix chegar', () => {
+  it('mostra Carregando até o lastvalue — 0 / 0 / N parecia tudo online', () => {
     const text = formatRegionStats(
       { total: 12, offline: 0, alert: 0, online: 0, unknown: 12 },
       false,
       'submap'
     );
-    expect(text).toBe('12 hosts');
+    expect(text).toBe('Carregando…');
   });
 
-  it('não mostra 0 / 0 / 0 quando a estrutura já chegou e o status ainda não', () => {
+  it('com estrutura e sem status ainda usa o total no terceiro número', () => {
     const text = formatRegionStats(
       { total: 12, offline: 0, alert: 0, online: 0, unknown: 12 },
       true,
       'submap'
     );
-    expect(text).toBe('12 hosts');
+    expect(text).toBe('0 / 0 / 12');
   });
 
   it('não anexa tráfego ao texto do submapa — já aparece nas interfaces', () => {

@@ -8,10 +8,10 @@ export type CanvasPendingLink = {
   toNode: TopologyNode;
 };
 
-export type CanvasPingTarget = {
+export type PingTarget = {
   label: string;
   ip: string;
-  zabbixHost?: string;
+  zabbixHostId?: string;
 };
 
 /**
@@ -27,7 +27,7 @@ export function useCanvasSession(canEditCanvas: boolean) {
   const [pendingLink, setPendingLink] = useState<CanvasPendingLink | null>(null);
   const [detailsLink, setDetailsLink] = useState<TopologyLink | null>(null);
   const [blueprintOpen, setBlueprintOpen] = useState(false);
-  const [pingTarget, setPingTarget] = useState<CanvasPingTarget | null>(null);
+  const [pingTarget, setPingTarget] = useState<PingTarget | null>(null);
   const toolRef = useRef<CanvasTool>(canEditCanvas ? 'select' : 'pan');
 
   // Persistir pan no estado (ao destravar não volta a seta) e já devolver pan neste render

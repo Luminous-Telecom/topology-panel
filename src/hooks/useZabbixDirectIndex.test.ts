@@ -1,15 +1,18 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useZabbixDirectIndex, dropZabbixLiveIndex } from './useZabbixDirectIndex';
-import { fetchBackendPoll, fetchLiveSnapshot, type BackendLiveSnapshot } from '../services/pluginBackend';
+import { useZabbixDirectIndex } from './useZabbixDirectIndex';
+import { runZabbixPoll } from '../services/zabbixPoll';
+import type { ZabbixLiveSnapshot } from '../utils/zabbixApi';
 
-vi.mock('../services/pluginBackend', () => ({
-  fetchBackendPoll: vi.fn(),
-  fetchLiveSnapshot: vi.fn(async () => undefined),
-}));
+vi.mock('../services/zabbixPoll', async () => {
+  const actual = await vi.importActual<typeof import('../services/zabbixPoll')>('../services/zabbixPoll');
+  return {
+    ...actual,
+    runZabbixPoll: vi.fn(),
+  };
+});
 
-const poll = vi.mocked(fetchBackendPoll);
-const snapshot = vi.mocked(fetchLiveSnapshot);
+const poll = vi.mocked(runZabbixPoll);
 
 function host(id: string, group: string) {
   return {
@@ -35,7 +38,7 @@ function pollSnapshot(
   hosts: ReturnType<typeof host>[],
   group = 'Backbone',
   groupId = '10'
-): BackendLiveSnapshot {
+): ZabbixLiveSnapshot {
   return {
     savedAt: Date.now(),
     metadata: {
@@ -55,8 +58,8 @@ function pollSnapshot(
   };
 }
 
-function pollResponse(snapshot: BackendLiveSnapshot) {
-  return { snapshot, ready: true, loading: false };
+function pollResult(snapshot: ZabbixLiveSnapshot, error?: string) {
+  return { snapshot, error };
 }
 
 async function flush() {
@@ -70,19 +73,15 @@ async function flush() {
 describe('useZabbixDirectIndex', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    dropZabbixLiveIndex();
     poll.mockReset();
-    snapshot.mockReset();
-    snapshot.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    dropZabbixLiveIndex();
   });
 
-  it('monta o índice quando não há snapshot em cache', async () => {
-    poll.mockResolvedValue(pollResponse(pollSnapshot([host('1', 'Backbone')])));
+  it('consulta o Zabbix na abertura e monta o índice', async () => {
+    poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -97,12 +96,30 @@ describe('useZabbixDirectIndex', () => {
     await flush();
     expect(result.current.ready).toBe(true);
     expect(result.current.index.hosts).toContain('host-1');
-    expect(snapshot).toHaveBeenCalled();
     expect(poll).toHaveBeenCalledTimes(1);
+    expect(poll.mock.calls[0]?.[0].previous).toBeUndefined();
   });
 
-  it('hidrata pelo snapshot em cache sem chamar o poll na abertura', async () => {
-    snapshot.mockResolvedValue(pollSnapshot([host('1', 'Backbone')]));
+  it('snapshot sem lastvalue não marca o índice pronto', async () => {
+    const hosts = [host('1', 'Backbone')];
+    poll.mockResolvedValue(
+      pollResult({
+        savedAt: Date.now(),
+        metadata: {
+          hosts,
+          resolvedGroups: ['Backbone'],
+          groupIds: ['10'],
+        },
+        knownStatusItems: hosts.map((entry) => ({
+          itemid: `${10000 + Number(entry.hostid)}`,
+          key_: 'icmpping',
+          hostid: entry.hostid,
+        })),
+        lastValues: {},
+        interfaceItems: [],
+        problems: {},
+      })
+    );
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -115,14 +132,12 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(result.current.ready).toBe(true);
-    expect(result.current.loading).toBe(false);
-    expect(snapshot).toHaveBeenCalled();
-    expect(poll).not.toHaveBeenCalled();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.index.hosts).toEqual([]);
   });
 
   it('trocar os grupos mantém o índice anterior até o novo poll chegar', async () => {
-    poll.mockResolvedValueOnce(pollResponse(pollSnapshot([host('1', 'Backbone')])));
+    poll.mockResolvedValueOnce(pollResult(pollSnapshot([host('1', 'Backbone')])));
 
     const { result, rerender } = renderHook(
       ({ groupNames }: { groupNames: string[] }) =>
@@ -140,7 +155,7 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.hosts).toContain('host-1');
 
     poll.mockReset();
-    let finishNext: (value: ReturnType<typeof pollResponse>) => void = () => undefined;
+    let finishNext: (value: ReturnType<typeof pollResult>) => void = () => undefined;
     poll.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -153,9 +168,10 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.ready).toBe(true);
     expect(result.current.loading).toBe(true);
     expect(result.current.index.hosts).toContain('host-1');
+    expect(poll.mock.calls[0]?.[0].previous).toBeUndefined();
 
     await act(async () => {
-      finishNext(pollResponse(pollSnapshot([host('2', 'Borda')], 'Borda', '20')));
+      finishNext(pollResult(pollSnapshot([host('2', 'Borda')], 'Borda', '20')));
       await Promise.resolve();
     });
     await flush();
@@ -165,20 +181,20 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.index.hosts).not.toContain('host-1');
   });
 
-  it('repassa erro do backend para a UI', async () => {
-    poll.mockResolvedValue({
-      snapshot: {
-        savedAt: Date.now(),
-        metadata: { hosts: [], resolvedGroups: [], groupIds: [] },
-        knownStatusItems: [],
-        lastValues: {},
-        interfaceItems: [],
-        problems: {},
-      },
-      ready: false,
-      loading: false,
-      error: 'Nenhum dos grupos configurados existe no Zabbix.',
-    });
+  it('repassa erro do poll para a UI', async () => {
+    poll.mockResolvedValue(
+      pollResult(
+        {
+          savedAt: Date.now(),
+          metadata: { hosts: [], resolvedGroups: [], groupIds: [] },
+          knownStatusItems: [],
+          lastValues: {},
+          interfaceItems: [],
+          problems: {},
+        },
+        'Nenhum dos grupos configurados existe no Zabbix.'
+      )
+    );
 
     const { result } = renderHook(() =>
       useZabbixDirectIndex({
@@ -195,9 +211,8 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.error).toMatch(/grupos configurados/);
   });
 
-  it('reconsulta o backend no intervalo configurado', async () => {
-    snapshot.mockResolvedValue(pollSnapshot([host('1', 'Backbone')]));
-    poll.mockResolvedValue(pollResponse(pollSnapshot([host('1', 'Backbone')])));
+  it('reconsulta no intervalo configurado', async () => {
+    poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
 
     renderHook(() =>
       useZabbixDirectIndex({
@@ -210,17 +225,111 @@ describe('useZabbixDirectIndex', () => {
     );
 
     await flush();
-    expect(poll).not.toHaveBeenCalled();
+    expect(poll).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
     });
     await flush();
-    expect(poll).toHaveBeenCalledTimes(1);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(poll.mock.calls[1]?.[0].previous).toBeDefined();
   });
 
-  it('sessão em memória sobrevive à remontagem do hook na mesma aba', async () => {
-    poll.mockResolvedValue(pollResponse(pollSnapshot([host('1', 'Backbone')])));
+  it('não empilha um poll novo enquanto o anterior não terminou', async () => {
+    const snap = pollSnapshot([host('1', 'Backbone')]);
+    let finishHanging: (value: ReturnType<typeof pollResult>) => void = () => undefined;
+    poll
+      .mockResolvedValueOnce(pollResult(snap))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishHanging = resolve;
+          })
+      )
+      .mockResolvedValue(pollResult(snap));
+
+    renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(poll).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+    expect(poll).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+    expect(poll).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      finishHanging(pollResult(snap));
+      await Promise.resolve();
+    });
+    await flush();
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+    expect(poll).toHaveBeenCalledTimes(3);
+  });
+
+  it('poll com erro depois de pronto mantém o lastvalue', async () => {
+    const snap = pollSnapshot([host('1', 'Backbone')]);
+    poll
+      .mockResolvedValueOnce(pollResult(snap))
+      .mockResolvedValueOnce(
+        pollResult(
+          {
+            savedAt: Date.now(),
+            metadata: { hosts: [], resolvedGroups: [], groupIds: [] },
+            knownStatusItems: [],
+            lastValues: {},
+            interfaceItems: [],
+            problems: {},
+          },
+          'Nenhum host dos grupos respondeu com o item de status. Confira o nome do item em "Item de status".'
+        )
+      );
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(true);
+    expect(result.current.lastValues['10001']?.lastvalue).toBe('1');
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.lastValues['10001']?.lastvalue).toBe('1');
+    expect(result.current.error).toMatch(/item de status/);
+  });
+
+  it('remontar o hook consulta o Zabbix de novo', async () => {
+    poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
 
     const props = {
       enabled: true,
@@ -241,6 +350,7 @@ describe('useZabbixDirectIndex', () => {
 
     expect(second.result.current.ready).toBe(true);
     expect(second.result.current.index.hosts).toContain('host-1');
-    expect(poll).not.toHaveBeenCalled();
+    expect(poll).toHaveBeenCalledTimes(1);
+    expect(poll.mock.calls[0]?.[0].previous).toBeUndefined();
   });
 });

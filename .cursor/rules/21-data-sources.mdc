@@ -1,5 +1,5 @@
 ---
-description: De onde vêm os dados — backend Go do plugin e APIs oficiais do Grafana
+description: De onde vêm os dados — Zabbix no browser, licença no backend Go
 globs: src/**/*
 alwaysApply: false
 ---
@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Objetivo
 
-O painel só desenha. Toda consulta Zabbix sai do processo Go; o front consome JSON pronto.
+O painel consulta o Zabbix no browser (sessão do Grafana). O Go só valida a licença.
 
 ## Escopo
 
@@ -16,37 +16,36 @@ Qualquer arquivo em `src/`.
 
 ## Regras obrigatórias
 
-JSON-RPC Zabbix (`/resources/zabbix-api`) é exclusivo do backend (`pkg/plugin/zabbix`). Proibido
-`zabbixCall`, `getBackendSrv().post(.../zabbix-api)` e `fetch`/`XMLHttpRequest` em `src/`.
+JSON-RPC Zabbix (`/resources/zabbix-api`) sai de `services/zabbixCall.ts` via `getBackendSrv()`.
+Proibido `fetch`/`XMLHttpRequest` e proibido o processo Go chamar o proxy do Grafana — ele não
+recebe o cookie da sessão. Só a licença fica no Go (`GET /license`).
 
-O front só fala com o plugin via `services/pluginBackend.ts` (`getBackendSrv()`):
+O front fala com o plugin e com o datasource assim:
 
 | Recurso | Quem chama | Conteúdo |
 |---|---|---|
-| `POST /poll` | `useZabbixDirectIndex` | status, tráfego, problemas (descoberta), snapshot |
-| `POST /snapshot` | `useZabbixDirectIndex` | leitura do cache RAM/disco (só `{ key }`); o Go persiste no poll |
-| `POST /groups` | `useZabbixHostGroups` | nomes de grupo (editor) |
-| `POST /item-names` | `useZabbixItemNames` | nomes de item (seletor de status) |
-| `POST /interfaces` | `useZabbixHostInterfaces` | itens de interface do cabo |
-| `POST /ping` | `PingModal` | script Ping + lastvalue ICMP |
+| `zabbix-api` | `zabbixCall` / `zabbixQuery` / `zabbixPoll` | JSON-RPC (status, tráfego, catálogo, ping) |
 | `GET /license` | `useLicenseValidation` | ticket da loja |
 
-- Status, cores, contagem de submapa e listas de host vêm do snapshot de `/poll`. O front monta o
+- Status, cores, contagem de submapa e listas de host vêm do lastvalue do Zabbix. O front monta o
   `QueryIndex` em `buildZabbixDirectIndex` (`services/zabbixDirectIndex.ts`).
-- Consumidor novo recebe `QueryIndex` por parâmetro. Nunca lê `data.series` nem chama o Zabbix.
+- Consumidor novo recebe `QueryIndex` por parâmetro. Nunca lê `data.series`.
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
 - Cor e rótulo saem de `utils/statusMapping.ts`. Hover lê o mesmo lastvalue via `hostDisplay`.
-- Problemas Warning+ vêm no snapshot da descoberta (`pkg/plugin/zabbix/problems.go`). O intervalo
-  não relê. Casa o nó pelo `hostid`. Falha mantém o resumo.
-- O relógio do poll mora no Go (`pkg/plugin/poll_service.go`). Em regime: um `item.get` pelos
-  itemids. `problem.get` / `trigger.get` / `host.get` só na descoberta.
+- Problemas Warning+ vêm na descoberta (`fetchProblems`), disparados junto com `host.get` e o
+  lastvalue. O intervalo não relê. Casa o nó pelo `hostid`. Falha mantém o resumo.
+- O intervalo do poll mora no browser (`useZabbixDirectIndex`). Em regime: um `item.get` pelos
+  itemids, mesmo se algum host do grupo não tiver o item de status. `host.get` / `problem.get` /
+  `trigger.get` só na descoberta, em paralelo. O intervalo não empilha poll. Host e
+  problema casam pelo `hostid`, nunca `filter.host` / nome. Ping e inventário de interface
+  também exigem `hostid`.
 - O painel declara `skipDataQuery` em `plugin.json`.
 - Ampliar a superfície (`trend.get`, `history.get`) exige **aprovação explícita**.
 - Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`.
 
 ## APIs do Grafana
 
-- Toda leitura do plugin passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
+- Toda leitura passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
 - Busca de dashboards (`/api/search`) continua na API do Grafana (`utils/grafanaDashboards.ts`).
 - Status e cabos são lastvalue; o painel não usa o seletor de tempo. Não crie `TimeRange`.
 - Navegação só por `openDashboardUrl`. Sem outro `window.location.href`.
@@ -58,14 +57,11 @@ O front só fala com o plugin via `services/pluginBackend.ts` (`getBackendSrv()`
 ## Faça / Não faça
 
 ```typescript
-// ❌ BAD — JSON-RPC no browser
-await getBackendSrv().post(`/api/datasources/uid/${uid}/resources/zabbix-api`, {
-  method: 'item.get',
-  params,
-});
+// ❌ BAD — o Go não autentica no proxy do datasource
+await getBackendSrv().post(`${PLUGIN_RESOURCES}/groups`, { datasourceUid: uid });
 
-// ✅ GOOD — o Go consulta; o painel só desenha
-const response = await fetchBackendPoll({ datasourceUid: uid, groupNames, statusItemKey, ... });
+// ✅ GOOD — a sessão do browser autentica o grafana-zabbix
+await zabbixCall(uid, 'hostgroup.get', { output: ['groupid', 'name'] });
 ```
 
 ## Exceções

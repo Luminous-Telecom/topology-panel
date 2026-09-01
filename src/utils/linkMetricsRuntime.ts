@@ -518,6 +518,13 @@ export function coalesceLinkTraffic(
       interfaceItems: keepIfaces ? previous.interfaceItems : incoming.interfaceItems,
     };
   }
+  const lastValues = { ...previous.lastValues };
+  for (const [key, row] of Object.entries(incoming.lastValues)) {
+    if (row.lastvalue === undefined || row.lastvalue === '') {
+      continue;
+    }
+    lastValues[key] = row;
+  }
   const byId = new Map<string, ZabbixInterfaceItem>();
   for (const item of previous.interfaceItems) {
     const id = item.itemid.trim();
@@ -527,12 +534,27 @@ export function coalesceLinkTraffic(
   }
   for (const item of incoming.interfaceItems) {
     const id = item.itemid.trim();
-    if (id) {
-      byId.set(id, item);
+    if (!id) {
+      continue;
     }
+    const prevItem = byId.get(id);
+    if (
+      (item.lastvalue === undefined || item.lastvalue === '') &&
+      prevItem &&
+      prevItem.lastvalue !== undefined &&
+      prevItem.lastvalue !== ''
+    ) {
+      byId.set(id, {
+        ...item,
+        lastvalue: prevItem.lastvalue,
+        lastclock: item.lastclock || prevItem.lastclock,
+      });
+      continue;
+    }
+    byId.set(id, item);
   }
   return {
-    lastValues: { ...previous.lastValues, ...incoming.lastValues },
+    lastValues,
     interfaceItems: byId.size ? [...byId.values()] : incoming.interfaceItems,
   };
 }

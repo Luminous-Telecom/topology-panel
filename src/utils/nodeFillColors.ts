@@ -14,6 +14,25 @@ import { HostProblemsMap } from './noc/types';
 /** Converte cor de opção do painel (hex, rgb ou nome de tema) em cor final. */
 export type ColorResolver = (color?: unknown) => string;
 
+/**
+ * Card visível no mapa escuro enquanto o lastvalue não chegou.
+ * Sem cor de tipo/submapa — isso parecia status real na abertura.
+ */
+export const NODE_FILL_WAITING = '#2a313c';
+
+/** Host/submapa ainda sem lastvalue — não pintar status. */
+function isNodeStatusFillPending(
+  node: TopologyNode,
+  queryReady: boolean | undefined,
+  queryLoading = false,
+  region?: RegionHostStats
+): boolean {
+  if (node.type !== 'submap' && node.type !== 'host') {
+    return false;
+  }
+  return !queryReady || queryLoading || Boolean(region?.loadPending);
+}
+
 function resolveEffectiveHostStatus(
   node: TopologyNode,
   mappedStatus: TopologyHostStatus | undefined
@@ -114,8 +133,8 @@ export function resolveNodeFill(
   hostProblems?: HostProblemsMap,
   queryLoading = false
 ): string {
-  if (queryLoading && !queryReady && (node.type === 'submap' || node.type === 'host')) {
-    return 'transparent';
+  if (isNodeStatusFillPending(node, queryReady, queryLoading, region)) {
+    return NODE_FILL_WAITING;
   }
   const fillOverride =
     node.type === 'submap' ? regionFillColor(region, options, 'submap', queryReady) : undefined;

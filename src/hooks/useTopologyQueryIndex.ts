@@ -4,7 +4,7 @@ import { ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
 import { useZabbixDirectIndex } from './useZabbixDirectIndex';
 
 /**
- * Índice de status do mapa: só o snapshot direto do Zabbix.
+ * Índice de status do mapa: lastvalue direto do Zabbix.
  *
  * O painel declara `skipDataQuery` — não há `data.series` em produção. Testes mockam este hook
  * (ou `useZabbixDirectIndex`) em vez de fabricar frames da aba Query.

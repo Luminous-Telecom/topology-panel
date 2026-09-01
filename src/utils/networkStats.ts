@@ -54,17 +54,12 @@ export function formatRegionStats(
     if (stats.loadFailed) {
       return 'Mapa indisponível';
     }
-    if (stats.loadPending) {
+    if (stats.loadPending || !queryReady) {
       return 'Carregando…';
     }
     const classified = stats.offline + stats.alert + stats.online;
-    if (!queryReady || classified === 0) {
-      if (stats.total > 0) {
-        return `${stats.total} hosts`;
-      }
-      return '0 / 0 / 0';
-    }
-    return `${stats.offline} / ${stats.alert} / ${stats.online}`;
+    const online = classified === 0 ? stats.total : stats.online;
+    return `${stats.offline} / ${stats.alert} / ${online}`;
   }
   if (stats.loadFailed) {
     return 'Mapa indisponível';

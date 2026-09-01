@@ -31,7 +31,7 @@ interface HostNodeShapeProps {
   region: RegionHostStats | undefined;
   options: TopologyPanelOptions;
   queryReady?: boolean;
-  /** True enquanto o snapshot/Zabbix ainda não pintou — não usa colorUnknown. */
+  /** True enquanto o Zabbix ainda não pintou — fundo de espera, sem cor de status. */
   queryLoading?: boolean;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;

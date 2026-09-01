@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayMap, HostMetadataMap, TopologyNode, TopologyPanelOptions, defaultOptions } from '../types';
 import { RegionHostStats } from './networkStats';
-import { hostNodeFill, resolveNetworkFill, resolveNodeFill } from './nodeFillColors';
+import { hostNodeFill, NODE_FILL_WAITING, resolveNetworkFill, resolveNodeFill } from './nodeFillColors';
 
 const options: TopologyPanelOptions = defaultOptions();
 /** No painel real quem resolve é o tema; aqui basta a identidade. */
@@ -116,16 +116,33 @@ describe('resolveNodeFill', () => {
     );
   });
 
-  it('submapa sem dados fica em colorUnknown', () => {
+  it('submapa sem lastvalue fica em colorUnknown depois do poll', () => {
     expect(
-      resolveNodeFill(node({ type: 'submap', label: 'Filial' }), undefined, options, false, {}, {}, identity)
+      resolveNodeFill(node({ type: 'submap', label: 'Filial' }), undefined, options, true, {}, {}, identity)
     ).toBe(options.colorUnknown);
   });
 
-  it('submapa e host ficam transparentes enquanto o status carrega', () => {
+  it('submapa e host usam fundo de espera até o lastvalue, sem cor de tipo nem de submapa', () => {
+    expect(
+      resolveNodeFill(node({ type: 'submap', label: 'Filial' }), undefined, options, false, {}, {}, identity)
+    ).toBe(NODE_FILL_WAITING);
+    expect(
+      resolveNodeFill(node({ zabbixHost: 'rb-01' }), undefined, options, false, {}, {}, identity, undefined, true)
+    ).toBe(NODE_FILL_WAITING);
     expect(
       resolveNodeFill(
         node({ type: 'submap', label: 'Filial' }),
+        { total: 0, online: 0, offline: 0, alert: 0, unknown: 0, loadPending: true },
+        options,
+        true,
+        {},
+        {},
+        identity
+      )
+    ).toBe(NODE_FILL_WAITING);
+    expect(
+      resolveNodeFill(
+        node({ zabbixHost: 'cam-01', icon: 'camera' }),
         undefined,
         options,
         false,
@@ -135,9 +152,6 @@ describe('resolveNodeFill', () => {
         undefined,
         true
       )
-    ).toBe('transparent');
-    expect(
-      resolveNodeFill(node({ zabbixHost: 'rb-01' }), undefined, options, false, {}, {}, identity, undefined, true)
-    ).toBe('transparent');
+    ).toBe(NODE_FILL_WAITING);
   });
 });

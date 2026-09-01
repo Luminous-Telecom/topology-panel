@@ -41,6 +41,8 @@ function flowPeriod(el: Element): number {
 export type LinkFlowController = {
   stop: () => void;
   setPaused: (paused: boolean) => void;
+  /** Relê as faixas agora — o lastvalue acabou de pintar e o laço dormente atrasava ~1 s. */
+  wake: () => void;
 };
 
 function readFlowSpeed(el: Element): number {
@@ -59,9 +61,40 @@ function readFlowSpeed(el: Element): number {
  * valor só interessa à própria animação.
  */
 const flowOffsets = new WeakMap<Element, number>();
+/** `offset-path` já aplicado — regravar o mesmo path no poll zera `offset-distance` no Chrome. */
+const appliedFlowPaths = new WeakMap<Element, string>();
 
 /** Reconsulta o DOM no máximo a cada 250 ms — link novo entra na animação no fatiamento seguinte. */
 const FLOW_QUERY_INTERVAL_MS = 250;
+
+function advanceFlowLanes(lanes: Element[]): number {
+  let animated = 0;
+  for (const el of lanes) {
+    if (el.getAttribute('data-link-flow-active') === 'false') {
+      continue;
+    }
+    const speed = readFlowSpeed(el);
+    if (speed <= 0) {
+      continue;
+    }
+    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + speed);
+    animated += 1;
+  }
+  return animated;
+}
+
+function ensureArrowOffsetPath(el: Element): void {
+  const d = el.getAttribute('data-link-flow-path');
+  if (!d || !(el instanceof SVGElement || el instanceof HTMLElement)) {
+    return;
+  }
+  if (appliedFlowPaths.get(el) === d) {
+    return;
+  }
+  appliedFlowPaths.set(el, d);
+  el.style.setProperty('offset-path', `path('${d}')`);
+  el.style.setProperty('offset-rotate', '0deg');
+}
 
 function writeFlowOffset(el: Element, offset: number): void {
   const period = flowPeriod(el);
@@ -71,6 +104,7 @@ function writeFlowOffset(el: Element, offset: number): void {
   const normalized = ((offset % period) + period) % period;
   flowOffsets.set(el, normalized);
   if (el.hasAttribute(FLOW_ARROW_ATTR)) {
+    ensureArrowOffsetPath(el);
     // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
     const phase = readNumberAttribute(el, 'data-link-flow-phase');
     const distance = (normalized + phase) % period;
@@ -130,17 +164,11 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
     }
-    let animated = 0;
-    for (const el of lanes) {
-      if (el.getAttribute('data-link-flow-active') === 'false') {
-        continue;
-      }
-      const speed = readFlowSpeed(el);
-      if (speed <= 0) {
-        continue;
-      }
-      writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + speed);
-      animated++;
+    let animated = advanceFlowLanes(lanes);
+    if (!animated) {
+      lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
+      lanesReadAt = now;
+      animated = advanceFlowLanes(lanes);
     }
     if (!animated) {
       sleepUntilNextScan();
@@ -149,10 +177,27 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
     schedule();
   };
 
+  /**
+   * Lastvalue pintou as faixas ativas: cancela o sono e relê o DOM no próximo frame.
+   * Não avança no layout do React — escrever o SVG aí deixava o painel em tela preta no F5.
+   */
+  const wake = () => {
+    if (paused) {
+      return;
+    }
+    lanesReadAt = 0;
+    if (idleTimer) {
+      window.clearTimeout(idleTimer);
+      idleTimer = 0;
+    }
+    schedule();
+  };
+
   schedule();
 
   return {
     stop: clearPending,
+    wake,
     setPaused: (next) => {
       if (paused === next) {
         return;
@@ -162,9 +207,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
         clearPending();
         return;
       }
-      // Força reler o DOM: o mapa pode ter mudado enquanto a animação estava parada.
-      lanesReadAt = 0;
-      schedule();
+      wake();
     },
   };
 }

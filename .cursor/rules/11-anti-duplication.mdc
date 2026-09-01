@@ -29,18 +29,19 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Formato do índice de status (metadata, hosts, refIds, buckets) | `QueryIndex` em `services/queryIndex.ts` |
 | Montar o índice a partir do Zabbix | `buildZabbixDirectIndex` em `services/zabbixDirectIndex.ts` |
 | Índice de status do mapa em runtime | `hooks/useTopologyQueryIndex.ts` (delega a `useZabbixDirectIndex`) — não parseie `PanelData` |
-| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` (`POST /poll`). Ciclo em regime no Go: **sempre um POST** (`item.get` por itemid). Lastvalue e lastclock iguais: o Go devolve o snapshot em cache sem novo `item.get`. |
-| Inventário de itens de interface | `hooks/useZabbixHostInterfaces.ts` via `fetchBackendHostInterfaces` (`POST /interfaces`). Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` |
-| Relógio e sessão do polling | `pkg/plugin/poll_service.go` (sobrevive à remontagem do painel). O front só dispara `POST /poll` no intervalo. |
+| Buscar/repetir a busca do último valor no Zabbix | `hooks/useZabbixDirectIndex.ts` via `runZabbixPoll`. Em regime: **um** `item.get` por itemid. O intervalo é o `setInterval` do hook e **não** empilha ciclo novo enquanto o anterior está no ar. |
+| Aplicar lastvalue aos itens de status | `applyLastValuesToStatusItems` / `statusLastValuesPresent` em `services/zabbixPoll.ts` |
+| Inventário de itens de interface | `hooks/useZabbixHostInterfaces.ts` via `fetchHostInterfaceItems` (`item.get` por `hostids`). Hostid no índice: `hostidFromLookupKey` / `resolveHostZabbixId` em `utils/hostLookup.ts` — sem `host.get` por nome |
+| Relógio do polling | `hooks/useZabbixDirectIndex.ts` (`setInterval` com `zabbixRefreshSec`) |
 | Deduplicar chamada repetida (TTL curto + mapa de in-flight) | `services/asyncCache.ts` — usado por `useZabbixHostInterfaces`, `useZabbixHostGroups` e `useZabbixItemNames` (TTL 60 s) |
-| Primeira pintura do status (lastvalue) | `fetchLiveSnapshot` (`POST /snapshot` só com a chave). Persistência no Go no `POST /poll`. |
-| Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` |
+| Primeira pintura do status (lastvalue) | `runZabbixPoll` na abertura do hook. Sem cache do último JSON. |
+| Não apagar tráfego dos cabos num ciclo vazio | `coalesceLinkTraffic` em `utils/linkMetricsRuntime.ts` (também ignora lastvalue vazio) |
 | Cabos de toda a árvore (poll de tráfego) | `collectMapsLinks` em `utils/linkMetricsRuntime.ts` |
 | Hosts dos extremos para o sinal no cabo | `collectLinkSignalHostIds` + `linkSignalSearchTerms` em `utils/linkMetricsRuntime.ts`; lastvalue no mesmo `item.get` de tráfego (`itemId` no cabo). Sem inventário periódico de sinal. |
-| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue no `POST /poll` (`hostid:key`; tráfego e sinal no mesmo ciclo) |
-| Problemas Warning+ | snapshot de `/poll` (`pkg/plugin/zabbix/problems.go`). Casar nó↔problema **só** pelo `hostid` de `resolveHostZabbixId` via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts`. Só na descoberta — o intervalo não relê. |
-| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`POST /groups`) |
-| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`POST /item-names`) |
+| Chaves de cabo sem itemid numérico | `collectLinkMetricKeys` + `aliasLastValuesByItemKey` em `utils/linkMetricsRuntime.ts`; lastvalue no poll (`hostid:key`; tráfego e sinal no mesmo ciclo) |
+| Problemas Warning+ | descoberta em `fetchProblems` (`services/zabbixQuery.ts`), no mesmo instante que `host.get` e o lastvalue (`groupids`). Casar nó↔problema **só** pelo `hostid` de `resolveHostZabbixId` via `resolveHostProblemSummary` em `utils/noc/topologyFilters.ts`. Só na descoberta — o intervalo não relê. |
+| Listar grupos de host do Zabbix | `hooks/useZabbixHostGroups.ts` (`hostgroup.get`) |
+| Listar nomes de item do Zabbix | `hooks/useZabbixItemNames.ts` (`item.get`) |
 | Hosts e valores por `refId`, metadata, lista de refIds | `QueryIndex` (mesmo arquivo) |
 | Display de status por host e refId | `hostDisplayByRefIdFromIndex` em `services/queryIndex.ts` |
 | Status/cor/rótulo a partir de um valor numérico | `utils/statusMapping.ts` (`resolveHostStatusDisplay`, `resolveHostStatusFromValue`, `resolveStatusColor`, `resolveMappingLabel`) |
@@ -64,7 +65,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Necessidade | Já existe em |
 |---|---|
 | Add/move/update/remove de nó, travas do mapa | `utils/mapEdits.ts` |
-| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`linksMatchIdentity`/`upsertLinkWithInterfaces`/`applyResolvedMetricItemIds`) | `utils/mapLinkEdits.ts` |
+| Criar, editar e remover cabo (inclui `linkKey`/`linksMatchEndpoints`/`linksMatchIdentity`/`upsertLinkWithInterfaces`/`applyResolvedMetricItemIds`) | `utils/mapLinkEdits.ts`. Itemid de tráfego no JSON só na persistência do mapa (`TopologyPanel`), não no poll nem ao entrar em edição. |
 | Espelhar cabo entre submapas (raiz e mapa de destino) | `syncInterSubmapCounterpartLinks` em `utils/interSubmapLinks.ts` |
 | Excluir cabo entre submapas em cascata (espelhos e hops órfãos) | `removeInterSubmapCounterpartLinks` / `removeMissingInterSubmapCounterparts` em `utils/interSubmapLinks.ts` |
 | Aplicar ícone, credenciais ou tamanho a vários nós | `utils/mapBulkEdits.ts` |
@@ -81,8 +82,8 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Espessura/rótulo de link por banda (Mbps/Gbps) | `utils/linkBandwidth.ts` |
 | Formato de tráfego (bps, rótulo do cabo, intervalo) | `formatBitsPerSecond`, `formatLinkMapTrafficLabel`, `formatEndpointTrafficPair`, `formatSignalDbm`, `formatPluginRefreshInterval` em `utils/zabbixAdapter/formatTraffic.ts` |
 | Inventário de interfaces do host (agrupar / escolher por alias) | `parseZabbixInterfaceItems`, `groupInterfacesByHost`, `pickHostInterfaces` em `utils/zabbixAdapter/parseInterfaceItems.ts`; sinal no cabo via `attachSignalRefsToInterface` / `matchDiscoveredInterface` em `bindInterfaceMetrics.ts` (a partir dos itens do mesmo `item.get` do tráfego) |
-| Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` |
-| Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` em `utils/structuralIdentity.ts` |
+| Animação de fluxo no link | `utils/linkFlow.ts` + `hooks/useLinkFlowAnimation.ts` (`wake` quando o lastvalue pinta) |
+| Compartilhamento estrutural de identidade entre refreshes | `structuralShare` / `structuralShareMap` / `shareHostDisplayMap` (ignora lastclock) em `utils/structuralIdentity.ts` |
 | Identidade estável de valor JSON-like | `useStableIdentity` em `hooks/useStableIdentity.ts` |
 | Identidade fixa de handler | `useStableCallback` em `hooks/useStableCallback.ts` |
 | Coalescer o preview de um gesto em um frame | `useGestureFrame` em `hooks/useGestureFrame.ts` (um por canvas — só há um gesto por vez) |
@@ -94,15 +95,16 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Clique Salvar/Sair do Grafana (flush da trava/NOC pendente) | `eventTargetRequestsDashboardFlush` em `utils/grafanaDashboardEdit.ts` + `useGrafanaDashboardFlush` |
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
-| Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` |
+| Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` (`PingTarget`) |
 | Override local de legenda, lista de alertas e modo NOC | `hooks/useCanvasOverlayToggles.ts` |
 | viewEditable e itens da legenda | `hooks/useCanvasDerivedView.ts` |
 | Linha do cabo, pulsos de fluxo e pílula de tráfego | `components/canvas/links/LinkLine.tsx`, `LinkFlowArrows.tsx`, `LinkTrafficLabel.tsx` |
 | Medida do painel, tela cheia, chrome ocioso e gestos de zoom/toque | `hooks/useViewportSize.ts`, `useFullscreen.ts`, `useIdleHide.ts`, `useCanvasZoomGestures.ts` |
 | Grade do mapa | `hooks/useGridLines.ts` |
-| Layout dos nós e estatística das regiões | `hooks/useNodeLayouts.ts` |
+| Layout dos nós e estatística das regiões (tráfego das redes entra depois, em `mergeRegionTrafficStats`) | `hooks/useNodeLayouts.ts` |
 | Cabos filtrados e ordenados para render | `hooks/useRenderLinks.ts` |
 | Cores do minimapa (mesmas do mapa grande) | `hooks/useMinimapColors.ts` |
+| Preenchimento de host/submapa (status vs espera visível) | `resolveNodeFill` / `NODE_FILL_WAITING` em `utils/nodeFillColors.ts` (espera sem cor de tipo/submapa); contraste em `textOnBackground` (`utils/colorContrast.ts`) |
 | Hosts agregados do submapa e hosts já desenhados no mapa pai | `submapHostListForNode`, `parentMapHostKeys`, `innerHostsForSubmapNode`, `shouldOpenLinkInterfaceModal` em `utils/submapHosts.ts` |
 | Caixa da região no outro submapa (não a caixa batizada com host) | `pickCounterpartSubmapBox` em `utils/submapHosts.ts` |
 | Itens de menu de contexto (copiar, colar, lote, excluir, cabo) | `utils/contextMenuItems.ts` |
@@ -135,7 +137,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Validar chave/URL da loja | `GET /license` no backend (`pkg/plugin/license.go`); o painel só pinta `fetchPluginLicense` |
 | Ticket ES256 da loja | `verifyLicenseTicket` em `pkg/plugin/ticket.go` |
 | Arquivo `license.json` da instalação | `parseInstalledLicenseFile` em `pkg/plugin/install.go` — o processo Go lê o arquivo no disco |
-| Licença, poll e snapshot no Grafana | `fetchPluginLicense` / `fetchLiveSnapshot` / `fetchBackendPoll` / `fetchBackendHostGroups` / `fetchBackendItemNames` / `fetchBackendHostInterfaces` / `fetchBackendPing` em `services/pluginBackend.ts` |
+| Licença no Grafana | `fetchPluginLicense` em `services/pluginBackend.ts` (`GET /license`); JSON-RPC em `zabbixCall` / `zabbixQuery` / `zabbixPoll` |
 | Comparar versão instalada × loja | `PLUGIN_VERSION` / `pluginVersionIsNewer` em `utils/pluginVersion.ts` |
 | Estado de licença no painel | `hooks/useLicenseValidation.ts` (`LICENSE_REFRESH_MS` 30 s, igual ao TTL do Go) + overlay `components/LicenseGate.tsx` |
 

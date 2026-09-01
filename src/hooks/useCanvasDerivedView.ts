@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useStableIdentity } from './useStableIdentity';
 import { TopologyPanelOptions } from '../types';
 import { buildLegendItems } from '../utils/legendItems';
 
@@ -17,7 +17,7 @@ export function useCanvasDerivedView({
   options,
 }: Params) {
   const viewEditable = editable && !effectiveNocMode && !hideOverlayControls;
-  const legendItems = useMemo(() => buildLegendItems(options), [options]);
+  const legendItems = useStableIdentity(buildLegendItems(options));
 
   return { viewEditable, legendItems };
 }

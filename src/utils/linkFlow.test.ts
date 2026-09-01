@@ -43,6 +43,7 @@ describe('startLinkFlowAnimation', () => {
     el.setAttribute('data-link-flow-speed', '2');
     el.setAttribute('data-link-flow-length', '100');
     el.setAttribute('data-link-flow-phase', '50');
+    el.setAttribute('data-link-flow-path', 'M 0 0 L 100 0');
     root.appendChild(el);
     const controller = startLinkFlowAnimation(root);
 
@@ -52,6 +53,27 @@ describe('startLinkFlowAnimation', () => {
     expect(distance).toBeGreaterThan(50);
     expect(distance).toBeLessThan(100);
     expect(el.getAttribute('stroke-dashoffset')).toBeNull();
+    controller.stop();
+  });
+
+  it('mudar a velocidade no DOM não zera o deslocamento da seta', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    el.setAttribute('data-link-flow', 'download');
+    el.setAttribute('data-link-flow-arrow', 'true');
+    el.setAttribute('data-link-flow-active', 'true');
+    el.setAttribute('data-link-flow-speed', '2');
+    el.setAttribute('data-link-flow-length', '100');
+    el.setAttribute('data-link-flow-phase', '0');
+    el.setAttribute('data-link-flow-path', 'M 0 0 L 100 0');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(50);
+    const before = Number(el.style.getPropertyValue('offset-distance').replace('px', ''));
+    el.setAttribute('data-link-flow-speed', '4');
+    vi.advanceTimersByTime(50);
+    const after = Number(el.style.getPropertyValue('offset-distance').replace('px', ''));
+    expect(after).toBeGreaterThan(before);
+    expect(el.style.getPropertyValue('offset-path')).toContain('M 0 0 L 100 0');
     controller.stop();
   });
 
@@ -92,6 +114,17 @@ describe('startLinkFlowAnimation', () => {
     expect(raf.mock.calls.length).toBeLessThanOrEqual(6);
     controller.stop();
     raf.mockRestore();
+  });
+
+  it('wake anima no frame seguinte sem esperar a varredura dormente', () => {
+    const el = lane(root, { active: false, speed: 2 });
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(20);
+    el.setAttribute('data-link-flow-active', 'true');
+    controller.wake();
+    vi.advanceTimersByTime(50);
+    expect(offsetOf(el)).toBeGreaterThan(0);
+    controller.stop();
   });
 
   it('faixa com velocidade zero não conta como tráfego', () => {

@@ -2,27 +2,23 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ZABBIX_DIRECT_DEFAULT_REFRESH_SEC, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
 import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
-import { fetchBackendPoll, fetchLiveSnapshot, type BackendLiveSnapshot } from '../services/pluginBackend';
 import {
-  isNumericZabbixItemId,
-  ZabbixDirectMetadata,
-  ZabbixInterfaceItem,
-  ZabbixItemLastValue,
-} from '../utils/zabbixApi';
+  applyLastValuesToStatusItems,
+  runZabbixPoll,
+  statusLastValuesPresent,
+  ZABBIX_GENERIC_ERROR,
+  ZABBIX_NO_GROUPS_ERROR,
+  ZABBIX_NO_STATUS_ITEMS_ERROR,
+} from '../services/zabbixPoll';
+import { ZabbixInterfaceItem, ZabbixItemLastValue, ZabbixLiveSnapshot } from '../utils/zabbixApi';
 import { coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
 import { HostProblemsMap } from '../utils/noc/types';
 
 /**
- * Status e tráfego vêm do backend Go. Na abertura lê o snapshot em cache (`POST /snapshot`);
- * o Zabbix só entra no `POST /poll` quando o intervalo vence.
+ * Consulta o Zabbix no browser. O backend Go só valida a licença.
  */
 
 const EMPTY_INDEX = buildQueryIndex(undefined);
-
-const GENERIC_ERROR = 'Falha ao consultar o Zabbix. Verifique o datasource e os grupos configurados.';
-const NO_GROUPS_ERROR = 'Nenhum dos grupos configurados existe no Zabbix.';
-const NO_STATUS_ITEMS_ERROR =
-  'Nenhum host dos grupos respondeu com o item de status. Confira o nome do item em "Item de status".';
 
 export interface UseZabbixDirectIndexOptions {
   enabled: boolean;
@@ -66,55 +62,8 @@ const IDLE_STATE: DirectState = {
   loading: false,
 };
 
-function applyLastValuesToStatusItems(
-  items: ZabbixInterfaceItem[],
-  lastValues: Record<string, ZabbixItemLastValue>,
-  interfaceItems: ZabbixInterfaceItem[]
-): ZabbixInterfaceItem[] {
-  const byId = new Map<string, ZabbixInterfaceItem>();
-  for (const item of interfaceItems) {
-    const id = item.itemid.trim();
-    if (isNumericZabbixItemId(id)) {
-      byId.set(id, item);
-    }
-  }
-  return items.map((item) => {
-    const id = item.itemid.trim();
-    const fromTraffic = byId.get(id);
-    if (fromTraffic) {
-      return {
-        ...item,
-        lastvalue: fromTraffic.lastvalue ?? item.lastvalue,
-        lastclock: fromTraffic.lastclock ?? item.lastclock,
-      };
-    }
-    const lv = lastValues[id];
-    if (!lv) {
-      return item;
-    }
-    return {
-      ...item,
-      lastvalue: lv.lastvalue ?? item.lastvalue,
-      lastclock: lv.lastclock ?? item.lastclock,
-    };
-  });
-}
-
-function statusLastValuesPresent(
-  lastValues: Record<string, ZabbixItemLastValue>,
-  items: ZabbixInterfaceItem[]
-): boolean {
-  return items.some((item) => {
-    const id = item.itemid.trim();
-    if (isNumericZabbixItemId(id) && lastValues[id]?.lastvalue !== undefined) {
-      return true;
-    }
-    return item.lastvalue !== undefined;
-  });
-}
-
-function directStateFromBackendSnapshot(
-  remote: BackendLiveSnapshot,
+function directStateFromLiveSnapshot(
+  remote: ZabbixLiveSnapshot,
   datasourceUid: string,
   groupNames: string[],
   statusItemKey: string
@@ -157,33 +106,18 @@ function directStateFromBackendSnapshot(
   };
 }
 
-interface LiveSession {
-  state: DirectState;
-  metadata: ZabbixDirectMetadata;
-}
-
-const liveSessionByKey = new Map<string, LiveSession>();
-
-/** Testes: simula F5 (some o estado em memória desta aba). */
-export function dropZabbixLiveIndex(): void {
-  liveSessionByKey.clear();
-}
-
 function mapPollError(message: string | undefined): string | undefined {
   const trimmed = message?.trim();
   if (!trimmed) {
     return undefined;
   }
-  if (trimmed.includes('grupos configurados')) {
-    return NO_GROUPS_ERROR;
+  if (trimmed === ZABBIX_NO_GROUPS_ERROR || trimmed === ZABBIX_NO_STATUS_ITEMS_ERROR) {
+    return trimmed;
   }
-  if (trimmed.includes('item de status')) {
-    return NO_STATUS_ITEMS_ERROR;
-  }
-  if (trimmed.includes('sessão') || trimmed.includes('401')) {
+  if (trimmed.includes('sessão')) {
     return 'Grafana recusou a sessão ao consultar o Zabbix. Recarregue o dashboard.';
   }
-  return GENERIC_ERROR;
+  return ZABBIX_GENERIC_ERROR;
 }
 
 export function useZabbixDirectIndex({
@@ -214,7 +148,6 @@ export function useZabbixDirectIndex({
     [trafficKeys]
   );
   const configKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}\u0000${intervalSec}`;
-  const snapshotKey = `${datasourceUid ?? ''}\u0000${groups.join('\u0001')}\u0000${itemKey}`;
 
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
@@ -222,32 +155,29 @@ export function useZabbixDirectIndex({
   trafficItemIdsRef.current = trafficIds;
   const trafficKeysRef = useRef(trafficItemKeys);
   trafficKeysRef.current = trafficItemKeys;
+  const previousRef = useRef<ZabbixLiveSnapshot | undefined>(undefined);
   const prevConfigKeyRef = useRef<string | null>(null);
 
   const [state, setState] = useState<DirectState>(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
       return IDLE_STATE;
     }
-    const live = liveSessionByKey.get(snapshotKey)?.state;
-    if (live) {
-      return live;
-    }
     return { ...IDLE_STATE, loading: true };
   });
 
   useLayoutEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
+      previousRef.current = undefined;
       setState(IDLE_STATE);
       return;
     }
 
-    const live = liveSessionByKey.get(snapshotKey);
     const configChanged = prevConfigKeyRef.current !== null && prevConfigKeyRef.current !== configKey;
     prevConfigKeyRef.current = configKey;
+    if (configChanged) {
+      previousRef.current = undefined;
+    }
     setState((prev) => {
-      if (live) {
-        return { ...live.state, loading: false };
-      }
       if (prev.ready && configChanged) {
         return { ...prev, loading: true };
       }
@@ -259,83 +189,86 @@ export function useZabbixDirectIndex({
 
     let cancelled = false;
     let intervalId: number | undefined;
+    let inFlight = false;
 
-    const applySnapshot = (snapshot: BackendLiveSnapshot, ready: boolean, loading: boolean, error?: string) => {
-      const fromSnapshot = directStateFromBackendSnapshot(
+    const applySnapshot = (snapshot: ZabbixLiveSnapshot, ready: boolean, loading: boolean, error?: string) => {
+      const fromSnapshot = directStateFromLiveSnapshot(
         snapshot,
         datasourceUid,
         groupsRef.current,
         itemKey
       );
       if (fromSnapshot && ready && !error) {
-        liveSessionByKey.set(snapshotKey, {
-          state: fromSnapshot,
-          metadata: snapshot.metadata,
-        });
+        previousRef.current = snapshot;
         setState(fromSnapshot);
-        return true;
+        return;
       }
       if (error) {
-        setState({
-          index: EMPTY_INDEX,
-          lastValues: EMPTY_LAST_VALUES,
-          interfaceItems: EMPTY_INTERFACE_ITEMS,
-          problems: EMPTY_PROBLEMS,
-          ready: false,
-          loading,
-          error: mapPollError(error),
+        setState((prev) => {
+          if (prev.ready) {
+            return { ...prev, loading: false, error: mapPollError(error) };
+          }
+          return {
+            index: EMPTY_INDEX,
+            lastValues: EMPTY_LAST_VALUES,
+            interfaceItems: EMPTY_INTERFACE_ITEMS,
+            problems: EMPTY_PROBLEMS,
+            ready: false,
+            loading,
+            error: mapPollError(error),
+          };
         });
-        return false;
+        return;
       }
       if (fromSnapshot) {
+        previousRef.current = snapshot;
         setState({ ...fromSnapshot, ready, loading });
-        return ready;
+        return;
       }
       setState((prev) => ({
         ...prev,
-        ready,
         loading,
         error: ready ? undefined : prev.error,
       }));
-      return ready;
     };
 
     const runPoll = async () => {
-      const response = await fetchBackendPoll({
-        datasourceUid,
-        groupNames: groupsRef.current,
-        statusItemKey: itemKey,
-        trafficItemIds: trafficItemIdsRef.current,
-        trafficKeys: trafficKeysRef.current,
-        refreshSec: intervalSec,
-      });
-      if (cancelled || !response) {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        const result = await runZabbixPoll({
+          datasourceUid,
+          groupNames: groupsRef.current,
+          statusItemKey: itemKey,
+          trafficItemIds: trafficItemIdsRef.current,
+          trafficKeys: trafficKeysRef.current,
+          previous: previousRef.current,
+          onSnapshot: (snapshot) => {
+            if (!cancelled) {
+              applySnapshot(snapshot, true, false);
+            }
+          },
+        });
+        if (cancelled) {
+          return;
+        }
+        applySnapshot(result.snapshot, !result.error, false, result.error);
+      } catch {
         if (!cancelled) {
           setState((prev) => ({
             ...prev,
             loading: false,
-            error: prev.error ?? GENERIC_ERROR,
+            error: prev.error ?? ZABBIX_GENERIC_ERROR,
           }));
         }
-        return;
+      } finally {
+        inFlight = false;
       }
-      applySnapshot(response.snapshot, response.ready, false, response.error);
     };
 
     void (async () => {
-      if (live?.state.ready) {
-        intervalId = window.setInterval(() => void runPoll(), intervalSec * 1000);
-        return;
-      }
-      const cached = await fetchLiveSnapshot(snapshotKey);
-      if (cancelled) {
-        return;
-      }
-      if (cached && applySnapshot(cached, true, false)) {
-        intervalId = window.setInterval(() => void runPoll(), intervalSec * 1000);
-        return;
-      }
-      setState((prev) => ({ ...prev, loading: true }));
       await runPoll();
       if (!cancelled) {
         intervalId = window.setInterval(() => void runPoll(), intervalSec * 1000);
@@ -348,7 +281,7 @@ export function useZabbixDirectIndex({
         window.clearInterval(intervalId);
       }
     };
-  }, [enabled, configKey, datasourceUid, itemKey, snapshotKey, intervalSec]);
+  }, [enabled, configKey, datasourceUid, itemKey, intervalSec]);
 
   return state;
 }

@@ -1,6 +1,6 @@
 /**
- * Tipos e helpers puros do lastvalue Zabbix. A consulta JSON-RPC vive no backend Go;
- * o painel só consome `services/pluginBackend.ts`.
+ * Tipos e helpers puros do lastvalue Zabbix. A consulta JSON-RPC vive em
+ * `services/zabbixCall.ts`; o Go só valida a licença.
  */
 export {
   isNumericZabbixItemId,
@@ -15,5 +15,6 @@ export type {
   ZabbixInterfaceHostRef,
   ZabbixInterfaceItem,
   ZabbixItemLastValue,
+  ZabbixLiveSnapshot,
   ZabbixResolvedGroups,
 } from './zabbixApi/types';

@@ -27,8 +27,9 @@ colocados ao lado do código.
   — principalmente status, geometria, coordenadas, undo/redo e mutações do mapa.
 - Teste de componente usa `@testing-library/react`; os matchers de `jest-dom` e o `cleanup` já vêm de
   `vitest.setup.ts`.
-- Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` são mockados com `vi.mock`.
-  Ping/ICMP: mocke `fetchBackendPing` (não chame o datasource).
+- Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` / `zabbixQuery.ts` /
+  `zabbixPoll.ts` são mockados com `vi.mock`. Status: mocke `runZabbixPoll`. Ping/ICMP: mocke
+  `runZabbixPing` (não chame o datasource).
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.
 - Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em
@@ -44,12 +45,12 @@ colocados ao lado do código.
 ```typescript
 // ❌ BAD — depende de rede e não diz o que valida
 it('works', async () => {
-  const r = await fetchBackendHostGroups('uid');
+  const r = await fetchHostGroupNames('uid');
   expect(r).toBeTruthy();
 });
 
 // ✅ GOOD — comportamento nomeado, dependência externa isolada
-vi.mock('../services/pluginBackend', () => ({ fetchBackendHostGroups: vi.fn().mockResolvedValue([]) }));
+vi.mock('../services/zabbixQuery', () => ({ fetchHostGroupNames: vi.fn().mockResolvedValue([]) }));
 
 describe('resolveHostStatusFromValue', () => {
   it('casa por faixa from/to com limites inclusivos', () => {

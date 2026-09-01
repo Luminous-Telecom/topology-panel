@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { LINK_FLOW_ARROW_MAX, LINK_FLOW_ARROW_SPACING } from './linkLineVisual';
 
 interface FlowArrowsProps {
@@ -12,20 +12,20 @@ interface FlowArrowsProps {
   size: number;
 }
 
+type FlowGlyphsProps = Omit<FlowArrowsProps, 'speed' | 'active'>;
+
 /**
- * Pulsos que **correm com o tráfego**: cada círculo anda pelo cabo via `offset-path`.
- * Sem tráfego a animação para e os pulsos ficam parados.
+ * Glifos estáveis: velocidade e ativo entram por atributo no layout, sem reconciliar o `<circle>`.
+ * Regravar `fill`/`offset-path` no poll faz o Chrome zerar `offset-distance`.
  */
-function LinkFlowArrowsComponent({
+const LinkFlowGlyphs = React.memo(function LinkFlowGlyphs({
   laneD,
   laneLength,
   color,
   direction,
   linkId,
-  speed,
-  active,
   size,
-}: FlowArrowsProps) {
+}: FlowGlyphsProps) {
   const count = Math.min(LINK_FLOW_ARROW_MAX, Math.floor(laneLength / LINK_FLOW_ARROW_SPACING));
   if (count < 1) {
     return null;
@@ -43,24 +43,63 @@ function LinkFlowArrowsComponent({
           data-link-flow={direction}
           data-link-flow-arrow="true"
           data-link-key={linkId}
-          data-link-flow-speed={String(speed)}
-          data-link-flow-active={active ? 'true' : 'false'}
+          data-link-flow-speed="0"
+          data-link-flow-active="false"
           data-link-flow-length={String(laneLength)}
           data-link-flow-phase={String(index * step)}
+          data-link-flow-path={laneD}
           fill={color}
           stroke={color}
           strokeWidth={coreR * 1.6}
           strokeOpacity={0.35}
           pointerEvents="none"
-          style={{
-            // A posição (`offset-distance`) é do laço em `linkFlow.ts`. Se o React gravar 0px
-            // aqui, cada poll de tráfego zera os pulsos e o cabo parece travado.
-            offsetPath: `path('${laneD}')`,
-            offsetRotate: '0deg',
-          }}
         />
       ))}
     </>
+  );
+});
+
+/**
+ * Pulsos que **correm com o tráfego**: cada círculo anda pelo cabo via `offset-path`.
+ * O path e a distância ficam no laço (`linkFlow.ts`) — o React não escreve `style`, senão cada
+ * poll regrava `offset-path` e o Chrome zera os pulsos.
+ */
+function LinkFlowArrowsComponent({
+  laneD,
+  laneLength,
+  color,
+  direction,
+  linkId,
+  speed,
+  active,
+  size,
+}: FlowArrowsProps) {
+  const groupRef = useRef<SVGGElement>(null);
+
+  useLayoutEffect(() => {
+    const root = groupRef.current;
+    if (!root) {
+      return;
+    }
+    const speedStr = String(speed);
+    const activeStr = active ? 'true' : 'false';
+    for (const el of Array.from(root.querySelectorAll('[data-link-flow-arrow]'))) {
+      el.setAttribute('data-link-flow-speed', speedStr);
+      el.setAttribute('data-link-flow-active', activeStr);
+    }
+  }, [speed, active]);
+
+  return (
+    <g ref={groupRef}>
+      <LinkFlowGlyphs
+        laneD={laneD}
+        laneLength={laneLength}
+        color={color}
+        direction={direction}
+        linkId={linkId}
+        size={size}
+      />
+    </g>
   );
 }
 

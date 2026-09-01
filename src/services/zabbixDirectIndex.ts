@@ -1,5 +1,5 @@
 import { HostMetadata, HostMetadataMap, TopologyPanelOptions, TopologyQueryRefInfo } from '../types';
-import { QueryIndex, QueryRefBucket } from './queryIndex';
+import { QueryIndex, QueryRefBucket, STATUS_ORPHAN_REF_ID } from './queryIndex';
 import { isIpv4 } from '../utils/ipv4';
 import { ZabbixDirectHost, ZabbixInterfaceItem } from '../utils/zabbixApi';
 
@@ -16,6 +16,43 @@ import { ZabbixDirectHost, ZabbixInterfaceItem } from '../utils/zabbixApi';
 /** Grupo do Zabbix como refId virtual — normalizado igual aos refIds da Query (maiúsculas). */
 export function directRefId(groupName: string): string {
   return groupName.trim().toUpperCase();
+}
+
+function emptyRefBucket(): QueryRefBucket {
+  return { hosts: new Set(), lastValues: new Map(), lastUpdatedAtSec: new Map() };
+}
+
+function writeStatusToBucket(bucket: QueryRefBucket, hostKey: string, ip: string | undefined, status: ZabbixStatusValue): void {
+  bucket.lastValues.set(hostKey, status.value);
+  if (status.updatedAtSec != null) {
+    bucket.lastUpdatedAtSec.set(hostKey, status.updatedAtSec);
+  }
+  if (ip && isIpv4(ip)) {
+    bucket.lastValues.set(ip, status.value);
+    if (status.updatedAtSec != null) {
+      bucket.lastUpdatedAtSec.set(ip, status.updatedAtSec);
+    }
+  }
+}
+
+/** Nome visível, nome técnico e hostid — o mapa pode gravar qualquer um no `zabbixHost`. */
+function writeHostStatusAliases(
+  bucket: QueryRefBucket,
+  host: ZabbixDirectHost,
+  status: ZabbixStatusValue
+): void {
+  const ip = host.ip?.trim();
+  writeStatusToBucket(bucket, host.name.trim(), ip, status);
+  for (const extra of [host.host, host.hostid]) {
+    const key = extra?.trim();
+    if (!key || key === host.name.trim() || key === ip) {
+      continue;
+    }
+    bucket.lastValues.set(key, status.value);
+    if (status.updatedAtSec != null) {
+      bucket.lastUpdatedAtSec.set(key, status.updatedAtSec);
+    }
+  }
 }
 
 /** RefIds virtuais a partir dos grupos configurados — alimenta editores quando a Query está vazia. */
@@ -98,7 +135,7 @@ export function statusItemMatchRank(
 }
 
 function numericLastValue(item: ZabbixInterfaceItem): number | undefined {
-  const raw = item.lastvalue?.trim();
+  const raw = item.lastvalue == null ? '' : String(item.lastvalue).trim();
   if (!raw) {
     return undefined;
   }
@@ -165,28 +202,6 @@ export function statusValuesByHostId(
   return result;
 }
 
-/** Escolhe o item monitorado mais adequado à chave configurada (ex.: icmppingsec). */
-export function pickBestZabbixItemByKey<T extends { key_?: string }>(
-  items: T[],
-  statusItemKey: string
-): T | undefined {
-  const wanted = statusItemKey.trim().toLowerCase();
-  if (!wanted) {
-    return undefined;
-  }
-  let best: { rank: number; item: T } | undefined;
-  for (const item of items) {
-    const rank = statusItemRank(item.key_?.trim().toLowerCase() ?? '', wanted);
-    if (rank === undefined) {
-      continue;
-    }
-    if (!best || rank < best.rank) {
-      best = { rank, item };
-    }
-  }
-  return best?.item;
-}
-
 /**
  * Indexa o host por todas as chaves usadas nas buscas do mapa (nome visível, nome técnico, IP e
  * hostid) — mesmo esquema de `indexHostMetadata` no índice da Query.
@@ -230,9 +245,12 @@ export function buildZabbixDirectIndex(input: ZabbixDirectIndexInput): QueryInde
     if (!refId || byRefId.has(refId)) {
       continue;
     }
-    byRefId.set(refId, { hosts: new Set(), lastValues: new Map(), lastUpdatedAtSec: new Map() });
+    byRefId.set(refId, emptyRefBucket());
     refInfoByRef.set(refId, { refId, hint: `Grupo Zabbix: ${groupName.trim()}` });
   }
+
+  const orphanBucket = emptyRefBucket();
+  byRefId.set(STATUS_ORPHAN_REF_ID, orphanBucket);
 
   const statusByHostId = statusValuesByHostId(statusItems, statusItemKey);
 
@@ -245,24 +263,17 @@ export function buildZabbixDirectIndex(input: ZabbixDirectIndexInput): QueryInde
     indexDirectHostMetadata(metadata, host);
 
     const status = statusByHostId.get(host.hostid);
+    if (status !== undefined) {
+      writeHostStatusAliases(orphanBucket, host, status);
+    }
     for (const groupName of host.groups) {
       const bucket = byRefId.get(directRefId(groupName));
-      if (!bucket) {
+      if (!bucket || bucket === orphanBucket) {
         continue;
       }
       bucket.hosts.add(hostKey);
       if (status !== undefined) {
-        bucket.lastValues.set(hostKey, status.value);
-        if (status.updatedAtSec != null) {
-          bucket.lastUpdatedAtSec.set(hostKey, status.updatedAtSec);
-        }
-        const ip = host.ip?.trim();
-        if (ip && isIpv4(ip)) {
-          bucket.lastValues.set(ip, status.value);
-          if (status.updatedAtSec != null) {
-            bucket.lastUpdatedAtSec.set(ip, status.updatedAtSec);
-          }
-        }
+        writeHostStatusAliases(bucket, host, status);
       }
     }
   }

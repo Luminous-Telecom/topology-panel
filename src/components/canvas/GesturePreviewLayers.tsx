@@ -25,6 +25,8 @@ interface Props {
   nodes: TopologyNode[];
   baseNodeLayouts: Map<string, NodeLayout & TopologyNode>;
   regionStats: Map<string, RegionHostStats>;
+  /** Só submapas — o tráfego das redes não pode invalidar o memo da camada de hosts. */
+  hostRegionStats: Map<string, RegionHostStats>;
   options: TopologyPanelOptions;
   queryReady?: boolean;
   queryLoading?: boolean;
@@ -73,6 +75,7 @@ export function GesturePreviewLayers({
   nodes,
   baseNodeLayouts,
   regionStats,
+  hostRegionStats,
   options,
   queryReady,
   queryLoading,
@@ -164,7 +167,7 @@ export function GesturePreviewLayers({
       <HostNodesLayer
         nodes={nodes}
         nodeLayouts={nodeLayouts}
-        regionStats={regionStats}
+        regionStats={hostRegionStats}
         options={options}
         queryReady={queryReady}
         queryLoading={queryLoading}

@@ -28,6 +28,7 @@ import {
 import { ensureUniqueNodeIds } from '../utils/mapEdits';
 import { applyResolvedMetricItemIds } from '../utils/mapLinkEdits';
 import { useStableIdentity } from '../hooks/useStableIdentity';
+import { shareHostDisplayByRefId, shareHostDisplayMap } from '../utils/structuralIdentity';
 import { isUninitializedTopologyMap, validateTopologyMap } from '../utils/mapValidation';
 import { useMapHistory } from '../hooks/useMapHistory';
 import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
@@ -35,7 +36,7 @@ import { useGrafanaDashboardFlush } from '../hooks/useGrafanaDashboardFlush';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
-import { itemIdByKeyFromLastValues, mergeItemIdByKey } from '../utils/zabbixApi';
+import { itemIdByKeyFromLastValues, mergeItemIdByKey, ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
 import { useTopologyMapNavigation } from '../hooks/useTopologyMapNavigation';
@@ -56,6 +57,46 @@ import { useLicenseValidation } from '../hooks/useLicenseValidation';
 import { LicenseGate } from './LicenseGate';
 
 export interface Props extends PanelProps<TopologyPanelOptions> {}
+
+/** Grava itemid de tráfego só quando o mapa já vai para o Grafana — não no poll nem ao entrar em edição. */
+function bindTrafficItemIdsOnOptions(
+  options: TopologyPanelOptions,
+  lastValues: Record<string, ZabbixItemLastValue>,
+  interfaceItems: ZabbixInterfaceItem[],
+  hostMetadata: HostMetadataMap
+): TopologyPanelOptions {
+  const itemIdByKey = itemIdByKeyFromLastValues(lastValues);
+  mergeItemIdByKey(itemIdByKey, interfaceItems);
+  if (!itemIdByKey.size) {
+    return options;
+  }
+  const nextMap = options.map
+    ? applyResolvedMetricItemIds(options.map, itemIdByKey, hostMetadata)
+    : options.map;
+  let childChanged = false;
+  let nextChildMaps = options.childMaps;
+  if (options.childMaps) {
+    const updated = { ...options.childMaps };
+    for (const [id, child] of Object.entries(activeChildMaps(options.childMaps))) {
+      const next = applyResolvedMetricItemIds(child, itemIdByKey, hostMetadata);
+      if (next !== child) {
+        updated[id] = next;
+        childChanged = true;
+      }
+    }
+    if (childChanged) {
+      nextChildMaps = updated;
+    }
+  }
+  if (nextMap === options.map && !childChanged) {
+    return options;
+  }
+  return {
+    ...options,
+    ...(nextMap ? { map: nextMap } : {}),
+    ...(childChanged ? { childMaps: nextChildMaps } : {}),
+  };
+}
 
 export function TopologyPanel({
   options,
@@ -226,65 +267,21 @@ export function TopologyPanel({
    * anterior, um refresh sem mudança nenhuma remedia todos os nós.
    */
   const dataMeta = useStableIdentity(dataMetaRaw);
-
-  useEffect(() => {
-    if (!canPersistOptions || !onOptionsChange || !querySource.ready) {
-      return;
-    }
-    /**
-     * Entrar em edição dispara este efeito. `onOptionsChange` do JSON inteiro no mesmo
-     * turno em que o Grafana monta a toolbar congela o canvas — espera o idle.
-     */
-    return scheduleWhenIdle(() => {
-      const itemIdByKey = itemIdByKeyFromLastValues(querySource.lastValues);
-      mergeItemIdByKey(itemIdByKey, querySource.interfaceItems);
-      if (!itemIdByKey.size) {
-        return;
-      }
-      const current = latestOptionsRef.current;
-      if (!current.map) {
-        return;
-      }
-      const nextMap = applyResolvedMetricItemIds(current.map, itemIdByKey, dataMeta);
-      let childChanged = false;
-      let nextChildMaps = current.childMaps;
-      if (current.childMaps) {
-        const updated = { ...current.childMaps };
-        for (const [id, child] of Object.entries(activeChildMaps(current.childMaps))) {
-          const next = applyResolvedMetricItemIds(child, itemIdByKey, dataMeta);
-          if (next !== child) {
-            updated[id] = next;
-            childChanged = true;
-          }
-        }
-        if (childChanged) {
-          nextChildMaps = updated;
-        }
-      }
-      if (nextMap === current.map && !childChanged) {
-        return;
-      }
-      onOptionsChange({
-        ...current,
-        map: nextMap,
-        ...(childChanged ? { childMaps: nextChildMaps } : {}),
-      });
-    }, 400);
-  }, [
-    canPersistOptions,
+  const trafficBindRef = useRef({
+    lastValues: querySource.lastValues,
+    interfaceItems: querySource.interfaceItems,
     dataMeta,
-    onOptionsChange,
-    querySource.interfaceItems,
-    querySource.lastValues,
-    querySource.ready,
-  ]);
+  });
+  trafficBindRef.current = {
+    lastValues: querySource.lastValues,
+    interfaceItems: querySource.interfaceItems,
+    dataMeta,
+  };
 
   /**
-   * Fonte de dados em erro (datasource fora do ar, script quebrado, etc.) — não reaproveita o
-   * último status bom indefinidamente. Sem isto, uma falha permanente mascararia o problema
-   * mostrando para sempre o último status visto (ver `no-fallbacks.mdc`).
+   * Lastvalue e tráfego já pintados continuam no mapa se o poll falhar — o badge avisa.
+   * Na abertura sem índice (`!ready`) a tela fica vazia; não inventa status.
    */
-
   const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
     activeStoredMap,
     resolvedOptions,
@@ -303,18 +300,18 @@ export function TopologyPanel({
   }, [queryIndex, statusColorOptions, mapsForPoll, dataMeta]);
 
   const hostDisplayByRefIdRaw = useMemo(() => {
-    if (queryError || !querySource.ready) {
+    if (!querySource.ready) {
       return {};
     }
     return liveHostDisplayByRefId;
-  }, [liveHostDisplayByRefId, queryError, querySource.ready]);
+  }, [liveHostDisplayByRefId, querySource.ready]);
 
   /**
    * O refresh entrega objetos novos mesmo para host que não mudou de valor. Sem reaproveitar a
    * identidade anterior, `useNodeLayouts` remedia todos os nós e o `React.memo` de cada forma
-   * falha — um poll sem mudança nenhuma redesenhava o mapa inteiro.
+   * falha. Lastclock entra em `shareHostDisplay*` e não conta como mudança.
    */
-  const hostDisplayByRefId = useStableIdentity(hostDisplayByRefIdRaw);
+  const hostDisplayByRefId = useStableIdentity(hostDisplayByRefIdRaw, shareHostDisplayByRefId);
 
   const hostDisplayRaw = useMemo(
     () =>
@@ -326,7 +323,7 @@ export function TopologyPanel({
     [hostDisplayByRefId, mapsForPoll, dataMeta]
   );
 
-  const hostDisplay = useStableIdentity(hostDisplayRaw);
+  const hostDisplay = useStableIdentity(hostDisplayRaw, shareHostDisplayMap);
 
   const submapQueryRefIds = useMemo(
     () => collectSubmapQueryRefIds(activeStoredMap),
@@ -407,8 +404,8 @@ export function TopologyPanel({
   const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
 
   const queryHostsByRefIdRaw = useMemo(
-    () => (queryError || !querySource.ready ? {} : liveQueryHostsByRefId),
-    [liveQueryHostsByRefId, queryError, querySource.ready]
+    () => (!querySource.ready ? {} : liveQueryHostsByRefId),
+    [liveQueryHostsByRefId, querySource.ready]
   );
 
   const queryHostsByRefId = useStableIdentity(queryHostsByRefIdRaw);
@@ -439,17 +436,18 @@ export function TopologyPanel({
       return;
     }
     return scheduleWhenIdle(() => {
+      const current = latestOptionsRef.current;
       const merged = {
         ...defaultOptions(),
-        ...options,
-        ...(options.map ? { map: options.map } : {}),
+        ...current,
+        ...(current.map ? { map: current.map } : {}),
       };
       const { options: normalized, changed } = normalizeStoredPanelColors(merged, theme);
       if (changed) {
         onOptionsChange(normalized);
       }
     }, 400);
-  }, [canPersistOptions, options, theme, onOptionsChange]);
+  }, [canPersistOptions, theme, onOptionsChange]);
 
 
   const pendingInterSubmapLinkRef = useRef<TopologyLink | undefined>();
@@ -468,7 +466,10 @@ export function TopologyPanel({
       if (previous && previous.links !== map.links) {
         next = removeMissingInterSubmapCounterparts(next, mapId, previous, map);
       }
-      onOptionsChange(next);
+      const traffic = trafficBindRef.current;
+      onOptionsChange(
+        bindTrafficItemIdsOnOptions(next, traffic.lastValues, traffic.interfaceItems, traffic.dataMeta)
+      );
     },
     [canPersistOptions, onOptionsChange]
   );

@@ -4,7 +4,7 @@ import { HostMetadataMap, TopologyNetworkInterface, TopologyPanelOptions } from 
 import { hostidFromLookupKey } from '../utils/hostLookup';
 import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from '../utils/zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost } from '../utils/zabbixAdapter/parseInterfaceItems';
-import { fetchBackendHostInterfaces } from '../services/pluginBackend';
+import { fetchHostInterfaceItems } from '../services/zabbixQuery';
 
 export interface UseZabbixHostInterfacesResult {
   interfacesByHost: Record<string, TopologyNetworkInterface[]>;
@@ -39,7 +39,7 @@ export const NO_KEYWORDS_ERROR =
 export const NO_API_ITEMS_ERROR =
   'Nenhuma métrica de interface encontrada no Zabbix para as chaves RX/TX/status/capacidade configuradas.';
 export const NO_HOST_FOUND_ERROR =
-  'Não foi possível localizar este host no Zabbix. Confira se o nome ou o IP do nó coincide com um host monitorado.';
+  'Não foi possível localizar o hostid deste nó no Zabbix.';
 
 function aliasInterfacesToLookupKeys(
   byHost: InterfacesByHost,
@@ -110,7 +110,7 @@ function interfaceKeyParseOptions(keywords?: ZabbixInterfaceKeywordOptions): Int
 }
 
 /**
- * Inventário de interfaces — `POST /interfaces` no backend Go.
+ * Inventário de interfaces — `item.get` no datasource Zabbix, autenticado no browser.
  */
 export function useZabbixHostInterfaces(
   hostKeys: string[],
@@ -174,7 +174,7 @@ export function useZabbixHostInterfaces(
     interfacesCache
       .get(cacheKey, async () => {
         const lookupKeys = hostKey.split('\0').filter(Boolean);
-        const entries = await fetchBackendHostInterfaces(
+        const entries = await fetchHostInterfaceItems(
           datasourceUid,
           lookupKeys.map((key) => ({
             hostKey: key,

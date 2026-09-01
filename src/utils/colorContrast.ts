@@ -40,8 +40,25 @@ function parseCssColor(value: string): [number, number, number] | null {
   return parseHex(value) ?? parseRgb(value);
 }
 
+function parseAlpha(value: string): number | undefined {
+  const m = value.trim().match(/^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i);
+  if (!m) {
+    return undefined;
+  }
+  const a = Number(m[1]);
+  return Number.isFinite(a) ? a : undefined;
+}
+
 /** Texto branco vs preto: mesmo contraste em luminância ≈ 0.179 (WCAG). */
 export function isDarkBackground(fill: string): boolean {
+  const raw = fill.trim().toLowerCase();
+  if (!raw || raw === 'transparent' || raw === 'none') {
+    return true;
+  }
+  const alpha = parseAlpha(fill);
+  if (alpha !== undefined && alpha < 0.4) {
+    return true;
+  }
   const rgb = parseCssColor(fill);
   if (!rgb) {
     return true;

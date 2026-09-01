@@ -32,12 +32,7 @@ import {
 import { BulkEditModals } from './BulkEditModals';
 import { PendingLinkEndpoints } from '../LinkInterfaceSelectModal';
 import { panelInterfaceKeywords } from '../../hooks/useZabbixHostInterfaces';
-
-export interface PingTarget {
-  label: string;
-  ip: string;
-  zabbixHost?: string;
-}
+import { PingTarget } from '../../hooks/useCanvasSession';
 
 interface CanvasModalsProps {
   storedMap: TopologyMap;
@@ -170,7 +165,7 @@ export function CanvasModals({
         <PingModal
           label={pingTarget.label}
           ip={pingTarget.ip}
-          zabbixHost={pingTarget.zabbixHost}
+          zabbixHostId={pingTarget.zabbixHostId}
           datasourceUid={zabbixDatasourceUid}
           onClose={() => setPingTarget(null)}
         />

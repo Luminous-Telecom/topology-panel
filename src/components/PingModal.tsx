@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Spinner } from '@grafana/ui';
 import { TopologyModal } from './TopologyModal';
 import { modalErrorStyle } from './chrome/overlayChrome';
-import { fetchBackendPing, type HostIcmpStatus } from '../services/pluginBackend';
+import { runZabbixPing, type HostIcmpStatus } from '../services/zabbixQuery';
 import { copyPingCommand } from '../utils/hostTools';
 import { FieldReadout } from './FieldReadout';
 import styles from './PingModal.module.scss';
@@ -10,7 +10,7 @@ import styles from './PingModal.module.scss';
 interface Props {
   label: string;
   ip: string;
-  zabbixHost?: string;
+  zabbixHostId?: string;
   datasourceUid?: string;
   onClose: () => void;
 }
@@ -53,7 +53,7 @@ function stamp(): string {
   return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Props) {
+export function PingModal({ label, ip, zabbixHostId, datasourceUid, onClose }: Props) {
   const [pingOutput, setPingOutput] = useState('');
   const [pingError, setPingError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -80,7 +80,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
   }, []);
 
   const runPingBurst = useCallback(async () => {
-    if (!datasourceUid || !zabbixHost) {
+    if (!datasourceUid || !zabbixHostId) {
       setPingError('Host sem vínculo Zabbix — use o comando abaixo no terminal.');
       setPingOutput('');
       setLive(false);
@@ -95,7 +95,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
     setPingError(null);
 
     try {
-      const result = await fetchBackendPing(datasourceUid, zabbixHost, 'panel');
+      const result = await runZabbixPing(datasourceUid, zabbixHostId, 'panel');
 
       if (!mountedRef.current) {
         return;
@@ -127,14 +127,14 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
         setRunning(false);
       }
     }
-  }, [appendOutput, datasourceUid, zabbixHost]);
+  }, [appendOutput, datasourceUid, zabbixHostId]);
 
   useEffect(() => {
     liveRef.current = live;
   }, [live]);
 
   useEffect(() => {
-    if (!live || !datasourceUid || !zabbixHost) {
+    if (!live || !datasourceUid || !zabbixHostId) {
       return;
     }
     void runPingBurst();
@@ -144,7 +144,7 @@ export function PingModal({ label, ip, zabbixHost, datasourceUid, onClose }: Pro
       }
     }, PANEL_PING_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [datasourceUid, zabbixHost, live, runPingBurst]);
+  }, [datasourceUid, zabbixHostId, live, runPingBurst]);
 
   useEffect(() => {
     if (outputRef.current) {
