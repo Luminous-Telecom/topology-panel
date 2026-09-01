@@ -28,6 +28,7 @@ import { attachSignalRefsToInterface } from './zabbixAdapter/bindInterfaceMetric
 import { INTERFACE_SIGNAL_SEARCH_TERMS, InterfaceKeyParseOptions } from './zabbixAdapter/interfaceItemKeys';
 import { groupInterfacesByHost, pickHostInterfaces } from './zabbixAdapter/parseInterfaceItems';
 import { isNumericZabbixItemId, zabbixHostItemKey, ZabbixInterfaceItem, ZabbixItemLastValue } from './zabbixApi';
+import { resolveLinkUtilizationLevel } from './linkFlowSpeed';
 
 function collectItemIdsFromReference(ref?: TopologyInterfaceReference): string[] {
   if (!ref?.metrics) {
@@ -501,6 +502,35 @@ export function isLinkVisuallyDown(
   toHostOffline: boolean
 ): boolean {
   return metrics?.status === 'down' || fromHostOffline || toHostOffline;
+}
+
+function sameEndpointLinePaint(prev: LinkEndpointRuntimeMetrics, next: LinkEndpointRuntimeMetrics): boolean {
+  return prev.operStatus === next.operStatus && prev.capacityMbps === next.capacityMbps;
+}
+
+/**
+ * O path, a cor e os pulsos do cabo não dependem do bps cru. Comparar só status, faixa de
+ * utilização, operStatus e capacidade evita remontar o SVG no poll (o Chrome zerava o
+ * `offset-path` e o scheduler do React travava ~500 ms).
+ */
+export function sameLinkLinePaint(
+  prev: LinkRuntimeMetrics | undefined,
+  next: LinkRuntimeMetrics | undefined,
+  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS
+): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (!prev || !next) {
+    return false;
+  }
+  if (prev.status !== next.status) {
+    return false;
+  }
+  if (resolveLinkUtilizationLevel(prev, thresholds) !== resolveLinkUtilizationLevel(next, thresholds)) {
+    return false;
+  }
+  return sameEndpointLinePaint(prev.from, next.from) && sameEndpointLinePaint(prev.to, next.to);
 }
 
 /**

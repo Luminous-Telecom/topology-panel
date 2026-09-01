@@ -470,13 +470,23 @@ export function interfacesByHostKeysFromIndex(
 /**
  * Aplica as cores/textos de status do painel sobre os últimos valores já indexados.
  * Só depende de `statusOptions`, então muda de cor no painel não relê os frames.
+ *
+ * `previous` reusa o mapa de um bucket que o poll não clonou — no intervalo só os grupos com
+ * lastvalue novo são remarcados.
  */
 export function hostDisplayByRefIdFromIndex(
   index: QueryIndex,
-  statusOptions: StatusColorOptions
+  statusOptions: StatusColorOptions,
+  previous?: { index: QueryIndex; display: Record<string, HostDisplayMap> }
 ): Record<string, HostDisplayMap> {
   const result: Record<string, HostDisplayMap> = {};
+  let reusedAll = Boolean(previous);
   for (const [refId, bucket] of index.byRefId) {
+    if (previous && previous.index.byRefId.get(refId) === bucket && previous.display[refId]) {
+      result[refId] = previous.display[refId];
+      continue;
+    }
+    reusedAll = false;
     const display: HostDisplayMap = {};
     for (const [host, value] of bucket.lastValues) {
       const updatedAtSec = bucket.lastUpdatedAtSec.get(host);
@@ -493,6 +503,9 @@ export function hostDisplayByRefIdFromIndex(
       display[host] = entry;
     }
     result[refId] = display;
+  }
+  if (reusedAll && previous && Object.keys(result).length === Object.keys(previous.display).length) {
+    return previous.display;
   }
   return result;
 }

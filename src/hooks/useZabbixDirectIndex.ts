@@ -1,7 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ZABBIX_DIRECT_DEFAULT_REFRESH_SEC, ZABBIX_DIRECT_MIN_REFRESH_SEC } from '../types';
 import { buildQueryIndex, QueryIndex } from '../services/queryIndex';
-import { buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
+import { applyStatusValuesToIndex, buildZabbixDirectIndex } from '../services/zabbixDirectIndex';
 import {
   applyLastValuesToStatusItems,
   runZabbixPoll,
@@ -66,7 +66,9 @@ function directStateFromLiveSnapshot(
   remote: ZabbixLiveSnapshot,
   datasourceUid: string,
   groupNames: string[],
-  statusItemKey: string
+  statusItemKey: string,
+  previousReady?: DirectState,
+  previousSnapshot?: ZabbixLiveSnapshot
 ): DirectState | undefined {
   if (!remote.metadata.resolvedGroups?.length) {
     return undefined;
@@ -89,14 +91,29 @@ function directStateFromLiveSnapshot(
   if (remote.metadata.hosts.length && !statusLastValuesPresent(traffic.lastValues, statusItems)) {
     return undefined;
   }
-  return {
-    index: buildZabbixDirectIndex({
+  const canPatch =
+    Boolean(previousReady?.ready) &&
+    previousSnapshot !== undefined &&
+    previousSnapshot.metadata.hosts === remote.metadata.hosts;
+  let index: QueryIndex;
+  if (canPatch && previousReady) {
+    index = applyStatusValuesToIndex(
+      previousReady.index,
+      remote.metadata.hosts,
+      statusItems,
+      statusItemKey
+    ).index;
+  } else {
+    index = buildZabbixDirectIndex({
       datasourceUid,
       groupNames,
       statusItemKey,
       hosts: remote.metadata.hosts,
       statusItems,
-    }),
+    });
+  }
+  return {
+    index,
     lastValues: traffic.lastValues,
     interfaceItems: traffic.interfaceItems,
     problems: remote.problems ?? EMPTY_PROBLEMS,
@@ -156,6 +173,7 @@ export function useZabbixDirectIndex({
   const trafficKeysRef = useRef(trafficItemKeys);
   trafficKeysRef.current = trafficItemKeys;
   const previousRef = useRef<ZabbixLiveSnapshot | undefined>(undefined);
+  const lastReadyRef = useRef<DirectState | undefined>(undefined);
   const prevConfigKeyRef = useRef<string | null>(null);
 
   const [state, setState] = useState<DirectState>(() => {
@@ -168,6 +186,7 @@ export function useZabbixDirectIndex({
   useLayoutEffect(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
       previousRef.current = undefined;
+      lastReadyRef.current = undefined;
       setState(IDLE_STATE);
       return;
     }
@@ -176,6 +195,7 @@ export function useZabbixDirectIndex({
     prevConfigKeyRef.current = configKey;
     if (configChanged) {
       previousRef.current = undefined;
+      lastReadyRef.current = undefined;
     }
     setState((prev) => {
       if (prev.ready && configChanged) {
@@ -196,11 +216,19 @@ export function useZabbixDirectIndex({
         snapshot,
         datasourceUid,
         groupsRef.current,
-        itemKey
+        itemKey,
+        lastReadyRef.current,
+        previousRef.current
       );
       if (fromSnapshot && ready && !error) {
         previousRef.current = snapshot;
-        setState(fromSnapshot);
+        const alreadyReady = Boolean(lastReadyRef.current?.ready);
+        lastReadyRef.current = fromSnapshot;
+        if (alreadyReady) {
+          startTransition(() => setState(fromSnapshot));
+        } else {
+          setState(fromSnapshot);
+        }
         return;
       }
       if (error) {

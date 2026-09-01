@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeLinkGeometry, parallelLinkBundleOffset, pointAlongPolyline, polylineLength } from './linkGeometry';
+import { computeLinkGeometry, linkTrafficAnchor, parallelLinkBundleOffset, pointAlongPolyline, polylineLength, sameLinkPoints } from './linkGeometry';
 import { TopologyLink } from '../types';
 
 describe('polylineLength', () => {
@@ -45,6 +45,23 @@ describe('pointAlongPolyline', () => {
 
   it('lista vazia devolve a origem', () => {
     expect(pointAlongPolyline([], 0.5)).toEqual({ x: 0, y: 0, angle: 0 });
+  });
+});
+
+describe('sameLinkPoints', () => {
+  it('compara coordenadas ponto a ponto', () => {
+    expect(sameLinkPoints([{ x: 1, y: 2 }], [{ x: 1, y: 2 }])).toBe(true);
+    expect(sameLinkPoints([{ x: 1, y: 2 }], [{ x: 1, y: 3 }])).toBe(false);
+  });
+});
+
+describe('linkTrafficAnchor', () => {
+  it('ancora a pílula no meio do cabo reto', () => {
+    const from = { x: 0, y: 0, w: 40, h: 20 };
+    const to = { x: 100, y: 0, w: 40, h: 20 };
+    const p = linkTrafficAnchor(from, to, 10);
+    expect(p.x).toBe(70);
+    expect(p.y).toBe(10);
   });
 });
 

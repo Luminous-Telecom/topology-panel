@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { flattenHostDisplayByRefId } from '../utils/queryHosts';
 import { defaultOptions } from '../types';
 import { hostDisplayByRefIdFromIndex, queryHostsByRefIdFromIndex, STATUS_ORPHAN_REF_ID } from './queryIndex';
-import { buildZabbixDirectIndex, directRefId, directRefInfosFromGroups, resolvePanelQueryRefInfos, statusValuesByHostId } from './zabbixDirectIndex';
+import { buildZabbixDirectIndex, applyStatusValuesToIndex, directRefId, directRefInfosFromGroups, resolvePanelQueryRefInfos, statusValuesByHostId } from './zabbixDirectIndex';
 import { ZabbixDirectHost, ZabbixInterfaceItem } from '../utils/zabbixApi';
 
 function item(hostid: string, key_: string, lastvalue?: string): ZabbixInterfaceItem {
@@ -193,6 +193,42 @@ describe('buildZabbixDirectIndex', () => {
     });
     expect(scoped.byRefId.has('BACKBONE')).toBe(false);
     expect([...(scoped.byRefId.get('BORDA')?.hosts ?? [])]).toEqual(['RB-BORDA']);
+  });
+});
+
+describe('applyStatusValuesToIndex', () => {
+  const hosts = [
+    host({ hostid: '10', name: 'host-a', host: 'host-a', ip: '10.0.0.1', groups: ['Backbone'] }),
+  ];
+
+  it('reusa o índice quando o número do lastvalue é o mesmo ("1" vs "1.0")', () => {
+    const first = buildZabbixDirectIndex({
+      datasourceUid: 'zbx',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts,
+      statusItems: [item('10', 'icmpping', '1')],
+    });
+    const next = applyStatusValuesToIndex(first, hosts, [item('10', 'icmpping', '1.0')], 'icmpping');
+    expect(next.index).toBe(first);
+    expect(next.changedHosts).toBe(0);
+  });
+
+  it('só troca o bucket do host que mudou e reusa metadata', () => {
+    const first = buildZabbixDirectIndex({
+      datasourceUid: 'zbx',
+      groupNames: ['Backbone'],
+      statusItemKey: 'icmpping',
+      hosts,
+      statusItems: [item('10', 'icmpping', '1')],
+    });
+    const next = applyStatusValuesToIndex(first, hosts, [item('10', 'icmpping', '0')], 'icmpping');
+    expect(next.index).not.toBe(first);
+    expect(next.changedHosts).toBe(1);
+    expect(next.index.metadata).toBe(first.metadata);
+    expect(next.index.hosts).toBe(first.hosts);
+    expect(next.index.byRefId.get('BACKBONE')?.lastValues.get('host-a')).toBe(0);
+    expect(first.byRefId.get('BACKBONE')?.lastValues.get('host-a')).toBe(1);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   alertListHoverText,
   HostAlertListEntry,
   visibleHostProblemNames,
+  alertListStatusLabel,
 } from '../../utils/noc/topologyFilters';
 import { minimapBottomOffset } from '../../utils/canvasOverlayLayout';
 import {
@@ -30,12 +31,7 @@ import {
 import styles from './TopologyHostAlertList.module.scss';
 
 function reasonLabel(entry: HostAlertListEntry): string {
-  switch (entry.reason) {
-    case 'offline':
-      return 'OFFLINE';
-    case 'alert':
-      return 'ALERTA';
-  }
+  return alertListStatusLabel(entry);
 }
 
 function alertRowAriaLabel(entry: HostAlertListEntry): string {

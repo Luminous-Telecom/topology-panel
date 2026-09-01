@@ -103,6 +103,8 @@ export function TopologyPanel({
   width,
   height,
   onOptionsChange,
+  timeRange,
+  data,
 }: Props) {
   const theme = useTheme2();
   const dashboardEditing = useDashboardEditMode();
@@ -290,14 +292,24 @@ export function TopologyPanel({
     querySource.interfaceItems ?? []
   );
 
+  const hostDisplayBucketsRef = useRef<{
+    index: typeof queryIndex;
+    display: Record<string, HostDisplayMap>;
+    statusColorOptions: typeof statusColorOptions;
+  }>();
+
   const liveHostDisplayByRefId = useMemo(() => {
-    const byRef = hostDisplayByRefIdFromIndex(queryIndex, statusColorOptions);
-    const enriched: Record<string, HostDisplayMap> = {};
-    for (const [refId, bucket] of Object.entries(byRef)) {
-      enriched[refId] = enrichHostDisplayFromMaps(bucket, mapsForPoll, dataMeta);
-    }
-    return enriched;
-  }, [queryIndex, statusColorOptions, mapsForPoll, dataMeta]);
+    const prev = hostDisplayBucketsRef.current;
+    const display = hostDisplayByRefIdFromIndex(
+      queryIndex,
+      statusColorOptions,
+      prev && prev.statusColorOptions === statusColorOptions
+        ? { index: prev.index, display: prev.display }
+        : undefined
+    );
+    hostDisplayBucketsRef.current = { index: queryIndex, display, statusColorOptions };
+    return display;
+  }, [queryIndex, statusColorOptions]);
 
   const hostDisplayByRefIdRaw = useMemo(() => {
     if (!querySource.ready) {
@@ -335,12 +347,14 @@ export function TopologyPanel({
     [resolvedOptions.displayQueryRefIds]
   );
 
+  const queryHosts = queryIndex.hosts;
+
   const displayQueryHostsRaw = useMemo(
     () =>
       currentMapId === ROOT_MAP_ID
         ? extractDisplayQueryHosts(queryIndex, submapQueryRefIds, displayQueryRefIds)
         : [],
-    [queryIndex, submapQueryRefIds, displayQueryRefIds, currentMapId]
+    [queryHosts, submapQueryRefIds, displayQueryRefIds, currentMapId]
   );
 
   const displayQueryHosts = useStableIdentity(displayQueryHostsRaw);
@@ -389,7 +403,7 @@ export function TopologyPanel({
       activeStoredMap
     );
     return filterQueryHostOptionsByDisplayHosts(enriched, displayQueryHosts, hostMetadata);
-  }, [queryIndex, displayQueryHosts, hostMetadata, activeStoredMap]);
+  }, [queryHosts, displayQueryHosts, hostMetadata, activeStoredMap]);
 
   const queryHostOptions = useStableIdentity(queryHostOptionsRaw);
 
@@ -401,7 +415,7 @@ export function TopologyPanel({
     );
   }, [activeStoredMap.nodes]);
 
-  const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryIndex]);
+  const liveQueryHostsByRefId = useMemo(() => queryHostsByRefIdFromIndex(queryIndex), [queryHosts]);
 
   const queryHostsByRefIdRaw = useMemo(
     () => (!querySource.ready ? {} : liveQueryHostsByRefId),

@@ -1,5 +1,5 @@
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyHostStatus, TopologyLink, TopologyMap, TopologyNode, TopologyPanelOptions } from '../types';
-import { HostLookupRef, resolveHostLookupKey, enrichHostDisplayFromMap } from './hostLookup';
+import { HostLookupRef, resolveHostLookupKey, resolveHostZabbixId, enrichHostDisplayFromMap } from './hostLookup';
 import { linkKey } from './mapLinkEdits';
 import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { NodeLayout } from './nodeLayout';
@@ -112,8 +112,9 @@ function hostKeyHasZabbixProblem(
   if (!hostProblems) {
     return false;
   }
+  const hostid = resolveHostZabbixId({ zabbixHost: hostKey }, hostMetadata);
   const meta = hostMetadata?.[hostKey];
-  const candidates = [meta?.hostid, hostKey, meta?.name, meta?.ip];
+  const candidates = [hostid, meta?.hostid, hostKey, meta?.name, meta?.ip];
   for (const candidate of candidates) {
     const trimmed = candidate?.trim();
     if (!trimmed) {

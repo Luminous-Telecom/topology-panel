@@ -1,10 +1,11 @@
-import React, { MutableRefObject } from 'react';
+import React, { MutableRefObject, useRef } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { isHostNodeOffline } from '../../utils/networkStats';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { LinkLine } from './links/LinkLine';
+import { LinkTrafficOverlay } from './links/LinkTrafficLabel';
 
 interface Props {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
@@ -47,6 +48,9 @@ function LinksLayerComponent({
   // Fora do laço: `linkKey` monta e concatena seis campos, e a chave do selecionado não muda de
   // um cabo para o outro.
   const selectedKey = selectedLink ? linkKey(selectedLink) : null;
+  const metricsLiveRef = useRef(linkMetricsByLink);
+  metricsLiveRef.current = linkMetricsByLink;
+  const gridStep = options.gridSize ?? 10;
   return (
     <>
       {renderLinks.map(({ link, key, bundleOffset }) => {
@@ -62,6 +66,7 @@ function LinksLayerComponent({
           selected={selectedKey === lk}
           hovered={hoveredLinkKey === lk}
           runtimeMetrics={linkMetricsByLink[lk]}
+          metricsLiveRef={metricsLiveRef}
           fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
           toHostOffline={isHostNodeOffline(nodeLayouts.get(link.to), hostDisplay, hostMetadata)}
           onSelect={() => {
@@ -93,6 +98,26 @@ function LinksLayerComponent({
             removeWaypointNearPointer(e, link);
           }}
         />
+        );
+      })}
+      {renderLinks.map(({ link, key, bundleOffset }) => {
+        const from = nodeLayouts.get(link.from);
+        const to = nodeLayouts.get(link.to);
+        if (!from || !to) {
+          return <React.Fragment key={`traffic-${key}`} />;
+        }
+        return (
+          <LinkTrafficOverlay
+            key={`traffic-${key}`}
+            from={from}
+            to={to}
+            gridStep={gridStep}
+            waypoints={resolveLinkWaypoints(link)}
+            bundleOffset={bundleOffset}
+            link={link}
+            runtimeMetrics={linkMetricsByLink[linkKey(link)]}
+            options={options}
+          />
         );
       })}
     </>

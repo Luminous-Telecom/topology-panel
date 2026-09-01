@@ -25,14 +25,20 @@ hooks de arraste/viewport.
   chave — nada de `array.find()` dentro de `.map()` de nós ou links (vira O(n²)).
 - Atualização automática: o intervalo é o `setInterval` de `useZabbixDirectIndex`. Em regime o
   browser faz um `item.get` pelos itemids já conhecidos — host sem o item de status não dispara
-  descoberta de novo. Sem `host.get`, `problem.get`, `trigger.get` nem `item.get` extra no
+  descoberta de novo. Sem `host.get`, `problem.get`, `event.get`, `trigger.get` nem `item.get` extra no
   intervalo. O tick seguinte espera o poll atual terminar. `item.get` por itemids vai em fatias
   (`ZABBIX_ITEM_GET_BATCH`). Trocar cabo não dispara ciclo novo antes do `zabbixRefreshSec`.
   Abrir ou remontar o painel consulta o Zabbix.
 - O lastvalue da tela é o da última consulta Zabbix desta sessão do hook — sem cache de JSON no Go.
 - Lastclock novo sem lastvalue novo não precisa redesenhar o SVG (o memo do nó ignora
-  `updatedAtSec`). Problemas não entram no intervalo — o resumo da descoberta permanece até a
-  próxima descoberta.
+  `updatedAtSec`). No intervalo, com a mesma lista de hosts, `applyStatusValuesToIndex` reusa o
+  `QueryIndex` quando o número do status não mudou (`"1"` vs `"1.0"` conta como igual) e só
+  patcha o host que mudou — não chama `buildZabbixDirectIndex` de novo. `hostDisplayByRefIdFromIndex`
+  reusa o bucket que não foi clonado. Alias de IP (`enrichHostDisplayFromMaps`) roda uma vez no mapa
+  achatado, não por grupo. Problemas não entram no intervalo — o resumo da descoberta permanece até
+  a próxima descoberta. O cabo (`LinkLine`) ignora bps cru: só remonta path/pulsos se status, faixa
+  de utilização, operStatus ou capacidade mudarem (`sameLinkLinePaint`). A pílula de tráfego é
+  `LinkTrafficOverlay`, irmã do cabo.
 
 ## Render e re-render
 
@@ -58,7 +64,8 @@ hooks de arraste/viewport.
   no cleanup — senão um frame atrasado repinta a posição antiga.
 - Durante gesto (arraste, pan, resize), congele os dados com `useDeferredDuringGesture` (mapa,
   status, tráfego dos cabos e problemas) e chame o `flush` ao soltar o ponteiro — evita que um
-  auto-refresh troque cores e posições no meio do gesto.
+  auto-refresh troque cores e posições no meio do gesto. Fora do gesto o lastvalue entra no mesmo
+  render; não atrase com `useEffect`+`setState` (vira long-task extra no intervalo).
 - Não faça deep clone (`JSON.parse(JSON.stringify(map))`) — em render, por nó ou fora do render. Use
   os helpers imutáveis de `utils/mapEdits.ts`, `mapLinkEdits.ts` e `mapBulkEdits.ts`; se precisar
   mesmo copiar, `structuredClone`.

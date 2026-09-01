@@ -28,7 +28,12 @@ export function TopologyColorLegend({
     }
     setCountdown(refreshIntervalSec);
     const id = window.setInterval(() => {
-      setCountdown((c) => (c == null || c <= 1 ? refreshIntervalSec : c - 1));
+      setCountdown((c) => {
+        if (c == null || c <= 1) {
+          return refreshIntervalSec;
+        }
+        return c - 1;
+      });
     }, 1000);
     return () => window.clearInterval(id);
   }, [refreshIntervalSec]);

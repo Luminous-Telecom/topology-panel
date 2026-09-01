@@ -362,7 +362,7 @@ export function enrichHostDisplayFromMap(
     return display;
   }
 
-  const result: HostDisplayMap = { ...display };
+  let result: HostDisplayMap | undefined;
 
   for (const node of map.nodes) {
     if (!isHostNode(node)) {
@@ -374,12 +374,13 @@ export function enrichHostDisplayFromMap(
     }
 
     const ref = { zabbixHost: node.zabbixHost, subtitle: node.subtitle, label: node.label };
+    const source = result ?? display;
     let alias: HostDisplayInfo | undefined;
     for (const key of collectHostLookupCandidates(ref, metadata)) {
       if (key === ip) {
         continue;
       }
-      const info = result[key];
+      const info = source[key];
       if (info) {
         alias = alias ? preferHostDisplayInfo(alias, info) : info;
       }
@@ -387,10 +388,13 @@ export function enrichHostDisplayFromMap(
     if (!alias) {
       continue;
     }
+    if (!result) {
+      result = { ...display };
+    }
     result[ip] = result[ip] ? preferHostDisplayInfo(result[ip], alias) : alias;
   }
 
-  return result;
+  return result ?? display;
 }
 
 /** Indexa status da Query pelos IPs de todos os mapas (raiz + filhos). */

@@ -12,6 +12,7 @@ import {
   visibleNocFilterIds,
   resolveHostProblemSummary,
   alertListHoverText,
+  alertListStatusLabel,
   visibleHostProblemNames,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
@@ -354,6 +355,28 @@ describe('topologyFilters', () => {
         reason: 'offline',
       })
     ).toBe('Offline');
+  });
+
+  it('alertListStatusLabel mostra o nome do problema na linha da lista', () => {
+    expect(
+      alertListStatusLabel({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'alert',
+        problems: ['Interface down'],
+      })
+    ).toBe('Interface down');
+    expect(
+      alertListStatusLabel({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'alert',
+      })
+    ).toBe('ALERTA');
   });
 
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {

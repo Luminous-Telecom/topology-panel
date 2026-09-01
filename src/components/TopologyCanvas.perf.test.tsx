@@ -1,7 +1,8 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultOptions, HostDisplayMap, TopologyMap, TopologyNode, TopologyView } from '../types';
+import { defaultOptions, HostDisplayMap, LinkRuntimeMetrics, TopologyMap, TopologyNode, TopologyView } from '../types';
+import { linkKey } from '../utils/mapLinkEdits';
 
 /**
  * Custo de re-render de um gesto de arraste, medido como em `TopologyPanel.perf.test.tsx`:
@@ -249,5 +250,68 @@ describe(`recorte por viewport (${HOST_COUNT} hosts)`, () => {
     const { container } = renderEditableCanvas(small);
     await zoomIn(wrapOf(container), 25);
     expect(container.querySelectorAll('[data-node-id]').length).toBe(20);
+  });
+});
+
+describe('poll de tráfego no cabo', () => {
+  function twoHostMap(): TopologyMap {
+    return {
+      width: 800,
+      height: 400,
+      nodes: [
+        { id: 'host-0', type: 'host', x: 80, y: 80, label: 'A', zabbixHost: '10.0.0.1' },
+        { id: 'host-1', type: 'host', x: 400, y: 80, label: 'B', zabbixHost: '10.0.0.2' },
+      ],
+      links: [{ from: 'host-0', to: 'host-1' }],
+      networksLocked: true,
+    };
+  }
+
+  function paint(link: TopologyMap['links'][0], pct: number, rxBps: number): Record<string, LinkRuntimeMetrics> {
+    const endpoint = {
+      rxBps,
+      txBps: rxBps,
+      rxUtilizationPct: pct,
+      txUtilizationPct: pct,
+      operStatus: 'up' as const,
+      capacityMbps: 1000,
+    };
+    return {
+      [linkKey(link)]: { status: 'up', from: endpoint, to: { ...endpoint } },
+    };
+  }
+
+  function canvasWithMetrics(map: TopologyMap, linkMetricsByLink: Record<string, LinkRuntimeMetrics>) {
+    return (
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={defaultOptions()}
+        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        mapNavigationKey="root"
+        queryReady
+        linkMetricsByLink={linkMetricsByLink}
+        onMapChange={() => {}}
+      />
+    );
+  }
+
+  it('bps novo na mesma faixa não redesenha o cabo', () => {
+    const map = twoHostMap();
+    const link = map.links[0]!;
+    const { rerender } = render(canvasWithMetrics(map, paint(link, 10, 1_000_000)));
+    renderCounts.link = 0;
+    rerender(canvasWithMetrics(map, paint(link, 12, 4_000_000)));
+    expect(renderCounts.link).toBe(0);
+  });
+
+  it('cruzar a faixa de utilização redesenha o cabo', () => {
+    const map = twoHostMap();
+    const link = map.links[0]!;
+    const { rerender } = render(canvasWithMetrics(map, paint(link, 10, 1_000_000)));
+    renderCounts.link = 0;
+    rerender(canvasWithMetrics(map, paint(link, 95, 900_000_000)));
+    expect(renderCounts.link).toBe(1);
   });
 });

@@ -218,6 +218,35 @@ export function polylineLength(points: LinkPoint[]): number {
   return total;
 }
 
+/** Comparação ponto a ponto — a lista é pequena (waypoints do cabo). */
+export function sameLinkPoints(prev: LinkPoint[], next: LinkPoint[]): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (prev.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < prev.length; i += 1) {
+    if (prev[i].x !== next[i].x || prev[i].y !== next[i].y) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Ponto médio da polilinha desenhada — âncora da pílula de tráfego. */
+export function linkTrafficAnchor(
+  from: LinkBox,
+  to: LinkBox,
+  gridStep: number,
+  waypoints: LinkPoint[] = [],
+  bundleOffset = 0
+): { x: number; y: number } {
+  const { pathPoints } = computeLinkGeometry(from, to, gridStep, waypoints);
+  const drawn = bundleOffset === 0 ? pathPoints : offsetPolyline(pathPoints, bundleOffset);
+  return pointAlongPolyline(drawn, 0.5);
+}
+
 /** Ponto a uma fração `t` (0–1) do comprimento, com o ângulo do segmento. */
 export function pointAlongPolyline(points: LinkPoint[], t: number): { x: number; y: number; angle: number } {
   if (points.length === 0) {

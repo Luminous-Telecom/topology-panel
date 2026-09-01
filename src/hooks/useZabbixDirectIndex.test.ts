@@ -211,6 +211,106 @@ describe('useZabbixDirectIndex', () => {
     expect(result.current.error).toMatch(/grupos configurados/);
   });
 
+  it('poll com o mesmo lastvalue de status reusa o QueryIndex', async () => {
+    const first = pollSnapshot([host('1', 'Backbone')]);
+    const second: ZabbixLiveSnapshot = {
+      ...first,
+      savedAt: Date.now() + 1,
+      lastValues: { '10001': { itemid: '10001', lastvalue: '1', lastclock: '2000' } },
+      knownStatusItems: first.knownStatusItems.map((item) => ({ ...item, lastclock: '2000' })),
+    };
+    poll.mockResolvedValueOnce(pollResult(first)).mockResolvedValueOnce(pollResult(second));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    const indexAfterFirst = result.current.index;
+    expect(indexAfterFirst.hosts).toContain('host-1');
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(result.current.index).toBe(indexAfterFirst);
+    expect(result.current.lastValues['10001']?.lastclock).toBe('2000');
+  });
+
+  it('lastvalue "1" e "1.0" reusa o QueryIndex', async () => {
+    const first = pollSnapshot([host('1', 'Backbone')]);
+    const second: ZabbixLiveSnapshot = {
+      ...first,
+      savedAt: Date.now() + 1,
+      lastValues: { '10001': { itemid: '10001', lastvalue: '1.0', lastclock: '2000' } },
+      knownStatusItems: first.knownStatusItems.map((item) => ({ ...item, lastvalue: '1.0', lastclock: '2000' })),
+    };
+    poll.mockResolvedValueOnce(pollResult(first)).mockResolvedValueOnce(pollResult(second));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    const indexAfterFirst = result.current.index;
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(result.current.index).toBe(indexAfterFirst);
+  });
+
+  it('lastvalue de status novo troca o QueryIndex mas reusa metadata e hosts', async () => {
+    const first = pollSnapshot([host('1', 'Backbone')]);
+    const second: ZabbixLiveSnapshot = {
+      ...first,
+      savedAt: Date.now() + 1,
+      lastValues: { '10001': { itemid: '10001', lastvalue: '0', lastclock: '2000' } },
+      knownStatusItems: first.knownStatusItems.map((item) => ({ ...item, lastvalue: '0', lastclock: '2000' })),
+    };
+    poll.mockResolvedValueOnce(pollResult(first)).mockResolvedValueOnce(pollResult(second));
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    const indexAfterFirst = result.current.index;
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    await flush();
+
+    expect(result.current.index).not.toBe(indexAfterFirst);
+    expect(result.current.index.metadata).toBe(indexAfterFirst.metadata);
+    expect(result.current.index.hosts).toBe(indexAfterFirst.hosts);
+    expect(result.current.lastValues['10001']?.lastvalue).toBe('0');
+  });
+
   it('reconsulta no intervalo configurado', async () => {
     poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
 

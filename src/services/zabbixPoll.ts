@@ -73,6 +73,33 @@ export function statusLastValuesPresent(
   });
 }
 
+/**
+ * Lastclock muda em todo `item.get`. Comparar só o lastvalue evita remontar o QueryIndex — e o
+ * mapa de status de todos os hosts dos grupos — quando o poll só trouxe tráfego ou o relógio.
+ */
+export function sameStatusItemValues(
+  next: ZabbixInterfaceItem[],
+  previous: ZabbixInterfaceItem[]
+): boolean {
+  if (next === previous) {
+    return true;
+  }
+  if (next.length !== previous.length) {
+    return false;
+  }
+  const previousById = new Map<string, string | undefined>();
+  for (const item of previous) {
+    previousById.set(item.itemid.trim(), item.lastvalue);
+  }
+  for (const item of next) {
+    const id = item.itemid.trim();
+    if (!previousById.has(id) || previousById.get(id) !== item.lastvalue) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function applyLastValuesToStatusItems(
   items: ZabbixInterfaceItem[],
   lastValues: Record<string, ZabbixItemLastValue>,

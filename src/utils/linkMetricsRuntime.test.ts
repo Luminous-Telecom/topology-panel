@@ -9,6 +9,7 @@ import {
   collectPolledSignalItemIds,
   linkSignalSearchTerms,
   resolveLinkMapTrafficMetrics,
+  sameLinkLinePaint,
 } from './linkMetricsRuntime';
 import { linkKey } from './mapLinkEdits';
 import { emptyMap, hostNode } from './testMapFixtures';
@@ -487,5 +488,34 @@ describe('coalesceLinkTraffic', () => {
     );
     expect(next.lastValues['10']?.lastvalue).toBe('500000000');
     expect(next.interfaceItems[0]?.lastvalue).toBe('500000000');
+  });
+});
+
+describe('sameLinkLinePaint', () => {
+  function endpoint(pct: number, rxBps = 1_000_000) {
+    return {
+      rxBps,
+      txBps: rxBps,
+      rxUtilizationPct: pct,
+      txUtilizationPct: pct,
+      operStatus: 'up' as const,
+      capacityMbps: 1000,
+    };
+  }
+
+  function metrics(pct: number, rxBps = 1_000_000, status: 'up' | 'down' = 'up') {
+    return { status, from: endpoint(pct, rxBps), to: endpoint(pct, rxBps) };
+  }
+
+  it('ignora bps e percentual na mesma faixa de utilização', () => {
+    expect(sameLinkLinePaint(metrics(10, 1_000_000), metrics(40, 8_000_000))).toBe(true);
+  });
+
+  it('detecta troca de faixa de utilização', () => {
+    expect(sameLinkLinePaint(metrics(10), metrics(95))).toBe(false);
+  });
+
+  it('detecta cabo down', () => {
+    expect(sameLinkLinePaint(metrics(10, 1_000_000, 'up'), metrics(10, 1_000_000, 'down'))).toBe(false);
   });
 });

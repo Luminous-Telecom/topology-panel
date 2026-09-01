@@ -33,10 +33,13 @@ O front fala com o plugin e com o datasource assim:
 - O **grupo de host** ocupa o lugar do refId (`directRefId`).
 - Cor e rótulo saem de `utils/statusMapping.ts`. Hover lê o mesmo lastvalue via `hostDisplay`.
 - Problemas Warning+ vêm na descoberta (`fetchProblems`), disparados junto com `host.get` e o
-  lastvalue. O intervalo não relê. Casa o nó pelo `hostid`. Falha mantém o resumo.
+  lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Sem hostid na linha, o host
+  sai de `event.get` (`selectHosts`); `trigger.get` só se o evento não trouxer host. O intervalo
+  não relê. Casa o nó pelo `hostid`. Falha mantém o resumo.
 - O intervalo do poll mora no browser (`useZabbixDirectIndex`). Em regime: um `item.get` pelos
   itemids, mesmo se algum host do grupo não tiver o item de status. `host.get` / `problem.get` /
-  `trigger.get` só na descoberta, em paralelo. O intervalo não empilha poll. Host e
+  `event.get` / `trigger.get` só na descoberta, em paralelo (`event.get` depois do `problem.get`).
+  O intervalo não empilha poll. Host e
   problema casam pelo `hostid`, nunca `filter.host` / nome. Ping e inventário de interface
   também exigem `hostid`.
 - O painel declara `skipDataQuery` em `plugin.json`.

@@ -7,6 +7,20 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.405] - 2026-09-01
+
+### Alterado
+
+- Pulsos dos cabos andam em velocidade fixa (`LINK_FLOW_SPEED`), igual nos dois sentidos e independente do lastvalue.
+
+### Corrigido
+
+- O tráfego dos cabos não para no tick do contador: o poll não regrava velocidade no SVG.
+- O poll deixa de reconstruir o índice de status quando só o lastclock ou o tráfego mudaram — o painel não trava no intervalo.
+- O poll de bps atualiza só a pílula do cabo: path e pulsos não remontam — o scheduler do React deixava o painel travado ~500 ms.
+- `problem.get` não envia `selectHosts` — o Zabbix recusava o parâmetro e o proxy do Grafana devolvia HTTP 500.
+- O host do problema sai de `event.get` (o `problem.get` não traz hostid) e a lista de alertas mostra o nome do problema, não só ALERTA.
+
 ## [1.4.404] - 2026-09-01
 
 ### Alterado

@@ -53,15 +53,20 @@ type ProblemRow = {
   name?: string;
   description?: string;
   severity?: unknown;
-  objectid?: string;
-  hostid?: string;
+  eventid?: string | number;
+  objectid?: string | number;
+  hostid?: string | number;
   suppressed?: unknown;
-  hosts?: Array<{ hostid?: string }>;
+  hosts?: Array<{ hostid?: string | number }>;
 };
 type TriggerRow = {
-  triggerid?: string;
+  triggerid?: string | number;
   status?: unknown;
-  hosts?: Array<{ hostid?: string }>;
+  hosts?: Array<{ hostid?: string | number }>;
+};
+type EventRow = {
+  eventid?: string | number;
+  hosts?: Array<{ hostid?: string | number }>;
 };
 
 function uniqueSorted(values: string[]): string[] {
@@ -402,8 +407,8 @@ function triggerIsDisabled(value: unknown): boolean {
 
 function problemHostIds(row: ProblemRow): string[] {
   const ids: string[] = [];
-  const add = (raw?: string) => {
-    const id = raw?.trim() ?? '';
+  const add = (raw?: string | number) => {
+    const id = asItemString(raw) ?? '';
     if (isNumericZabbixItemId(id) && !ids.includes(id)) {
       ids.push(id);
     }
@@ -413,6 +418,96 @@ function problemHostIds(row: ProblemRow): string[] {
     add(host.hostid);
   }
   return ids;
+}
+
+function numericIds(values: Array<string | number | undefined>): string[] {
+  return uniqueSorted(values.map((value) => asItemString(value) ?? '')).filter((id) =>
+    isNumericZabbixItemId(id)
+  );
+}
+
+function mergeProblemHosts(row: ProblemRow, hostids: string[] | undefined): ProblemRow {
+  if (!hostids?.length || problemHostIds(row).length) {
+    return row;
+  }
+  return { ...row, hosts: hostids.map((hostid) => ({ hostid })) };
+}
+
+async function attachHostsFromEvents(
+  datasourceUid: string,
+  rows: ProblemRow[],
+  call: ZabbixRpc
+): Promise<ProblemRow[]> {
+  const eventids = numericIds(rows.map((row) => row.eventid));
+  if (!eventids.length) {
+    return rows;
+  }
+  const events = await call<EventRow[]>(datasourceUid, 'event.get', {
+    eventids,
+    output: ['eventid'],
+    selectHosts: ['hostid'],
+    source: 0,
+    object: 0,
+  });
+  const list = Array.isArray(events) ? events : [];
+  const hostsByEvent = new Map<string, string[]>();
+  for (const event of list) {
+    const eventid = asItemString(event.eventid) ?? '';
+    const hostids = numericIds((event.hosts ?? []).map((host) => host.hostid));
+    if (eventid && hostids.length) {
+      hostsByEvent.set(eventid, hostids);
+    }
+  }
+  return rows.map((row) => mergeProblemHosts(row, hostsByEvent.get(asItemString(row.eventid) ?? '')));
+}
+
+async function attachHostsFromTriggers(
+  datasourceUid: string,
+  rows: ProblemRow[],
+  call: ZabbixRpc
+): Promise<ProblemRow[]> {
+  const missing = rows.filter((row) => problemHostIds(row).length === 0);
+  const triggerIds = numericIds(missing.map((row) => row.objectid));
+  if (!triggerIds.length) {
+    return rows;
+  }
+  const triggers = await call<TriggerRow[]>(datasourceUid, 'trigger.get', {
+    triggerids: triggerIds,
+    output: ['triggerid', 'status'],
+    filter: { status: 0 },
+    selectHosts: ['hostid'],
+  });
+  const list = Array.isArray(triggers) ? triggers : [];
+  const hostsByTrigger = new Map<string, string[]>();
+  for (const trigger of list) {
+    if (triggerIsDisabled(trigger.status)) {
+      continue;
+    }
+    const triggerid = asItemString(trigger.triggerid) ?? '';
+    const hostids = numericIds((trigger.hosts ?? []).map((host) => host.hostid));
+    if (triggerid && hostids.length) {
+      hostsByTrigger.set(triggerid, hostids);
+    }
+  }
+  return rows.map((row) => mergeProblemHosts(row, hostsByTrigger.get(asItemString(row.objectid) ?? '')));
+}
+
+async function attachProblemHosts(
+  datasourceUid: string,
+  rows: ProblemRow[],
+  call: ZabbixRpc
+): Promise<ProblemRow[]> {
+  // `problem.get` não tem selectHosts. O host do evento sai de `event.get`; `trigger.get` é
+  // reserva quando o eventid não veio, o evento não trouxe host, ou o `event.get` falhou.
+  try {
+    const fromEvents = await attachHostsFromEvents(datasourceUid, rows, call);
+    if (fromEvents.every((row) => problemHostIds(row).length > 0)) {
+      return fromEvents;
+    }
+    return attachHostsFromTriggers(datasourceUid, fromEvents, call);
+  } catch {
+    return attachHostsFromTriggers(datasourceUid, rows, call);
+  }
 }
 
 export function parseProblems(rows: ProblemRow[], hostids: string[]): HostProblemsMap {
@@ -462,48 +557,6 @@ export function parseProblems(rows: ProblemRow[], hostids: string[]): HostProble
   return summary;
 }
 
-async function attachProblemHosts(
-  datasourceUid: string,
-  rows: ProblemRow[],
-  call: ZabbixRpc
-): Promise<ProblemRow[]> {
-  const triggerIds = uniqueSorted(rows.map((row) => row.objectid ?? '')).filter((id) =>
-    isNumericZabbixItemId(id)
-  );
-  if (!triggerIds.length) {
-    return rows;
-  }
-  const triggers = await call<TriggerRow[]>(datasourceUid, 'trigger.get', {
-    triggerids: triggerIds,
-    output: ['triggerid', 'status'],
-    filter: { status: 0 },
-    selectHosts: ['hostid'],
-  });
-  const hostsByTrigger = new Map<string, string[]>();
-  for (const trigger of triggers) {
-    if (triggerIsDisabled(trigger.status)) {
-      continue;
-    }
-    const triggerid = trigger.triggerid?.trim() ?? '';
-    if (!isNumericZabbixItemId(triggerid)) {
-      continue;
-    }
-    const hostids = (trigger.hosts ?? [])
-      .map((host) => host.hostid?.trim() ?? '')
-      .filter((id) => isNumericZabbixItemId(id));
-    if (hostids.length) {
-      hostsByTrigger.set(triggerid, hostids);
-    }
-  }
-  return rows.map((row) => {
-    const hostids = hostsByTrigger.get(row.objectid?.trim() ?? '');
-    if (!hostids?.length) {
-      return row;
-    }
-    return { ...row, hosts: hostids.map((hostid) => ({ hostid })) };
-  });
-}
-
 export async function fetchProblems(
   datasourceUid: string,
   hostids: string[],
@@ -519,6 +572,8 @@ export async function fetchProblems(
   for (let sev = ZABBIX_PROBLEM_MIN_SEVERITY; sev <= 5; sev += 1) {
     severities.push(sev);
   }
+  // `problem.get` não aceita `selectHosts` — o Zabbix recusa e o proxy responde 500.
+  // Sem hostid na linha, o host do evento sai de `event.get` (`trigger.get` só se faltar).
   const params: ZabbixParams = {
     output: ['eventid', 'objectid', 'name', 'severity'],
     severities,
@@ -526,7 +581,6 @@ export async function fetchProblems(
     object: 0,
     recent: false,
     suppressed: false,
-    selectHosts: ['hostid'],
     limit: PROBLEMS_LIMIT,
   };
   if (ids.length) {
@@ -535,9 +589,9 @@ export async function fetchProblems(
     params.groupids = gids;
   }
   const rows = await call<ProblemRow[]>(datasourceUid, 'problem.get', params);
-  const needsTrigger =
+  const needsHost =
     rows.length > 0 && rows.some((row) => problemHostIds(row).length === 0);
-  const withHosts = needsTrigger ? await attachProblemHosts(datasourceUid, rows, call) : rows;
+  const withHosts = needsHost ? await attachProblemHosts(datasourceUid, rows, call) : rows;
   return parseProblems(withHosts, ids);
 }
 

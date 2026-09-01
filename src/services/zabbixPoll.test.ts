@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ZabbixLiveSnapshot } from '../utils/zabbixApi';
 import type { ZabbixParams, ZabbixRpc } from './zabbixCall';
-import { runZabbixPoll, ZABBIX_NO_GROUPS_ERROR } from './zabbixPoll';
+import { runZabbixPoll, sameStatusItemValues, ZABBIX_NO_GROUPS_ERROR } from './zabbixPoll';
 
 function fakeCall(handlers: Record<string, unknown>): ZabbixRpc {
   return async (_uid: string, method: string, _params: ZabbixParams) => {
@@ -225,5 +225,25 @@ describe('runZabbixPoll', () => {
     expect(result.error).toBeUndefined();
     expect(result.snapshot.lastValues['10001']?.lastvalue).toBe('1');
     expect(result.snapshot.lastValues['20001']?.lastvalue).toBe('10');
+  });
+});
+
+describe('sameStatusItemValues', () => {
+  it('ignora lastclock e compara só o lastvalue por itemid', () => {
+    expect(
+      sameStatusItemValues(
+        [{ itemid: '10001', key_: 'icmpping', lastvalue: '1', lastclock: '20', hostid: '1' }],
+        [{ itemid: '10001', key_: 'icmpping', lastvalue: '1', lastclock: '10', hostid: '1' }]
+      )
+    ).toBe(true);
+  });
+
+  it('é falso quando o lastvalue de status mudou', () => {
+    expect(
+      sameStatusItemValues(
+        [{ itemid: '10001', key_: 'icmpping', lastvalue: '0', hostid: '1' }],
+        [{ itemid: '10001', key_: 'icmpping', lastvalue: '1', hostid: '1' }]
+      )
+    ).toBe(false);
   });
 });

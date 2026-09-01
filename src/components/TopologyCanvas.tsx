@@ -478,7 +478,6 @@ export function TopologyCanvas({
       hostDisplay: nocHostDisplayBase,
       hostMetadata,
       hostProblems,
-      linkMetricsByLink,
       options: filterOptions,
     });
   }, [
@@ -487,7 +486,6 @@ export function TopologyCanvas({
     nocHostDisplayBase,
     hostMetadata,
     hostProblems,
-    linkMetricsByLink,
     nocMapScopes,
     filterOptions,
   ]);

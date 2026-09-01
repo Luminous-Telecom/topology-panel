@@ -37,7 +37,7 @@ de topologia de rede com status vindo do Zabbix.
   equipamento, hostid, IP) **não entra no código**, rule, teste nem commit — só opções do painel e
   API. Ver `20-security.mdc`.
 - Atualização automática: o intervalo mora no browser (`useZabbixDirectIndex`). Em regime faz
-  **um** `item.get` pelos itemids — sem `problem.get`, `trigger.get`, `host.get` nem segundo
+  **um** `item.get` pelos itemids — sem `problem.get`, `event.get`, `trigger.get`, `host.get` nem segundo
   `item.get` no intervalo. Host sem o item de status não dispara descoberta de novo. Na
   descoberta, depois dos grupos, `host.get`, lastvalue, problemas e tráfego saem juntos. Editor
   e ping também saem do `zabbixCall` — ver `21-data-sources.mdc`. O backend Go só valida a

@@ -1,18 +1,15 @@
-import React, { useState } from 'react';
+import React, { MutableRefObject, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
-import { LinkEndpointRuntimeMetrics, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
+import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
 import { formatLinkBandwidth, linkStrokeWidth } from '../../../utils/linkBandwidth';
 import { LINK_FLOW_DASH, supportsFlowArrows } from '../../../utils/linkFlow';
-import {
-  computeFlowSpeed,
-  resolveFlowLaneSpeed,
-  resolveLinkUtilizationLevel,
-} from '../../../utils/linkFlowSpeed';
+import { resolveLinkUtilizationLevel } from '../../../utils/linkFlowSpeed';
 import {
   isLinkVisuallyDown,
   linkRuntimeColor,
   utilizationThresholdsFromOptions,
   resolveLinkMapTrafficMetrics,
+  sameLinkLinePaint,
 } from '../../../utils/linkMetricsRuntime';
 import { linkKey } from '../../../utils/mapLinkEdits';
 import { resolvePanelColor } from '../../../utils/panelColors';
@@ -21,8 +18,8 @@ import {
   computeLinkGeometry,
   LinkPoint,
   offsetPolyline,
-  pointAlongPolyline,
   polylineLength,
+  sameLinkPoints,
 } from '../../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../../utils/linkMedium';
 import { formatBitsPerSecond } from '../../../utils/zabbixAdapter/formatTraffic';
@@ -31,14 +28,12 @@ import { NodeLayout } from '../../../utils/nodeLayout';
 import { canvasStyles } from '../canvasStyles';
 import { LinkHoverPopover } from '../../LinkHoverPopover';
 import { LinkFlowArrows } from './LinkFlowArrows';
-import { LinkTrafficLabel } from './LinkTrafficLabel';
 import {
   LINK_HOVER_COLOR,
   LINK_LINE_CAP,
   LINK_RADIO_DASH,
   LINK_SELECT_COLOR,
 } from './linkLineVisual';
-
 
 interface LinkLineProps {
   link: TopologyLink;
@@ -49,6 +44,8 @@ interface LinkLineProps {
   selected: boolean;
   hovered: boolean;
   runtimeMetrics?: LinkRuntimeMetrics;
+  /** Lastvalue vivo — o memo do cabo ignora bps; o tooltip lê daqui no hover. */
+  metricsLiveRef?: MutableRefObject<Record<string, LinkRuntimeMetrics>>;
   fromHostOffline?: boolean;
   toHostOffline?: boolean;
   onSelect: () => void;
@@ -129,6 +126,7 @@ function LinkLineComponent({
   selected,
   hovered,
   runtimeMetrics,
+  metricsLiveRef,
   fromHostOffline = false,
   toHostOffline = false,
   onSelect,
@@ -139,6 +137,13 @@ function LinkLineComponent({
 }: LinkLineProps) {
   const theme = useTheme2();
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
+  const thresholds = utilizationThresholdsFromOptions(options);
+  const lk = linkKey(link);
+  const liveMetrics = metricsLiveRef?.current[lk] ?? runtimeMetrics;
+  const displayTraffic = resolveLinkMapTrafficMetrics(link, liveMetrics);
+  const interfaceDown = runtimeMetrics?.status === 'down';
+  const uploadOffline = interfaceDown || fromHostOffline;
+  const downloadOffline = interfaceDown || toHostOffline;
   const from = nodeLayouts.get(link.from);
   const to = nodeLayouts.get(link.to);
   if (!from || !to) {
@@ -153,7 +158,6 @@ function LinkLineComponent({
   const medium = resolveLinkMedium(link);
   const dashArray = medium === 'radio' ? LINK_RADIO_DASH : undefined;
   const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
-  const displayTraffic = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
   const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? displayTraffic.capacityMbps);
   const fromName = link.fromInterface?.name;
   const toName = link.toInterface?.name;
@@ -174,13 +178,9 @@ function LinkLineComponent({
     rxPowerDbm: displayTraffic.rxPowerDbm,
     errors: displayTraffic.errors,
     drops: displayTraffic.drops,
-    status: runtimeMetrics?.status,
+    status: liveMetrics?.status,
   });
-  const thresholds = utilizationThresholdsFromOptions(options);
   const utilLevel = resolveLinkUtilizationLevel(runtimeMetrics, thresholds);
-  const interfaceDown = runtimeMetrics?.status === 'down';
-  const uploadOffline = interfaceDown || fromHostOffline;
-  const downloadOffline = interfaceDown || toHostOffline;
   const linkDown = isLinkVisuallyDown(runtimeMetrics, fromHostOffline, toHostOffline);
   const runtimeColor = resolvePanelColor(
     theme,
@@ -200,36 +200,9 @@ function LinkLineComponent({
   const markerEnd = linkMarkerUrl('end', selected, hovered, markerLevel, linkDown);
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
-  const downloadSpeed = resolveFlowLaneSpeed(
-    displayTraffic.rxBps,
-    displayTraffic.rxUtilizationPct,
-    runtimeMetrics,
-    thresholds
-  );
-  const uploadSpeed = resolveFlowLaneSpeed(
-    displayTraffic.txBps,
-    displayTraffic.txUtilizationPct,
-    runtimeMetrics,
-    thresholds
-  );
-  const hasMetricBinding = Boolean(link.fromInterface?.metrics || link.toInterface?.metrics);
-  const hasDownloadReading = displayTraffic.rxBps !== undefined;
-  const hasUploadReading = displayTraffic.txBps !== undefined;
-  const downloadFlowActive =
-    !downloadOffline && (hasMetricBinding ? hasDownloadReading && downloadSpeed > 0 : true);
-  const uploadFlowActive =
-    !uploadOffline && (hasMetricBinding ? hasUploadReading && uploadSpeed > 0 : true);
-  const lk = linkKey(link);
-  const downloadFlowSpeed = hasMetricBinding
-    ? downloadSpeed
-    : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5;
-  const uploadFlowSpeed = hasMetricBinding
-    ? uploadSpeed
-    : computeFlowSpeed(runtimeMetrics, thresholds) * 0.5;
   const reverseD = buildLinkPathD([...pathPoints].reverse(), gridStep, hasWaypoints, -bundleOffset);
   const laneLength = polylineLength(drawnPoints);
   const pulseSize = Math.max(4, strokeWidth * 1.8);
-  const trafficAnchor = pointAlongPolyline(drawnPoints, 0.5);
 
   return (
     <g
@@ -287,7 +260,7 @@ function LinkLineComponent({
         {...LINK_LINE_CAP}
       />
       {supportsFlowArrows ? (
-        <g>
+        <>
           {!uploadOffline && (
             <LinkFlowArrows
               laneD={d}
@@ -295,8 +268,6 @@ function LinkLineComponent({
               color={uploadLabelColor}
               direction="upload"
               linkId={lk}
-              speed={uploadFlowSpeed}
-              active={uploadFlowActive}
               size={pulseSize}
             />
           )}
@@ -307,107 +278,49 @@ function LinkLineComponent({
               color={downloadLabelColor}
               direction="download"
               linkId={lk}
-              speed={downloadFlowSpeed}
-              active={downloadFlowActive}
               size={pulseSize}
             />
           )}
-        </g>
+        </>
       ) : (
         <>
-          <path
-            d={d}
-            data-link-flow="download"
-            data-link-key={lk}
-            data-link-flow-speed={String(downloadFlowSpeed)}
-            data-link-flow-active={downloadFlowActive ? 'true' : 'false'}
-            stroke={downloadLabelColor}
-            strokeWidth={Math.max(2.4, strokeWidth)}
-            strokeDasharray={LINK_FLOW_DASH}
-            fill="none"
-            pointerEvents="none"
-            opacity={0.95}
-            {...LINK_LINE_CAP}
-          />
-          <path
-            d={d}
-            data-link-flow="upload"
-            data-link-key={lk}
-            data-link-flow-speed={String(uploadFlowSpeed)}
-            data-link-flow-active={uploadFlowActive ? 'true' : 'false'}
-            stroke={uploadLabelColor}
-            strokeWidth={Math.max(2.4, strokeWidth)}
-            strokeDasharray={LINK_FLOW_DASH}
-            fill="none"
-            pointerEvents="none"
-            opacity={0.95}
-            {...LINK_LINE_CAP}
-          />
+          {!downloadOffline && (
+            <path
+              d={d}
+              data-link-flow="download"
+              data-link-key={lk}
+              stroke={downloadLabelColor}
+              strokeWidth={Math.max(2.4, strokeWidth)}
+              strokeDasharray={LINK_FLOW_DASH}
+              fill="none"
+              pointerEvents="none"
+              opacity={0.95}
+              {...LINK_LINE_CAP}
+            />
+          )}
+          {!uploadOffline && (
+            <path
+              d={d}
+              data-link-flow="upload"
+              data-link-key={lk}
+              stroke={uploadLabelColor}
+              strokeWidth={Math.max(2.4, strokeWidth)}
+              strokeDasharray={LINK_FLOW_DASH}
+              fill="none"
+              pointerEvents="none"
+              opacity={0.95}
+              {...LINK_LINE_CAP}
+            />
+          )}
         </>
       )}
-      {txLabel || rxLabel ? (
-        <LinkTrafficLabel
-          x={trafficAnchor.x}
-          y={trafficAnchor.y}
-          txLabel={txLabel}
-          rxLabel={rxLabel}
-          uploadColor={uploadLabelColor}
-          downloadColor={downloadLabelColor}
-        />
-      ) : null}
     </g>
   );
 }
 
 /**
- * `lastclock` do Zabbix muda a cada coleta mesmo com o mesmo lastvalue. Comparar só o que o cabo
- * desenha (bps, utilização, status, sinal) evita redesenhar todos os links no poll.
- */
-function sameEndpointVisual(prev: LinkEndpointRuntimeMetrics, next: LinkEndpointRuntimeMetrics): boolean {
-  return (
-    prev.rxBps === next.rxBps &&
-    prev.txBps === next.txBps &&
-    prev.rxUtilizationPct === next.rxUtilizationPct &&
-    prev.txUtilizationPct === next.txUtilizationPct &&
-    prev.operStatus === next.operStatus &&
-    prev.capacityMbps === next.capacityMbps &&
-    prev.errors === next.errors &&
-    prev.drops === next.drops &&
-    prev.rxPowerDbm === next.rxPowerDbm &&
-    prev.txPowerDbm === next.txPowerDbm
-  );
-}
-
-function sameRuntimeVisual(prev?: LinkRuntimeMetrics, next?: LinkRuntimeMetrics): boolean {
-  if (prev === next) {
-    return true;
-  }
-  if (!prev || !next) {
-    return false;
-  }
-  return prev.status === next.status && sameEndpointVisual(prev.from, next.from) && sameEndpointVisual(prev.to, next.to);
-}
-
-/** Comparação ponto a ponto — a lista é pequena e roda para cada cabo em cada frame de pan. */
-function sameWaypoints(prev: LinkPoint[], next: LinkPoint[]): boolean {
-  if (prev === next) {
-    return true;
-  }
-  if (prev.length !== next.length) {
-    return false;
-  }
-  for (let i = 0; i < prev.length; i += 1) {
-    if (prev[i].x !== next[i].x || prev[i].y !== next[i].y) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Só redesenha quando algo que o link realmente usa muda: estado visual, endpoints, waypoints,
- * caixa dos dois nós e as opções de cor/espessura. Sem isso, arrastar um nó redesenha todos os
- * links do mapa.
+ * Só redesenha o path/pulsos quando a pintura muda (faixa de utilização, status, geometria).
+ * Bps cru atualiza a pílula em `LinkTrafficOverlay` e o tooltip via `metricsLiveRef`.
  */
 export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (
@@ -428,8 +341,14 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   ) {
     return false;
   }
-  if (prev.runtimeMetrics !== next.runtimeMetrics && !sameRuntimeVisual(prev.runtimeMetrics, next.runtimeMetrics)) {
-    return false;
+  if (prev.runtimeMetrics !== next.runtimeMetrics) {
+    if (next.hovered) {
+      return false;
+    }
+    const thresholds = utilizationThresholdsFromOptions(next.options);
+    if (!sameLinkLinePaint(prev.runtimeMetrics, next.runtimeMetrics, thresholds)) {
+      return false;
+    }
   }
   if (prev.fromHostOffline !== next.fromHostOffline || prev.toHostOffline !== next.toHostOffline) {
     return false;
@@ -437,7 +356,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (prev.bundleOffset !== next.bundleOffset) {
     return false;
   }
-  if (!sameWaypoints(prev.waypoints, next.waypoints)) {
+  if (!sameLinkPoints(prev.waypoints, next.waypoints)) {
     return false;
   }
   const pf = prev.nodeLayouts.get(prev.link.from);

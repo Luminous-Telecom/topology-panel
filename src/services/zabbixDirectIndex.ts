@@ -288,3 +288,81 @@ export function buildZabbixDirectIndex(input: ZabbixDirectIndexInput): QueryInde
     datasourceUid,
   };
 }
+
+function cloneRefBucket(bucket: QueryRefBucket): QueryRefBucket {
+  return {
+    hosts: bucket.hosts,
+    lastValues: new Map(bucket.lastValues),
+    lastUpdatedAtSec: new Map(bucket.lastUpdatedAtSec),
+  };
+}
+
+/**
+ * Regime do poll: os hosts já estão no índice. Só regrava o lastvalue dos que mudaram de número.
+ * Lastclock ou `"1"` vs `"1.0"` não remontam metadata/hosts — isso travava o canvas no intervalo.
+ */
+export function applyStatusValuesToIndex(
+  previous: QueryIndex,
+  hosts: ZabbixDirectHost[],
+  statusItems: ZabbixInterfaceItem[],
+  statusItemKey: string
+): { index: QueryIndex; changedHosts: number } {
+  const nextByHostId = statusValuesByHostId(statusItems, statusItemKey);
+  const orphan = previous.byRefId.get(STATUS_ORPHAN_REF_ID);
+  const changed: ZabbixDirectHost[] = [];
+  for (const host of hosts) {
+    const key = host.name.trim();
+    if (!key) {
+      continue;
+    }
+    const status = nextByHostId.get(host.hostid);
+    const previousValue = orphan?.lastValues.get(key);
+    if (status === undefined) {
+      if (previousValue !== undefined) {
+        changed.push(host);
+      }
+      continue;
+    }
+    if (previousValue !== status.value) {
+      changed.push(host);
+    }
+  }
+  if (!changed.length) {
+    return { index: previous, changedHosts: 0 };
+  }
+
+  const byRefId = new Map(previous.byRefId);
+  const cloned = new Set<QueryRefBucket>();
+  const writable = (refId: string): QueryRefBucket | undefined => {
+    const current = byRefId.get(refId);
+    if (!current) {
+      return undefined;
+    }
+    if (cloned.has(current)) {
+      return current;
+    }
+    const next = cloneRefBucket(current);
+    cloned.add(next);
+    byRefId.set(refId, next);
+    return next;
+  };
+
+  for (const host of changed) {
+    const status = nextByHostId.get(host.hostid);
+    if (status === undefined) {
+      continue;
+    }
+    const orphanBucket = writable(STATUS_ORPHAN_REF_ID);
+    if (orphanBucket) {
+      writeHostStatusAliases(orphanBucket, host, status);
+    }
+    for (const groupName of host.groups) {
+      const bucket = writable(directRefId(groupName));
+      if (bucket) {
+        writeHostStatusAliases(bucket, host, status);
+      }
+    }
+  }
+
+  return { index: { ...previous, byRefId }, changedHosts: changed.length };
+}

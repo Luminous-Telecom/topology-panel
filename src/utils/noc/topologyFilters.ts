@@ -272,6 +272,18 @@ export function alertListHoverText(entry: HostAlertListEntry): string {
   return 'Alerta';
 }
 
+/** Rótulo da linha da lista: nome do problema Zabbix, ou OFFLINE/ALERTA. */
+export function alertListStatusLabel(entry: HostAlertListEntry): string {
+  const problems = visibleHostProblemNames(entry.problems);
+  if (problems.visible.length === 1 && problems.hidden === 0) {
+    return problems.visible[0];
+  }
+  if (problems.visible.length) {
+    return `${problems.visible.length + problems.hidden} problemas`;
+  }
+  return entry.reason === 'offline' ? 'OFFLINE' : 'ALERTA';
+}
+
 export interface NocHostListEntry {
   nodeId: string;
   mapId: string;

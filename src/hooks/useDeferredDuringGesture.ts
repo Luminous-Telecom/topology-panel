@@ -1,4 +1,4 @@
-import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { MutableRefObject, useCallback, useRef, useState } from 'react';
 
 /**
  * Congela `value` (ex.: snapshot dos dados da Query) enquanto `isGestureActiveRef.current` for
@@ -6,33 +6,31 @@ import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'reac
  * dashboard troque cores/hosts/posições no meio do gesto, o que na prática aparecia como um
  * "pulo" no mapa. Ao soltar o ponteiro, o chamador deve invocar o `flush` retornado para aplicar
  * imediatamente o valor mais recente já recebido durante o gesto.
+ *
+ * Fora do gesto devolve `value` no mesmo render. Um `useEffect` + `setState` atrasava o lastvalue
+ * para o commit seguinte e o React fazia um long-task extra no intervalo do Zabbix.
  */
 export function useDeferredDuringGesture<T>(
   value: T,
   isGestureActiveRef: MutableRefObject<boolean>
 ): [T, () => void] {
-  const [committed, setCommitted] = useState(value);
+  const frozenRef = useRef(value);
   const pendingRef = useRef(value);
   pendingRef.current = value;
-  const committedRef = useRef(committed);
-  committedRef.current = committed;
+  const [, setVersion] = useState(0);
 
-  useEffect(() => {
-    if (isGestureActiveRef.current) {
-      return;
-    }
-    if (Object.is(value, committedRef.current)) {
-      return;
-    }
-    setCommitted(value);
-  }, [value, isGestureActiveRef]);
+  if (!isGestureActiveRef.current) {
+    frozenRef.current = value;
+  }
 
   const flush = useCallback(() => {
-    if (Object.is(pendingRef.current, committedRef.current)) {
+    const next = pendingRef.current;
+    if (Object.is(next, frozenRef.current)) {
       return;
     }
-    setCommitted(pendingRef.current);
+    frozenRef.current = next;
+    setVersion((n) => n + 1);
   }, []);
 
-  return [committed, flush];
+  return [isGestureActiveRef.current ? frozenRef.current : value, flush];
 }

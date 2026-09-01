@@ -1,13 +1,17 @@
 /**
- * Animação contínua das faixas RX/TX — velocidade por elemento via data-link-flow-speed.
+ * Animação contínua das faixas RX/TX.
  *
  * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
  *
- * O React não grava `offset-distance` nem `stroke-dashoffset`: cada commit zerava o deslocamento
- * e o cabo travava no poll de tráfego. Velocidade entra por `data-link-flow-speed`.
+ * Velocidade é constante (`LINK_FLOW_SPEED`): o lastvalue não mexe no pulso — gravar speed/path no
+ * SVG a cada poll zerava `offset-distance` no Chrome. O React não grava `offset-distance`,
+ * `offset-path` nem `stroke-dashoffset`.
  */
+
 export const LINK_FLOW_DASH = '7 11';
 const LINK_FLOW_PERIOD = 18;
+/** Passo por frame (~60 fps): ~60 px/s no cabo. Igual nos dois sentidos, independente do bps. */
+export const LINK_FLOW_SPEED = 1;
 
 /** Seta que corre pelo cabo: anda por `offset-path`, não por dash. */
 const FLOW_ARROW_ATTR = 'data-link-flow-arrow';
@@ -45,15 +49,6 @@ export type LinkFlowController = {
   wake: () => void;
 };
 
-function readFlowSpeed(el: Element): number {
-  const raw = el.getAttribute('data-link-flow-speed');
-  if (!raw) {
-    return 0;
-  }
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
 /**
  * Deslocamento de cada faixa, fora do DOM.
  *
@@ -67,61 +62,63 @@ const appliedFlowPaths = new WeakMap<Element, string>();
 /** Reconsulta o DOM no máximo a cada 250 ms — link novo entra na animação no fatiamento seguinte. */
 const FLOW_QUERY_INTERVAL_MS = 250;
 
+function isFlowLaneActive(el: Element): boolean {
+  return el.getAttribute('data-link-flow-active') !== 'false';
+}
+
 function advanceFlowLanes(lanes: Element[]): number {
   let animated = 0;
   for (const el of lanes) {
-    if (el.getAttribute('data-link-flow-active') === 'false') {
+    if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    const speed = readFlowSpeed(el);
-    if (speed <= 0) {
-      continue;
-    }
-    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + speed);
+    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + LINK_FLOW_SPEED);
     animated += 1;
   }
   return animated;
 }
 
-function ensureArrowOffsetPath(el: Element): void {
+function ensureArrowOffsetPath(el: Element): boolean {
   const d = el.getAttribute('data-link-flow-path');
   if (!d || !(el instanceof SVGElement || el instanceof HTMLElement)) {
-    return;
+    return false;
   }
   if (appliedFlowPaths.get(el) === d) {
-    return;
+    return false;
   }
   appliedFlowPaths.set(el, d);
   el.style.setProperty('offset-path', `path('${d}')`);
   el.style.setProperty('offset-rotate', '0deg');
+  return true;
 }
 
-function writeFlowOffset(el: Element, offset: number): void {
+function writeFlowOffset(el: Element, offset: number): boolean {
   const period = flowPeriod(el);
   if (period <= 0) {
-    return;
+    return false;
   }
   const normalized = ((offset % period) + period) % period;
   flowOffsets.set(el, normalized);
   if (el.hasAttribute(FLOW_ARROW_ATTR)) {
-    ensureArrowOffsetPath(el);
+    const pathWrote = ensureArrowOffsetPath(el);
     // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
     const phase = readNumberAttribute(el, 'data-link-flow-phase');
     const distance = (normalized + phase) % period;
     if (el instanceof SVGElement || el instanceof HTMLElement) {
       el.style.setProperty('offset-distance', `${distance}px`);
     }
-    return;
+    return pathWrote;
   }
   const direction = el.getAttribute('data-link-flow');
   const signed = direction === 'upload' ? -normalized : normalized;
   el.setAttribute('stroke-dashoffset', String(signed));
+  return false;
 }
 
-/** Atualiza stroke-dashoffset via rAF com velocidade individual por faixa. */
+/** Atualiza o deslocamento via rAF com velocidade fixa por faixa. */
 export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let raf = 0;
-  /** Timer do modo dormente — nenhuma faixa com tráfego, nada para animar. */
+  /** Timer do modo dormente — nenhuma faixa no DOM, nada para animar. */
   let idleTimer = 0;
   let paused = false;
   let lanes: Element[] = [];
@@ -160,7 +157,8 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   const tick = () => {
     raf = 0;
     const now = performance.now();
-    if (now - lanesReadAt >= FLOW_QUERY_INTERVAL_MS) {
+    const stale = lanes.some((el) => !el.isConnected);
+    if (stale || now - lanesReadAt >= FLOW_QUERY_INTERVAL_MS) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
     }

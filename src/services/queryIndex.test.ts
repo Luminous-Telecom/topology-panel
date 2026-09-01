@@ -208,4 +208,12 @@ describe('hostDisplayByRefIdFromIndex', () => {
     hostDisplayByRefIdFromIndex(index, { ...STATUS_OPTIONS, colorOnline: '#00FF00' });
     expect(buildQueryIndex(data)).toBe(index);
   });
+
+  it('reusa o display dos buckets que o índice não clonou', () => {
+    const index = buildQueryIndex(panelData([frame('A', [numberField('host-a', [1])])]));
+    const first = hostDisplayByRefIdFromIndex(index, STATUS_OPTIONS);
+    const patched = { ...index, byRefId: new Map(index.byRefId) };
+    const second = hostDisplayByRefIdFromIndex(patched, STATUS_OPTIONS, { index, display: first });
+    expect(second).toBe(first);
+  });
 });

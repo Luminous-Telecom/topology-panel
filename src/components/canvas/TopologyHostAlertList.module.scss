@@ -40,7 +40,11 @@
 }
 
 .status {
-  flex: 0 0 auto;
+  flex: 1 1 40%;
+  min-width: 0;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
