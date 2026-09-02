@@ -137,6 +137,7 @@ export function GesturePreviewLayers({
 
       <LinksLayer
         renderLinks={renderLinks}
+        dragPreview={dragPreview}
         nodeLayouts={nodeLayouts}
         options={options}
         interactionRef={interactionRef}

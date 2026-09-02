@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.414] - 2026-09-02
+
+### Corrigido
+
+- Cabos voltam a acompanhar o preview ao arrastar nó ou dobrar a rota no modo edição: a camada de
+  links ignorava o gesto quando só os waypoints mudavam no store.
+
 ## [1.4.413] - 2026-09-02
 
 ### Alterado

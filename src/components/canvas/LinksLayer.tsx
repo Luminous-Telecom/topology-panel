@@ -1,5 +1,6 @@
 import React, { MutableRefObject, useRef } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
+import { DragPreview } from '../../utils/dragState';
 import { LinkPoint } from '../../utils/linkGeometry';
 import { linkKey } from '../../utils/mapLinkEdits';
 import { isHostNodeOffline } from '../../utils/networkStats';
@@ -9,6 +10,8 @@ import { LinkTrafficOverlay } from './links/LinkTrafficLabel';
 
 interface Props {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
+  /** Preview do gesto — invalida o memo quando só a rota do cabo muda (waypoints). */
+  dragPreview: DragPreview;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   options: TopologyPanelOptions;
   interactionRef: MutableRefObject<{ editable: boolean; panTool: boolean }>;
@@ -126,7 +129,10 @@ function LinksLayerComponent({
 
 /**
  * Memoizado por comparação rasa: durante pan, zoom ou arraste de um nó sem cabo, nenhuma prop muda
- * e a camada inteira é pulada. Para isso valer, os handlers precisam chegar com identidade fixa
- * (`useStableCallback` em `TopologyCanvas`) — prop de função recriada no pai anula o memo.
+ * e a camada inteira é pulada. `dragPreview` entra na comparação para o arraste de waypoint —
+ * nesse gesto `nodeLayouts` não muda, mas a rota provisória mora no store de gesto.
+ *
+ * Handlers precisam chegar com identidade fixa (`useStableCallback` em `TopologyCanvas`) — prop de
+ * função recriada no pai anula o memo.
  */
 export const LinksLayer = React.memo(LinksLayerComponent);
