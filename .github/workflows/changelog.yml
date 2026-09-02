@@ -19,7 +19,9 @@ jobs:
           cache: npm
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
+      - name: Instalar dependências
+        run: npm ci
       - name: CHANGELOG inclui a versão de package.json e plugin.json
         run: |
           set -euo pipefail
@@ -34,8 +36,12 @@ jobs:
             exit 1
           fi
           node .config/changelog-notes.mjs "$ver" >/dev/null
-      - name: Testes do backend Go
-        run: go test ./pkg/...
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Testes Vitest e Go
+        run: npm run test
+      - name: Build de produção
+        run: npm run build
 
   release:
     needs: check
@@ -49,7 +55,7 @@ jobs:
           cache: npm
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Versão do plugin
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"

@@ -7,6 +7,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.416] - 2026-09-02
+
+### Alterado
+
+- CI: o job de verificação roda `typecheck`, `npm test` (Vitest + Go) e `build`; Go alinhado à
+  versão 1.25 do `go.mod`.
+- README: versão mínima do Grafana documentada como 10+ (testado em 11/13).
+
+### Adicionado
+
+- Testes dos hooks `useTopologyClipboardActions` e `useCanvasKeyboardShortcuts` (copiar/colar,
+  atalhos de teclado e busca).
+
 ## [1.4.415] - 2026-09-02
 
 ### Corrigido

@@ -1,6 +1,7 @@
 # Topology Panel
 
-Plugin de painel para **Grafana 9+** que desenha mapas de topologia de rede com status ao vivo do **Zabbix**.
+Plugin de painel para **Grafana 10+** (testado em Grafana 11/13) que desenha mapas de topologia de
+rede com status ao vivo do **Zabbix**.
 
 O mapa é montado no próprio painel: hosts, caixas de rede, links de fibra ou rádio, rótulos e submapas. O Zabbix pinta cada equipamento (online, offline ou alerta) e o tráfego nos cabos. Do canvas dá para pingar, abrir Winbox, SSH ou Telnet, e navegar para outro dashboard.
 

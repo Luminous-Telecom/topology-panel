@@ -98,6 +98,11 @@ export function hasTopologyClipboard(): boolean {
   return clip !== null && clip.nodes.length > 0;
 }
 
+/** Limpa o clipboard em memória e no sessionStorage — usado nos testes para isolar casos. */
+export function clearTopologyClipboard(): void {
+  setTopologyClipboard(null);
+}
+
 /**
  * Credencial de Tools não entra no clipboard.
  *

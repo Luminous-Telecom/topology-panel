@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { copyTopologySelection, getTopologyClipboard } from './topologyClipboard';
+import { clearTopologyClipboard, copyTopologySelection, getTopologyClipboard } from './topologyClipboard';
 import { emptyMap, hostNode } from './testMapFixtures';
 
 const STORAGE_KEY = 'luminous-topology-panel-clipboard';
@@ -21,7 +21,7 @@ function mapWithCredentials() {
 
 describe('copyTopologySelection', () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    clearTopologyClipboard();
   });
 
   it('copia o nó selecionado com rótulo e endereço', () => {
