@@ -7,6 +7,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.413] - 2026-09-02
+
+### Alterado
+
+- README: descrição breve do que o plugin faz.
+
 ## [1.4.412] - 2026-09-01
 
 ### Alterado
