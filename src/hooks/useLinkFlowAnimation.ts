@@ -1,10 +1,17 @@
 import { RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
 
+interface LinkFlowAnimationOptions {
+  /** Acorda o laço quando a Query fica pronta. */
+  queryReady?: boolean;
+  /** Escala do canvas — o zoom invalida o offset-path cacheado das setas. */
+  viewScale?: number;
+}
+
 /** Anima os tracejados de download/upload dos links (velocidade via SNMP / utilização). */
 export function useLinkFlowAnimation(
   wrapRef: RefObject<HTMLDivElement>,
-  wakeKey?: string | number | boolean
+  { queryReady, viewScale = 1 }: LinkFlowAnimationOptions = {}
 ): void {
   const linkFlowRef = useRef<LinkFlowController | null>(null);
 
@@ -14,6 +21,7 @@ export function useLinkFlowAnimation(
       return;
     }
     const controller = startLinkFlowAnimation(el);
+    controller.setViewScale(viewScale);
     linkFlowRef.current = controller;
     // Aba oculta não desenha: manter o laço rodando só gastava CPU no dashboard esquecido aberto.
     const syncPaused = () => {
@@ -31,6 +39,7 @@ export function useLinkFlowAnimation(
   }, [wrapRef]);
 
   useLayoutEffect(() => {
+    linkFlowRef.current?.setViewScale(viewScale);
     linkFlowRef.current?.wake();
-  }, [wakeKey]);
+  }, [queryReady, viewScale]);
 }

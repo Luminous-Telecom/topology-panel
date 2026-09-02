@@ -138,6 +138,28 @@ describe('startLinkFlowAnimation', () => {
     controller.stop();
   });
 
+  it('reaplica offset-path quando a escala do mapa muda', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    el.setAttribute('data-link-flow', 'download');
+    el.setAttribute('data-link-flow-arrow', 'true');
+    el.setAttribute('data-link-flow-length', '100');
+    el.setAttribute('data-link-flow-phase', '0');
+    el.setAttribute('data-link-flow-path', 'M 0 0 L 100 0');
+    root.appendChild(el);
+    const setProperty = vi.spyOn(el.style, 'setProperty');
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(50);
+    const callsBefore = setProperty.mock.calls.filter(([name]) => name === 'offset-path').length;
+    expect(callsBefore).toBeGreaterThan(0);
+
+    controller.setViewScale(2);
+    vi.advanceTimersByTime(50);
+    const callsAfter = setProperty.mock.calls.filter(([name]) => name === 'offset-path').length;
+    expect(callsAfter).toBeGreaterThan(callsBefore);
+    controller.stop();
+    setProperty.mockRestore();
+  });
+
   it('stop encerra o frame e o timer do modo dormente', () => {
     const el = lane(root, { active: true });
     const controller = startLinkFlowAnimation(root);

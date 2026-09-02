@@ -230,7 +230,6 @@ export function TopologyCanvas({
     scrollRef.current = node;
   }, []);
   const svgRef = useRef<SVGSVGElement>(null);
-  useLinkFlowAnimation(wrapRef, queryReady);
   const savedView = savedViewProp ?? options.view;
   const canPersist = Boolean(onMapChange);
   const canEditCanvas = canPersist && !storedMap.locked;
@@ -326,6 +325,7 @@ export function TopologyCanvas({
     onFullscreenChange,
     showToast,
   });
+  useLinkFlowAnimation(wrapRef, { queryReady, viewScale: view.scale });
   const chromeIdleHidden = useIdleHide({
     enabled: isFullscreen,
     wrapRef,

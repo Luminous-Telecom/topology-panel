@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.415] - 2026-09-02
+
+### Corrigido
+
+- Pulsos de tráfego nos cabos voltam a andar após zoom no mapa: a escala do SVG invalida o
+  `offset-path` cacheado e o laço de animação reaplica o path ao mudar o zoom.
+
 ## [1.4.414] - 2026-09-02
 
 ### Corrigido

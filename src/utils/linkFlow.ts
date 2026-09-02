@@ -45,6 +45,8 @@ function flowPeriod(el: Element): number {
 export type LinkFlowController = {
   stop: () => void;
   setPaused: (paused: boolean) => void;
+  /** Escala do `<g>` do mapa — muda o offset-path aplicado e acorda o laço. */
+  setViewScale: (scale: number) => void;
   /** Relê as faixas agora — o lastvalue acabou de pintar e o laço dormente atrasava ~1 s. */
   wake: () => void;
 };
@@ -66,33 +68,34 @@ function isFlowLaneActive(el: Element): boolean {
   return el.getAttribute('data-link-flow-active') !== 'false';
 }
 
-function advanceFlowLanes(lanes: Element[]): number {
+function advanceFlowLanes(lanes: Element[], scale: number): number {
   let animated = 0;
   for (const el of lanes) {
     if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + LINK_FLOW_SPEED);
+    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + LINK_FLOW_SPEED, scale);
     animated += 1;
   }
   return animated;
 }
 
-function ensureArrowOffsetPath(el: Element): boolean {
+function ensureArrowOffsetPath(el: Element, scale: number): boolean {
   const d = el.getAttribute('data-link-flow-path');
   if (!d || !(el instanceof SVGElement || el instanceof HTMLElement)) {
     return false;
   }
-  if (appliedFlowPaths.get(el) === d) {
+  const cacheKey = arrowPathCacheKey(d, scale);
+  if (appliedFlowPaths.get(el) === cacheKey) {
     return false;
   }
-  appliedFlowPaths.set(el, d);
+  appliedFlowPaths.set(el, cacheKey);
   el.style.setProperty('offset-path', `path('${d}')`);
   el.style.setProperty('offset-rotate', '0deg');
   return true;
 }
 
-function writeFlowOffset(el: Element, offset: number): boolean {
+function writeFlowOffset(el: Element, offset: number, scale: number): boolean {
   const period = flowPeriod(el);
   if (period <= 0) {
     return false;
@@ -100,7 +103,7 @@ function writeFlowOffset(el: Element, offset: number): boolean {
   const normalized = ((offset % period) + period) % period;
   flowOffsets.set(el, normalized);
   if (el.hasAttribute(FLOW_ARROW_ATTR)) {
-    const pathWrote = ensureArrowOffsetPath(el);
+    const pathWrote = ensureArrowOffsetPath(el, scale);
     // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
     const phase = readNumberAttribute(el, 'data-link-flow-phase');
     const distance = (normalized + phase) % period;
@@ -115,12 +118,21 @@ function writeFlowOffset(el: Element, offset: number): boolean {
   return false;
 }
 
+function normalizeViewScale(scale: number): number {
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+function arrowPathCacheKey(pathD: string, viewScale: number): string {
+  return `${pathD}\0${viewScale}`;
+}
+
 /** Atualiza o deslocamento via rAF com velocidade fixa por faixa. */
 export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let raf = 0;
   /** Timer do modo dormente — nenhuma faixa no DOM, nada para animar. */
   let idleTimer = 0;
   let paused = false;
+  let viewScale = 1;
   let lanes: Element[] = [];
   let lanesReadAt = 0;
 
@@ -162,11 +174,11 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
     }
-    let animated = advanceFlowLanes(lanes);
+    let animated = advanceFlowLanes(lanes, viewScale);
     if (!animated) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
-      animated = advanceFlowLanes(lanes);
+      animated = advanceFlowLanes(lanes, viewScale);
     }
     if (!animated) {
       sleepUntilNextScan();
@@ -193,9 +205,19 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
 
   schedule();
 
+  const setViewScale = (scale: number) => {
+    const next = normalizeViewScale(scale);
+    if (viewScale === next) {
+      return;
+    }
+    viewScale = next;
+    wake();
+  };
+
   return {
     stop: clearPending,
     wake,
+    setViewScale,
     setPaused: (next) => {
       if (paused === next) {
         return;
