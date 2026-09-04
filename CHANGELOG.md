@@ -7,6 +7,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.417] - 2026-09-04
+
+### Alterado
+
+- Ícones de host em `src/img/topology/` atualizados (Noun Project): nuvem, firewall, OLT, câmera,
+  VPN, switch, energia, DVR, access point e servidor — sem texto de atribuição no SVG e
+  nomes no padrão do projeto. Tipo bridge usa ícone broadcast do Noun Project e rótulo
+  «Ponto a ponto» no picker, lista NOC e filtros.
+
+### Adicionado
+
+- Script `.config/normalize-topology-svgs.mjs` para normalizar SVGs importados do Noun Project.
+
 ## [1.4.416] - 2026-09-02
 
 ### Alterado

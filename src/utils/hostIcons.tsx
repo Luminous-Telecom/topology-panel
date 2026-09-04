@@ -67,7 +67,7 @@ export const HOST_ICON_LABELS: Record<TopologyHostIcon, string> = {
   mesh: 'Mesh / rede',
   camera: 'Câmera',
   dvr: 'DVR / NVR',
-  bridge: 'Bridge',
+  bridge: 'Ponto a ponto',
   power: 'Energia',
   server: 'Servidor',
   rack: 'Rack',
