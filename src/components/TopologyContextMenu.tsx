@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscapeKey } from '../hooks/useEscapeKey';
-import { useFloatingScreenPoint } from '../hooks/useFloatingScreenPoint';
 import { overlayPortalRoot } from '../utils/overlayPortal';
 import styles from './TopologyContextMenu.module.scss';
 
@@ -127,7 +126,29 @@ function MenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => voi
 }
 
 export function TopologyContextMenu({ x, y, items, onClose }: Props) {
-  const { refs, floatingStyles } = useFloatingScreenPoint({ x, y, placement: 'bottom-start', offsetPx: 4 });
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useLayoutEffect(() => {
+    setPosition({ x, y });
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const pad = 4;
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = Math.max(pad, window.innerHeight - rect.height - pad);
+    }
+    if (left !== x || top !== y) {
+      setPosition({ x: left, y: top });
+    }
+  }, [x, y, items]);
 
   useEscapeKey(onClose);
 
@@ -150,9 +171,9 @@ export function TopologyContextMenu({ x, y, items, onClose }: Props) {
         onContextMenu={dismiss}
       />
       <div
-        ref={refs.setFloating}
+        ref={ref}
         className={styles.menu}
-        style={{ ...floatingStyles, position: floatingStyles.position ?? 'fixed' }}
+        style={{ left: position.x, top: position.y }}
         onContextMenu={(e) => e.preventDefault()}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}

@@ -22,8 +22,10 @@
 }
 
 .barBelowToolbar {
-  @include compact {
-    top: 48px;
+  top: 44px;
+
+  @include medium {
+    top: 52px;
   }
 }
 

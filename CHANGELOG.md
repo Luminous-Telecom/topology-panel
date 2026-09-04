@@ -16,9 +16,15 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 ### Alterado
 
 - Ícones de equipamento atualizados para o pack Cisco do marrow-cli (estilo topologia NOC).
-- Overlays (hover de host/cabo, menu de contexto, tooltip da lista de alertas) usam Floating UI
-  para posicionamento com flip/shift.
+- Overlays (hover de host/cabo, tooltip da lista de alertas) usam Floating UI para posicionamento
+  com flip/shift; menu de contexto mantém posição fixa manual (submenus laterais).
 - Listas de alerta e modo NOC virtualizadas (`@tanstack/react-virtual`) para centenas de entradas.
+
+### Corrigido
+
+- Botão **Selecionar** (seta) da toolbar deixava de responder com breadcrumb de submapa visível:
+  a barra de navegação ficava por cima (z-index) no mesmo canto; breadcrumb passa abaixo da toolbar
+  e a toolbar ganha prioridade de clique.
 
 ### Dependências
 
