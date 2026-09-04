@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React from 'react';
 import { createPortal } from 'react-dom';
 import {
   overlayCardBodyStyle,
@@ -8,8 +8,9 @@ import {
   overlayMetricValueStyle,
   overlayMutedStyle,
 } from './chrome/overlayChrome';
+import { useFloatingScreenPoint } from '../hooks/useFloatingScreenPoint';
 import { LinkHoverTooltipModel } from '../utils/linkHoverTooltip';
-import { clampFixedOverlayPosition, overlayPortalRoot } from '../utils/overlayPortal';
+import { overlayPortalRoot } from '../utils/overlayPortal';
 import styles from './LinkHoverPopover.module.scss';
 
 interface Props {
@@ -39,28 +40,13 @@ export function LinkHoverPopover({
   downloadColor,
   statusColor,
 }: Props) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
-
-  useLayoutEffect(() => {
-    const el = popoverRef.current;
-    if (!el) {
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    setPosition(
-      clampFixedOverlayPosition(screenX, screenY, rect, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      })
-    );
-  }, [screenX, screenY, model.fromLabel, model.toLabel, model.upload, model.download, model.signalTx, model.signalRx, model.errors, model.drops, model.status]);
+  const { refs, floatingStyles } = useFloatingScreenPoint({ x: screenX, y: screenY });
 
   return createPortal(
     <div
-      ref={popoverRef}
+      ref={refs.setFloating}
       className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.panel}`}
-      style={{ left: position.left, top: position.top }}
+      style={{ ...floatingStyles, position: floatingStyles.position ?? 'fixed' }}
       role="tooltip"
     >
       <div className={styles.endpoints}>

@@ -1,5 +1,6 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   alertListHoverText,
   HostAlertListEntry,
@@ -20,14 +21,8 @@ import {
   overlayMutedStyle,
   overlayStackedItemStyle,
 } from '../chrome/overlayChrome';
-import {
-  fitOverlayBesideAnchor,
-  overlayBoxFromRect,
-  overlayClipBox,
-  overlayLocalPosition,
-  OverlayBox,
-  overlayPortalParent,
-} from '../../utils/overlayPortal';
+import { useFloatingElementAnchor } from '../../hooks/useFloatingElementAnchor';
+import { overlayPortalParent } from '../../utils/overlayPortal';
 import styles from './TopologyHostAlertList.module.scss';
 
 function reasonLabel(entry: HostAlertListEntry): string {
@@ -55,13 +50,9 @@ function alertHoverHeading(entry: HostAlertListEntry): string {
   return reasonLabel(entry);
 }
 
-const TOOLTIP_ESTIMATE = { width: 320, height: 72 };
-
-interface AlertHoverTip {
-  entry: HostAlertListEntry;
-  anchor: OverlayBox;
-  clip: OverlayBox;
-}
+const ROW_ESTIMATE_PX = 32;
+/** Listas curtas renderizam todos os itens (testes e poucos alertas); acima disso virtualiza. */
+const VIRTUAL_LIST_THRESHOLD = 48;
 
 interface Props {
   entries: HostAlertListEntry[];
@@ -82,127 +73,166 @@ function TopologyHostAlertListComponent({
   onFocusHost,
 }: Props) {
   const bottomOffset = minimapBottomOffset(showMinimap);
-  const tooltipRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [hoverTip, setHoverTip] = useState<AlertHoverTip | undefined>(undefined);
-  const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hoverEntry, setHoverEntry] = useState<HostAlertListEntry | undefined>(undefined);
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null);
 
-  const statusColorByEntry = useMemo(() => {
-    const colors = new Map<string, string>();
-    for (const entry of entries) {
-      colors.set(`${entry.mapId}:${entry.nodeId}`, entry.reason === 'offline' ? colorOffline : colorAlert);
-    }
-    return colors;
-  }, [colorAlert, colorOffline, entries]);
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_ESTIMATE_PX,
+    overscan: 6,
+    enabled: entries.length > VIRTUAL_LIST_THRESHOLD,
+  });
 
-  useLayoutEffect(() => {
-    if (!hoverTip) {
-      return;
-    }
-    const el = tooltipRef.current;
-    if (!el) {
-      return;
-    }
-    const size = el.getBoundingClientRect();
-    const next = fitOverlayBesideAnchor(
-      hoverTip.anchor,
-      { width: size.width || TOOLTIP_ESTIMATE.width, height: size.height || TOOLTIP_ESTIMATE.height },
-      hoverTip.clip
-    );
-    setTipPos((prev) => (prev.left === next.left && prev.top === next.top ? prev : next));
-  }, [hoverTip]);
+  const useVirtual = entries.length > VIRTUAL_LIST_THRESHOLD;
+
+  const { refs: tipRefs, floatingStyles: tipStyles } = useFloatingElementAnchor({
+    anchor: hoverAnchor,
+    enabled: hoverEntry != null,
+  });
 
   if (!queryReady || entries.length === 0) {
     return null;
   }
 
   const hoverProblems =
-    hoverTip && hoverTip.entry.reason !== 'offline'
-      ? visibleHostProblemNames(hoverTip.entry.problems)
+    hoverEntry && hoverEntry.reason !== 'offline'
+      ? visibleHostProblemNames(hoverEntry.problems)
       : undefined;
-  const tooltipOrigin = hoverTip ? overlayLocalPosition(tipPos, hoverTip.clip) : tipPos;
 
   return (
     <>
-    <div
-      ref={listRef}
-      className={`${overlayCardStyle} ${styles.panel} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
-      style={{ ['--overlay-bottom' as string]: `${bottomOffset}px` }}
-      data-map-wheel-overlay
-      aria-live="polite"
-      onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <div className={overlayCardHeaderStyle}>Hosts com alerta ({entries.length})</div>
-      <ul className={overlayListStyle}>
-        {entries.map((entry) => {
-            const entryKey = `${entry.mapId}:${entry.nodeId}`;
-            const statusColor = statusColorByEntry.get(entryKey) ?? colorAlert;
-            return (
-              <li key={entryKey}>
-                <button
-                  type="button"
-                  className={`${overlayListButtonStyle} ${styles.itemButton}`}
-                  aria-label={alertRowAriaLabel(entry)}
-                  onMouseEnter={(e) => {
-                    const anchor = overlayBoxFromRect(e.currentTarget.getBoundingClientRect());
-                    const clip = overlayClipBox(e.currentTarget);
-                    setTipPos(fitOverlayBesideAnchor(anchor, TOOLTIP_ESTIMATE, clip));
-                    setHoverTip({ entry, anchor, clip });
-                  }}
-                  onMouseLeave={() => setHoverTip(undefined)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFocusHost(entry);
-                  }}
-                >
-                  <span className={styles.dot} style={{ background: statusColor }} aria-hidden="true" />
-                  <span className={styles.hostName}>{entry.label}</span>
-                  {entry.mapLabel ? (
-                    <span className={styles.mapLabel}>{entry.mapLabel}</span>
-                  ) : null}
-                  <span className={styles.status} style={{ color: statusColor }}>
-                    {reasonLabel(entry)}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-      </ul>
-    </div>
-    {hoverTip
-      ? createPortal(
-          <div
-            ref={tooltipRef}
-            className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.tooltip}`}
-            style={{
-              left: tooltipOrigin.left,
-              top: tooltipOrigin.top,
-              maxHeight: Math.max(48, hoverTip.clip.height - 16),
-            }}
-            role="tooltip"
+      <div
+        ref={listRef}
+        className={`${overlayCardStyle} ${styles.panel} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
+        style={{ ['--overlay-bottom' as string]: `${bottomOffset}px` }}
+        data-map-wheel-overlay
+        aria-live="polite"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className={overlayCardHeaderStyle}>Hosts com alerta ({entries.length})</div>
+        <div ref={scrollRef} className={styles.scroll}>
+          {useVirtual ? (
+          <ul
+            className={styles.virtualList}
+            style={{ height: `${virtualizer.getTotalSize()}px` }}
           >
-            <div className={overlayMutedStyle}>{alertHoverHeading(hoverTip.entry)}</div>
-            {hoverProblems && hoverProblems.visible.length > 0 ? (
-              <>
-                {hoverProblems.visible.map((name, idx) => (
-                  <div
-                    key={`${idx}:${name}`}
-                    className={`${styles.tooltipProblem} ${overlayStackedItemStyle}`}
-                    style={{ color: colorAlert }}
+            {virtualizer.getVirtualItems().map((row) => {
+              const entry = entries[row.index];
+              const entryKey = `${entry.mapId}:${entry.nodeId}`;
+              const statusColor = entry.reason === 'offline' ? colorOffline : colorAlert;
+              return (
+                <li
+                  key={entryKey}
+                  className={styles.virtualRow}
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  <button
+                    type="button"
+                    className={`${overlayListButtonStyle} ${styles.itemButton}`}
+                    aria-label={alertRowAriaLabel(entry)}
+                    onMouseEnter={(e) => {
+                      setHoverAnchor(e.currentTarget);
+                      setHoverEntry(entry);
+                    }}
+                    onMouseLeave={() => {
+                      setHoverAnchor(null);
+                      setHoverEntry(undefined);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFocusHost(entry);
+                    }}
                   >
-                    {name}
-                  </div>
-                ))}
-                {hoverProblems.hidden > 0 ? (
-                  <div className={overlayMutedStyle}>e mais {hoverProblems.hidden}</div>
-                ) : null}
-              </>
-            ) : null}
-          </div>,
-          overlayPortalParent(listRef.current)
-        )
-      : null}
+                    <span className={styles.dot} style={{ background: statusColor }} aria-hidden="true" />
+                    <span className={styles.hostName}>{entry.label}</span>
+                    {entry.mapLabel ? (
+                      <span className={styles.mapLabel}>{entry.mapLabel}</span>
+                    ) : null}
+                    <span className={styles.status} style={{ color: statusColor }}>
+                      {reasonLabel(entry)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          ) : (
+          <ul className={`${overlayListStyle} ${styles.plainList}`}>
+            {entries.map((entry) => {
+              const entryKey = `${entry.mapId}:${entry.nodeId}`;
+              const statusColor = entry.reason === 'offline' ? colorOffline : colorAlert;
+              return (
+                <li key={entryKey}>
+                  <button
+                    type="button"
+                    className={`${overlayListButtonStyle} ${styles.itemButton}`}
+                    aria-label={alertRowAriaLabel(entry)}
+                    onMouseEnter={(e) => {
+                      setHoverAnchor(e.currentTarget);
+                      setHoverEntry(entry);
+                    }}
+                    onMouseLeave={() => {
+                      setHoverAnchor(null);
+                      setHoverEntry(undefined);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFocusHost(entry);
+                    }}
+                  >
+                    <span className={styles.dot} style={{ background: statusColor }} aria-hidden="true" />
+                    <span className={styles.hostName}>{entry.label}</span>
+                    {entry.mapLabel ? (
+                      <span className={styles.mapLabel}>{entry.mapLabel}</span>
+                    ) : null}
+                    <span className={styles.status} style={{ color: statusColor }}>
+                      {reasonLabel(entry)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          )}
+        </div>
+      </div>
+      {hoverEntry
+        ? createPortal(
+            <div
+              ref={tipRefs.setFloating}
+              className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.tooltip}`}
+              style={{
+                ...tipStyles,
+                position: tipStyles.position ?? 'absolute',
+                maxHeight: 'min(240px, 70vh)',
+              }}
+              role="tooltip"
+            >
+              <div className={overlayMutedStyle}>{alertHoverHeading(hoverEntry)}</div>
+              {hoverProblems && hoverProblems.visible.length > 0 ? (
+                <>
+                  {hoverProblems.visible.map((name, idx) => (
+                    <div
+                      key={`${idx}:${name}`}
+                      className={`${styles.tooltipProblem} ${overlayStackedItemStyle}`}
+                      style={{ color: colorAlert }}
+                    >
+                      {name}
+                    </div>
+                  ))}
+                  {hoverProblems.hidden > 0 ? (
+                    <div className={overlayMutedStyle}>e mais {hoverProblems.hidden}</div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>,
+            overlayPortalParent(listRef.current)
+          )
+        : null}
     </>
   );
 }

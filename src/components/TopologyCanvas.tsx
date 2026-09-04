@@ -47,6 +47,7 @@ import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
 import { TopologyBlueprintModal, LinkDetailsDrawer } from './lazyModals';
 import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
+import { autoLayoutTopologyMap } from '../utils/mapAutoLayout';
 import { openDashboardUrl } from './DashboardPickerModal';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
@@ -368,6 +369,7 @@ export function TopologyCanvas({
     setEditLink,
   } = modals;
   const [linkHoverId, setLinkHoverId] = useState<string | null>(null);
+  const [autoLayoutPending, setAutoLayoutPending] = useState(false);
   const { hostHover, beginHostHover, moveHostHover, endHostHover, clearHostHover } = useHostHoverTarget();
   const hostHoverEnabledRef = useRef(
     typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches
@@ -666,6 +668,22 @@ export function TopologyCanvas({
     },
     [persist, showToast, storedMap]
   );
+
+  const handleAutoLayout = useCallback(async () => {
+    if (autoLayoutPending || storedMap.locked) {
+      return;
+    }
+    setAutoLayoutPending(true);
+    try {
+      const next = await autoLayoutTopologyMap(storedMap, gridStep);
+      persist(next);
+      showToast('Mapa reorganizado automaticamente.');
+    } catch {
+      showToast('Não foi possível reorganizar o mapa.');
+    } finally {
+      setAutoLayoutPending(false);
+    }
+  }, [autoLayoutPending, gridStep, persist, showToast, storedMap]);
 
   const { clipboardReady, copySelection, pasteAt, pasteAtViewCenter } = useTopologyClipboardActions({
     map,
@@ -1415,6 +1433,10 @@ export function TopologyCanvas({
         queryError={Boolean(queryError)}
         queryLoading={liveStatusLoading}
         onInsertBlueprint={!effectiveNocMode && canPersist ? () => setBlueprintOpen(true) : undefined}
+        onAutoLayout={
+          !effectiveNocMode && canPersist && !storedMap.locked ? () => void handleAutoLayout() : undefined
+        }
+        autoLayoutPending={autoLayoutPending}
       />
 
       {!effectiveNocMode && showHostAlertList ? (

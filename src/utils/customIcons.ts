@@ -14,7 +14,7 @@ import switchSvg from '../img/topology/switch.svg';
 import switchUnmanagedSvg from '../img/topology/switch_unmanaged.svg';
 import vpnServerSvg from '../img/topology/vpn_server.svg';
 
-/** Ícones em src/img/topology/ — SVG inline (evita URL quebrada no Grafana). */
+/** Ícones em src/img/topology/ — SVG inline (estilo NOC Cisco via marrow-cli; ver npm run icons:sync). */
 export const CUSTOM_ICON_SVGS: Partial<Record<TopologyHostIcon, string>> = {
   router: routerSvg,
   switch_managed: switchSvg,

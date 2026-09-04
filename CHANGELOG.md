@@ -7,6 +7,24 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+### Adicionado
+
+- Botão **Organizar** no modo edição: layout automático em camadas (ELK.js) com snap à grade.
+- Script `npm run icons:sync` — copia ícones estilo NOC Cisco (pack marrow-cli, Apache-2.0) para
+  `src/img/topology/`.
+
+### Alterado
+
+- Ícones de equipamento atualizados para o pack Cisco do marrow-cli (estilo topologia NOC).
+- Overlays (hover de host/cabo, menu de contexto, tooltip da lista de alertas) usam Floating UI
+  para posicionamento com flip/shift.
+- Listas de alerta e modo NOC virtualizadas (`@tanstack/react-virtual`) para centenas de entradas.
+
+### Dependências
+
+- `elkjs`, `@floating-ui/react`, `@tanstack/react-virtual` (runtime no bundle); `marrow-cli` (sync
+  de ícones em dev).
+
 ## [1.4.416] - 2026-09-02
 
 ### Alterado

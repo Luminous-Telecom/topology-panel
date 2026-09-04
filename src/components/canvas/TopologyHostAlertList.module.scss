@@ -12,6 +12,33 @@
   pointer-events: auto;
 }
 
+.plainList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.virtualList {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .itemButton {
   font-size: $font-xs;
   line-height: 1.15;

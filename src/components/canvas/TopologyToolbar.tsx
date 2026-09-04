@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from '@grafana/ui';
-import { FaArrowPointer, FaCopy, FaHand, FaListUl, FaLock, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
+import { FaArrowPointer, FaCopy, FaDiagramProject, FaHand, FaListUl, FaLock, FaMap, FaPaste, FaTriangleExclamation } from 'react-icons/fa6';
 import { CanvasTool, HostMetadataMap, TopologyNode } from '../../types';
 import { toolbarLabelStyle, toolbarOverlayButtonStyle, toolbarToolGroupStyle } from './canvasOverlayStyles';
 import { searchWrapStyle, TopologySearch } from './TopologyMapSearch';
@@ -53,6 +53,8 @@ export function TopologyToolbar({
   onSearchOpenChange,
   onSearchFocusNode,
   onInsertBlueprint,
+  onAutoLayout,
+  autoLayoutPending = false,
   onToggleNocMode,
   nocModeActive = false,
 }: {
@@ -85,6 +87,8 @@ export function TopologyToolbar({
   onSearchOpenChange: (open: boolean) => void;
   onSearchFocusNode: (nodeId: string) => void;
   onInsertBlueprint?: () => void;
+  onAutoLayout?: () => void;
+  autoLayoutPending?: boolean;
   onToggleNocMode?: () => void;
   nocModeActive?: boolean;
 }) {
@@ -206,6 +210,19 @@ export function TopologyToolbar({
             >
               <Icon name="copy" size="sm" />
               <span className={toolbarLabelStyle}>Modelo</span>
+            </button>
+          ) : null}
+          {onAutoLayout ? (
+            <button
+              type="button"
+              className={toolbarClass('text', { disabled: Boolean(locked) || autoLayoutPending })}
+              disabled={Boolean(locked) || autoLayoutPending}
+              onClick={onAutoLayout}
+              title="Organizar mapa automaticamente (layout em camadas)"
+              aria-label="Organizar mapa automaticamente"
+            >
+              <FaDiagramProject size={13} />
+              <span className={toolbarLabelStyle}>{autoLayoutPending ? 'Organizando…' : 'Organizar'}</span>
             </button>
           ) : null}
           <button

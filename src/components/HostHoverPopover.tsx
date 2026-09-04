@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   HostDisplayMap,
@@ -10,9 +10,16 @@ import { HostLookupRef, resolveHostIp } from '../utils/hostLookup';
 import { lookupHostDisplay } from '../utils/queryHosts';
 import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
-import { overlayCardBodyStyle, overlayCardStyle, overlayMetricRowStyle, overlayMutedStyle, overlayStackedItemStyle } from './chrome/overlayChrome';
-import { clampFixedOverlayPosition, overlayPortalRoot } from '../utils/overlayPortal';
+import {
+  overlayCardBodyStyle,
+  overlayCardStyle,
+  overlayMetricRowStyle,
+  overlayMutedStyle,
+  overlayStackedItemStyle,
+} from './chrome/overlayChrome';
+import { useFloatingScreenPoint } from '../hooks/useFloatingScreenPoint';
 import { resolveHostDescription } from '../utils/mapSync';
+import { overlayPortalRoot } from '../utils/overlayPortal';
 import styles from './HostHoverPopover.module.scss';
 
 interface Props {
@@ -51,8 +58,7 @@ export function HostHoverPopover({
   options,
   queryReady,
 }: Props) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
+  const { refs, floatingStyles } = useFloatingScreenPoint({ x: screenX, y: screenY });
 
   const lookupRef = useMemo<HostLookupRef>(
     () => ({
@@ -75,24 +81,11 @@ export function HostHoverPopover({
       : resolveHostProblemSummary(node, hostMetadata, hostProblems);
   const problems = visibleHostProblemNames(problemSummary?.names);
 
-  useLayoutEffect(() => {
-    const el = popoverRef.current;
-    if (!el) {
-      return;
-    }
-    setPosition(
-      clampFixedOverlayPosition(screenX, screenY, el.getBoundingClientRect(), {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      })
-    );
-  }, [screenX, screenY, display?.text, description, problems.visible.length, problems.hidden]);
-
   return createPortal(
     <div
-      ref={popoverRef}
+      ref={refs.setFloating}
       className={`${overlayCardStyle} ${overlayCardBodyStyle} ${styles.panel}`}
-      style={{ left: position.left, top: position.top }}
+      style={{ ...floatingStyles, position: floatingStyles.position ?? 'fixed' }}
       role="tooltip"
     >
       <strong>{hostTitle(node)}</strong>

@@ -41,6 +41,8 @@ interface Props {
   queryError: boolean;
   queryLoading?: boolean;
   onInsertBlueprint?: () => void;
+  onAutoLayout?: () => void;
+  autoLayoutPending?: boolean;
   nocModeActive?: boolean;
   onToggleNocMode?: () => void;
   mapNavigationBreadcrumb?: TopologyBreadcrumbItem[];
@@ -87,6 +89,8 @@ export function CanvasControlsOverlay({
   queryError,
   queryLoading = false,
   onInsertBlueprint,
+  onAutoLayout,
+  autoLayoutPending = false,
   nocModeActive = false,
   onToggleNocMode,
   mapNavigationBreadcrumb = [] as TopologyBreadcrumbItem[],
@@ -141,6 +145,8 @@ export function CanvasControlsOverlay({
           onSearchOpenChange={setSearchOpen}
           onSearchFocusNode={onSearchFocusNode}
           onInsertBlueprint={onInsertBlueprint}
+          onAutoLayout={onAutoLayout}
+          autoLayoutPending={autoLayoutPending}
           nocModeActive={nocModeActive}
           onToggleNocMode={onToggleNocMode}
         />
