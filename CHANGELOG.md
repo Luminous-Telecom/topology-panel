@@ -7,6 +7,15 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.418] - 2026-09-04
+
+### Corrigido
+
+- Ferramenta «Selecionar (seta)» permanece ativa com mapa travado ou fora do modo edição; antes
+  voltava sempre para «Arrastar mapa (mão)».
+- Clique em rede com redes travadas e seta ativa seleciona a rede em vez de iniciar caixa de
+  seleção.
+
 ## [1.4.417] - 2026-09-04
 
 ### Alterado

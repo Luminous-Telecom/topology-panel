@@ -613,12 +613,9 @@ export function useTopologyDragController({
       const networksLocked = areNetworksLocked(storedMap);
 
       if (networksLocked) {
-        if (editable) {
-          const point = clientToMap(e.clientX, e.clientY);
-          if (point) {
-            beginMarquee(e, point.x, point.y);
-          }
-        }
+        setSelectedNodeIds((prev) =>
+          nextSelectedNodeIdsOnPointerDown(prev, node.id, e.ctrlKey || e.metaKey)
+        );
         return;
       }
 
@@ -638,10 +635,8 @@ export function useTopologyDragController({
       }
     },
     [
-      beginMarquee,
       beginNodeDrag,
       beginPan,
-      clientToMap,
       editable,
       nodeLayouts,
       setSelectedLink,

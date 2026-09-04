@@ -29,18 +29,20 @@ export function useCanvasSession(canEditCanvas: boolean) {
   const [blueprintOpen, setBlueprintOpen] = useState(false);
   const [pingTarget, setPingTarget] = useState<PingTarget | null>(null);
   const toolRef = useRef<CanvasTool>(canEditCanvas ? 'select' : 'pan');
+  const prevCanEditCanvasRef = useRef(canEditCanvas);
 
-  // Persistir pan no estado (ao destravar não volta a seta) e já devolver pan neste render
-  // — um effect pintava um frame com a seta ainda ativa.
-  if (!canEditCanvas && tool !== 'pan') {
+  // Ao travar o mapa, volta para a mão; fora disso a ferramenta escolhida permanece
+  // (seta serve para selecionar mesmo com mapa travado ou fora do modo edição).
+  if (prevCanEditCanvasRef.current && !canEditCanvas && tool !== 'pan') {
     setTool('pan');
   }
-  const effectiveTool: CanvasTool = canEditCanvas ? tool : 'pan';
-  const panTool = effectiveTool === 'pan';
-  toolRef.current = effectiveTool;
+  prevCanEditCanvasRef.current = canEditCanvas;
+
+  const panTool = tool === 'pan';
+  toolRef.current = tool;
 
   return {
-    tool: effectiveTool,
+    tool,
     setTool,
     toolRef,
     panTool,

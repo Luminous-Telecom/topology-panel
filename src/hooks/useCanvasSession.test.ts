@@ -20,4 +20,16 @@ describe('useCanvasSession', () => {
     });
     expect(result.current.tool).toBe('pan');
   });
+
+  it('com mapa travado, permite escolher a seta', () => {
+    const { result } = renderHook(() => useCanvasSession(false));
+
+    expect(result.current.tool).toBe('pan');
+
+    act(() => {
+      result.current.setTool('select');
+    });
+    expect(result.current.tool).toBe('select');
+    expect(result.current.panTool).toBe(false);
+  });
 });
