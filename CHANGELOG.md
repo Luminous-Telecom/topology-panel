@@ -7,6 +7,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.427] - 2026-09-05
+
+### Adicionado
+
+- Botão de mini mapa na toolbar também fora do modo edição — oculta ou mostra quando quiser.
+
+### Corrigido
+
+- Lista de hosts com alerta não mostra o texto do problema na linha (evita quebra letra a letra);
+  o hover ou o clique abre o alerta; no painel estreito o segundo clique vai ao host.
+
 ## [1.4.426] - 2026-09-05
 
 ### Adicionado

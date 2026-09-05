@@ -16,14 +16,14 @@
 }
 
 .itemButton {
-  align-items: flex-start;
+  align-items: center;
   width: max-content;
   max-width: 100%;
   font-size: $font-xs;
   line-height: 1.25;
   padding: 5px 10px;
   gap: 8px;
-  white-space: normal;
+  white-space: nowrap;
 
   @include compact {
     padding: 6px 10px;
@@ -40,7 +40,10 @@
 }
 
 .hostName {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -57,24 +60,17 @@
   white-space: nowrap;
 }
 
-.status {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.statusLine {
-  display: block;
+@include compact-canvas {
+  .panel {
+    max-width: min(280px, calc(100% - #{$gap * 3} - #{$scrollbar} - var(--topology-legend-dock, 0px)));
+  }
 }
 
 .tooltip {
   position: absolute;
   z-index: 10000;
-  max-width: 320px;
+  min-width: 180px;
+  max-width: min(320px, calc(100vw - 24px));
   pointer-events: none;
   font-size: $font-sm;
 }
@@ -83,5 +79,6 @@
   margin-top: 2px;
   font-size: $font-xs;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }

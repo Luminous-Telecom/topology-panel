@@ -1,11 +1,10 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   alertListHoverText,
   HostAlertListEntry,
   visibleHostProblemNames,
   alertListStatusLabel,
-  alertListStatusLines,
 } from '../../utils/noc/topologyFilters';
 import { overlayPanelCompactMaxHeight } from './canvasOverlayStyles';
 import {
@@ -25,6 +24,7 @@ import {
   OverlayBox,
   overlayPortalParent,
 } from '../../utils/overlayPortal';
+import { isCompactCanvasWidth } from '../../utils/canvasOverlayLayout';
 import styles from './TopologyHostAlertList.module.scss';
 
 function reasonLabel(entry: HostAlertListEntry): string {
@@ -83,7 +83,40 @@ function TopologyHostAlertListComponent({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [hoverTip, setHoverTip] = useState<AlertHoverTip | undefined>(undefined);
+  const [pinnedKey, setPinnedKey] = useState<string | undefined>(undefined);
+  const [compact, setCompact] = useState(false);
   const [tipPos, setTipPos] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    const root =
+      listRef.current?.closest('[data-topology-canvas]') ?? listRef.current;
+    if (!root) {
+      return;
+    }
+    const sync = () => setCompact(isCompactCanvasWidth(root.clientWidth));
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [queryReady, entries.length]);
+
+  useEffect(() => {
+    if (!pinnedKey) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const list = listRef.current;
+      const tip = tooltipRef.current;
+      const target = event.target as Node;
+      if (list?.contains(target) || tip?.contains(target)) {
+        return;
+      }
+      setPinnedKey(undefined);
+      setHoverTip(undefined);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [pinnedKey]);
 
   const statusColorByEntry = useMemo(() => {
     const colors = new Map<string, string>();
@@ -147,9 +180,25 @@ function TopologyHostAlertListComponent({
                     setTipPos(fitOverlayBesideAnchor(anchor, TOOLTIP_ESTIMATE, clip));
                     setHoverTip({ entry, anchor, clip });
                   }}
-                  onMouseLeave={() => setHoverTip(undefined)}
+                  onMouseLeave={() => {
+                    setHoverTip((tip) =>
+                      tip && pinnedKey === `${tip.entry.mapId}:${tip.entry.nodeId}` ? tip : undefined
+                    );
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    const anchor = overlayBoxFromRect(e.currentTarget.getBoundingClientRect());
+                    const clip = overlayClipBox(e.currentTarget);
+                    const canvas = listRef.current?.closest('[data-topology-canvas]');
+                    const narrow =
+                      compact || isCompactCanvasWidth((canvas as HTMLElement | null)?.clientWidth ?? 0);
+                    setTipPos(fitOverlayBesideAnchor(anchor, TOOLTIP_ESTIMATE, clip));
+                    setHoverTip({ entry, anchor, clip });
+                    if (narrow && pinnedKey !== entryKey) {
+                      setPinnedKey(entryKey);
+                      return;
+                    }
+                    setPinnedKey(entryKey);
                     onFocusHost(entry);
                   }}
                 >
@@ -161,14 +210,6 @@ function TopologyHostAlertListComponent({
                       <span className={styles.mapLabel}>{entry.mapLabel}</span>
                     </>
                   ) : null}
-                  <ColumnSep />
-                  <span className={styles.status} style={{ color: statusColor }}>
-                    {alertListStatusLines(entry).map((line, idx) => (
-                      <span key={`${idx}:${line}`} className={styles.statusLine}>
-                        {line}
-                      </span>
-                    ))}
-                  </span>
                 </button>
               </li>
             );

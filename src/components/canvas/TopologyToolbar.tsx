@@ -208,16 +208,6 @@ export function TopologyToolbar({
               <span className={toolbarLabelStyle}>Modelo</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className={toolbarClass('icon', { active: showMinimap })}
-            onClick={onToggleMinimap}
-            title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
-            aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
-            aria-pressed={showMinimap}
-          >
-            <FaMap size={13} />
-          </button>
         </>
       )}
       <div className={searchWrapStyle}>
@@ -239,6 +229,18 @@ export function TopologyToolbar({
           onFocusNode={onSearchFocusNode}
         />
       </div>
+      {onToggleMinimap ? (
+        <button
+          type="button"
+          className={toolbarClass('icon', { active: showMinimap })}
+          onClick={onToggleMinimap}
+          title={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+          aria-label={showMinimap ? 'Ocultar mini mapa' : 'Mostrar mini mapa'}
+          aria-pressed={showMinimap}
+        >
+          <FaMap size={13} />
+        </button>
+      ) : null}
       {onToggleLegend ? (
         <button
           type="button"

@@ -342,7 +342,7 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     const row = getByLabelText(/Ir para host-b no mapa Filial/);
     expect(row).toHaveTextContent('host-b');
     expect(row).toHaveTextContent('Filial');
-    expect(row).toHaveTextContent('Interface down');
+    expect(row).not.toHaveTextContent('Interface down');
   });
 
   it('mostra o problema Zabbix ao passar o mouse na lista de alertas', () => {
@@ -354,7 +354,7 @@ describe('TopologyCanvas — quiosque / playlist', () => {
       A: { 'host-a': { value: 1, status: 'online' } },
     };
 
-    const { getByLabelText, getByRole, getByText } = render(
+    const { getByLabelText, getByRole } = render(
       <TopologyCanvas
         map={map}
         storedMap={map}
@@ -370,8 +370,9 @@ describe('TopologyCanvas — quiosque / playlist', () => {
       />
     );
 
-    expect(getByText('Interface port-a com erros de entrada (alto)')).toBeInTheDocument();
-    fireEvent.mouseEnter(getByLabelText(/Interface port-a com erros de entrada/));
+    const row = getByLabelText(/Interface port-a com erros de entrada/);
+    expect(row).not.toHaveTextContent('Interface port-a com erros de entrada (alto)');
+    fireEvent.mouseEnter(row);
     const tooltip = getByRole('tooltip');
     expect(tooltip).toHaveTextContent('Interface port-a com erros de entrada (alto)');
     expect(tooltip.closest('[data-topology-canvas]')).not.toBeNull();
@@ -402,7 +403,8 @@ describe('TopologyCanvas — quiosque / playlist', () => {
       />
     );
 
-    expect(getByText('OFFLINE')).toBeInTheDocument();
+    expect(getByText('Host 1')).toBeInTheDocument();
+    expect(queryByText('OFFLINE')).toBeNull();
     expect(queryByText('ICMP timeout')).toBeNull();
   });
 
@@ -485,5 +487,6 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     await waitFor(() => {
       expect(getByLabelText('Visão geral do mapa')).toBeInTheDocument();
     });
+    expect(getByLabelText('Ocultar mini mapa')).toBeInTheDocument();
   });
 });

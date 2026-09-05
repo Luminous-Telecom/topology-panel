@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   CANVAS_EDGE_GAP,
+  COMPACT_CANVAS_MAX_PX,
   LEGEND_DOCK_WIDTH,
   MINIMAP_HEIGHT,
+  isCompactCanvasWidth,
   minimapBottomOffset,
 } from './canvasOverlayLayout';
 import { MAP_NATIVE_SCROLLBAR_PX } from './mapBounds';
@@ -14,6 +16,14 @@ describe('minimapBottomOffset', () => {
 
   it('com minimapa senta a lista acima do card, sem somar a barra de novo', () => {
     expect(minimapBottomOffset(true)).toBe(CANVAS_EDGE_GAP + MINIMAP_HEIGHT + CANVAS_EDGE_GAP);
+  });
+});
+
+describe('isCompactCanvasWidth', () => {
+  it('marca painel estreito no mesmo ponto do CSS compacto', () => {
+    expect(isCompactCanvasWidth(COMPACT_CANVAS_MAX_PX)).toBe(true);
+    expect(isCompactCanvasWidth(COMPACT_CANVAS_MAX_PX + 1)).toBe(false);
+    expect(isCompactCanvasWidth(0)).toBe(false);
   });
 });
 

@@ -11,6 +11,11 @@ export const MINIMAP_HEIGHT = 148;
 
 /** Painel estreito — celular em portrait ou Grafana em coluna fina. */
 export const MEDIA_COMPACT = '@media (max-width: 640px)';
+export const COMPACT_CANVAS_MAX_PX = 640;
+
+export function isCompactCanvasWidth(width: number): boolean {
+  return Number.isFinite(width) && width > 0 && width <= COMPACT_CANVAS_MAX_PX;
+}
 
 /** Tablet ou painel Grafana em largura intermediária. */
 export const MEDIA_MEDIUM = '@media (max-width: 900px)';
