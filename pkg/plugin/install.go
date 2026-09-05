@@ -93,12 +93,14 @@ func lookupHostnameIPv4(host string) string {
 	return ""
 }
 
-func matchAuthorizedGrafanaIP(grafanaIP string, authorized []string) string {
-	if !isIPv4(grafanaIP) {
-		return ""
-	}
-	for _, ip := range authorized {
-		if strings.TrimSpace(ip) == grafanaIP {
+func matchAuthorizedGrafanaIP(grafanaIP, pageHost string, authorized []string) string {
+	wantedHost := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(pageHost), "."))
+	for _, entry := range authorized {
+		bound := strings.TrimSpace(entry)
+		if grafanaIP != "" && bound == grafanaIP {
+			return grafanaIP
+		}
+		if wantedHost != "" && strings.EqualFold(bound, wantedHost) && isIPv4(grafanaIP) {
 			return grafanaIP
 		}
 	}
@@ -110,7 +112,7 @@ func licenseRejectMessage(reason string) string {
 	case "not_found":
 		return "Licença não encontrada. Rode de novo o comando de instalação da loja."
 	case "ip_not_authorized":
-		return "IP não autorizado. Cadastre o IP deste Grafana em Minha conta na loja."
+		return "Host não autorizado. Cadastre o domínio ou o IP deste Grafana na loja."
 	case "expired":
 		return "Licença expirada."
 	case "status_pending":

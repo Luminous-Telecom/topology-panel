@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,7 +83,7 @@ func (c *licenseChecker) check(pageHost string) LicenseResponse {
 		}
 	}
 	grafanaIP := c.resolvedGrafanaIP(pageHost, file.GrafanaIP)
-	stamp := file.LicenseKey + "\x00" + file.LicenseAPIURL + "\x00" + grafanaIP + "\x00" + c.version
+	stamp := file.LicenseKey + "\x00" + file.LicenseAPIURL + "\x00" + grafanaIP + "\x00" + pageHost + "\x00" + c.version
 
 	c.mu.Lock()
 	if c.cachedStamp == stamp && c.now().Before(c.cachedUntil) {
@@ -92,7 +93,7 @@ func (c *licenseChecker) check(pageHost string) LicenseResponse {
 	}
 	c.mu.Unlock()
 
-	result := c.validateAgainstStore(file, grafanaIP)
+	result := c.validateAgainstStore(file, grafanaIP, pageHost)
 	if result.Valid || !result.Retryable {
 		c.mu.Lock()
 		c.cached = result
@@ -167,8 +168,8 @@ func (c *licenseChecker) readInstall() (installedLicense, bool) {
 	return parseInstalledLicenseFile(raw)
 }
 
-func (c *licenseChecker) validateAgainstStore(file installedLicense, grafanaIP string) LicenseResponse {
-	status, err := c.fetchStatus(file)
+func (c *licenseChecker) validateAgainstStore(file installedLicense, grafanaIP, pageHost string) LicenseResponse {
+	status, err := c.fetchStatus(file, grafanaIP, pageHost)
 	if err != nil {
 		return LicenseResponse{
 			Message:   "Não foi possível consultar a loja. Confira a rede deste Grafana.",
@@ -181,17 +182,14 @@ func (c *licenseChecker) validateAgainstStore(file installedLicense, grafanaIP s
 	if status.pluginID != "" && status.pluginID != c.pluginID {
 		return LicenseResponse{Message: "Esta chave não é do Topology Panel."}
 	}
-	ip := matchAuthorizedGrafanaIP(grafanaIP, status.authorizedIPs)
+	ip := matchAuthorizedGrafanaIP(grafanaIP, pageHost, status.authorizedIPs)
 	if ip == "" {
-		if grafanaIP != "" {
-			return LicenseResponse{
-				GrafanaIP: grafanaIP,
-				Message:   "O IP deste Grafana (" + grafanaIP + ") não está na licença. Cadastre esse IP em Minha conta.",
-			}
-		}
-		return LicenseResponse{Message: "Cadastre o IP deste servidor Grafana em Minha conta na loja."}
+		ip = grafanaIP
 	}
-	validation, err := c.fetchValidate(file, ip)
+	if ip == "" {
+		return LicenseResponse{Message: "Cadastre o domínio ou o IP deste Grafana na loja."}
+	}
+	validation, err := c.fetchValidate(file, ip, pageHost)
 	if err != nil {
 		return LicenseResponse{
 			GrafanaIP: ip,
@@ -212,8 +210,19 @@ type storeStatus struct {
 	pluginID      string
 }
 
-func (c *licenseChecker) fetchStatus(file installedLicense) (storeStatus, error) {
-	req, err := http.NewRequest(http.MethodGet, licenseStatusURL(file.LicenseAPIURL), nil)
+func (c *licenseChecker) fetchStatus(file installedLicense, grafanaIP, pageHost string) (storeStatus, error) {
+	statusURL := licenseStatusURL(file.LicenseAPIURL)
+	query := url.Values{}
+	if grafanaIP != "" {
+		query.Set("ip", grafanaIP)
+	}
+	if host := strings.TrimSpace(pageHost); host != "" {
+		query.Set("host", host)
+	}
+	if encoded := query.Encode(); encoded != "" {
+		statusURL += "?" + encoded
+	}
+	req, err := http.NewRequest(http.MethodGet, statusURL, nil)
 	if err != nil {
 		return storeStatus{}, err
 	}
@@ -247,12 +256,16 @@ func (c *licenseChecker) fetchStatus(file installedLicense) (storeStatus, error)
 	}, nil
 }
 
-func (c *licenseChecker) fetchValidate(file installedLicense, ip string) (LicenseResponse, error) {
-	payload, err := json.Marshal(map[string]string{
+func (c *licenseChecker) fetchValidate(file installedLicense, ip, pageHost string) (LicenseResponse, error) {
+	request := map[string]string{
 		"licenseKey":    file.LicenseKey,
 		"ip":            ip,
 		"pluginVersion": c.version,
-	})
+	}
+	if host := strings.TrimSpace(pageHost); host != "" {
+		request["host"] = host
+	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return LicenseResponse{}, err
 	}

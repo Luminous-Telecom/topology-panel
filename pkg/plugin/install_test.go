@@ -33,11 +33,14 @@ func TestIsAllowedLicenseAPIURL(t *testing.T) {
 }
 
 func TestMatchAuthorizedGrafanaIP(t *testing.T) {
-	if got := matchAuthorizedGrafanaIP("203.0.113.10", []string{"10.0.0.1", "203.0.113.10"}); got != "203.0.113.10" {
+	if got := matchAuthorizedGrafanaIP("203.0.113.10", "", []string{"10.0.0.1", "203.0.113.10"}); got != "203.0.113.10" {
 		t.Fatalf("match: %s", got)
 	}
-	if got := matchAuthorizedGrafanaIP("203.0.113.10", []string{"10.0.0.1"}); got != "" {
+	if got := matchAuthorizedGrafanaIP("203.0.113.10", "", []string{"10.0.0.1"}); got != "" {
 		t.Fatalf("não deveria casar: %s", got)
+	}
+	if got := matchAuthorizedGrafanaIP("203.0.113.10", "grafana.example", []string{"grafana.example"}); got != "203.0.113.10" {
+		t.Fatalf("domínio autorizado: %s", got)
 	}
 	if got := resolveGrafanaServerIP("grafana.example", "198.51.100.9"); got != "198.51.100.9" {
 		t.Fatalf("host nomeado usa IP gravado: %s", got)
