@@ -141,7 +141,7 @@ export function useLinkMetricsRuntime(
     let cancelPaint: (() => void) | undefined;
     let mounted = true;
 
-    const apply = () => {
+    const apply = (syncDomEvenIfUnchanged = false) => {
       const snapshot = pollFeed?.getSnapshot() ?? {
         lastValues: EMPTY_LAST_VALUES,
         interfaceItems: EMPTY_INTERFACE_ITEMS,
@@ -158,6 +158,9 @@ export function useLinkMetricsRuntime(
         lastFullBuildDepsRef
       );
       if (unchanged) {
+        if (syncDomEvenIfUnchanged) {
+          liveStore?.publish(live, lastPaintRef.current);
+        }
         return;
       }
       liveStore?.publish(live, paint);
@@ -176,6 +179,7 @@ export function useLinkMetricsRuntime(
       }, 32);
     };
 
+    apply(true);
     cancelPaint = scheduleAfterPaint(() => {
       cancelPaint = undefined;
       if (mounted) {

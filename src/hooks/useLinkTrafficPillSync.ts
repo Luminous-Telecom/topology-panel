@@ -1,4 +1,4 @@
-import { MutableRefObject, useEffect } from 'react';
+import { MutableRefObject, useEffect, useLayoutEffect } from 'react';
 import { LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyLink, TopologyNode } from '../types';
 import { linkKey } from '../utils/mapLinkEdits';
 import { LinkPoint } from '../utils/linkGeometry';
@@ -27,22 +27,28 @@ function buildLinksByPillId(
 /** Poll de bps: atualiza só o texto das pílulas no DOM, fora do React. */
 export function useLinkTrafficPillSync(
   rootRef: MutableRefObject<HTMLElement | null>,
-  contextRef: MutableRefObject<LinkTrafficPillSyncContext>
+  contextRef: MutableRefObject<LinkTrafficPillSyncContext>,
+  /** Troca de mapa/submapa — as pílulas novas já estão no DOM e precisam do lastvalue atual. */
+  revision?: string
 ): void {
   const store = useLinkMetricsLiveStore();
 
-  useEffect(() => {
-    const run = () => {
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
-      const ctx = contextRef.current;
-      syncTrafficPillsInRoot(root, buildLinksByPillId(ctx.renderLinks, store.getLive()));
-    };
+  const run = () => {
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
+    const ctx = contextRef.current;
+    syncTrafficPillsInRoot(root, buildLinksByPillId(ctx.renderLinks, store.getLive()));
+  };
 
+  useEffect(() => {
     const unsub = store.subscribeDom(run);
     run();
     return unsub;
   }, [store, rootRef, contextRef]);
+
+  useLayoutEffect(() => {
+    run();
+  }, [revision, store]);
 }

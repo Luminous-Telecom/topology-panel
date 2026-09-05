@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.425] - 2026-09-05
+
+### Corrigido
+
+- Tráfego dos cabos volta ao entrar e sair de submapa — a pílula permanece no DOM (mesmo vazia) e o
+  lastvalue sincroniza na troca de mapa, sem precisar clicar na linha.
+
 ## [1.4.424] - 2026-09-05
 
 ### Alterado

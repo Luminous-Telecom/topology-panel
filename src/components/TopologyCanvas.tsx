@@ -286,7 +286,12 @@ export function TopologyCanvasComponent({
     onFullscreenChange,
     showToast,
   });
-  useLinkFlowAnimation(wrapRef, { queryReady, viewScale: view.scale, gestureStore });
+  useLinkFlowAnimation(wrapRef, {
+    queryReady,
+    viewScale: view.scale,
+    gestureStore,
+    navigationKey: mapNavigationKey,
+  });
   const chromeIdleHidden = useIdleHide({
     enabled: isFullscreen,
     wrapRef,
@@ -1278,7 +1283,7 @@ export function TopologyCanvasComponent({
     nodeLayouts,
     resolveLinkWaypoints,
   };
-  useLinkTrafficPillSync(wrapRef, pillSyncRef);
+  useLinkTrafficPillSync(wrapRef, pillSyncRef, mapNavigationKey);
 
   /**
    * Handlers de identidade fixa para as camadas de nó.

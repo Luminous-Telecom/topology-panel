@@ -9,6 +9,8 @@ interface LinkFlowAnimationOptions {
   viewScale?: number;
   /** Pausa a animação durante arraste, laço ou pan com preview ativo. */
   gestureStore?: CanvasGestureStore;
+  /** Troca de mapa/submapa — faixas novas entram no laço sem esperar o scan de 250 ms. */
+  navigationKey?: string;
 }
 
 function gestureBlocksLinkFlow(store: CanvasGestureStore): boolean {
@@ -19,7 +21,7 @@ function gestureBlocksLinkFlow(store: CanvasGestureStore): boolean {
 /** Anima os tracejados de download/upload dos links (velocidade via SNMP / utilização). */
 export function useLinkFlowAnimation(
   wrapRef: RefObject<HTMLDivElement>,
-  { queryReady, viewScale = 1, gestureStore }: LinkFlowAnimationOptions = {}
+  { queryReady, viewScale = 1, gestureStore, navigationKey }: LinkFlowAnimationOptions = {}
 ): void {
   const linkFlowRef = useRef<LinkFlowController | null>(null);
   const viewScaleRef = useRef(viewScale);
@@ -61,5 +63,5 @@ export function useLinkFlowAnimation(
     controller.setViewScale(viewScale);
     syncPaused(controller);
     controller.wake();
-  }, [gestureStore, queryReady, viewScale]);
+  }, [gestureStore, queryReady, viewScale, navigationKey]);
 }

@@ -46,6 +46,7 @@ function LinkTrafficLabelComponent({
   const lineH = 14;
   const padY = 5;
   const both = Boolean(txLabel && rxLabel);
+  const hidden = !txLabel && !rxLabel;
   const txWidth = txLabel ? pillLineWidth(txLabel, padX, charW) : 0;
   const rxWidth = rxLabel ? pillLineWidth(rxLabel, padX, charW) : 0;
   const width = Math.max(txWidth, rxWidth);
@@ -58,7 +59,12 @@ function LinkTrafficLabelComponent({
     rxY = lineH / 2;
   }
   return (
-    <g data-link-pill={pillId} transform={`translate(${x}, ${y})`} pointerEvents="none">
+    <g
+      data-link-pill={pillId}
+      transform={`translate(${x}, ${y})`}
+      pointerEvents="none"
+      style={hidden ? { display: 'none' } : undefined}
+    >
       <rect
         x={-width / 2}
         y={-height / 2}
@@ -136,9 +142,6 @@ function LinkTrafficOverlayComponent({
   const display = resolveLinkMapTrafficMetrics(link, runtimeMetrics);
   const txLabel = formatBitsPerSecond(display.txBps);
   const rxLabel = formatBitsPerSecond(display.rxBps);
-  if (!txLabel && !rxLabel) {
-    return null;
-  }
   const anchor = linkTrafficAnchor(from, to, gridStep, waypoints, bundleOffset);
   return (
     <LinkTrafficLabel

@@ -133,6 +133,43 @@ describe('useLinkMetricsRuntime', () => {
     expect(store.getLive()[key]?.from.txBps).toBe(100000000);
   });
 
+  it('troca de mapa publica as métricas dos cabos do mapa novo', async () => {
+    const mapA = mapWithTraffic();
+    const mapB = {
+      ...emptyMap({
+        nodes: [hostNode({ id: 'c' }), hostNode({ id: 'd', x: 80 })],
+      }),
+      links: [
+        {
+          from: 'c',
+          to: 'd',
+          fromInterface: { name: 'eth0', metrics: { rx: { itemId: '20' }, tx: { itemId: '21' } } },
+        },
+      ],
+    };
+    const feed = createTestPollFeed();
+    const store = createLinkMetricsLiveStore();
+    feed.push({
+      '10': { itemid: '10', lastvalue: '500000000' },
+      '11': { itemid: '11', lastvalue: '100000000' },
+      '20': { itemid: '20', lastvalue: '200000000' },
+      '21': { itemid: '21', lastvalue: '300000000' },
+    });
+    const { rerender } = renderHook(
+      ({ map }) => useLinkMetricsRuntime(map, defaultOptions(), feed, undefined, store),
+      { initialProps: { map: mapA } }
+    );
+    const keyA = linkKey(mapA.links[0]!);
+    await waitFor(() => {
+      expect(store.getLive()[keyA]?.from.rxBps).toBe(500000000);
+    });
+    rerender({ map: mapB });
+    const keyB = linkKey(mapB.links[0]!);
+    await waitFor(() => {
+      expect(store.getLive()[keyB]?.from.rxBps).toBe(200000000);
+    });
+  });
+
   it('paintMetricsByLink mantém identidade quando só o bps mudou', async () => {
     const map = mapWithTraffic();
     const feed = createTestPollFeed();

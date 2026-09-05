@@ -57,6 +57,16 @@ describe('linkTrafficPillDom', () => {
     expect(syncTrafficPillGroup(g, '1 Mbps', undefined)).toBe(false);
   });
 
+  it('pílula montada vazia recebe o lastvalue no sync (troca de submapa)', () => {
+    const g = pillGroup();
+    g.style.display = 'none';
+    g.querySelector('[data-link-pill-tx-value]')!.textContent = '';
+    expect(syncTrafficPillGroup(g, '1 Mbps', '2 Mbps')).toBe(true);
+    expect(g.style.display).not.toBe('none');
+    expect(g.querySelector('[data-link-pill-tx-value]')?.textContent?.trim()).toBe('1 Mbps');
+    expect(g.querySelector('[data-link-pill-rx-value]')?.textContent?.trim()).toBe('2 Mbps');
+  });
+
   it('syncTrafficPillGroup troca o texto sem remontar o grupo', () => {
     const g = pillGroup();
     expect(syncTrafficPillGroup(g, '4.5 Mbps', '900 Kbps')).toBe(true);
