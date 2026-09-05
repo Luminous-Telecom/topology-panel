@@ -16,8 +16,8 @@ const (
 	ticketIssuer = "luminous-store"
 	// Mesma chave pública do frontend. Só verifica; a privada fica na loja.
 	ticketPublicPEM = `-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAES0Vt0Xlrbf598lnLQ2BiFcRCYtWE
-OigsNWG0eSvRxRyCXBzcPElrSNKK/R9LPdlC60c4amGoZ2d27y/s/iUQHg==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAED8gt7rZ9PWJwLH5ENnUTrnBF8nbO
+lu6dvi6bDsP2O22vQi01vXNBk70gYE/0lFXpmMqEiRgvCq689e/o7UiQ7w==
 -----END PUBLIC KEY-----
 `
 )

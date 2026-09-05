@@ -7,6 +7,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.434] - 2026-09-05
+
+### Alterado
+
+- Chave pública do ticket de licença (par ES256 da loja).
+
+## [1.4.433] - 2026-09-05
+
 ### Alterado
 
 - Licença consulta a loja no máximo uma vez por dia (antes a cada 30 s).
