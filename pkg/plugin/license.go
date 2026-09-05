@@ -2,11 +2,13 @@ package plugin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,7 +17,11 @@ const (
 	storeTimeout = 15 * time.Second
 	// Curto de propósito: tirar o IP na loja tem que valer sem reiniciar o Grafana.
 	licenseCacheTTL = 30 * time.Second
+	// Mesmo serviço do comando de instalação da loja (`grafana-install.sh`).
+	publicIPTimeout = 8 * time.Second
 )
+
+var publicIPv4URL = "https://api.ipify.org"
 
 type LicenseResponse struct {
 	Valid        bool   `json:"valid"`
@@ -26,24 +32,28 @@ type LicenseResponse struct {
 }
 
 type licenseChecker struct {
-	dir      string
-	client   *http.Client
-	pluginID string
-	version  string
-	verify   func(ticket, licenseKey, ip, pluginID string) bool
-	now      func() time.Time
+	dir          string
+	client       *http.Client
+	pluginID     string
+	version      string
+	verify       func(ticket, licenseKey, ip, pluginID string) bool
+	now          func() time.Time
+	detectPublic func() string
 
 	mu          sync.Mutex
 	cached      LicenseResponse
 	cachedUntil time.Time
 	cachedStamp string
+
+	publicOnce    sync.Once
+	publicIPValue string
 }
 
 func newLicenseChecker(dir string, client *http.Client, version string) *licenseChecker {
 	if client == nil {
 		client = &http.Client{Timeout: storeTimeout}
 	}
-	return &licenseChecker{
+	checker := &licenseChecker{
 		dir:      dir,
 		client:   client,
 		pluginID: ID,
@@ -53,21 +63,25 @@ func newLicenseChecker(dir string, client *http.Client, version string) *license
 		},
 		now: time.Now,
 	}
+	checker.detectPublic = func() string { return fetchPublicIPv4(checker.client) }
+	return checker
 }
 
 func (c *licenseChecker) check(pageHost string) LicenseResponse {
 	file, ok := c.readInstall()
 	if !ok {
-		// Instalação manual (npm run build + cópia para o Grafana) não traz license.json.
-		// A loja grava o arquivo no comando de instalação — só aí a validação é obrigatória.
-		return LicenseResponse{Valid: true}
+		if isLocalDevelopmentHost(pageHost) {
+			return LicenseResponse{Valid: true}
+		}
+		grafanaIP := c.resolvedGrafanaIP(pageHost, "")
+		return LicenseResponse{GrafanaIP: grafanaIP, Message: missingInstallMessage(grafanaIP)}
 	}
 	if !isAllowedLicenseAPIURL(file.LicenseAPIURL) {
 		return LicenseResponse{
 			Message: "Rode o comando de instalação da loja neste Grafana. A URL da loja é gravada na instalação.",
 		}
 	}
-	grafanaIP := resolveGrafanaServerIP(pageHost, file.GrafanaIP)
+	grafanaIP := c.resolvedGrafanaIP(pageHost, file.GrafanaIP)
 	stamp := file.LicenseKey + "\x00" + file.LicenseAPIURL + "\x00" + grafanaIP + "\x00" + c.version
 
 	c.mu.Lock()
@@ -87,6 +101,62 @@ func (c *licenseChecker) check(pageHost string) LicenseResponse {
 		c.mu.Unlock()
 	}
 	return result
+}
+
+func (c *licenseChecker) resolvedGrafanaIP(pageHost, installed string) string {
+	if ip := resolveGrafanaServerIP(pageHost, installed); ip != "" {
+		return ip
+	}
+	if isLocalDevelopmentHost(pageHost) {
+		return ""
+	}
+	return c.detectedPublicIP()
+}
+
+func (c *licenseChecker) detectedPublicIP() string {
+	if c.detectPublic == nil {
+		return ""
+	}
+	c.publicOnce.Do(func() {
+		c.publicIPValue = c.detectPublic()
+	})
+	return c.publicIPValue
+}
+
+func missingInstallMessage(grafanaIP string) string {
+	if grafanaIP != "" {
+		return "Rode o comando de instalação da loja neste Grafana. IP deste servidor: " + grafanaIP + "."
+	}
+	return "Rode o comando de instalação da loja neste Grafana. A chave e a URL são gravadas na instalação."
+}
+
+func fetchPublicIPv4(client *http.Client) string {
+	if client == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), publicIPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicIPv4URL, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return ""
+	}
+	ip := strings.TrimSpace(string(body))
+	if !isIPv4(ip) {
+		return ""
+	}
+	return ip
 }
 
 func (c *licenseChecker) readInstall() (installedLicense, bool) {

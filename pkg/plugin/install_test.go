@@ -45,4 +45,13 @@ func TestMatchAuthorizedGrafanaIP(t *testing.T) {
 	if got := resolveGrafanaServerIP("198.51.100.8", "203.0.113.10"); got != "198.51.100.8" {
 		t.Fatalf("host IPv4 prevalece: %s", got)
 	}
+	if got := resolveGrafanaServerIP("", ""); got != "" {
+		t.Fatalf("sem host nem IP gravado: %s", got)
+	}
+	if got := lookupHostnameIPv4("localhost"); got != "" {
+		t.Fatalf("localhost não vira IP de licença: %s", got)
+	}
+	if !isLocalDevelopmentHost("127.0.0.1") || isLocalDevelopmentHost("grafana.example") {
+		t.Fatal("host de desenvolvimento")
+	}
 }

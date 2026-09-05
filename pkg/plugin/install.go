@@ -56,6 +56,15 @@ func isIPv4(value string) bool {
 	return ip != nil && ip.To4() != nil
 }
 
+func isLocalDevelopmentHost(host string) bool {
+	switch strings.TrimSpace(strings.ToLower(host)) {
+	case "localhost", "127.0.0.1", "::1", "[::1]":
+		return true
+	default:
+		return false
+	}
+}
+
 func resolveGrafanaServerIP(pageHostname, installedGrafanaIP string) string {
 	host := strings.TrimSpace(pageHostname)
 	if isIPv4(host) {
@@ -64,6 +73,22 @@ func resolveGrafanaServerIP(pageHostname, installedGrafanaIP string) string {
 	installed := strings.TrimSpace(installedGrafanaIP)
 	if isIPv4(installed) {
 		return installed
+	}
+	return lookupHostnameIPv4(host)
+}
+
+func lookupHostnameIPv4(host string) string {
+	if host == "" || isLocalDevelopmentHost(host) {
+		return ""
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return ""
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil && !v4.IsLoopback() {
+			return v4.String()
+		}
 	}
 	return ""
 }

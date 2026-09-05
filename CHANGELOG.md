@@ -7,6 +7,15 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.429] - 2026-09-05
+
+### Corrigido
+
+- Deploy do Grafana sem `license.json` (cópia manual) volta a exigir a instalação da loja;
+  só `localhost` / `127.0.0.1` ficam liberados.
+- O IP deste Grafana aparece no editor e no aviso mesmo quando a URL é um nome (DNS) ou o
+  `license.json` ainda não existe — usa o IP público do servidor.
+
 ## [1.4.428] - 2026-09-05
 
 ### Corrigido

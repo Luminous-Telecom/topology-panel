@@ -146,7 +146,26 @@ func TestLicenseCheckerRevalidatesAfterTTL(t *testing.T) {
 
 func TestHandlerLicenseMissingFile(t *testing.T) {
 	h := New(t.TempDir())
-	req := httptest.NewRequest(http.MethodGet, "/license", nil)
+	h.licenses.detectPublic = func() string { return "" }
+	req := httptest.NewRequest(http.MethodGet, "/license?host=198.51.100.20", nil)
+	rec := httptest.NewRecorder()
+	h.handleLicense(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	var parsed LicenseResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Valid || parsed.GrafanaIP != "198.51.100.20" || parsed.Message == "" {
+		t.Fatalf("esperava bloqueio com IP: %+v", parsed)
+	}
+}
+
+func TestHandlerLicenseSkipsWithoutInstallOnLocalhost(t *testing.T) {
+	h := New(t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/license?host=127.0.0.1", nil)
 	rec := httptest.NewRecorder()
 	h.handleLicense(rec, req)
 	if rec.Code != http.StatusOK {
@@ -158,6 +177,38 @@ func TestHandlerLicenseMissingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !parsed.Valid {
-		t.Fatalf("sem license.json = desenvolvimento local: %+v", parsed)
+		t.Fatalf("esperava licença liberada em dev local: %+v", parsed)
+	}
+}
+
+func TestFetchPublicIPv4(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("203.0.113.10\n"))
+	}))
+	defer server.Close()
+	prev := publicIPv4URL
+	publicIPv4URL = server.URL
+	defer func() { publicIPv4URL = prev }()
+	if got := fetchPublicIPv4(server.Client()); got != "203.0.113.10" {
+		t.Fatalf("IP público: %s", got)
+	}
+}
+
+func TestHandlerLicenseUsesDetectedPublicIP(t *testing.T) {
+	h := New(t.TempDir())
+	h.licenses.detectPublic = func() string { return "203.0.113.10" }
+	req := httptest.NewRequest(http.MethodGet, "/license?host=grafana.invalid", nil)
+	rec := httptest.NewRecorder()
+	h.handleLicense(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	var parsed LicenseResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Valid || parsed.GrafanaIP != "203.0.113.10" {
+		t.Fatalf("esperava IP público detectado: %+v", parsed)
 	}
 }
