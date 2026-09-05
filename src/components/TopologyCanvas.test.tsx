@@ -474,7 +474,7 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     });
     const options = { ...defaultOptions(), map, showMinimap: true };
 
-    const { getByLabelText } = render(
+    const { getByLabelText, queryByLabelText } = render(
       <TopologyCanvas
         map={map}
         storedMap={map}
@@ -487,6 +487,8 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     await waitFor(() => {
       expect(getByLabelText('Visão geral do mapa')).toBeInTheDocument();
     });
-    expect(getByLabelText('Ocultar mini mapa')).toBeInTheDocument();
+    fireEvent.click(getByLabelText('Ocultar mini mapa'));
+    expect(queryByLabelText('Visão geral do mapa')).toBeNull();
+    expect(getByLabelText('Mostrar mini mapa')).toBeInTheDocument();
   });
 });

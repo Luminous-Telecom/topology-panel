@@ -34,23 +34,32 @@ function useSessionToggle(
 }
 
 interface Params {
+  showMinimap?: boolean;
   showLegend?: boolean;
   showHostAlertList?: boolean;
   nocMode?: boolean;
+  onShowMinimapChange?: (show: boolean) => void;
   onShowLegendChange?: (show: boolean) => void;
   onShowHostAlertListChange?: (show: boolean) => void;
   onNocModeChange?: (enabled: boolean) => void;
 }
 
-/** Legenda, lista de alertas e modo NOC — persistidos quando dá, senão só na sessão. */
+/** Mini mapa, legenda, lista de alertas e modo NOC — persistidos quando dá, senão só na sessão. */
 export function useCanvasOverlayToggles({
+  showMinimap: showMinimapOption,
   showLegend: showLegendOption,
   showHostAlertList: showHostAlertListOption,
   nocMode,
+  onShowMinimapChange,
   onShowLegendChange,
   onShowHostAlertListChange,
   onNocModeChange,
 }: Params) {
+  const [showMinimap, handleToggleShowMinimap] = useSessionToggle(
+    showMinimapOption,
+    true,
+    onShowMinimapChange
+  );
   const [showLegend, handleToggleShowLegend] = useSessionToggle(showLegendOption, true, onShowLegendChange);
   const [showHostAlertList, handleToggleShowHostAlertList] = useSessionToggle(
     showHostAlertListOption,
@@ -60,9 +69,11 @@ export function useCanvasOverlayToggles({
   const [effectiveNocMode, handleToggleNocMode] = useSessionToggle(nocMode, false, onNocModeChange);
 
   return {
+    showMinimap,
     showLegend,
     showHostAlertList,
     effectiveNocMode,
+    handleToggleShowMinimap,
     handleToggleShowLegend,
     handleToggleShowHostAlertList,
     handleToggleNocMode,

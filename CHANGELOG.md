@@ -7,6 +7,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.428] - 2026-09-05
+
+### Corrigido
+
+- Botão do mini mapa oculta ou mostra na hora, também fora do modo edição (override da sessão).
+- Lista de hosts com alerta não encolhe o nome quando a legenda está aberta.
+
+### Removido
+
+- Clique em dois passos e reserva de largura da legenda na lista de alertas.
+
 ## [1.4.427] - 2026-09-05
 
 ### Adicionado

@@ -96,7 +96,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Toque no host (peek status / Tools) | `resolveHostTouchTap` em `utils/nodeTap.ts` |
 | Seleção, arraste e viewport | `hooks/useTopologySelection.ts` (`nextSelectedNodeIds` / `nextSelectedNodeIdsOnPointerDown`), `useTopologyDragController.ts`, `useTopologyViewport.ts` |
 | Sessão de edição do canvas (ferramenta, busca, cabo pendente, ping, blueprint) | `hooks/useCanvasSession.ts` (`PingTarget`) |
-| Override local de legenda, lista de alertas e modo NOC | `hooks/useCanvasOverlayToggles.ts` |
+| Override local de mini mapa, legenda, lista de alertas e modo NOC | `hooks/useCanvasOverlayToggles.ts` |
 | Filtros do modo NOC (Status / Submapa / Tipo / Links) | `utils/noc/types.ts` (`NOC_STATUS_MENU_IDS`, `NOC_LINK_MENU_IDS`, `nocSubmapFilterId`) + `visibleNocFilterIds` / `collectPresentSubmapFilterIds` / `isNodeVisibleForFilters` / `isLinkVisibleForFilters`; capacidade em `linkMatchesCapacityGbps`; UI em `TopologyNocPanel.tsx` |
 | viewEditable e itens da legenda | `hooks/useCanvasDerivedView.ts` |
 | Linha do cabo, pulsos de fluxo e pílula de tráfego | `components/canvas/links/LinkLine.tsx`, `LinkFlowArrows.tsx`, `LinkTrafficLabel.tsx` (`LinkTrafficOverlay` na `LinksLayer`); passo do traço pelo upload em `linkFlowSpeedFromUpload` + `syncLinkFlowStepsInRoot` |

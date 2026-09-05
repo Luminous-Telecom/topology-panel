@@ -211,18 +211,21 @@ export function TopologyCanvasComponent({
   const canEditCanvas = canPersist && !storedMap.locked;
   const editable = canEditCanvas;
   const networksLocked = areNetworksLocked(storedMap);
-  const showMinimap = options.showMinimap !== false;
   const {
+    showMinimap,
     showLegend,
     showHostAlertList,
     effectiveNocMode,
+    handleToggleShowMinimap,
     handleToggleShowLegend,
     handleToggleShowHostAlertList,
     handleToggleNocMode,
   } = useCanvasOverlayToggles({
+    showMinimap: options.showMinimap,
     showLegend: options.showLegend,
     showHostAlertList: options.showHostAlertList,
     nocMode: options.nocMode,
+    onShowMinimapChange,
     onShowLegendChange,
     onShowHostAlertListChange,
     onNocModeChange,
@@ -1411,7 +1414,7 @@ export function TopologyCanvasComponent({
         isFullscreen={isFullscreen}
         onToggleFullscreen={() => void toggleFullscreen()}
         showMinimap={showMinimap}
-        onToggleMinimap={() => onShowMinimapChange?.(!showMinimap)}
+        onToggleMinimap={handleToggleShowMinimap}
         showLegend={showLegend}
         onToggleLegend={handleToggleShowLegend}
         showHostAlertList={showHostAlertList}

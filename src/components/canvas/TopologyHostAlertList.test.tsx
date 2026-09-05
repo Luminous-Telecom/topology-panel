@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React from 'react';
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TopologyHostAlertList } from './TopologyHostAlertList';
@@ -13,26 +13,10 @@ const entry: HostAlertListEntry = {
   problems: ['Status da PON 1/4'],
 };
 
-function CanvasStub({ width, children }: { width: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [ready, setReady] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el) {
-      Object.defineProperty(el, 'clientWidth', { configurable: true, value: width });
-    }
-    setReady(true);
-  }, [width]);
-  return (
-    <div data-topology-canvas ref={ref}>
-      {ready ? children : null}
-    </div>
-  );
-}
-
-function renderList(canvasWidth: number, onFocusHost = vi.fn()) {
-  const { getByLabelText, getByRole, queryByRole } = render(
-    <CanvasStub width={canvasWidth}>
+describe('TopologyHostAlertList', () => {
+  it('mostra só o host na linha e o problema no hover; o clique foca o host', () => {
+    const onFocusHost = vi.fn();
+    const { getByLabelText, getByRole } = render(
       <TopologyHostAlertList
         entries={[entry]}
         colorOffline="#c00"
@@ -40,27 +24,13 @@ function renderList(canvasWidth: number, onFocusHost = vi.fn()) {
         queryReady
         onFocusHost={onFocusHost}
       />
-    </CanvasStub>
-  );
-  return { getByLabelText, getByRole, queryByRole, onFocusHost };
-}
-
-describe('TopologyHostAlertList', () => {
-  it('no painel estreito o primeiro clique mostra o alerta e o segundo foca o host', () => {
-    const { getByLabelText, getByRole, queryByRole, onFocusHost } = renderList(400);
+    );
     const row = getByLabelText(/Ir para host-a/);
+    expect(row).toHaveTextContent('host-a');
     expect(row).not.toHaveTextContent('Status da PON 1/4');
-    fireEvent.click(row);
-    expect(onFocusHost).not.toHaveBeenCalled();
+    fireEvent.mouseEnter(row);
     expect(getByRole('tooltip')).toHaveTextContent('Status da PON 1/4');
     fireEvent.click(row);
-    expect(onFocusHost).toHaveBeenCalledWith(entry);
-    expect(queryByRole('tooltip')).toBeTruthy();
-  });
-
-  it('no painel largo o clique foca o host na hora', () => {
-    const { getByLabelText, onFocusHost } = renderList(900);
-    fireEvent.click(getByLabelText(/Ir para host-a/));
     expect(onFocusHost).toHaveBeenCalledWith(entry);
   });
 });
