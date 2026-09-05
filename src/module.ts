@@ -370,6 +370,25 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
         category: ['Links'],
       })
       .addBooleanSwitch({
+        path: 'linkAnimationEnabled',
+        name: 'Animar tráfego nos cabos',
+        description: 'Traço amarelo correndo sobre a linha fina quando o cabo está online',
+        defaultValue: true,
+        category: ['Links'],
+      })
+      .addNumberInput({
+        path: 'linkAnimationSpeed',
+        name: 'Velocidade do tráfego',
+        description: 'Multiplicador da velocidade (1 = padrão)',
+        defaultValue: 0.5,
+        settings: {
+          min: 0.25,
+          max: 4,
+          step: 0.25,
+        },
+        category: ['Links'],
+      })
+      .addBooleanSwitch({
         path: 'showLegend',
         name: 'Mostrar legenda',
         description: 'Exibe a caixa de legenda no canto inferior direito do mapa',

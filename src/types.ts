@@ -372,6 +372,10 @@ export interface TopologyPanelOptions {
   colorLinkHigh: string;
   /** Cor do cabo acima do limiar crítico (congestionamento) */
   colorLinkCongestion: string;
+  /** Anima tráfego amarelo nos cabos online. */
+  linkAnimationEnabled?: boolean;
+  /** Velocidade do tráfego amarelo (1 = padrão). */
+  linkAnimationSpeed?: number;
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
   colorNetworkBorder: string;
@@ -524,6 +528,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorLinkAttention: '#FADE2A',
   colorLinkHigh: '#FF9830',
   colorLinkCongestion: '#ff7300',
+  linkAnimationEnabled: true,
+  linkAnimationSpeed: 0.5,
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
   nodeFontSize: 11,

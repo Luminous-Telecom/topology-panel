@@ -7,6 +7,26 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.423] - 2026-09-04
+
+### Alterado
+
+- Cabos: linha fina única — fibra contínua, rádio tracejado — com tráfego amarelo animado por cima;
+  removidos marcadores nas pontas, múltiplos estilos de animação e faixas TX/RX coloridas.
+- Velocidade padrão do tráfego amarelo reduzida (~7× mais lenta que a primeira versão animada).
+
+### Adicionado
+
+- Opções de animação dos cabos (categoria Links): ligar/desligar tráfego amarelo e ajustar velocidade.
+
+### Corrigido
+
+- Velocidade padrão do tráfego amarelo ajustada (0,5×) para não parecer acelerada demais.
+- Direção do tráfego amarelo nos cabos: segue o sentido do upload (origem → destino).
+- Performance da animação: orçamento por quantidade visível, pausa em gestos/zoom afastado e frames
+  adaptativos no rAF.
+- Animação de tráfego via loop rAF (`data-link-flow`) — compatível com o SVG no Grafana.
+
 ## [1.4.418] - 2026-09-04
 
 ### Corrigido

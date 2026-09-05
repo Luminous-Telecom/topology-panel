@@ -42,7 +42,6 @@ import { CanvasGridLayer } from './canvas/CanvasGridLayer';
 import { CanvasHudOverlay } from './canvas/CanvasHudOverlay';
 import { CanvasModals } from './canvas/CanvasModals';
 import { GesturePreviewLayers } from './canvas/GesturePreviewLayers';
-import { LinkMarkers } from './canvas/LinkMarkers';
 import { HostIconDefs } from '../utils/hostIcons';
 import { TopologyToast } from './canvas/TopologyToast';
 import { TopologyBlueprintModal, LinkDetailsDrawer } from './lazyModals';
@@ -50,6 +49,7 @@ import { applyTopologyBlueprint } from '../utils/mapTemplateEdits';
 import { openDashboardUrl } from './DashboardPickerModal';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
+import { linkFlowAnimationBudget } from '../utils/linkAnimationStyle';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useStableIdentity } from '../hooks/useStableIdentity';
 import { structuralShareMap } from '../utils/structuralIdentity';
@@ -325,7 +325,7 @@ export function TopologyCanvas({
     onFullscreenChange,
     showToast,
   });
-  useLinkFlowAnimation(wrapRef, { queryReady, viewScale: view.scale });
+  useLinkFlowAnimation(wrapRef, { queryReady, viewScale: view.scale, gestureStore });
   const chromeIdleHidden = useIdleHide({
     enabled: isFullscreen,
     wrapRef,
@@ -1291,6 +1291,10 @@ export function TopologyCanvas({
   // recortada invalidaria o `React.memo` das camadas justamente durante o pan.
   const visibleNodes = useStableIdentity(visibleNodesRaw);
   const culledRenderLinks = useStableIdentity(culledRenderLinksRaw);
+  const flowAnimateBudget = useMemo(
+    () => linkFlowAnimationBudget(culledRenderLinks.length),
+    [culledRenderLinks.length]
+  );
 
   /**
    * Handlers de identidade fixa para as camadas de nó.
@@ -1465,13 +1469,6 @@ export function TopologyCanvas({
         onContextMenu={(e) => handleContextMenu(e)}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
-          <LinkMarkers
-            colorLink={resolveColor(options.colorLink)}
-            colorLinkAttention={resolveColor(options.colorLinkAttention)}
-            colorLinkHigh={resolveColor(options.colorLinkHigh)}
-            colorLinkCongestion={resolveColor(options.colorLinkCongestion)}
-            colorOffline={resolveColor(options.colorOffline)}
-          />
           <HostIconDefs icons={iconsInMap} />
           <CanvasGridLayer
             bounds={gridBounds}
@@ -1509,6 +1506,7 @@ export function TopologyCanvas({
             setHoveredLinkKey={setHoveredLinkKey}
             resolveLinkWaypoints={resolveLinkWaypoints}
             linkMetricsByLink={linkMetricsByLink}
+            flowAnimateBudget={flowAnimateBudget}
             onNetworkPointerDown={stableNetworkPointerDown}
             onNodePointerDown={stableNodePointerDown}
             onNodeClick={stableNodeClick}

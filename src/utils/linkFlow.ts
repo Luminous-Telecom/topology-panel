@@ -34,12 +34,21 @@ function readNumberAttribute(el: Element, name: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function laneStep(el: Element): number {
+  const mult = readNumberAttribute(el, 'data-link-flow-step');
+  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1);
+}
+
 /** Dash fecha o ciclo no padrão; seta fecha no comprimento do próprio cabo. */
 function flowPeriod(el: Element): number {
-  if (!el.hasAttribute(FLOW_ARROW_ATTR)) {
-    return LINK_FLOW_PERIOD;
+  if (el.hasAttribute(FLOW_ARROW_ATTR)) {
+    return readNumberAttribute(el, 'data-link-flow-length');
   }
-  return readNumberAttribute(el, 'data-link-flow-length');
+  const custom = readNumberAttribute(el, 'data-link-flow-period');
+  if (custom > 0) {
+    return custom;
+  }
+  return LINK_FLOW_PERIOD;
 }
 
 export type LinkFlowController = {
@@ -63,6 +72,24 @@ const appliedFlowPaths = new WeakMap<Element, string>();
 
 /** Reconsulta o DOM no máximo a cada 250 ms — link novo entra na animação no fatiamento seguinte. */
 const FLOW_QUERY_INTERVAL_MS = 250;
+const FLOW_QUERY_INTERVAL_HEAVY_MS = 500;
+
+function frameSkipForLaneCount(count: number): number {
+  if (count <= 40) {
+    return 1;
+  }
+  if (count <= 80) {
+    return 2;
+  }
+  if (count <= 160) {
+    return 3;
+  }
+  return 4;
+}
+
+function queryIntervalForLaneCount(count: number): number {
+  return count > 80 ? FLOW_QUERY_INTERVAL_HEAVY_MS : FLOW_QUERY_INTERVAL_MS;
+}
 
 function isFlowLaneActive(el: Element): boolean {
   return el.getAttribute('data-link-flow-active') !== 'false';
@@ -74,7 +101,7 @@ function advanceFlowLanes(lanes: Element[], scale: number): number {
     if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + LINK_FLOW_SPEED, scale);
+    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + laneStep(el), scale);
     animated += 1;
   }
   return animated;
@@ -114,7 +141,11 @@ function writeFlowOffset(el: Element, offset: number, scale: number): boolean {
   }
   const direction = el.getAttribute('data-link-flow');
   const signed = direction === 'upload' ? -normalized : normalized;
-  el.setAttribute('stroke-dashoffset', String(signed));
+  if (el instanceof SVGElement) {
+    el.style.strokeDashoffset = String(signed);
+  } else {
+    el.setAttribute('stroke-dashoffset', String(signed));
+  }
   return false;
 }
 
@@ -135,6 +166,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let viewScale = 1;
   let lanes: Element[] = [];
   let lanesReadAt = 0;
+  let frameTick = 0;
 
   const clearPending = () => {
     if (raf) {
@@ -160,19 +192,27 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
    * barato num mapa sem tráfego ou com todos os cabos parados.
    */
   const sleepUntilNextScan = () => {
+    const delay = queryIntervalForLaneCount(lanes.length);
     idleTimer = window.setTimeout(() => {
       idleTimer = 0;
       schedule();
-    }, FLOW_QUERY_INTERVAL_MS);
+    }, delay);
   };
 
   const tick = () => {
     raf = 0;
     const now = performance.now();
     const stale = lanes.some((el) => !el.isConnected);
-    if (stale || now - lanesReadAt >= FLOW_QUERY_INTERVAL_MS) {
+    const scanInterval = queryIntervalForLaneCount(lanes.length);
+    if (stale || now - lanesReadAt >= scanInterval) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
+    }
+    const skip = frameSkipForLaneCount(lanes.length);
+    frameTick += 1;
+    if (frameTick % skip !== 0) {
+      schedule();
+      return;
     }
     let animated = advanceFlowLanes(lanes, viewScale);
     if (!animated) {

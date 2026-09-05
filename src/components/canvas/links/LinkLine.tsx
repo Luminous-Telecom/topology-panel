@@ -1,8 +1,8 @@
 import React, { MutableRefObject, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
-import { formatLinkBandwidth, linkStrokeWidth } from '../../../utils/linkBandwidth';
-import { LINK_FLOW_DASH, supportsFlowArrows } from '../../../utils/linkFlow';
+import { formatLinkBandwidth } from '../../../utils/linkBandwidth';
+import { normalizeLinkAnimationSpeed } from '../../../utils/linkAnimationStyle';
 import { resolveLinkUtilizationLevel } from '../../../utils/linkFlowSpeed';
 import {
   isLinkVisuallyDown,
@@ -18,7 +18,6 @@ import {
   computeLinkGeometry,
   LinkPoint,
   offsetPolyline,
-  polylineLength,
   sameLinkPoints,
 } from '../../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../../utils/linkMedium';
@@ -27,8 +26,10 @@ import { buildLinkHoverTooltip } from '../../../utils/linkHoverTooltip';
 import { NodeLayout } from '../../../utils/nodeLayout';
 import { canvasStyles } from '../canvasStyles';
 import { LinkHoverPopover } from '../../LinkHoverPopover';
-import { LinkFlowArrows } from './LinkFlowArrows';
+import { LinkTrafficFlow } from './LinkTrafficFlow';
 import {
+  LINK_BASE_OPACITY,
+  LINK_BASE_WIDTH,
   LINK_HOVER_COLOR,
   LINK_LINE_CAP,
   LINK_RADIO_DASH,
@@ -44,7 +45,6 @@ interface LinkLineProps {
   selected: boolean;
   hovered: boolean;
   runtimeMetrics?: LinkRuntimeMetrics;
-  /** Lastvalue vivo — o memo do cabo ignora bps; o tooltip lê daqui no hover. */
   metricsLiveRef?: MutableRefObject<Record<string, LinkRuntimeMetrics>>;
   fromHostOffline?: boolean;
   toHostOffline?: boolean;
@@ -53,68 +53,40 @@ interface LinkLineProps {
   onContextMenu: (e: React.MouseEvent) => void;
   onPathPointerDown: (e: React.PointerEvent) => void;
   onPathDoubleClick: (e: React.MouseEvent) => void;
+  flowAnimate?: boolean;
 }
 
-function linkMarkerSuffix(
-  linkDown: boolean,
-  level: ReturnType<typeof resolveLinkUtilizationLevel>
-): string | undefined {
-  if (linkDown) {
-    return 'offline';
+function resolveBaseStrokeWidth(selected: boolean, hovered: boolean): number {
+  if (selected) {
+    return LINK_BASE_WIDTH + 0.75;
   }
-  switch (level) {
-    case 'attention':
-      return 'attention';
-    case 'high':
-      return 'high';
-    case 'critical':
-      return 'congested';
-    default:
-      return undefined;
+  if (hovered) {
+    return LINK_BASE_WIDTH + 0.35;
   }
+  return LINK_BASE_WIDTH;
 }
 
-function resolveLinkStrokeColor(args: {
+function resolveBaseStrokeColor(args: {
   linkDown: boolean;
   selected: boolean;
   hovered: boolean;
   utilLevel: ReturnType<typeof resolveLinkUtilizationLevel>;
   runtimeColor: string;
   linkColor: string;
-}): string {
+}): { color: string; opacity: number } {
   if (args.linkDown) {
-    return args.runtimeColor;
+    return { color: args.runtimeColor, opacity: 1 };
   }
   if (args.selected) {
-    return LINK_SELECT_COLOR;
+    return { color: LINK_SELECT_COLOR, opacity: 1 };
   }
   if (args.hovered) {
-    return LINK_HOVER_COLOR;
+    return { color: LINK_HOVER_COLOR, opacity: 1 };
   }
   if (args.utilLevel !== 'normal') {
-    return args.runtimeColor;
+    return { color: args.runtimeColor, opacity: 1 };
   }
-  return args.linkColor;
-}
-
-function linkMarkerUrl(
-  kind: 'start' | 'end',
-  selected: boolean,
-  hovered: boolean,
-  markerLevel: string | undefined,
-  linkDown: boolean
-): string {
-  const prefix = kind === 'start' ? 'link-dot-start' : 'link-dot-end';
-  if (!linkDown && selected) {
-    return `url(#${prefix}-active)`;
-  }
-  if (!linkDown && hovered) {
-    return `url(#${prefix}-hover)`;
-  }
-  if (markerLevel) {
-    return `url(#${prefix}-${markerLevel})`;
-  }
-  return `url(#${prefix})`;
+  return { color: args.linkColor, opacity: LINK_BASE_OPACITY };
 }
 
 function LinkLineComponent({
@@ -134,6 +106,7 @@ function LinkLineComponent({
   onContextMenu,
   onPathPointerDown,
   onPathDoubleClick,
+  flowAnimate = true,
 }: LinkLineProps) {
   const theme = useTheme2();
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
@@ -142,8 +115,6 @@ function LinkLineComponent({
   const liveMetrics = metricsLiveRef?.current[lk] ?? runtimeMetrics;
   const displayTraffic = resolveLinkMapTrafficMetrics(link, liveMetrics);
   const interfaceDown = runtimeMetrics?.status === 'down';
-  const uploadOffline = interfaceDown || fromHostOffline;
-  const downloadOffline = interfaceDown || toHostOffline;
   const from = nodeLayouts.get(link.from);
   const to = nodeLayouts.get(link.to);
   if (!from || !to) {
@@ -154,16 +125,15 @@ function LinkLineComponent({
   const { pathPoints } = geom;
   const hasWaypoints = waypoints.length > 0;
   const d = buildLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset);
-  const hitWidth = Math.max(10, linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, false, false) + 8);
+  const strokeWidth = resolveBaseStrokeWidth(selected, hovered);
+  const hitWidth = Math.max(10, strokeWidth + 8);
   const medium = resolveLinkMedium(link);
-  const dashArray = medium === 'radio' ? LINK_RADIO_DASH : undefined;
-  const strokeWidth = linkStrokeWidth(link.bandwidthMbps, options.colorLinkWidth, selected, hovered);
+  const mediumDash = medium === 'radio' ? LINK_RADIO_DASH : undefined;
   const bandwidthLabel = formatLinkBandwidth(link.bandwidthMbps ?? displayTraffic.capacityMbps);
   const fromName = link.fromInterface?.name;
   const toName = link.toInterface?.name;
   const txLabel = formatBitsPerSecond(displayTraffic.txBps);
   const rxLabel = formatBitsPerSecond(displayTraffic.rxBps);
-  const drawnPoints = bundleOffset === 0 ? pathPoints : offsetPolyline(pathPoints, bundleOffset);
   const hoverTooltip = buildLinkHoverTooltip({
     fromLabel: from.label || link.from,
     toLabel: to.label || link.to,
@@ -186,9 +156,8 @@ function LinkLineComponent({
     theme,
     linkRuntimeColor(options, runtimeMetrics, utilLevel, fromHostOffline || toHostOffline)
   );
-  const markerLevel = linkMarkerSuffix(linkDown, utilLevel);
   const linkColor = resolvePanelColor(theme, options.colorLink);
-  const strokeColor = resolveLinkStrokeColor({
+  const baseStroke = resolveBaseStrokeColor({
     linkDown,
     selected,
     hovered,
@@ -196,13 +165,18 @@ function LinkLineComponent({
     runtimeColor,
     linkColor,
   });
-  const markerStart = linkMarkerUrl('start', selected, hovered, markerLevel, linkDown);
-  const markerEnd = linkMarkerUrl('end', selected, hovered, markerLevel, linkDown);
+  const trafficColor = resolvePanelColor(theme, options.colorLinkUpload);
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
-  const uploadLabelColor = resolvePanelColor(theme, options.colorLinkUpload);
-  const reverseD = buildLinkPathD([...pathPoints].reverse(), gridStep, hasWaypoints, -bundleOffset);
-  const laneLength = polylineLength(drawnPoints);
-  const pulseSize = Math.max(4, strokeWidth * 1.8);
+  const uploadLabelColor = trafficColor;
+  const animationSpeed = normalizeLinkAnimationSpeed(options.linkAnimationSpeed);
+  const animationEnabled = options.linkAnimationEnabled !== false;
+  const trafficActive =
+    flowAnimate &&
+    animationEnabled &&
+    !linkDown &&
+    !interfaceDown &&
+    !fromHostOffline &&
+    !toHostOffline;
 
   return (
     <g
@@ -249,84 +223,23 @@ function LinkLineComponent({
       />
       <path
         d={d}
-        stroke={strokeColor}
+        stroke={baseStroke.color}
         strokeWidth={strokeWidth}
-        strokeOpacity={1}
-        strokeDasharray={dashArray}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
+        strokeOpacity={baseStroke.opacity}
+        strokeDasharray={mediumDash}
         fill="none"
         pointerEvents="none"
         {...LINK_LINE_CAP}
       />
-      {supportsFlowArrows ? (
-        <>
-          {!uploadOffline && (
-            <LinkFlowArrows
-              laneD={d}
-              laneLength={laneLength}
-              color={uploadLabelColor}
-              direction="upload"
-              linkId={lk}
-              size={pulseSize}
-            />
-          )}
-          {!downloadOffline && (
-            <LinkFlowArrows
-              laneD={reverseD}
-              laneLength={laneLength}
-              color={downloadLabelColor}
-              direction="download"
-              linkId={lk}
-              size={pulseSize}
-            />
-          )}
-        </>
-      ) : (
-        <>
-          {!downloadOffline && (
-            <path
-              d={d}
-              data-link-flow="download"
-              data-link-key={lk}
-              stroke={downloadLabelColor}
-              strokeWidth={Math.max(2.4, strokeWidth)}
-              strokeDasharray={LINK_FLOW_DASH}
-              fill="none"
-              pointerEvents="none"
-              opacity={0.95}
-              {...LINK_LINE_CAP}
-            />
-          )}
-          {!uploadOffline && (
-            <path
-              d={d}
-              data-link-flow="upload"
-              data-link-key={lk}
-              stroke={uploadLabelColor}
-              strokeWidth={Math.max(2.4, strokeWidth)}
-              strokeDasharray={LINK_FLOW_DASH}
-              fill="none"
-              pointerEvents="none"
-              opacity={0.95}
-              {...LINK_LINE_CAP}
-            />
-          )}
-        </>
-      )}
+      {trafficActive ? (
+        <LinkTrafficFlow d={d} color={trafficColor} linkId={lk} speed={animationSpeed} />
+      ) : null}
     </g>
   );
 }
 
-/**
- * Só redesenha o path/pulsos quando a pintura muda (faixa de utilização, status, geometria).
- * Bps cru atualiza a pílula em `LinkTrafficOverlay` e o tooltip via `metricsLiveRef`.
- */
 export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
-  if (
-    prev.selected !== next.selected ||
-    prev.hovered !== next.hovered
-  ) {
+  if (prev.selected !== next.selected || prev.hovered !== next.hovered) {
     return false;
   }
   if (prev.link.from !== next.link.from || prev.link.to !== next.link.to) {
@@ -377,13 +290,15 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     prev.options.colorOffline === next.options.colorOffline &&
     prev.options.colorLinkDownload === next.options.colorLinkDownload &&
     prev.options.colorLinkUpload === next.options.colorLinkUpload &&
-    prev.options.colorLinkWidth === next.options.colorLinkWidth &&
     prev.options.gridSize === next.options.gridSize &&
     prev.options.colorLinkCongestion === next.options.colorLinkCongestion &&
     prev.options.colorLinkAttention === next.options.colorLinkAttention &&
     prev.options.colorLinkHigh === next.options.colorLinkHigh &&
     prev.options.linkUtilThresholdAttention === next.options.linkUtilThresholdAttention &&
     prev.options.linkUtilThresholdHigh === next.options.linkUtilThresholdHigh &&
-    prev.options.linkUtilThresholdCritical === next.options.linkUtilThresholdCritical
+    prev.options.linkUtilThresholdCritical === next.options.linkUtilThresholdCritical &&
+    prev.options.linkAnimationEnabled === next.options.linkAnimationEnabled &&
+    prev.options.linkAnimationSpeed === next.options.linkAnimationSpeed &&
+    prev.flowAnimate === next.flowAnimate
   );
 });

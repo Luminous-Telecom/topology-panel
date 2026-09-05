@@ -11,7 +11,10 @@ function lane(root: HTMLElement, opts: { active: boolean }): Element {
 }
 
 function offsetOf(el: Element): number {
-  return Number(el.getAttribute('stroke-dashoffset') ?? '0');
+  if (el instanceof SVGElement && el.style.strokeDashoffset) {
+    return Math.abs(Number(el.style.strokeDashoffset));
+  }
+  return Math.abs(Number(el.getAttribute('stroke-dashoffset') ?? '0'));
 }
 
 describe('startLinkFlowAnimation', () => {
@@ -95,6 +98,21 @@ describe('startLinkFlowAnimation', () => {
     vi.advanceTimersByTime(100);
 
     expect(offsetOf(el)).toBeGreaterThan(0);
+    controller.stop();
+  });
+
+  it('respeita período e passo customizados no dash', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('data-link-flow', 'download');
+    el.setAttribute('data-link-flow-period', '28');
+    el.setAttribute('data-link-flow-step', '2');
+    el.setAttribute('data-link-flow-active', 'true');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+
+    vi.advanceTimersByTime(100);
+
+    expect(Math.abs(offsetOf(el))).toBeGreaterThan(10);
     controller.stop();
   });
 

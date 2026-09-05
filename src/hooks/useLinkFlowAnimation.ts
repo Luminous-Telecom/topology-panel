@@ -1,19 +1,35 @@
 import { RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { LinkFlowController, startLinkFlowAnimation } from '../utils/linkFlow';
+import { CanvasGestureStore } from '../utils/canvasGestureStore';
 
 interface LinkFlowAnimationOptions {
   /** Acorda o laço quando a Query fica pronta. */
   queryReady?: boolean;
   /** Escala do canvas — o zoom invalida o offset-path cacheado das setas. */
   viewScale?: number;
+  /** Pausa a animação durante arraste, laço ou pan com preview ativo. */
+  gestureStore?: CanvasGestureStore;
+}
+
+function gestureBlocksLinkFlow(store: CanvasGestureStore): boolean {
+  const ui = store.get();
+  return ui.dragPreview != null || ui.marqueeRect != null;
 }
 
 /** Anima os tracejados de download/upload dos links (velocidade via SNMP / utilização). */
 export function useLinkFlowAnimation(
   wrapRef: RefObject<HTMLDivElement>,
-  { queryReady, viewScale = 1 }: LinkFlowAnimationOptions = {}
+  { queryReady, viewScale = 1, gestureStore }: LinkFlowAnimationOptions = {}
 ): void {
   const linkFlowRef = useRef<LinkFlowController | null>(null);
+  const viewScaleRef = useRef(viewScale);
+  viewScaleRef.current = viewScale;
+
+  const syncPaused = (controller: LinkFlowController) => {
+    const zoomedOut = viewScaleRef.current < 0.35;
+    const gesturing = gestureStore ? gestureBlocksLinkFlow(gestureStore) : false;
+    controller.setPaused(document.hidden || zoomedOut || gesturing);
+  };
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -23,23 +39,27 @@ export function useLinkFlowAnimation(
     const controller = startLinkFlowAnimation(el);
     controller.setViewScale(viewScale);
     linkFlowRef.current = controller;
-    // Aba oculta não desenha: manter o laço rodando só gastava CPU no dashboard esquecido aberto.
-    const syncPaused = () => {
-      controller.setPaused(document.hidden);
-    };
-    syncPaused();
-    document.addEventListener('visibilitychange', syncPaused);
+    syncPaused(controller);
+    const onVisibility = () => syncPaused(controller);
+    document.addEventListener('visibilitychange', onVisibility);
+    const unsubGesture = gestureStore?.subscribe(() => syncPaused(controller));
     return () => {
-      document.removeEventListener('visibilitychange', syncPaused);
+      document.removeEventListener('visibilitychange', onVisibility);
+      unsubGesture?.();
       controller.stop();
       if (linkFlowRef.current === controller) {
         linkFlowRef.current = null;
       }
     };
-  }, [wrapRef]);
+  }, [gestureStore, wrapRef]);
 
   useLayoutEffect(() => {
-    linkFlowRef.current?.setViewScale(viewScale);
-    linkFlowRef.current?.wake();
-  }, [queryReady, viewScale]);
+    const controller = linkFlowRef.current;
+    if (!controller) {
+      return;
+    }
+    controller.setViewScale(viewScale);
+    syncPaused(controller);
+    controller.wake();
+  }, [gestureStore, queryReady, viewScale]);
 }
