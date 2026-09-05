@@ -16,8 +16,8 @@ import (
 
 const (
 	storeTimeout = 15 * time.Second
-	// Curto de propósito: tirar o IP na loja tem que valer sem reiniciar o Grafana.
-	licenseCacheTTL = 30 * time.Second
+	// Uma consulta à loja por dia; reiniciar o Grafana força nova validação.
+	licenseCacheTTL = 24 * time.Hour
 	// Mesmo serviço do comando de instalação da loja (`grafana-install.sh`).
 	publicIPTimeout = 8 * time.Second
 )

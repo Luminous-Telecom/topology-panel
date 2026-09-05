@@ -140,7 +140,7 @@ Qualquer arquivo em `src/`. Consulte a tabela **antes** de escrever helper novo.
 | Arquivo `license.json` da instalação | `parseInstalledLicenseFile` em `pkg/plugin/install.go` — o processo Go lê o arquivo no disco |
 | Licença no Grafana | `fetchPluginLicense` em `services/pluginBackend.ts` (`GET /license`); JSON-RPC em `zabbixCall` / `zabbixQuery` / `zabbixPoll` |
 | Comparar versão instalada × loja | `PLUGIN_VERSION` / `pluginVersionIsNewer` em `utils/pluginVersion.ts` |
-| Estado de licença no painel | `hooks/useLicenseValidation.ts` (`LICENSE_REFRESH_MS` 30 s, igual ao TTL do Go) + overlay `components/LicenseGate.tsx` |
+| Estado de licença no painel | `hooks/useLicenseValidation.ts` (`LICENSE_REFRESH_MS` 24 h, igual ao TTL do Go) + overlay `components/LicenseGate.tsx` |
 
 ## Exceções
 

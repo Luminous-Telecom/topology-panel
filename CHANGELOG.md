@@ -7,6 +7,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+### Alterado
+
+- Licença consulta a loja no máximo uma vez por dia (antes a cada 30 s).
+
 ## [1.4.432] - 2026-09-05
 
 ### Corrigido

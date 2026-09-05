@@ -24,7 +24,7 @@ describe('useLicenseValidation', () => {
     expect(result.current).toEqual({ status: 'valid', storeVersion: '1.9.0' });
   });
 
-  it('bloqueia o mapa quando a loja deixa de autorizar o IP, sem recarregar a página', async () => {
+  it('bloqueia o mapa quando a loja deixa de autorizar o IP, no próximo ciclo diário', async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchPluginLicense)

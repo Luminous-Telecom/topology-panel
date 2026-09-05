@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { fetchPluginLicense } from '../services/pluginBackend';
 import { isLicenseEnforced } from '../utils/licenseValidation';
 
-/** Alinhado ao `licenseCacheTTL` do backend Go — a loja é consultada de novo sem reiniciar o Grafana. */
-export const LICENSE_REFRESH_MS = 30_000;
+/** Alinhado ao `licenseCacheTTL` do backend Go — no máximo uma consulta à loja por dia. */
+export const LICENSE_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 export type LicenseCheckState =
   | { status: 'skipped' }
