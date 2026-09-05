@@ -4,6 +4,10 @@ export const LINK_BASE_WIDTH = 1.5;
 export const LINK_BASE_OPACITY = 0.55;
 export const LINK_TRAFFIC_WIDTH = 2.2;
 export const LINK_TRAFFIC_DASH = '10 16';
+export const LINK_CAPSULE_DASH = '7 11';
+export const LINK_COMET_DASH = '26 22';
+/** Raio do pulso circular no cabo (unidades do mapa). */
+export const LINK_FLOW_PULSE_RADIUS = 3;
 export const LINK_SELECT_COLOR = '#4FC3F7';
 export const LINK_HOVER_COLOR = '#81D4FA';
 export const LINK_PILL_FILL = 'rgba(8, 16, 32, 0.94)';

@@ -100,8 +100,8 @@ export function syncTrafficPillGroup(
 }
 
 /**
- * Atualiza o passo do traço amarelo pelo upload, sem o React gravar speed no path
- * (isso zerava o deslocamento no Chrome).
+ * Atualiza o passo dos pulsos (TX no upload, RX no download), sem o React gravar
+ * speed no path (isso zerava o deslocamento no Chrome).
  */
 export function syncLinkFlowStepsInRoot(
   root: ParentNode,
@@ -121,10 +121,11 @@ export function syncLinkFlowStepsInRoot(
       continue;
     }
     const display = resolveLinkMapTrafficMetrics(entry.link, entry.metrics);
+    const upload = el.getAttribute('data-link-flow') !== 'download';
     const next = formatLinkFlowStep(
       linkFlowSpeedFromUpload({
-        txBps: display.txBps,
-        txUtilizationPct: display.txUtilizationPct,
+        txBps: upload ? display.txBps : display.rxBps,
+        txUtilizationPct: upload ? display.txUtilizationPct : display.rxUtilizationPct,
         capacityMbps: display.capacityMbps,
         baseSpeed,
       })

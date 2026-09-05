@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   flowDashPeriod,
   linkFlowAnimationBudget,
+  linkFlowPulseCount,
   linkFlowSpeedFromUpload,
+  normalizeLinkAnimationEffect,
   normalizeLinkAnimationSpeed,
   trafficFlowStep,
 } from './linkAnimationStyle';
@@ -12,6 +14,20 @@ describe('linkAnimationStyle', () => {
     expect(linkFlowAnimationBudget(10)).toBe(10);
     expect(linkFlowAnimationBudget(50)).toBe(50);
     expect(linkFlowAnimationBudget(100)).toBe(100);
+  });
+
+  it('define quantos pulsos cabem no cabo', () => {
+    expect(linkFlowPulseCount(0)).toBe(0);
+    expect(linkFlowPulseCount(20)).toBe(1);
+    expect(linkFlowPulseCount(50)).toBe(2);
+    expect(linkFlowPulseCount(120)).toBe(3);
+  });
+
+  it('normaliza o efeito do cabo e rejeita valor desconhecido', () => {
+    expect(normalizeLinkAnimationEffect('arrows')).toBe('arrows');
+    expect(normalizeLinkAnimationEffect('dash')).toBe('dash');
+    expect(normalizeLinkAnimationEffect(undefined)).toBe('pulses');
+    expect(normalizeLinkAnimationEffect('desconhecido')).toBe('pulses');
   });
 
   it('limita velocidade entre 0,25 e 4', () => {

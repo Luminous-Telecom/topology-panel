@@ -199,14 +199,33 @@ export function offsetPolyline(points: LinkPoint[], offset: number): LinkPoint[]
   });
 }
 
+function offsetPathPoints(pathPoints: LinkPoint[], offset: number): LinkPoint[] {
+  return offset === 0 ? pathPoints : offsetPolyline(pathPoints, offset);
+}
+
 export function buildLinkPathD(
   pathPoints: LinkPoint[],
   gridStep: number,
   hasWaypoints: boolean,
   offset = 0
 ): string {
-  const pts = offset === 0 ? pathPoints : offsetPolyline(pathPoints, offset);
+  const pts = offsetPathPoints(pathPoints, offset);
   return hasWaypoints ? pathToRoundedD(pts, linkCornerRadius(gridStep)) : pathToD(pts);
+}
+
+/** Path no sentido inverso — pulsos de download (RX) correm na outra ponta. */
+export function reverseLinkPathD(
+  pathPoints: LinkPoint[],
+  gridStep: number,
+  hasWaypoints: boolean,
+  offset = 0
+): string {
+  const reversed = offsetPathPoints(pathPoints, offset).slice().reverse();
+  return hasWaypoints ? pathToRoundedD(reversed, linkCornerRadius(gridStep)) : pathToD(reversed);
+}
+
+export function offsetPolylineLength(pathPoints: LinkPoint[], offset = 0): number {
+  return polylineLength(offsetPathPoints(pathPoints, offset));
 }
 
 /** Comprimento da polilinha — período de repetição dos pulsos que correm no cabo. */

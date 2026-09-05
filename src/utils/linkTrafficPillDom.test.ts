@@ -102,6 +102,38 @@ describe('linkTrafficPillDom', () => {
     expect(Number(path.getAttribute('data-link-flow-step'))).toBeLessThan(busy);
   });
 
+  it('passo de download usa o RX da interface', () => {
+    const root = document.createElement('div');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('data-link-flow', 'download');
+    path.setAttribute('data-link-key', 'a->b');
+    root.appendChild(path);
+    const links = new Map([
+      [
+        'a->b',
+        {
+          link,
+          metrics: {
+            status: 'up' as const,
+            from: {
+              txBps: 10_000_000,
+              rxBps: 800_000_000,
+              txUtilizationPct: 1,
+              rxUtilizationPct: 80,
+              capacityMbps: 1000,
+            },
+            to: {},
+          },
+        },
+      ],
+    ]);
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
+    const downloadStep = Number(path.getAttribute('data-link-flow-step'));
+    path.setAttribute('data-link-flow', 'upload');
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
+    expect(downloadStep).toBeGreaterThan(Number(path.getAttribute('data-link-flow-step')));
+  });
+
   it('syncTrafficPillGroup troca o texto sem remontar o grupo', () => {
     const g = pillGroup();
     expect(syncTrafficPillGroup(g, '4.5 Mbps', '900 Kbps')).toBe(true);

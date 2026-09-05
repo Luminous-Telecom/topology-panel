@@ -16,10 +16,12 @@ import {
   buildLinkPathD,
   computeLinkGeometry,
   LinkPoint,
-  offsetPolyline,
+  offsetPolylineLength,
+  reverseLinkPathD,
   sameLinkPoints,
 } from '../../../utils/linkGeometry';
 import { resolveLinkMedium } from '../../../utils/linkMedium';
+import { normalizeLinkAnimationEffect } from '../../../utils/linkAnimationStyle';
 import { formatBitsPerSecond } from '../../../utils/zabbixAdapter/formatTraffic';
 import { buildLinkHoverTooltip } from '../../../utils/linkHoverTooltip';
 import { useLinkMetricsLiveStore } from '../../../hooks/linkMetricsLiveStore';
@@ -164,9 +166,12 @@ function LinkLineComponent({
     runtimeColor,
     linkColor,
   });
-  const trafficColor = resolvePanelColor(theme, options.colorLinkUpload);
-  const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
-  const uploadLabelColor = trafficColor;
+  const uploadColor = resolvePanelColor(theme, options.colorLinkUpload);
+  const downloadColor = resolvePanelColor(theme, options.colorLinkDownload);
+  const downloadLabelColor = downloadColor;
+  const uploadLabelColor = uploadColor;
+  const pathLength = offsetPolylineLength(pathPoints, bundleOffset);
+  const reverseD = reverseLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset);
   const animationEnabled = options.linkAnimationEnabled !== false;
   const trafficActive =
     flowAnimate &&
@@ -230,7 +235,15 @@ function LinkLineComponent({
         {...LINK_LINE_CAP}
       />
       {trafficActive ? (
-        <LinkTrafficFlow d={d} color={trafficColor} linkId={lk} />
+        <LinkTrafficFlow
+          d={d}
+          reverseD={reverseD}
+          length={pathLength}
+          uploadColor={uploadColor}
+          downloadColor={downloadColor}
+          linkId={lk}
+          effect={normalizeLinkAnimationEffect(options.linkAnimationEffect)}
+        />
       ) : null}
     </g>
   );
@@ -297,6 +310,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     prev.options.linkUtilThresholdCritical !== next.options.linkUtilThresholdCritical ||
     prev.options.linkAnimationEnabled !== next.options.linkAnimationEnabled ||
     prev.options.linkAnimationSpeed !== next.options.linkAnimationSpeed ||
+    prev.options.linkAnimationEffect !== next.options.linkAnimationEffect ||
     prev.flowAnimate !== next.flowAnimate
   ) {
     return false;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeLinkGeometry, linkTrafficAnchor, parallelLinkBundleOffset, pointAlongPolyline, polylineLength, sameLinkPoints } from './linkGeometry';
+import { computeLinkGeometry, linkTrafficAnchor, offsetPolylineLength, parallelLinkBundleOffset, pointAlongPolyline, polylineLength, reverseLinkPathD, sameLinkPoints } from './linkGeometry';
 import { TopologyLink } from '../types';
 
 describe('polylineLength', () => {
@@ -9,6 +9,17 @@ describe('polylineLength', () => {
 
   it('ponto único não tem comprimento', () => {
     expect(polylineLength([{ x: 5, y: 5 }])).toBe(0);
+  });
+});
+
+describe('reverseLinkPathD', () => {
+  it('inverte o path reto para o pulso de download', () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+    ];
+    expect(reverseLinkPathD(points, 10, false)).toBe('M 40 0 L 0 0');
+    expect(offsetPolylineLength(points)).toBe(40);
   });
 });
 

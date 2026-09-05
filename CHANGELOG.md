@@ -7,6 +7,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.430] - 2026-09-05
+
+### Adicionado
+
+- Select **Efeito do tráfego** nas opções do painel (Links): Traço, Traço nos dois sentidos,
+  Cápsulas, Pulsos, Setas e Cometa.
+
+### Alterado
+
+- Efeito dos cabos passa a pulsos circulares no sentido do tráfego (upload e download),
+  no lugar do traço amarelo.
+
+### Corrigido
+
+- Traço amarelo dos cabos fica no mapa: o zoom não muda o tamanho do efeito nem a
+  velocidade no cabo.
+
 ## [1.4.429] - 2026-09-05
 
 ### Corrigido

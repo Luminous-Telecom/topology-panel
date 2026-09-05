@@ -19,6 +19,7 @@ import {
   ZABBIX_DIRECT_MIN_REFRESH_SEC,
   defaultHostTypeColors,
 } from './types';
+import { LINK_ANIMATION_EFFECT_OPTIONS } from './utils/linkAnimationStyle';
 
 export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
   .setPanelOptions((builder) => {
@@ -388,9 +389,20 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
       .addBooleanSwitch({
         path: 'linkAnimationEnabled',
         name: 'Animar tráfego nos cabos',
-        description: 'Traço amarelo correndo sobre a linha fina quando o cabo está online',
+        description: 'Mostra o efeito de tráfego quando o cabo está online',
         defaultValue: true,
         category: ['Links'],
+      })
+      .addSelect({
+        path: 'linkAnimationEffect',
+        name: 'Efeito do tráfego',
+        description: 'Como o tráfego aparece sobre o cabo',
+        defaultValue: 'pulses',
+        settings: {
+          options: LINK_ANIMATION_EFFECT_OPTIONS,
+        },
+        category: ['Links'],
+        showIf: (opts) => opts.linkAnimationEnabled !== false,
       })
       .addNumberInput({
         path: 'linkAnimationSpeed',
@@ -403,6 +415,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
           step: 0.25,
         },
         category: ['Links'],
+        showIf: (opts) => opts.linkAnimationEnabled !== false,
       })
       .addBooleanSwitch({
         path: 'showLegend',

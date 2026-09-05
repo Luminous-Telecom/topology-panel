@@ -1,4 +1,5 @@
 /** Node types: host = Zabbix; submap = dashboard; static = label; network = retângulo; dashboard_picker = seletor de dashboards */
+import type { LinkAnimationEffect } from './utils/linkAnimationStyle';
 import type {
   TopologyBlueprint,
   TopologyNodeTemplate,
@@ -372,10 +373,12 @@ export interface TopologyPanelOptions {
   colorLinkHigh: string;
   /** Cor do cabo acima do limiar crítico (congestionamento) */
   colorLinkCongestion: string;
-  /** Anima tráfego amarelo nos cabos online. */
+  /** Anima tráfego nos cabos online. */
   linkAnimationEnabled?: boolean;
-  /** Velocidade do tráfego amarelo (1 = padrão). */
+  /** Velocidade do tráfego (1 = padrão). */
   linkAnimationSpeed?: number;
+  /** Visual do tráfego no cabo (traço, pulsos, setas…). */
+  linkAnimationEffect?: LinkAnimationEffect;
   /** Retângulos de rede (agrupamento) */
   colorNetworkFill: string;
   colorNetworkBorder: string;
@@ -534,6 +537,7 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   colorLinkCongestion: '#ff7300',
   linkAnimationEnabled: true,
   linkAnimationSpeed: 0.5,
+  linkAnimationEffect: 'pulses',
   colorNetworkFill: 'rgba(96, 96, 96, 0.22)',
   colorNetworkBorder: '#8a8a8a',
   nodeFontSize: 11,

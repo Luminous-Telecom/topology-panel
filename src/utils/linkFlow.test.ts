@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LINK_FLOW_DASH, LINK_FLOW_SPEED, linkFlowScaleFactor, startLinkFlowAnimation } from './linkFlow';
+import { LINK_FLOW_DASH, LINK_FLOW_SPEED, startLinkFlowAnimation } from './linkFlow';
 
 /** Faixa de fluxo como o canvas desenha: direção e ativo no DOM. */
 function lane(root: HTMLElement, opts: { active: boolean }): Element {
@@ -91,10 +91,32 @@ describe('startLinkFlowAnimation', () => {
     controller.stop();
   });
 
-  it('compensa o zoom para o pulso manter a velocidade na tela', () => {
-    expect(linkFlowScaleFactor(1)).toBe(1);
-    expect(linkFlowScaleFactor(2)).toBe(0.5);
-    expect(linkFlowScaleFactor(0.5)).toBe(2);
+  it('o zoom não muda o dash nem a velocidade no mapa', () => {
+    const atScale = (scale: number): { moved: number; dash: string | null; styleDash: string } => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      el.setAttribute('data-link-flow', 'upload');
+      el.setAttribute('stroke-dasharray', '10 16');
+      el.setAttribute('data-link-flow-period', '26');
+      el.setAttribute('data-link-flow-step', '2');
+      el.setAttribute('data-link-flow-active', 'true');
+      root.replaceChildren(el);
+      const controller = startLinkFlowAnimation(root);
+      controller.setViewScale(scale);
+      vi.advanceTimersByTime(100);
+      const moved = offsetOf(el);
+      const dash = el.getAttribute('stroke-dasharray');
+      const styleDash = el instanceof SVGElement ? el.style.strokeDasharray : '';
+      controller.stop();
+      return { moved, dash, styleDash };
+    };
+    const zoomedOut = atScale(0.5);
+    const zoomedIn = atScale(2);
+    expect(zoomedOut.moved).toBeGreaterThan(0);
+    expect(zoomedOut.moved).toBe(zoomedIn.moved);
+    expect(zoomedOut.dash).toBe('10 16');
+    expect(zoomedIn.dash).toBe('10 16');
+    expect(zoomedOut.styleDash).toBe('');
+    expect(zoomedIn.styleDash).toBe('');
   });
 
   it('avança o deslocamento das faixas ativas', () => {

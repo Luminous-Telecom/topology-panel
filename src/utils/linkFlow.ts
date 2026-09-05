@@ -34,14 +34,9 @@ function readNumberAttribute(el: Element, name: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Compensa o `scale()` do mapa para o pulso ter a mesma velocidade na tela. */
-export function linkFlowScaleFactor(scale: number): number {
-  return 1 / Math.max(scale, 0.15);
-}
-
-function laneStep(el: Element, scale: number): number {
+function laneStep(el: Element): number {
   const mult = readNumberAttribute(el, 'data-link-flow-step');
-  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1) * linkFlowScaleFactor(scale);
+  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1);
 }
 
 /** Dash fecha o ciclo no padrão; seta fecha no comprimento do próprio cabo. */
@@ -103,7 +98,11 @@ function queryIntervalForLaneCount(count: number): number {
 
 function flowStorageKey(el: Element): string | undefined {
   const linkKey = el.getAttribute('data-link-key');
-  return linkKey && linkKey.length > 0 ? linkKey : undefined;
+  if (!linkKey) {
+    return undefined;
+  }
+  const dir = el.getAttribute('data-link-flow') ?? '';
+  return dir ? `${linkKey}\0${dir}` : linkKey;
 }
 
 function readFlowOffset(el: Element): number {
@@ -136,7 +135,7 @@ function advanceFlowLanes(lanes: Element[], scale: number, frameUnits: number): 
     if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    writeFlowOffset(el, readFlowOffset(el) + laneStep(el, scale) * units, scale);
+    writeFlowOffset(el, readFlowOffset(el) + laneStep(el) * units, scale);
     animated += 1;
   }
   return animated;
@@ -147,13 +146,14 @@ function ensureArrowOffsetPath(el: Element, scale: number): boolean {
   if (!d || !(el instanceof SVGElement || el instanceof HTMLElement)) {
     return false;
   }
-  const cacheKey = arrowPathCacheKey(d, scale);
+  const rotate = el.getAttribute('data-link-flow-rotate') === 'auto' ? 'auto' : '0deg';
+  const cacheKey = `${arrowPathCacheKey(d, scale)}\0${rotate}`;
   if (appliedFlowPaths.get(el) === cacheKey) {
     return false;
   }
   appliedFlowPaths.set(el, cacheKey);
   el.style.setProperty('offset-path', `path('${d}')`);
-  el.style.setProperty('offset-rotate', '0deg');
+  el.style.setProperty('offset-rotate', rotate);
   return true;
 }
 
