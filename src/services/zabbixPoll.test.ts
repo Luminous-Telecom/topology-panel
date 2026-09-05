@@ -166,7 +166,7 @@ describe('runZabbixPoll', () => {
     expect(result.snapshot.metadata.resolvedGroups).toEqual([]);
   });
 
-  it('na descoberta pinta o lastvalue sem esperar problem.get', async () => {
+  it('na abertura espera problem.get antes de pintar', async () => {
     let releaseProblems: () => void = () => undefined;
     const problemsGate = new Promise<void>((resolve) => {
       releaseProblems = resolve;
@@ -203,6 +203,64 @@ describe('runZabbixPoll', () => {
         statusItemKey: 'icmpping',
         trafficItemIds: [],
         trafficKeys: [],
+        onSnapshot: (snapshot) => painted.push(snapshot),
+      },
+      call
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(painted).toEqual([]);
+    releaseProblems();
+    const result = await done;
+    expect(painted).toEqual([]);
+    expect(result.error).toBeUndefined();
+    expect(result.snapshot.knownStatusItems[0]?.lastvalue).toBe('1');
+    expect(result.snapshot.lastValues['10001']?.lastvalue).toBe('1');
+  });
+
+  it('na rediscoberta pinta o lastvalue sem esperar problem.get', async () => {
+    let releaseProblems: () => void = () => undefined;
+    const problemsGate = new Promise<void>((resolve) => {
+      releaseProblems = resolve;
+    });
+    const painted: ZabbixLiveSnapshot[] = [];
+    const previousHosts: ZabbixLiveSnapshot = {
+      ...previous,
+      knownStatusItems: [],
+      lastValues: {},
+    };
+    const call: ZabbixRpc = async (_uid, method) => {
+      if (method === 'hostgroup.get') {
+        return [{ groupid: '10', name: 'Backbone' }] as never;
+      }
+      if (method === 'host.get') {
+        return [
+          {
+            hostid: '1',
+            host: 'host-1',
+            name: 'host-1',
+            hostgroups: [{ name: 'Backbone' }],
+            interfaces: [{ ip: '10.0.0.1', main: '1', type: '1' }],
+          },
+        ] as never;
+      }
+      if (method === 'item.get') {
+        return [{ itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1', lastclock: '10' }] as never;
+      }
+      if (method === 'problem.get') {
+        await problemsGate;
+        return [] as never;
+      }
+      throw new Error(method);
+    };
+    const done = runZabbixPoll(
+      {
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        trafficItemIds: [],
+        trafficKeys: [],
+        previous: previousHosts,
         onSnapshot: (snapshot) => painted.push(snapshot),
       },
       call
@@ -309,6 +367,49 @@ describe('runZabbixPoll', () => {
     });
     release();
     const result = await done;
+    expect(result.error).toBeUndefined();
+    expect(result.snapshot.lastValues['10001']?.lastvalue).toBe('1');
+    expect(result.snapshot.lastValues['20001']?.lastvalue).toBe('10');
+  });
+
+  it('na descoberta um item.get cobre status e tráfego quando a key já vai no status', async () => {
+    const methods: string[] = [];
+    const result = await runZabbixPoll(
+      {
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        trafficItemIds: ['20001'],
+        trafficKeys: ['vendor.metric.rx[10]'],
+      },
+      async (_uid, method) => {
+        methods.push(method);
+        if (method === 'hostgroup.get') {
+          return [{ groupid: '10', name: 'Backbone' }] as never;
+        }
+        if (method === 'host.get') {
+          return [
+            {
+              hostid: '1',
+              host: 'host-1',
+              name: 'host-1',
+              hostgroups: [{ name: 'Backbone' }],
+            },
+          ] as never;
+        }
+        if (method === 'item.get') {
+          return [
+            { itemid: '10001', key_: 'icmpping', hostid: '1', lastvalue: '1' },
+            { itemid: '20001', key_: 'vendor.metric.rx[10]', hostid: '1', lastvalue: '10' },
+          ] as never;
+        }
+        if (method === 'problem.get') {
+          return [] as never;
+        }
+        throw new Error(method);
+      }
+    );
+    expect(methods.filter((method) => method === 'item.get')).toHaveLength(1);
     expect(result.error).toBeUndefined();
     expect(result.snapshot.lastValues['10001']?.lastvalue).toBe('1');
     expect(result.snapshot.lastValues['20001']?.lastvalue).toBe('10');

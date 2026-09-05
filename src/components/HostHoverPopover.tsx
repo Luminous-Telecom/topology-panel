@@ -6,7 +6,12 @@ import {
   TopologyNode,
   TopologyPanelOptions,
 } from '../types';
-import { HostLookupRef, resolveHostIp } from '../utils/hostLookup';
+import { HostLookupRef, resolveHostIp, resolveHostZabbixId } from '../utils/hostLookup';
+import { useHostIcmpHistory, type IcmpHistoryRange } from '../hooks/useHostIcmpHistory';
+import { useHostTemperatures } from '../hooks/useHostTemperatures';
+import { formatTemperatureValue } from '../utils/hostTemperature';
+import { HostIcmpSparkline } from './HostIcmpSparkline';
+import { formatIcmpLossPct, formatIcmpRangeLabel, formatIcmpRttMs } from '../utils/icmpHistorySeries';
 import { lookupHostDisplay } from '../utils/queryHosts';
 import { resolveHostProblemSummary, visibleHostProblemNames } from '../utils/noc/topologyFilters';
 import { HostProblemsMap } from '../utils/noc/types';
@@ -24,6 +29,8 @@ interface Props {
   hostProblems?: HostProblemsMap;
   options: TopologyPanelOptions;
   queryReady?: boolean;
+  datasourceUid?: string;
+  historyRangeRef?: React.RefObject<IcmpHistoryRange>;
 }
 
 function hostTitle(node: TopologyNode): string {
@@ -50,6 +57,8 @@ export function HostHoverPopover({
   hostProblems,
   options,
   queryReady,
+  datasourceUid,
+  historyRangeRef,
 }: Props) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: screenX + 12, top: screenY + 12 });
@@ -65,10 +74,29 @@ export function HostHoverPopover({
   );
 
   const display = lookupHostDisplay(hostDisplay, lookupRef, hostMetadata);
+  const hostid = resolveHostZabbixId(lookupRef, hostMetadata);
+  const [historyRange] = useState<IcmpHistoryRange>(
+    () => historyRangeRef?.current ?? { fromSec: 0, toSec: 0 }
+  );
+  const fromSec = historyRange.fromSec;
+  const toSec = historyRange.toSec;
+  const icmp = useHostIcmpHistory({
+    enabled: Boolean(datasourceUid && hostid),
+    datasourceUid,
+    hostid,
+    fromSec,
+    toSec,
+  });
+  const showTemperature = options.showHostTemperature === true;
+  const temps = useHostTemperatures({
+    enabled: Boolean(showTemperature && datasourceUid && hostid),
+    datasourceUid,
+    hostid,
+  });
   const ip = resolveHostIp(node, hostMetadata);
   const description = resolveHostDescription(node, hostMetadata);
   const statusLabel = display?.text?.trim();
-  const collectedAt = formatLastClock(display?.updatedAtSec);
+  const collectedAt = formatLastClock(icmp.history?.status.lastClock ?? display?.updatedAtSec);
   const problemSummary =
     display?.status === 'offline'
       ? undefined
@@ -86,7 +114,20 @@ export function HostHoverPopover({
         height: window.innerHeight,
       })
     );
-  }, [screenX, screenY, display?.text, description, problems.visible.length, problems.hidden]);
+  }, [
+    screenX,
+    screenY,
+    display?.text,
+    description,
+    problems.visible.length,
+    problems.hidden,
+    icmp.loading,
+    icmp.history,
+    icmp.loadError,
+    temps.loading,
+    temps.readings.length,
+    temps.loadError,
+  ]);
 
   return createPortal(
     <div
@@ -124,6 +165,67 @@ export function HostHoverPopover({
           Sem status neste host
         </div>
       )}
+      {showTemperature && datasourceUid && hostid ? (
+        <div className={styles.historyWrap}>
+          <div className={overlayMutedStyle}>Temperatura</div>
+          {temps.loading ? (
+            <div className={`${overlayMutedStyle} ${styles.metricGap}`}>Carregando temperaturas…</div>
+          ) : null}
+          {temps.loadError ? (
+            <div className={`${overlayMutedStyle} ${styles.metricGap}`}>{temps.loadError}</div>
+          ) : null}
+          {!temps.loading && !temps.loadError && temps.readings.length === 0 ? (
+            <div className={`${overlayMutedStyle} ${styles.metricGap}`}>Sem temperatura neste host</div>
+          ) : null}
+          {temps.readings.map((reading) => (
+            <div key={reading.itemId} className={`${overlayMetricRowStyle} ${styles.metricGap}`}>
+              <span className={styles.wrapAnywhere}>{reading.label}</span>
+              <span>{formatTemperatureValue(reading.value, reading.units)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {datasourceUid && hostid ? (
+        <div className={styles.historyWrap}>
+          <div className={overlayMutedStyle}>
+            ICMP no intervalo do dashboard
+            {fromSec < toSec ? ` · ${formatIcmpRangeLabel(fromSec, toSec)}` : ''}
+          </div>
+          {icmp.loading ? (
+            <div className={`${overlayMutedStyle} ${styles.metricGap}`}>Carregando histórico ICMP…</div>
+          ) : null}
+          {icmp.loadError ? (
+            <div className={`${overlayMutedStyle} ${styles.metricGap}`}>{icmp.loadError}</div>
+          ) : null}
+          {icmp.history && !icmp.loading ? (
+            <>
+              <div className={`${overlayMetricRowStyle} ${styles.metricGap}`}>
+                <span>Latência</span>
+                <span>{formatIcmpRttMs(icmp.history.status.rttMs)}</span>
+              </div>
+              <HostIcmpSparkline
+                points={icmp.history.rttMs}
+                color={options.colorOnline}
+                label="Histórico de latência ICMP"
+              />
+              <div className={`${overlayMetricRowStyle} ${styles.metricGap}`}>
+                <span>Perda de pacote</span>
+                <span style={{ color: options.colorOffline }}>
+                  {formatIcmpLossPct(icmp.history.status.lossPct)}
+                </span>
+              </div>
+              <HostIcmpSparkline
+                points={icmp.history.lossPct}
+                color={options.colorOffline}
+                label="Histórico de perda de pacote ICMP"
+              />
+              {icmp.history.rttMs.length < 2 && icmp.history.lossPct.length < 2 ? (
+                <div className={overlayMutedStyle}>Sem pontos neste intervalo</div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {problems.visible.length > 0 ? (
         <div className={styles.problemsWrap}>
           <div className={overlayMutedStyle}>

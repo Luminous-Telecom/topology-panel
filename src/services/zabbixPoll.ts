@@ -33,7 +33,7 @@ export type ZabbixPollInput = {
   trafficItemIds: string[];
   trafficKeys: string[];
   previous?: ZabbixLiveSnapshot;
-  /** Chamado quando o lastvalue de status já chegou — a UI pinta sem esperar problemas. */
+  /** Descoberta seguinte: lastvalue pinta sem esperar o `problem.get` de novo. Na abertura não dispara. */
   onSnapshot?: (snapshot: ZabbixLiveSnapshot) => void;
 };
 
@@ -302,6 +302,7 @@ export async function runZabbixPoll(
     lastValues: {} as Record<string, ZabbixItemLastValue>,
     interfaceItems: [] as ZabbixInterfaceItem[],
   };
+  const trafficCoveredByStatusSearch = Boolean(keyFilter && extraInStatus.length);
   const trafficP =
     pendingKeys.length && !keyFilter
       ? fetchTrafficLastValues(
@@ -312,7 +313,7 @@ export async function runZabbixPoll(
           call,
           groups.groupIds
         )
-      : numeric.length
+      : numeric.length && !trafficCoveredByStatusSearch
         ? fetchTrafficLastValues(input.datasourceUid, numeric, [], [], call)
         : Promise.resolve(emptyTraffic);
 
@@ -369,7 +370,9 @@ export async function runZabbixPoll(
     interfaceItems: trafficItems,
     problems: previous.problems,
   });
-  input.onSnapshot?.(painted);
+  if (previous.metadata.hosts.length) {
+    input.onSnapshot?.(painted);
+  }
 
   const problems = await problemsP;
 

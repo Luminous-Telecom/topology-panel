@@ -163,7 +163,7 @@ describe('buildQueryIndex', () => {
     expect(queryIndexHasInterfaceItems(index)).toBe(true);
     const byHost = interfacesByHostKeysFromIndex(index, ['host-a'], index.metadata);
     expect(byHost['host-a']).toHaveLength(1);
-    expect(byHost['host-a'][0].name).toBe('item-name-rx-a');
+    expect(byHost['host-a'][0].name).toBe('10');
     expect(byHost['host-a'][0].metrics.rx?.itemId).toBe('90001');
     expect(byHost['host-a'][0].metrics.tx?.itemId).toBe('90002');
   });

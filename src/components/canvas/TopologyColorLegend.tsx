@@ -57,8 +57,8 @@ export function TopologyColorLegend({
     <div className={`${overlayCardStyle} ${styles.legend}`} data-topology-legend aria-label="Legenda de cores">
       <div className={overlayCardHeaderStyle}>Legenda</div>
       <div className={`${overlayCardBodyStyle} ${styles.body}`}>
-        {visible.map((item) => (
-          <div key={item.label} className={styles.item}>
+        {visible.map((item, index) => (
+          <div key={`${item.label}:${item.color}:${index}`} className={styles.item}>
             <span className={styles.swatch} style={{ background: item.color }} />
             <span>{item.label}</span>
           </div>

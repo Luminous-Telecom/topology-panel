@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyLink } from '../types';
-import { syncTrafficPillGroup, trafficPillLabels } from './linkTrafficPillDom';
+import { syncLinkFlowStepsInRoot, syncTrafficPillGroup, trafficPillLabels } from './linkTrafficPillDom';
 
 function pillGroup(): SVGGElement {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -65,6 +65,41 @@ describe('linkTrafficPillDom', () => {
     expect(g.style.display).not.toBe('none');
     expect(g.querySelector('[data-link-pill-tx-value]')?.textContent?.trim()).toBe('1 Mbps');
     expect(g.querySelector('[data-link-pill-rx-value]')?.textContent?.trim()).toBe('2 Mbps');
+  });
+
+  it('syncLinkFlowStepsInRoot grava passo maior quando o upload sobe', () => {
+    const root = document.createElement('div');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('data-link-flow', 'upload');
+    path.setAttribute('data-link-key', 'a->b');
+    path.setAttribute('data-link-flow-step', '0.1');
+    root.appendChild(path);
+    const links = new Map([
+      [
+        'a->b',
+        {
+          link,
+          metrics: {
+            status: 'up' as const,
+            from: { txBps: 800_000_000, txUtilizationPct: 80, capacityMbps: 1000 },
+            to: {},
+          },
+        },
+      ],
+    ]);
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
+    const busy = Number(path.getAttribute('data-link-flow-step'));
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(0);
+    links.set('a->b', {
+      link,
+      metrics: {
+        status: 'up',
+        from: { txBps: 10_000_000, txUtilizationPct: 1, capacityMbps: 1000 },
+        to: {},
+      },
+    });
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
+    expect(Number(path.getAttribute('data-link-flow-step'))).toBeLessThan(busy);
   });
 
   it('syncTrafficPillGroup troca o texto sem remontar o grupo', () => {

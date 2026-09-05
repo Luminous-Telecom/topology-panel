@@ -20,9 +20,16 @@ import {
   TOPOLOGY_HOST_TYPE_FILTERS,
   TOPOLOGY_HOST_TYPE_FILTER_BY_ID,
   TOPOLOGY_STATUS_FILTER_IDS,
+  TopologyMapLinkFilterId,
+  TopologyMapSubmapFilterId,
   ZABBIX_PROBLEM_MIN_SEVERITY,
   isHostTypeFilterId,
+  isNocLinkFilterId,
+  isNocSubmapFilterId,
+  mapIdFromNocSubmapFilter,
+  nocSubmapFilterId,
 } from './types';
+import { linkMatchesCapacityGbps, type NocLinkCapacityGbps } from '../linkBandwidth';
 
 export interface TopologyFilterContext {
   map: TopologyMap;
@@ -111,14 +118,24 @@ function nodeMatchesSingleFilter(
   switch (filter) {
     case 'offline':
       return resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) === 'offline';
-    case 'problems':
-      return resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems) !== undefined;
+    case 'online':
+      return resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) === 'online';
+    case 'alert':
+      return (
+        resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) !== 'offline' &&
+        resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems) !== undefined
+      );
+    case 'nodata':
+      return resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata) === 'unknown';
     case 'congestedLinks':
       return filterIndex(ctx).congestedNodeIds.has(node.id);
-    default: {
-      const _exhaustive: never = filter;
-      return _exhaustive;
-    }
+    case 'link1g':
+    case 'link10g':
+    case 'link40g':
+    case 'link100g':
+      return true;
+    default:
+      return isNocSubmapFilterId(filter);
   }
 }
 
@@ -184,13 +201,16 @@ export function isNodeVisibleForFilters(
   activeFilters: ReadonlySet<TopologyMapFilterId>,
   ctx: TopologyFilterContext
 ): boolean {
-  if (!activeFilters.size) {
+  const hostFilters = new Set(
+    [...activeFilters].filter((filter) => !isNocSubmapFilterId(filter))
+  );
+  if (!hostFilters.size) {
     return true;
   }
   if (node.type === 'network' || node.type === 'static') {
     return true;
   }
-  for (const filter of activeFilters) {
+  for (const filter of hostFilters) {
     if (nodeMatchesSingleFilter(node, filter, ctx)) {
       return true;
     }
@@ -198,27 +218,52 @@ export function isNodeVisibleForFilters(
   return false;
 }
 
+const LINK_CAPACITY_GBPS: Record<
+  Exclude<TopologyMapLinkFilterId, 'congestedLinks'>,
+  NocLinkCapacityGbps
+> = {
+  link1g: 1,
+  link10g: 10,
+  link40g: 40,
+  link100g: 100,
+};
+
+function resolveLinkCapacityMbps(
+  link: { from: string; to: string; bandwidthMbps?: number },
+  ctx: TopologyFilterContext
+): number | undefined {
+  if (link.bandwidthMbps != null && link.bandwidthMbps > 0) {
+    return link.bandwidthMbps;
+  }
+  const metrics = ctx.linkMetricsByLink?.[linkKey(link)];
+  const runtime = metrics?.from.capacityMbps ?? metrics?.to.capacityMbps;
+  return runtime != null && runtime > 0 ? runtime : undefined;
+}
+
+function linkMatchesLinkFilter(
+  link: { from: string; to: string; bandwidthMbps?: number },
+  filter: TopologyMapLinkFilterId,
+  ctx: TopologyFilterContext
+): boolean {
+  if (filter === 'congestedLinks') {
+    return filterIndex(ctx).congestedLinks.has(linkKey(link));
+  }
+  return linkMatchesCapacityGbps(resolveLinkCapacityMbps(link, ctx), LINK_CAPACITY_GBPS[filter]);
+}
+
 export function isLinkVisibleForFilters(
-  link: { from: string; to: string },
+  link: { from: string; to: string; bandwidthMbps?: number },
   activeFilters: ReadonlySet<TopologyMapFilterId>,
   ctx: TopologyFilterContext
 ): boolean {
   if (!activeFilters.size) {
     return true;
   }
-  const index = filterIndex(ctx);
-  if (activeFilters.has('congestedLinks')) {
-    return index.congestedLinks.has(linkKey(link));
+  const linkFilters = [...activeFilters].filter(isNocLinkFilterId);
+  if (linkFilters.length === 0) {
+    return true;
   }
-  const from = index.nodesById.get(link.from);
-  const to = index.nodesById.get(link.to);
-  if (!from || !to) {
-    return false;
-  }
-  return (
-    isNodeVisibleForFilters(from, activeFilters, ctx) &&
-    isNodeVisibleForFilters(to, activeFilters, ctx)
-  );
+  return linkFilters.some((filter) => linkMatchesLinkFilter(link, filter, ctx));
 }
 
 export interface NocMapSummary {
@@ -274,19 +319,18 @@ export function alertListHoverText(entry: HostAlertListEntry): string {
   return 'Alerta';
 }
 
+/** Linhas do status na lista: cada problema Zabbix, ou OFFLINE/ALERTA. */
+export function alertListStatusLines(entry: HostAlertListEntry): string[] {
+  if (entry.reason === 'offline') {
+    return ['OFFLINE'];
+  }
+  const names = (entry.problems ?? []).map((name) => name.trim()).filter(Boolean);
+  return names.length ? names : ['ALERTA'];
+}
+
 /** Rótulo da linha da lista: nome do problema Zabbix, ou OFFLINE/ALERTA. */
 export function alertListStatusLabel(entry: HostAlertListEntry): string {
-  if (entry.reason === 'offline') {
-    return 'OFFLINE';
-  }
-  const problems = visibleHostProblemNames(entry.problems);
-  if (problems.visible.length === 1 && problems.hidden === 0) {
-    return problems.visible[0];
-  }
-  if (problems.visible.length) {
-    return `${problems.visible.length + problems.hidden} problemas`;
-  }
-  return 'ALERTA';
+  return alertListStatusLines(entry).join(' · ');
 }
 
 export interface NocHostListEntry {
@@ -322,21 +366,40 @@ export function collectPresentHostTypeFilterIds(
   return TOPOLOGY_HOST_TYPE_FILTERS.filter((def) => present.has(def.id)).map((def) => def.id);
 }
 
-/** Chips do modo NOC: status sempre visível; tipos só quando há host daquele tipo. */
+/** Submapas (e a raiz) que têm pelo menos um host. */
+export function collectPresentSubmapFilterIds(
+  maps: readonly NocTopologyMapScope[]
+): TopologyMapSubmapFilterId[] {
+  return maps
+    .filter((scope) => scope.map.nodes.some((node) => isHostNode(node)))
+    .map((scope) => nocSubmapFilterId(scope.mapId));
+}
+
+/** Filtros do modo NOC: status sempre visível; tipos e submapas só quando há host. */
 export function visibleNocFilterIds(maps: readonly NocTopologyMapScope[]): TopologyMapFilterId[] {
-  return [...TOPOLOGY_STATUS_FILTER_IDS, ...collectPresentHostTypeFilterIds(maps)];
+  return [
+    ...TOPOLOGY_STATUS_FILTER_IDS,
+    ...collectPresentSubmapFilterIds(maps),
+    ...collectPresentHostTypeFilterIds(maps),
+  ];
 }
 
 /** Tira filtro de tipo que não tem mais host, para o chip escondido não ficar preso. */
 export function retainPresentNocTypeFilters(
   active: ReadonlySet<TopologyMapFilterId>,
-  presentTypeIds: readonly TopologyMapTypeFilterId[]
+  presentTypeIds: readonly TopologyMapTypeFilterId[],
+  presentSubmapIds: readonly TopologyMapSubmapFilterId[] = []
 ): Set<TopologyMapFilterId> {
   const present = new Set<TopologyMapTypeFilterId>(presentTypeIds);
+  const presentMaps = new Set<string>(presentSubmapIds);
   const next = new Set<TopologyMapFilterId>();
   let dropped = false;
   for (const id of active) {
     if (isHostTypeFilterId(id) && !present.has(id)) {
+      dropped = true;
+      continue;
+    }
+    if (isNocSubmapFilterId(id) && !presentMaps.has(id)) {
       dropped = true;
       continue;
     }
@@ -448,14 +511,26 @@ export function collectAlertHostEntriesFromMaps(
   });
 }
 
-function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
+function nodeNocTags(
+  node: TopologyNode,
+  ctx: TopologyFilterContext,
+  activeFilters: ReadonlySet<TopologyMapFilterId>
+): string[] {
   const tags: string[] = [];
   if (ctx.queryReady !== false) {
     const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
     if (status === 'offline') {
-      tags.push('DOWN');
+      if (!activeFilters.has('offline')) {
+        tags.push('DOWN');
+      }
     } else if (status === 'alert') {
-      tags.push('ALERTA');
+      if (!activeFilters.has('alert')) {
+        tags.push('ALERTA');
+      }
+    } else if (status === 'unknown') {
+      if (!activeFilters.has('nodata')) {
+        tags.push('SEM DADOS');
+      }
     }
 
     const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
@@ -487,7 +562,14 @@ export function collectNocHostEntries(
 ): NocHostListEntry[] {
   const entries: NocHostListEntry[] = [];
 
+  const selectedMapIds = new Set(
+    [...activeFilters].map(mapIdFromNocSubmapFilter).filter((id): id is string => Boolean(id))
+  );
+
   for (const { mapId, mapLabel, map } of maps) {
+    if (selectedMapIds.size > 0 && !selectedMapIds.has(mapId)) {
+      continue;
+    }
     const ctx = contextForMap(map, baseCtx);
     for (const node of map.nodes) {
       if (!isHostNode(node)) {
@@ -502,7 +584,7 @@ export function collectNocHostEntries(
         mapId,
         mapLabel,
         label: hostDisplayLabel(node),
-        tags: nodeNocTags(node, ctx),
+        tags: nodeNocTags(node, ctx, activeFilters),
       });
     }
   }

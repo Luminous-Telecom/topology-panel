@@ -441,6 +441,10 @@ export interface TopologyPanelOptions {
   showLegend?: boolean;
   /** Lista de hosts offline, em alerta da Query ou com problema Zabbix */
   showHostAlertList?: boolean;
+  /** Problemas Warning+ do Zabbix pintam alerta, badge e lista. Desligado = só online/offline. */
+  showZabbixAlerts?: boolean;
+  /** Temperaturas do host no hover (CPU e demais sensores). Desligado por padrão. */
+  showHostTemperature?: boolean;
   /** Mini mapa de visão geral (arrastar para navegar) */
   showMinimap?: boolean;
   /** Itens da legenda (quais cores mostrar) */
@@ -544,6 +548,8 @@ export const defaultOptions = (): TopologyPanelOptions => ({
   toolPassword: '',
   showLegend: true,
   showHostAlertList: true,
+  showZabbixAlerts: true,
+  showHostTemperature: false,
   showMinimap: true,
   legendUnknown: true,
   legendOnline: true,

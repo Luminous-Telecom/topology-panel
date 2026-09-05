@@ -80,6 +80,44 @@ describe('useZabbixDirectIndex', () => {
     vi.useRealTimers();
   });
 
+  it('na abertura ignora snapshot parcial e só pinta com problemas', async () => {
+    const snap = pollSnapshot([host('1', 'Backbone')]);
+    const withProblems: ZabbixLiveSnapshot = {
+      ...snap,
+      problems: { '1': { count: 1, maxSeverity: 4, names: ['Interface down'] } },
+    };
+    let finish: (value: ReturnType<typeof pollResult>) => void = () => undefined;
+    poll.mockImplementation((input) => {
+      input.onSnapshot?.(snap);
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useZabbixDirectIndex({
+        enabled: true,
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        refreshSec: 60,
+      })
+    );
+
+    await flush();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.problems).toEqual({});
+
+    await act(async () => {
+      finish(pollResult(withProblems));
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.problems['1']?.count).toBe(1);
+  });
+
   it('consulta o Zabbix na abertura e monta o índice', async () => {
     poll.mockResolvedValue(pollResult(pollSnapshot([host('1', 'Backbone')])));
 

@@ -5,6 +5,7 @@ import { LegendItem } from '../../utils/legendItems';
 import { ContextMenuItem, TopologyContextMenu } from '../TopologyContextMenu';
 import { TopologyMinimap } from '../TopologyMinimap';
 import { TopologyColorLegend } from './TopologyColorLegend';
+import styles from './CanvasHudOverlay.module.scss';
 
 interface ContextAnchor {
   screenX: number;
@@ -32,6 +33,7 @@ interface Props {
   canvasMenuItems: () => ContextMenuItem[];
   nodeMenuItems: (node: TopologyNode) => ContextMenuItem[];
   linkMenuItems: (link: TopologyLink) => ContextMenuItem[];
+  alertList?: React.ReactNode;
 }
 
 /** Camada de interface sobre o mapa: minimapa, legenda e menu de contexto. */
@@ -54,23 +56,29 @@ export function CanvasHudOverlay({
   canvasMenuItems,
   nodeMenuItems,
   linkMenuItems,
+  alertList,
 }: Props) {
   return (
     <>
-      {showMinimap && (
-        <TopologyMinimap
-          map={map}
-          nodes={map.nodes}
-          links={links}
-          nodeLayouts={nodeLayouts}
-          view={view}
-          viewport={viewport}
-          onViewChange={onViewChange}
-          resolveNodeFill={resolveNodeFill}
-          resolveNetworkStroke={resolveNetworkStroke}
-          linkColor={linkColor}
-        />
-      )}
+      {showMinimap || alertList ? (
+        <div className={styles.leftDock}>
+          {showMinimap ? (
+            <TopologyMinimap
+              map={map}
+              nodes={map.nodes}
+              links={links}
+              nodeLayouts={nodeLayouts}
+              view={view}
+              viewport={viewport}
+              onViewChange={onViewChange}
+              resolveNodeFill={resolveNodeFill}
+              resolveNetworkStroke={resolveNetworkStroke}
+              linkColor={linkColor}
+            />
+          ) : null}
+          {alertList}
+        </div>
+      ) : null}
 
       {showLegend && (
         <TopologyColorLegend

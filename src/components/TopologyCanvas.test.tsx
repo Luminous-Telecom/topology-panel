@@ -235,12 +235,12 @@ describe('TopologyCanvas — modo NOC', () => {
     expect(container.querySelector('g[data-node-id="c3"] rect')?.getAttribute('stroke')).toBe('#4FC3F7');
   });
 
-  it('mostra só chips de tipos que têm host no mapa', () => {
+  it('mostra só tipos que têm host no mapa, no menu Tipo', () => {
     const map = emptyMap({
       nodes: [hostNode({ id: 'cam', icon: 'camera', label: 'Cam 1', zabbixHost: '10.0.0.1' })],
     });
     const options = { ...defaultOptions(), nocMode: true, map };
-    const { getByText, queryByText } = render(
+    const { getByLabelText, getByRole, queryByText } = render(
       <TopologyCanvas
         map={map}
         storedMap={map}
@@ -250,8 +250,12 @@ describe('TopologyCanvas — modo NOC', () => {
         submapHosts={STABLE_SUBMAP_HOSTS}
       />
     );
-    expect(getByText('Câmeras')).toBeInTheDocument();
-    expect(getByText('Somente DOWN')).toBeInTheDocument();
+    fireEvent.click(getByLabelText('Filtro Status'));
+    expect(getByRole('listbox', { name: 'Status' })).toHaveTextContent('Offline');
+    expect(getByRole('listbox', { name: 'Status' })).toHaveTextContent('Online');
+    expect(getByRole('listbox', { name: 'Status' })).toHaveTextContent('Alerta');
+    fireEvent.click(getByLabelText('Filtro Tipo'));
+    expect(getByRole('listbox', { name: 'Tipo' })).toHaveTextContent('Câmeras');
     expect(queryByText('Firewalls')).not.toBeInTheDocument();
     expect(queryByText('OLTs')).not.toBeInTheDocument();
   });
@@ -335,7 +339,10 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     );
 
     expect(getByText('Hosts com alerta (1)')).toBeInTheDocument();
-    expect(getByLabelText(/Ir para host-b no mapa Filial/)).toBeInTheDocument();
+    const row = getByLabelText(/Ir para host-b no mapa Filial/);
+    expect(row).toHaveTextContent('host-b');
+    expect(row).toHaveTextContent('Filial');
+    expect(row).toHaveTextContent('Interface down');
   });
 
   it('mostra o problema Zabbix ao passar o mouse na lista de alertas', () => {
@@ -347,7 +354,7 @@ describe('TopologyCanvas — quiosque / playlist', () => {
       A: { 'host-a': { value: 1, status: 'online' } },
     };
 
-    const { getByLabelText, getByRole } = render(
+    const { getByLabelText, getByRole, getByText } = render(
       <TopologyCanvas
         map={map}
         storedMap={map}
@@ -363,6 +370,7 @@ describe('TopologyCanvas — quiosque / playlist', () => {
       />
     );
 
+    expect(getByText('Interface port-a com erros de entrada (alto)')).toBeInTheDocument();
     fireEvent.mouseEnter(getByLabelText(/Interface port-a com erros de entrada/));
     const tooltip = getByRole('tooltip');
     expect(tooltip).toHaveTextContent('Interface port-a com erros de entrada (alto)');
@@ -398,6 +406,35 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(queryByText('ICMP timeout')).toBeNull();
   });
 
+  it('com alertas Zabbix desligados a lista não mostra problema, só offline', () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1', zabbixHost: 'host-a' })],
+    });
+    const options = { ...defaultOptions(), map, showHostAlertList: true, showZabbixAlerts: false };
+    const hostDisplayByRefId: Record<string, HostDisplayMap> = {
+      A: { 'host-a': { value: 1, status: 'online' } },
+    };
+
+    const { queryByText } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        queryReady
+        hostDisplayByRefId={hostDisplayByRefId}
+        hostMetadata={{ 'host-a': { name: 'host-a', hostid: 'hid-a' } }}
+        hostProblems={{
+          'hid-a': { count: 1, maxSeverity: 4, names: ['Interface down'] },
+        }}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+        hideOverlayControls
+      />
+    );
+
+    expect(queryByText('Hosts com alerta')).toBeNull();
+    expect(queryByText('Interface down')).toBeNull();
+  });
+
   it('mantém voltar, avançar e breadcrumb com a toolbar oculta', () => {
     const map = emptyMap({
       nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1' })],
@@ -427,5 +464,26 @@ describe('TopologyCanvas — quiosque / playlist', () => {
     expect(getByText('Início')).toBeInTheDocument();
     expect(getByText('SWV')).toBeInTheDocument();
     expect(queryByTitle('Ocultar legenda')).not.toBeInTheDocument();
+  });
+
+  it('mostra o mini mapa fora do modo edição', async () => {
+    const map = emptyMap({
+      nodes: [hostNode({ id: 'h1', x: 120, y: 140, label: 'Host 1' })],
+    });
+    const options = { ...defaultOptions(), map, showMinimap: true };
+
+    const { getByLabelText } = render(
+      <TopologyCanvas
+        map={map}
+        storedMap={map}
+        options={options}
+        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+        submapHosts={STABLE_SUBMAP_HOSTS}
+      />
+    );
+
+    await waitFor(() => {
+      expect(getByLabelText('Visão geral do mapa')).toBeInTheDocument();
+    });
   });
 });

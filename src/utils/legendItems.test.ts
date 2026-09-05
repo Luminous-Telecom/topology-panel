@@ -34,4 +34,15 @@ describe('buildLegendItems', () => {
     expect(items.map((i) => i.color)).not.toContain('  ');
     expect(items.map((i) => i.color)).toContain('#123456');
   });
+
+  it('cloud e network (legado) viram um só item Nuvem / link externo', () => {
+    const labels = buildLegendItems(
+      options({
+        legendHostTypes: true,
+        hostTypeColors: { cloud: '#ffffff', network: '#ffffff', camera: '#84078b' },
+      })
+    ).map((item) => item.label);
+    expect(labels.filter((label) => label === 'Nuvem / link externo')).toHaveLength(1);
+    expect(labels).toContain('Câmera');
+  });
 });

@@ -8,14 +8,17 @@ import {
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
   collectPresentHostTypeFilterIds,
+  collectPresentSubmapFilterIds,
   retainPresentNocTypeFilters,
   visibleNocFilterIds,
   resolveHostProblemSummary,
   alertListHoverText,
   alertListStatusLabel,
+  alertListStatusLines,
   visibleHostProblemNames,
 } from './topologyFilters';
 import { ROOT_MAP_ID } from '../topologyMapNavigation';
+import { nocSubmapFilterId } from './types';
 import { linkKey } from '../mapLinkEdits';
 import { hostNode, emptyMap } from '../testMapFixtures';
 
@@ -90,10 +93,61 @@ describe('topologyFilters', () => {
     expect(ids).toEqual(['firewall', 'camera']);
     expect(visibleNocFilterIds([{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: root }])).toEqual([
       'offline',
-      'problems',
+      'online',
+      'alert',
+      'nodata',
       'congestedLinks',
+      'link1g',
+      'link10g',
+      'link40g',
+      'link100g',
+      nocSubmapFilterId(ROOT_MAP_ID),
       'camera',
     ]);
+  });
+
+  it('lista submapas com host e combina com os demais filtros', () => {
+    const root = emptyMap({
+      nodes: [hostNode({ id: 'core', icon: 'router', label: 'core-a', zabbixHost: '10.0.0.1' })],
+    });
+    const child = emptyMap({
+      nodes: [
+        hostNode({ id: 'sw-up', icon: 'switch_managed', label: 'sw-up', zabbixHost: '10.0.0.2' }),
+        hostNode({ id: 'sw-down', icon: 'switch_managed', label: 'sw-down', zabbixHost: '10.0.0.3' }),
+      ],
+    });
+    const scopes = [
+      { mapId: ROOT_MAP_ID, mapLabel: 'Início', map: root },
+      { mapId: 'filial', mapLabel: 'Filial', map: child },
+    ];
+    expect(collectPresentSubmapFilterIds(scopes)).toEqual([
+      nocSubmapFilterId(ROOT_MAP_ID),
+      nocSubmapFilterId('filial'),
+    ]);
+    const ctx = {
+      hostDisplay: {
+        '10.0.0.1': { value: 1, status: 'online' as const },
+        '10.0.0.2': { value: 1, status: 'online' as const },
+        '10.0.0.3': { value: 0, status: 'offline' as const },
+      },
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    const onlyFilial = collectNocHostEntries(new Set([nocSubmapFilterId('filial')]), scopes, ctx);
+    expect(onlyFilial.map((e) => e.nodeId)).toEqual(['sw-down', 'sw-up']);
+    const filialOffline = collectNocHostEntries(
+      new Set([nocSubmapFilterId('filial'), 'offline']),
+      scopes,
+      ctx
+    );
+    expect(filialOffline.map((e) => e.nodeId)).toEqual(['sw-down']);
+  });
+
+  it('remove filtro de submapa que sumiu da árvore', () => {
+    const active = new Set([nocSubmapFilterId('filial'), 'offline'] as const);
+    const next = retainPresentNocTypeFilters(active, [], [nocSubmapFilterId(ROOT_MAP_ID)]);
+    expect([...next]).toEqual(['offline']);
   });
 
   it('remove filtro de tipo sem host e preserva status e tipos presentes', () => {
@@ -124,10 +178,99 @@ describe('topologyFilters', () => {
     );
   });
 
-  it('esconde cabo cuja ponta não casa com o filtro ativo', () => {
+  it('filtra online, offline e alerta (offline não entra em alerta)', () => {
+    const nodeOnline = hostNode({ id: 'ok', zabbixHost: '10.0.0.2', zabbixHostId: '2002' });
+    const nodeAlert = hostNode({ id: 'warn', zabbixHost: '10.0.0.3', zabbixHostId: '2003' });
+    const nodeOffline = hostNode({ id: 'down', zabbixHost: '10.0.0.1', zabbixHostId: '2001' });
+    const filterMap = emptyMap({ nodes: [nodeOnline, nodeAlert, nodeOffline] });
+    const ctx = {
+      map: filterMap,
+      hostDisplay: {
+        '10.0.0.2': { value: 1, status: 'online' as const },
+        '10.0.0.3': { value: 1, status: 'online' as const },
+        '10.0.0.1': { value: 0, status: 'offline' as const },
+      },
+      hostMetadata: {
+        '10.0.0.2': { name: 'host-b', hostid: '2002' },
+        '10.0.0.3': { name: 'host-c', hostid: '2003' },
+        '10.0.0.1': { name: 'host-a', hostid: '2001' },
+      },
+      hostProblems: { '2003': { count: 1, maxSeverity: 4, names: ['Interface down'] } },
+      options: { linkUtilThresholdHigh: 75 },
+    };
+    expect(isNodeVisibleForFilters(nodeOnline, new Set(['online']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(nodeAlert, new Set(['online']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(nodeOffline, new Set(['online']), ctx)).toBe(false);
+    expect(isNodeVisibleForFilters(nodeOffline, new Set(['offline']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(nodeAlert, new Set(['alert']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(nodeOffline, new Set(['alert']), ctx)).toBe(false);
+    expect(isNodeVisibleForFilters(nodeOnline, new Set(['alert']), ctx)).toBe(false);
+  });
+
+  it('filtra hosts sem dados da Query', () => {
+    const withStatus = hostNode({ id: 'ok', zabbixHost: '10.0.0.2' });
+    const noStatus = hostNode({ id: 'empty', zabbixHost: '10.0.0.8' });
+    const filterMap = emptyMap({ nodes: [withStatus, noStatus] });
+    const ctx = {
+      map: filterMap,
+      hostDisplay: { '10.0.0.2': { value: 1, status: 'online' as const } },
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+      queryReady: true,
+    };
+    expect(isNodeVisibleForFilters(noStatus, new Set(['nodata']), ctx)).toBe(true);
+    expect(isNodeVisibleForFilters(withStatus, new Set(['nodata']), ctx)).toBe(false);
+    const entries = collectNocHostEntries(new Set(['nodata']), [
+      { mapId: ROOT_MAP_ID, mapLabel: 'Início', map: filterMap },
+    ], ctx);
+    expect(entries.map((e) => e.nodeId)).toEqual(['empty']);
+  });
+
+  it('filtro de tipo ou status não esconde os cabos', () => {
     const ctx = { map, options: { linkUtilThresholdHigh: 75 } };
-    expect(isLinkVisibleForFilters(map.links[0], new Set(['olt']), ctx)).toBe(false);
-    expect(isLinkVisibleForFilters({ from: 'core', to: 'inexistente' }, new Set(['olt']), ctx)).toBe(false);
+    expect(isLinkVisibleForFilters(map.links[0], new Set(['olt']), ctx)).toBe(true);
+    expect(isLinkVisibleForFilters({ from: 'core', to: 'inexistente' }, new Set(['offline']), ctx)).toBe(
+      true
+    );
+  });
+
+  it('filtra cabo pela capacidade', () => {
+    const ctx = { map, options: { linkUtilThresholdHigh: 75 } };
+    expect(isLinkVisibleForFilters({ ...map.links[0]!, bandwidthMbps: 10000 }, new Set(['link10g']), ctx)).toBe(
+      true
+    );
+    expect(isLinkVisibleForFilters({ ...map.links[0]!, bandwidthMbps: 1000 }, new Set(['link10g']), ctx)).toBe(
+      false
+    );
+    expect(isLinkVisibleForFilters({ ...map.links[0]!, bandwidthMbps: 1000 }, new Set(['link1g']), ctx)).toBe(
+      true
+    );
+  });
+
+  it('omite tag DOWN quando o filtro Offline já está ativo', () => {
+    const offlineMap = emptyMap({
+      nodes: [hostNode({ id: 'cam', icon: 'camera', label: 'cam-a', zabbixHost: '10.0.0.1' })],
+    });
+    const ctx = {
+      hostDisplay: { '10.0.0.1': { value: 0, status: 'offline' as const } },
+      hostMetadata: {},
+      hostProblems: {},
+      options: { linkUtilThresholdHigh: 75 },
+      queryReady: true,
+    };
+    const withFilter = collectNocHostEntries(
+      new Set(['offline']),
+      [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: offlineMap }],
+      ctx
+    );
+    expect(withFilter[0]?.tags).not.toContain('DOWN');
+    const withoutFilter = collectNocHostEntries(
+      new Set(),
+      [{ mapId: ROOT_MAP_ID, mapLabel: 'Início', map: offlineMap }],
+      ctx
+    );
+    expect(withoutFilter[0]?.tags).toContain('DOWN');
   });
 
   it('resume hosts offline e problemas', () => {
@@ -432,6 +575,26 @@ describe('topologyFilters', () => {
         problems: ['ICMP timeout'],
       })
     ).toBe('OFFLINE');
+    expect(
+      alertListStatusLines({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'alert',
+        problems: ['Interface down', 'CPU alta'],
+      })
+    ).toEqual(['Interface down', 'CPU alta']);
+    expect(
+      alertListStatusLabel({
+        nodeId: 'n1',
+        mapId: 'root',
+        mapLabel: '',
+        label: 'host-a',
+        reason: 'alert',
+        problems: ['Interface down', 'CPU alta'],
+      })
+    ).toBe('Interface down · CPU alta');
   });
 
   it('modo NOC agrega hosts de mapa raiz e filhos', () => {

@@ -3,14 +3,14 @@
  *
  * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
  *
- * Velocidade é constante (`LINK_FLOW_SPEED`): o lastvalue não mexe no pulso — gravar speed/path no
- * SVG a cada poll zerava `offset-distance` no Chrome. O React não grava `offset-distance`,
- * `offset-path` nem `stroke-dashoffset`.
+ * O passo por faixa vem de `data-link-flow-step` (upload via `syncLinkFlowStepsInRoot`). O React
+ * não grava `offset-distance`, `offset-path` nem `stroke-dashoffset` — gravar speed/path no SVG a
+ * cada poll zerava o deslocamento no Chrome.
  */
 
 export const LINK_FLOW_DASH = '7 11';
 const LINK_FLOW_PERIOD = 18;
-/** Passo por frame (~60 fps): ~60 px/s no cabo. Igual nos dois sentidos, independente do bps. */
+/** Multiplicador-base do passo; o lastvalue escala via `data-link-flow-step`. */
 export const LINK_FLOW_SPEED = 1;
 
 /** Seta que corre pelo cabo: anda por `offset-path`, não por dash. */
@@ -34,9 +34,14 @@ function readNumberAttribute(el: Element, name: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function laneStep(el: Element): number {
+/** Compensa o `scale()` do mapa para o pulso ter a mesma velocidade na tela. */
+export function linkFlowScaleFactor(scale: number): number {
+  return 1 / Math.max(scale, 0.15);
+}
+
+function laneStep(el: Element, scale: number): number {
   const mult = readNumberAttribute(el, 'data-link-flow-step');
-  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1);
+  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1) * linkFlowScaleFactor(scale);
 }
 
 /** Dash fecha o ciclo no padrão; seta fecha no comprimento do próprio cabo. */
@@ -75,6 +80,9 @@ const appliedFlowPaths = new WeakMap<Element, string>();
 /** Reconsulta o DOM no máximo a cada 250 ms — link novo entra na animação no fatiamento seguinte. */
 const FLOW_QUERY_INTERVAL_MS = 250;
 const FLOW_QUERY_INTERVAL_HEAVY_MS = 500;
+const FLOW_FRAME_MS = 1000 / 60;
+/** Teto do dt: aba de fundo ou piscada pesada não dá um pulo enorme no offset. */
+const FLOW_MAX_DT_MS = 80;
 
 function frameSkipForLaneCount(count: number): number {
   if (count <= 40) {
@@ -121,13 +129,14 @@ function isFlowLaneActive(el: Element): boolean {
   return el.getAttribute('data-link-flow-active') !== 'false';
 }
 
-function advanceFlowLanes(lanes: Element[], scale: number): number {
+function advanceFlowLanes(lanes: Element[], scale: number, frameUnits: number): number {
   let animated = 0;
+  const units = Number.isFinite(frameUnits) && frameUnits > 0 ? frameUnits : 1;
   for (const el of lanes) {
     if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    writeFlowOffset(el, readFlowOffset(el) + laneStep(el), scale);
+    writeFlowOffset(el, readFlowOffset(el) + laneStep(el, scale) * units, scale);
     animated += 1;
   }
   return animated;
@@ -194,6 +203,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let lanesReadAt = 0;
   let frameTick = 0;
   let lastAnimatedAt = 0;
+  let lastTickAt = 0;
 
   const clearPending = () => {
     if (raf) {
@@ -219,6 +229,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
    * barato num mapa sem tráfego ou com todos os cabos parados.
    */
   const sleepUntilNextScan = () => {
+    lastTickAt = 0;
     const recentlyActive = lastAnimatedAt > 0 && performance.now() - lastAnimatedAt < 2000;
     const delay = recentlyActive ? 32 : queryIntervalForLaneCount(lanes.length);
     idleTimer = window.setTimeout(() => {
@@ -242,11 +253,14 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
       schedule();
       return;
     }
-    let animated = advanceFlowLanes(lanes, viewScale);
+    const elapsed = lastTickAt === 0 ? FLOW_FRAME_MS : now - lastTickAt;
+    lastTickAt = now;
+    const frameUnits = Math.min(Math.max(elapsed, 0), FLOW_MAX_DT_MS) / FLOW_FRAME_MS;
+    let animated = advanceFlowLanes(lanes, viewScale, frameUnits);
     if (!animated) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       lanesReadAt = now;
-      animated = advanceFlowLanes(lanes, viewScale);
+      animated = advanceFlowLanes(lanes, viewScale, frameUnits);
     }
     if (!animated) {
       sleepUntilNextScan();
@@ -292,6 +306,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
         return;
       }
       paused = next;
+      lastTickAt = 0;
       if (paused) {
         clearPending();
         return;

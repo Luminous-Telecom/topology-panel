@@ -1,4 +1,5 @@
 import { LinkRuntimeMetrics, TopologyLink } from '../types';
+import { formatLinkFlowStep, linkFlowSpeedFromUpload } from './linkAnimationStyle';
 import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { formatBitsPerSecond } from './zabbixAdapter/formatTraffic';
 
@@ -96,6 +97,44 @@ export function syncTrafficPillGroup(
   setRowValue(rxText, '[data-link-pill-rx-value]', rxLabel);
   layoutPillGroup(group, txLabel, rxLabel);
   return true;
+}
+
+/**
+ * Atualiza o passo do traço amarelo pelo upload, sem o React gravar speed no path
+ * (isso zerava o deslocamento no Chrome).
+ */
+export function syncLinkFlowStepsInRoot(
+  root: ParentNode,
+  linksByKey: Map<string, { link: TopologyLink; metrics?: LinkRuntimeMetrics }>,
+  baseSpeed: number
+): number {
+  let updated = 0;
+  const nodes = root.querySelectorAll('[data-link-flow][data-link-key]');
+  for (let i = 0; i < nodes.length; i += 1) {
+    const el = nodes.item(i);
+    const key = el.getAttribute('data-link-key');
+    if (!key) {
+      continue;
+    }
+    const entry = linksByKey.get(key);
+    if (!entry) {
+      continue;
+    }
+    const display = resolveLinkMapTrafficMetrics(entry.link, entry.metrics);
+    const next = formatLinkFlowStep(
+      linkFlowSpeedFromUpload({
+        txBps: display.txBps,
+        txUtilizationPct: display.txUtilizationPct,
+        capacityMbps: display.capacityMbps,
+        baseSpeed,
+      })
+    );
+    if (el.getAttribute('data-link-flow-step') !== next) {
+      el.setAttribute('data-link-flow-step', next);
+      updated += 1;
+    }
+  }
+  return updated;
 }
 
 export function syncTrafficPillsInRoot(

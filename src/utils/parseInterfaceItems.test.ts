@@ -5,6 +5,25 @@ import { TopologyNetworkInterface } from '../types';
 describe('parseZabbixInterfaceItems', () => {
   const hostKey = 'host-a';
 
+  it('mostra só o token da porta, não o texto de coleta do item', () => {
+    const interfaces = parseZabbixInterfaceItems(hostKey, '10020', [
+      {
+        itemid: '1',
+        key_: 'net.if.in[ether1]',
+        name: 'Interface ether1: Bits received',
+        hostid: '10020',
+      },
+      {
+        itemid: '2',
+        key_: 'net.if.out[ether1]',
+        name: 'Interface ether1: Bits sent',
+        hostid: '10020',
+      },
+    ]);
+    expect(interfaces).toHaveLength(1);
+    expect(interfaces[0]?.name).toBe('ether1');
+  });
+
   it('agrupa RX, TX e oper status por interface', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10001', [
       { itemid: '1', key_: 'net.if.in[port-a]', hostid: '10001' },
@@ -34,7 +53,7 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.metrics.tx?.key).toBe('vendor.metric.tx[10]');
   });
 
-  it('agrupa itens com index numerico e usa o name do item', () => {
+  it('agrupa itens com index numerico e mostra o token da porta', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10002', [
       {
         itemid: '1',
@@ -57,14 +76,14 @@ describe('parseZabbixInterfaceItems', () => {
       },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe('item-name-status-a extra');
+    expect(interfaces[0]?.name).toBe('10');
     expect(interfaces[0]?.snmpIndex).toBe('10');
     expect(interfaces[0]?.metrics.rx?.itemId).toBe('1');
     expect(interfaces[0]?.metrics.tx?.itemId).toBe('2');
     expect(interfaces[0]?.metrics.operStatus?.itemId).toBe('3');
   });
 
-  it('usa o name do item sem recortar barras nem prefixo', () => {
+  it('index numerico na key vira o nome da porta, sem o texto do item', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10003', [
       {
         itemid: '10',
@@ -86,7 +105,7 @@ describe('parseZabbixInterfaceItems', () => {
       },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe('item-name-admin-a / port-a / alias-b');
+    expect(interfaces[0]?.name).toBe('255');
     expect(interfaces[0]?.snmpIndex).toBe('255');
   });
 
@@ -110,13 +129,12 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.speedMbps).toBe(10000);
   });
 
-  it('mostra o name do item exatamente como veio', () => {
-    const itemName = 'item-name-rx-a port-a alias-b';
+  it('não usa o texto do item quando a key só tem o índice', () => {
     const interfaces = parseZabbixInterfaceItems(hostKey, '10007', [
       {
         itemid: '1',
         key_: 'vendor.metric.rx[16]',
-        name: itemName,
+        name: 'item-name-rx-a port-a alias-b',
         hostid: '10007',
       },
       {
@@ -127,7 +145,7 @@ describe('parseZabbixInterfaceItems', () => {
       },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe(itemName);
+    expect(interfaces[0]?.name).toBe('16');
     expect(interfaces[0]?.snmpIndex).toBe('16');
   });
 
@@ -137,7 +155,7 @@ describe('parseZabbixInterfaceItems', () => {
       { itemid: '2', key_: 'ifHCOutOctets.14', name: 'item-name-tx-a', hostid: '10005' },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe('item-name-rx-a');
+    expect(interfaces[0]?.name).toBe('14');
     expect(interfaces[0]?.snmpIndex).toBe('14');
     expect(interfaces[0]?.metrics.rx?.itemId).toBe('1');
     expect(interfaces[0]?.metrics.tx?.itemId).toBe('2');
@@ -212,7 +230,7 @@ describe('parseZabbixInterfaceItems', () => {
     expect(interfaces[0]?.metrics.txPower?.itemId).toBe('4');
     expect(interfaces[0]?.rxPowerDbm).toBe(-8.5);
     expect(interfaces[0]?.txPowerDbm).toBe(-2);
-    expect(interfaces[0]?.name).toBe('port-a0/0/3 - host-a');
+    expect(interfaces[0]?.name).toBe('port-a0/0/3');
   });
 
   it('não lista item só de sinal óptico no select de cabo', () => {
@@ -231,7 +249,7 @@ describe('parseZabbixInterfaceItems', () => {
       },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe('item-name-rx-port-a');
+    expect(interfaces[0]?.name).toBe('11');
     expect(interfaces[0]?.metrics.rx?.itemId).toBe('2');
     expect(interfaces[0]?.metrics.txPower).toBeUndefined();
   });
@@ -252,7 +270,7 @@ describe('parseZabbixInterfaceItems', () => {
       },
     ]);
     expect(interfaces).toHaveLength(1);
-    expect(interfaces[0]?.name).toBe('item-name-rx-pon-a');
+    expect(interfaces[0]?.name).toBe('10');
     expect(interfaces[0]?.metrics.rx?.itemId).toBe('2');
     expect(interfaces[0]?.metrics.txPower?.itemId).toBe('1');
   });

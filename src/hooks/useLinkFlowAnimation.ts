@@ -28,9 +28,8 @@ export function useLinkFlowAnimation(
   viewScaleRef.current = viewScale;
 
   const syncPaused = (controller: LinkFlowController) => {
-    const zoomedOut = viewScaleRef.current < 0.35;
     const gesturing = gestureStore ? gestureBlocksLinkFlow(gestureStore) : false;
-    controller.setPaused(document.hidden || zoomedOut || gesturing);
+    controller.setPaused(document.hidden || gesturing);
   };
 
   useEffect(() => {

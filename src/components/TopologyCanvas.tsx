@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyBlueprint, TopologyHostIcon, TopologyInterfaceReference, TopologyLink, TopologyLinkPeerHost, TopologyMap, TopologyNode, TopologyPanelOptions, TopologyView } from '../types';
-import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId, TOPOLOGY_STATUS_FILTER_IDS } from '../utils/noc/types';
+import { HostNodeBadge, HostProblemsMap, TopologyMapFilterId, TOPOLOGY_STATUS_FILTER_IDS, nocSubmapFilterId } from '../utils/noc/types';
 import { buildHostNodeBadgeMap } from '../utils/noc/hostBadges';
 import {
   collectAlertHostEntriesFromMaps,
   collectNocHostEntries,
   collectPresentHostTypeFilterIds,
+  collectPresentSubmapFilterIds,
   isLinkVisibleForFilters,
   NocHostListEntry,
   retainPresentNocTypeFilters,
@@ -50,7 +51,7 @@ import { openDashboardUrl } from './DashboardPickerModal';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useLinkTrafficPillSync } from '../hooks/useLinkTrafficPillSync';
-import { linkFlowAnimationBudget } from '../utils/linkAnimationStyle';
+import { LINK_ANIMATION_SPEED_DEFAULT, linkFlowAnimationBudget } from '../utils/linkAnimationStyle';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useStableIdentity } from '../hooks/useStableIdentity';
 import { structuralShareMap } from '../utils/structuralIdentity';
@@ -111,6 +112,7 @@ const NO_HOST_DISPLAY_BY_REF_ID: Record<string, HostDisplayMap> = {};
 const NO_SUBMAP_HOSTS: Record<string, string[] | null | undefined> = {};
 const NO_LINK_METRICS: LinkRuntimeMetricsMap = {};
 const EMPTY_NOC_HOST_ENTRIES: NocHostListEntry[] = [];
+const EMPTY_HOST_PROBLEMS: HostProblemsMap = {};
 
 export function TopologyCanvasComponent({
   map: liveMap,
@@ -128,6 +130,7 @@ export function TopologyCanvasComponent({
   zabbixDatasourceUid,
   linkPaintMetricsByLink: liveLinkPaintMetricsByLink = NO_LINK_METRICS,
   hostProblems: liveHostProblems,
+  icmpHistoryRangeRef,
   onNocModeChange,
   onMapChange,
   onViewChange,
@@ -180,8 +183,9 @@ export function TopologyCanvasComponent({
     hostMetadata,
     submapHosts,
     linkPaintMetricsByLink,
-    hostProblems,
+    hostProblems: frozenHostProblems,
   } = frozenData;
+  const hostProblems = options.showZabbixAlerts === false ? EMPTY_HOST_PROBLEMS : frozenHostProblems;
   const statusLoading = liveQueryLoading && !queryReady && !queryError;
   const liveStatusLoading = liveQueryLoading && !liveQueryReady && !liveQueryError;
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -189,6 +193,7 @@ export function TopologyCanvasComponent({
     renderLinks: [] as Array<{ link: TopologyLink; key: string; bundleOffset: number }>,
     nodeLayouts: new Map<string, NodeLayout & TopologyNode>(),
     resolveLinkWaypoints: (_link: TopologyLink) => [] as LinkPoint[],
+    linkAnimationSpeed: options.linkAnimationSpeed ?? LINK_ANIMATION_SPEED_DEFAULT,
   });
   const gestureStoreRef = useRef<ReturnType<typeof createCanvasGestureStore> | null>(null);
   if (gestureStoreRef.current === null) {
@@ -382,25 +387,20 @@ export function TopologyCanvasComponent({
   );
 
   const previousBadgesRef = useRef<ReadonlyMap<string, HostNodeBadge[]>>();
-  const [hostBadgesByNode, setHostBadgesByNode] = useState<ReadonlyMap<string, HostNodeBadge[]>>();
-
-  useEffect(() => {
+  const hostBadgesByNode = useMemo(() => {
     if (options.showHostBadges === false || !queryReady || statusLoading) {
-      setHostBadgesByNode(undefined);
-      return;
+      return undefined;
     }
-    return scheduleWhenIdle(() => {
-      const built = buildHostNodeBadgeMap({
-        map,
-        hostDisplay,
-        hostMetadata,
-        hostProblems,
-        queryReady,
-      });
-      const shared = structuralShareMap(built, previousBadgesRef.current as Map<string, HostNodeBadge[]> | undefined);
-      previousBadgesRef.current = shared;
-      setHostBadgesByNode(shared);
-    }, 48);
+    const built = buildHostNodeBadgeMap({
+      map,
+      hostDisplay,
+      hostMetadata,
+      hostProblems,
+      queryReady,
+    });
+    const shared = structuralShareMap(built, previousBadgesRef.current as Map<string, HostNodeBadge[]> | undefined);
+    previousBadgesRef.current = shared;
+    return shared;
   }, [map, hostDisplay, hostMetadata, hostProblems, options.showHostBadges, queryReady, statusLoading]);
 
   const nocMapScopes = useMemo(() => {
@@ -427,18 +427,31 @@ export function TopologyCanvasComponent({
     () => collectPresentHostTypeFilterIds(nocMapScopes),
     [nocMapScopes]
   );
+  const presentSubmapFilterIds = useMemo(
+    () => collectPresentSubmapFilterIds(nocMapScopes),
+    [nocMapScopes]
+  );
+  const nocFilterLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    for (const scope of nocMapScopes) {
+      labels[nocSubmapFilterId(scope.mapId)] = scope.mapLabel;
+    }
+    return labels;
+  }, [nocMapScopes]);
 
   const nocFilterIds = useMemo(
-    () => [...TOPOLOGY_STATUS_FILTER_IDS, ...presentHostTypeIds],
-    [presentHostTypeIds]
+    () => [...TOPOLOGY_STATUS_FILTER_IDS, ...presentSubmapFilterIds, ...presentHostTypeIds],
+    [presentHostTypeIds, presentSubmapFilterIds]
   );
 
   useEffect(() => {
     if (!effectiveNocMode) {
       return;
     }
-    setActiveFilters((prev) => retainPresentNocTypeFilters(prev, presentHostTypeIds));
-  }, [effectiveNocMode, presentHostTypeIds]);
+    setActiveFilters((prev) =>
+      retainPresentNocTypeFilters(prev, presentHostTypeIds, presentSubmapFilterIds)
+    );
+  }, [effectiveNocMode, presentHostTypeIds, presentSubmapFilterIds]);
 
   const alertHostEntries = useMemo(() => {
     if (effectiveNocMode || !showHostAlertList || !queryReady || statusLoading) {
@@ -497,7 +510,8 @@ export function TopologyCanvasComponent({
     queryReady,
   ]);
 
-  const minimapVisible = canPersist && showMinimap && !isFullscreen && viewport.w > 0 && viewport.h > 0;
+  /** Tela cheia do painel também mostra o mini mapa — não depende de `isFullscreen`. */
+  const minimapVisible = showMinimap && viewport.w > 0 && viewport.h > 0;
 
   const toggleFilter = useCallback((filter: TopologyMapFilterId) => {
     setActiveFilters((prev) => {
@@ -783,7 +797,11 @@ export function TopologyCanvasComponent({
 
   const tryDoubleTapEnterChildMap = useCallback(
     (tapNode: TopologyNode): boolean => {
-      if (!editable || !submapHasChildMapId(tapNode)) {
+      if (tapNode.type !== 'submap') {
+        return false;
+      }
+      const canOpen = submapHasChildMapId(tapNode) || Boolean(tapNode.submapUid?.trim());
+      if (!canOpen) {
         return false;
       }
       const now = Date.now();
@@ -796,7 +814,7 @@ export function TopologyCanvasComponent({
       lastChildMapTapRef.current = { nodeId: tapNode.id, time: now };
       return false;
     },
-    [editable, openSubmap]
+    [openSubmap]
   );
 
   /** Entra no modo link sem origem: o próximo clique num nó define o ponto de partida. */
@@ -942,7 +960,6 @@ export function TopologyCanvasComponent({
     completeLink,
     tryDoubleTapOpenProperties,
     tryDoubleTapEnterChildMap,
-    openSubmap,
     openDashboardPicker,
     onLinkSelect,
     clearHostHover,
@@ -1035,14 +1052,11 @@ export function TopologyCanvasComponent({
         completeLink(node.id);
         return;
       }
-      if (!editable && node.type === 'submap') {
-        openSubmap(node);
-      }
       if (!editable && node.type === 'dashboard_picker') {
         openDashboardPicker(node);
       }
     },
-    [completeLink, editable, linkFromId, openDashboardPicker, openSubmap]
+    [completeLink, editable, linkFromId, openDashboardPicker]
   );
 
   const onNodeDoubleClick = useCallback(
@@ -1282,6 +1296,7 @@ export function TopologyCanvasComponent({
     renderLinks: culledRenderLinks,
     nodeLayouts,
     resolveLinkWaypoints,
+    linkAnimationSpeed: options.linkAnimationSpeed ?? LINK_ANIMATION_SPEED_DEFAULT,
   };
   useLinkTrafficPillSync(wrapRef, pillSyncRef, mapNavigationKey);
 
@@ -1410,17 +1425,6 @@ export function TopologyCanvasComponent({
         onInsertBlueprint={!effectiveNocMode && canPersist ? () => setBlueprintOpen(true) : undefined}
       />
 
-      {!effectiveNocMode && showHostAlertList ? (
-        <TopologyHostAlertList
-          entries={alertHostEntries}
-          colorOffline={resolveColor(options.colorOffline)}
-          colorAlert={resolveColor(options.colorAlert)}
-          queryReady={queryReady}
-          showMinimap={minimapVisible}
-          onFocusHost={handleSelectHostFromList}
-        />
-      ) : null}
-
       {effectiveNocMode && !hideOverlayControls ? (
         <TopologyNocPanel
           entries={nocHostEntries}
@@ -1431,6 +1435,7 @@ export function TopologyCanvasComponent({
           showMinimap={minimapVisible}
           onToggleFilter={toggleFilter}
           onSelectHost={handleNocSelectHost}
+          filterLabels={nocFilterLabels}
         />
       ) : null}
 
@@ -1528,6 +1533,17 @@ export function TopologyCanvasComponent({
         linkColor={miniLinkColor}
         showLegend={showLegend}
         legendItems={legendItems}
+        alertList={
+          !effectiveNocMode && showHostAlertList ? (
+            <TopologyHostAlertList
+              entries={alertHostEntries}
+              colorOffline={resolveColor(options.colorOffline)}
+              colorAlert={resolveColor(options.colorAlert)}
+              queryReady={queryReady}
+              onFocusHost={handleSelectHostFromList}
+            />
+          ) : null
+        }
         refreshIntervalSec={refreshIntervalSec}
         contextMenu={contextMenu}
         onCloseContextMenu={closeContextMenu}
@@ -1550,6 +1566,7 @@ export function TopologyCanvasComponent({
         hostDisplay={hostDisplay}
         hostProblems={hostProblems}
         queryReady={queryReady}
+        icmpHistoryRangeRef={icmpHistoryRangeRef}
         pingTarget={pingTarget}
         setPingTarget={setPingTarget}
         hostHover={hostHover}

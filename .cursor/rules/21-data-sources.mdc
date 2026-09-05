@@ -35,25 +35,29 @@ O front fala com o plugin e com o datasource assim:
 - Cor e rótulo saem de `utils/statusMapping.ts` via `statusFromHostDisplay` (lastvalue 0 = offline,
   acima de 0 = online). Hover lê o mesmo lastvalue via `hostDisplay`.
 - Problemas Warning+ vêm na descoberta (`fetchProblems`), disparados junto com `host.get` e o
-  lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Depois, `trigger.get` com
-  `filter.status: 0` descarta trigger desativado (o `event.get` ainda traz o host). Sem hostid
-  na linha, o host sai de `event.get` (`selectHosts`); outro `trigger.get` só se o evento não
-  trouxer host. O intervalo não relê. Casa o nó pelo `hostid`. Falha do filtro de trigger
-  mantém as linhas. Falha da descoberta mantém o resumo.
+  lastvalue. `problem.get` não envia `selectHosts` (a API recusa). Depois, um `trigger.get` com
+  `filter.status: 0` e `selectHosts` descarta trigger desativado e traz o host. `event.get` só
+  se esse trigger não trouxer hostid. O intervalo não relê. Casa o nó pelo `hostid`. Falha do
+  filtro de trigger mantém as linhas. Falha da descoberta mantém o resumo.
 - O intervalo do poll mora no browser (`useZabbixDirectIndex`). Em regime: um `item.get` pelos
   itemids, mesmo se algum host do grupo não tiver o item de status. `host.get` / `problem.get` /
-  `event.get` / `trigger.get` só na descoberta, em paralelo (`trigger.get` depois do `problem.get`).
-  O intervalo não empilha poll. Host e problema casam pelo `hostid`, nunca `filter.host` / nome.
-  Ping e inventário de interface também exigem `hostid`.
+  `trigger.get` / `event.get` só na descoberta (`host.get`, lastvalue e `problem.get` em paralelo;
+  `trigger.get` depois do `problem.get`). O intervalo não empilha poll. Host e problema casam
+  pelo `hostid`, nunca `filter.host` / nome. Ping e inventário de interface também exigem `hostid`.
 - O painel declara `skipDataQuery` em `plugin.json`.
-- Ampliar a superfície (`trend.get`, `history.get`) exige **aprovação explícita**.
+- `history.get` / `trend.get` só no hover ICMP (`fetchHostIcmpHistory`), no intervalo do
+  `timeRange` do painel. Status, cabos e poll continuam lastvalue — sem `TimeRange` no ciclo.
+- Temperatura no hover (`showHostTemperature`): um `item.get` por hostid (`fetchHostTemperatures`),
+  só lastvalue, só neste peek. Sem `history.get` / `trend.get` e sem entrar no poll de intervalo.
+- Ampliar a superfície (`trend.get`, `history.get`) fora do hover ICMP exige **aprovação explícita**.
 - Palavras-chave de interface só das opções do painel + `INTERFACE_SIGNAL_SEARCH_TERMS`.
 
 ## APIs do Grafana
 
 - Toda leitura passa por `getBackendSrv()` — nunca `fetch`/`XMLHttpRequest`.
 - Busca de dashboards (`/api/search`) continua na API do Grafana (`utils/grafanaDashboards.ts`).
-- Status e cabos são lastvalue; o painel não usa o seletor de tempo. Não crie `TimeRange`.
+- Status e cabos são lastvalue. O seletor de tempo do Grafana só entra no histórico ICMP do
+  hover (`timeRange.from`/`to` do `PanelProps`). Não invente outro `TimeRange`.
 - Navegação só por `openDashboardUrl`. Sem outro `window.location.href`.
 - Sem `document.querySelector` no chrome do Grafana. `document.createElement` só efêmero
   (`hostTools.ts`, canvas em memória).

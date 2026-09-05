@@ -7,6 +7,56 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.426] - 2026-09-05
+
+### Adicionado
+
+- Filtro Sem dados no Status do modo NOC — hosts sem lastvalue da Query.
+- Opção “Temperatura no hover” (Interação, desligada por padrão): ao passar o mouse no host
+  mostra todas as temperaturas (CPU e demais sensores).
+- Menu Submapa no modo NOC lista os mapas com host e combina com Status, Tipo e Links.
+
+- Hover do host mostra histórico de latência ICMP e perda de pacote no intervalo do seletor de
+  tempo do Grafana (`history.get` / `trend.get` só neste peek).
+- Opção “Alertas do Zabbix”: desligada, o mapa só pinta online e offline — sem cor, badge nem
+  lista de problema Warning+.
+- Modo NOC filtra por Offline, Online e Alerta no menu Status (clique abre as opções).
+- Menu Links do modo NOC filtra por capacidade (1 Gb, 10 Gb, 40 Gb, 100 Gb).
+
+### Alterado
+
+- Traço amarelo dos cabos acelera com o upload da interface e desacelera com pouca banda —
+  o passo base ficou mais lento.
+- Abrir submapa no mapa exige dois cliques — o clique único não entra mais no mapa filho.
+- Mini mapa fica acima da lista de hosts com alerta, no mesmo canto inferior esquerdo.
+- Perda de pacote no hover do host usa a cor offline (vermelho), no valor e no gráfico.
+- Inventário de interface mostra só o nome da porta — sem o texto do item (o que está coletando).
+- Filtro de tipo ou status no NOC não esconde os cabos; só o menu Links recorta tráfego/capacidade.
+- Lista de hosts com alerta mostra host, submapa e o texto completo do problema, com linha
+  separando as colunas — a largura do painel acompanha o conteúdo, sem faixa vazia.
+- Na descoberta o `trigger.get` já traz o host (`selectHosts`) e o `item.get` de status cobre o
+  tráfego quando a key já entra na busca — sem `event.get` extra nem segundo `item.get` só por
+  itemid conhecido.
+
+### Corrigido
+
+- Traço amarelo não freia na piscada do host/submapa nem no zoom — o passo é por tempo e
+  a escala do mapa é compensada; o bps absoluto diferencia cabo carregado de cabo vazio.
+- Menus Status, Submapa, Tipo e Links do NOC não cortam mais no canto do painel.
+- Mini mapa permanece visível com o painel em tela cheia.
+- Menu de filtro do NOC fecha ao clicar fora — não só ao clicar de novo no mesmo filtro.
+- “Coletado às” no hover acompanha o lastclock atual — o poll só reusa o objeto de status, mas
+  atualiza o relógio; com ICMP, vale o lastclock do peek.
+- Traço amarelo de tráfego anima todos os cabos visíveis — o teto antigo deixava linhas de mapa
+  grande sem o efeito só pela ordem no array.
+- Animação dos cabos continua com o zoom afastado — o laço não pausa mais abaixo de 0,35.
+- Lista NOC não repete DOWN/ALERTA quando o filtro Offline ou Alerta já está ativo.
+- Na abertura o mapa só pinta hosts depois do lastvalue e dos problemas — alerta e badge entram no
+  primeiro frame, sem flash de host online.
+- Mini mapa volta a aparecer fora do modo edição do dashboard.
+- Legenda lista “Nuvem / link externo” uma vez — `cloud` e `network` compartilham o rótulo e o
+  `key` repetido duplicava a linha ao ligar outros itens.
+
 ## [1.4.425] - 2026-09-05
 
 ### Corrigido

@@ -433,57 +433,8 @@ async function attachHostsFromEvents(
   return rows.map((row) => mergeProblemHosts(row, hostsByEvent.get(asItemString(row.eventid) ?? '')));
 }
 
-async function attachHostsFromTriggers(
-  datasourceUid: string,
-  rows: ProblemRow[],
-  call: ZabbixRpc
-): Promise<ProblemRow[]> {
-  const missing = rows.filter((row) => problemHostIds(row).length === 0);
-  const triggerIds = numericIds(missing.map((row) => row.objectid));
-  if (!triggerIds.length) {
-    return rows;
-  }
-  const triggers = await call<TriggerRow[]>(datasourceUid, 'trigger.get', {
-    triggerids: triggerIds,
-    output: ['triggerid', 'status'],
-    filter: { status: 0 },
-    selectHosts: ['hostid'],
-  });
-  const list = Array.isArray(triggers) ? triggers : [];
-  const hostsByTrigger = new Map<string, string[]>();
-  for (const trigger of list) {
-    if (triggerIsDisabled(trigger.status)) {
-      continue;
-    }
-    const triggerid = asItemString(trigger.triggerid) ?? '';
-    const hostids = numericIds((trigger.hosts ?? []).map((host) => host.hostid));
-    if (triggerid && hostids.length) {
-      hostsByTrigger.set(triggerid, hostids);
-    }
-  }
-  return rows.map((row) => mergeProblemHosts(row, hostsByTrigger.get(asItemString(row.objectid) ?? '')));
-}
-
-async function attachProblemHosts(
-  datasourceUid: string,
-  rows: ProblemRow[],
-  call: ZabbixRpc
-): Promise<ProblemRow[]> {
-  // `problem.get` não tem selectHosts. O host do evento sai de `event.get`; `trigger.get` é
-  // reserva quando o eventid não veio, o evento não trouxe host, ou o `event.get` falhou.
-  try {
-    const fromEvents = await attachHostsFromEvents(datasourceUid, rows, call);
-    if (fromEvents.every((row) => problemHostIds(row).length > 0)) {
-      return fromEvents;
-    }
-    return attachHostsFromTriggers(datasourceUid, fromEvents, call);
-  } catch {
-    return attachHostsFromTriggers(datasourceUid, rows, call);
-  }
-}
-
-/** Descarta problema cujo trigger está desativado — o event.get ainda traz o host. */
-async function keepProblemsFromEnabledTriggers(
+/** Um `trigger.get`: descarta desativado e já traz o host — `event.get` só se ainda faltar. */
+async function enrichProblemsFromTriggers(
   datasourceUid: string,
   rows: ProblemRow[],
   call: ZabbixRpc
@@ -497,18 +448,27 @@ async function keepProblemsFromEnabledTriggers(
       triggerids: triggerIds,
       output: ['triggerid', 'status'],
       filter: { status: 0 },
+      selectHosts: ['hostid'],
     });
     const enabled = new Set<string>();
+    const hostsByTrigger = new Map<string, string[]>();
     for (const trigger of Array.isArray(triggers) ? triggers : []) {
       if (triggerIsDisabled(trigger.status)) {
         continue;
       }
       const id = asItemString(trigger.triggerid) ?? '';
-      if (isNumericZabbixItemId(id)) {
-        enabled.add(id);
+      if (!isNumericZabbixItemId(id)) {
+        continue;
+      }
+      enabled.add(id);
+      const hostids = numericIds((trigger.hosts ?? []).map((host) => host.hostid));
+      if (hostids.length) {
+        hostsByTrigger.set(id, hostids);
       }
     }
-    return rows.filter((row) => enabled.has(asItemString(row.objectid) ?? ''));
+    return rows
+      .filter((row) => enabled.has(asItemString(row.objectid) ?? ''))
+      .map((row) => mergeProblemHosts(row, hostsByTrigger.get(asItemString(row.objectid) ?? '')));
   } catch {
     return rows;
   }
@@ -577,7 +537,7 @@ export async function fetchProblems(
     severities.push(sev);
   }
   // `problem.get` não aceita `selectHosts` — o Zabbix recusa e o proxy responde 500.
-  // `trigger.get` (status 0) descarta trigger desativado; sem hostid, o host sai de `event.get`.
+  // `trigger.get` (status 0 + selectHosts) descarta desativado e traz o host; `event.get` só se faltar.
   const params: ZabbixParams = {
     output: ['eventid', 'objectid', 'name', 'severity'],
     severities,
@@ -593,11 +553,17 @@ export async function fetchProblems(
     params.groupids = gids;
   }
   const rows = await call<ProblemRow[]>(datasourceUid, 'problem.get', params);
-  const active = await keepProblemsFromEnabledTriggers(datasourceUid, rows, call);
+  const active = await enrichProblemsFromTriggers(datasourceUid, rows, call);
   const needsHost =
     active.length > 0 && active.some((row) => problemHostIds(row).length === 0);
-  const withHosts = needsHost ? await attachProblemHosts(datasourceUid, active, call) : active;
-  return parseProblems(withHosts, ids);
+  if (!needsHost) {
+    return parseProblems(active, ids);
+  }
+  try {
+    return parseProblems(await attachHostsFromEvents(datasourceUid, active, call), ids);
+  } catch {
+    return parseProblems(active, ids);
+  }
 }
 
 export async function fetchHostInterfaceItems(
@@ -703,11 +669,26 @@ async function fetchPingScriptIds(
   return ids;
 }
 
-async function fetchIcmpByHostId(
+export type IcmpHistoryItemRef = {
+  itemid: string;
+  valueType: 0 | 3;
+};
+
+export type IcmpItemSnapshot = {
+  status: HostIcmpStatus;
+  rtt?: IcmpHistoryItemRef;
+  loss?: IcmpHistoryItemRef;
+};
+
+function icmpHistoryValueType(value: unknown): 0 | 3 {
+  return asNumber(value) === 3 ? 3 : 0;
+}
+
+export async function fetchIcmpItemSnapshot(
   datasourceUid: string,
   hostId: string,
-  call: ZabbixRpc
-): Promise<HostIcmpStatus> {
+  call: ZabbixRpc = zabbixCall
+): Promise<IcmpItemSnapshot> {
   const rows = await call<ItemRow[]>(datasourceUid, 'item.get', {
     hostids: [hostId],
     output: ['itemid', 'key_', 'lastvalue', 'lastclock', 'value_type'],
@@ -716,29 +697,40 @@ async function fetchIcmpByHostId(
   });
   if (!rows.length) {
     return {
-      reachable: null,
-      lossPct: null,
-      rttMs: null,
-      error: 'Itens ICMP (icmpping) não encontrados neste host',
+      status: {
+        reachable: null,
+        lossPct: null,
+        rttMs: null,
+        error: 'Itens ICMP (icmpping) não encontrados neste host',
+      },
     };
   }
   let reachable: boolean | null = null;
   let lossPct: number | null = null;
   let rttMs: number | null = null;
   let lastClock = 0;
+  let rtt: IcmpHistoryItemRef | undefined;
+  let loss: IcmpHistoryItemRef | undefined;
   for (const row of rows) {
     const key = (row.key_ ?? '').toLowerCase();
     const clock = parseFloatOrNull(row.lastclock);
     if (clock !== null && clock > lastClock) {
       lastClock = clock;
     }
+    const itemid = asItemString(row.itemid);
     if (key.includes('icmppingloss')) {
       lossPct = parseFloatOrNull(row.lastvalue);
+      if (itemid && isNumericZabbixItemId(itemid)) {
+        loss = { itemid, valueType: icmpHistoryValueType(row.value_type) };
+      }
       continue;
     }
     if (key.includes('icmppingsec')) {
       const sec = parseFloatOrNull(row.lastvalue);
       rttMs = sec !== null ? sec * 1000 : null;
+      if (itemid && isNumericZabbixItemId(itemid)) {
+        rtt = { itemid, valueType: icmpHistoryValueType(row.value_type) };
+      }
       continue;
     }
     if (key.startsWith('icmpping')) {
@@ -760,11 +752,23 @@ async function fetchIcmpByHostId(
     reachable = true;
   }
   return {
-    reachable,
-    lossPct,
-    rttMs,
-    lastClock: lastClock || undefined,
+    status: {
+      reachable,
+      lossPct,
+      rttMs,
+      lastClock: lastClock || undefined,
+    },
+    rtt,
+    loss,
   };
+}
+
+async function fetchIcmpByHostId(
+  datasourceUid: string,
+  hostId: string,
+  call: ZabbixRpc
+): Promise<HostIcmpStatus> {
+  return (await fetchIcmpItemSnapshot(datasourceUid, hostId, call)).status;
 }
 
 export async function runZabbixPing(

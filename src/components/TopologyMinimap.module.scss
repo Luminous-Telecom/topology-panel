@@ -2,10 +2,8 @@
 @use '../styles/tokens' as *;
 
 .wrap {
-  position: absolute;
-  left: $gap;
-  bottom: $gap;
-  z-index: 4;
+  position: relative;
+  flex: 0 0 auto;
   width: 196px;
   height: 148px;
   overflow: hidden;

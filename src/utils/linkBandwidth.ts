@@ -31,6 +31,20 @@ export function bandwidthToInput(mbps?: number): { value: string; unit: LinkBand
   return { value: String(Math.round(mbps)), unit: 'mbps' };
 }
 
+/** Faixas do filtro NOC: 1 / 10 / 40 / 100 Gb. */
+export const NOC_LINK_CAPACITY_GBPS = [1, 10, 40, 100] as const;
+
+export type NocLinkCapacityGbps = (typeof NOC_LINK_CAPACITY_GBPS)[number];
+
+/** Casa a capacidade do cabo com a faixa do filtro (folga de ±30%). */
+export function linkMatchesCapacityGbps(mbps: number | undefined, gbps: NocLinkCapacityGbps): boolean {
+  if (mbps == null || !Number.isFinite(mbps) || mbps <= 0) {
+    return false;
+  }
+  const value = mbps / 1000;
+  return value >= gbps * 0.7 && value < gbps * 1.4;
+}
+
 export function formatLinkBandwidth(mbps?: number): string | undefined {
   if (!mbps || mbps <= 0) {
     return undefined;

@@ -35,6 +35,7 @@ import { useDashboardEditMode } from '../hooks/useDashboardEditMode';
 import { useGrafanaDashboardFlush } from '../hooks/useGrafanaDashboardFlush';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
+import type { IcmpHistoryRange } from '../hooks/useHostIcmpHistory';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
 import {
   createLinkMetricsLiveStore,
@@ -255,6 +256,11 @@ export function TopologyPanel({
   const queryError = Boolean(querySource.error);
   const queryLoading = querySource.loading && !queryReady && !queryError;
   const hostProblems = useStableIdentity(querySource.problems);
+  const icmpHistoryRangeRef = useRef<IcmpHistoryRange>({ fromSec: 0, toSec: 0 });
+  icmpHistoryRangeRef.current = {
+    fromSec: Math.floor(timeRange.from.valueOf() / 1000),
+    toSec: Math.floor(timeRange.to.valueOf() / 1000),
+  };
 
   const dataMetaRaw = useMemo(
     () => enrichHostMetadataFromMaps(queryMeta, mapsForPoll),
@@ -698,6 +704,7 @@ export function TopologyPanel({
         zabbixDatasourceUid={zabbixDatasourceUid}
         linkPaintMetricsByLink={linkPaintMetricsByLink}
         hostProblems={hostProblems}
+        icmpHistoryRangeRef={icmpHistoryRangeRef}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? handleMapChange : undefined}
         onViewChange={canPersistOptions ? handleActiveViewChange : undefined}

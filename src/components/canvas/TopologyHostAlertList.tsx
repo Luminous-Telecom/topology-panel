@@ -5,12 +5,9 @@ import {
   HostAlertListEntry,
   visibleHostProblemNames,
   alertListStatusLabel,
+  alertListStatusLines,
 } from '../../utils/noc/topologyFilters';
-import { minimapBottomOffset } from '../../utils/canvasOverlayLayout';
-import {
-  overlayPanelCompactMaxHeight,
-  overlayPanelCompactWidth,
-} from './canvasOverlayStyles';
+import { overlayPanelCompactMaxHeight } from './canvasOverlayStyles';
 import {
   overlayCardBodyStyle,
   overlayCardHeaderStyle,
@@ -32,6 +29,10 @@ import styles from './TopologyHostAlertList.module.scss';
 
 function reasonLabel(entry: HostAlertListEntry): string {
   return alertListStatusLabel(entry);
+}
+
+function ColumnSep() {
+  return <span className={styles.sep} aria-hidden="true" />;
 }
 
 function alertRowAriaLabel(entry: HostAlertListEntry): string {
@@ -68,7 +69,6 @@ interface Props {
   colorOffline: string;
   colorAlert: string;
   queryReady?: boolean;
-  showMinimap?: boolean;
   onFocusHost: (entry: HostAlertListEntry) => void;
 }
 
@@ -78,10 +78,8 @@ function TopologyHostAlertListComponent({
   colorOffline,
   colorAlert,
   queryReady = false,
-  showMinimap = false,
   onFocusHost,
 }: Props) {
-  const bottomOffset = minimapBottomOffset(showMinimap);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [hoverTip, setHoverTip] = useState<AlertHoverTip | undefined>(undefined);
@@ -126,8 +124,7 @@ function TopologyHostAlertListComponent({
     <>
     <div
       ref={listRef}
-      className={`${overlayCardStyle} ${styles.panel} ${overlayPanelCompactWidth} ${overlayPanelCompactMaxHeight}`}
-      style={{ ['--overlay-bottom' as string]: `${bottomOffset}px` }}
+      className={`${overlayCardStyle} ${styles.panel} ${overlayPanelCompactMaxHeight}`}
       data-map-wheel-overlay
       aria-live="polite"
       onPointerDown={(e) => e.stopPropagation()}
@@ -159,10 +156,18 @@ function TopologyHostAlertListComponent({
                   <span className={styles.dot} style={{ background: statusColor }} aria-hidden="true" />
                   <span className={styles.hostName}>{entry.label}</span>
                   {entry.mapLabel ? (
-                    <span className={styles.mapLabel}>{entry.mapLabel}</span>
+                    <>
+                      <ColumnSep />
+                      <span className={styles.mapLabel}>{entry.mapLabel}</span>
+                    </>
                   ) : null}
+                  <ColumnSep />
                   <span className={styles.status} style={{ color: statusColor }}>
-                    {reasonLabel(entry)}
+                    {alertListStatusLines(entry).map((line, idx) => (
+                      <span key={`${idx}:${line}`} className={styles.statusLine}>
+                        {line}
+                      </span>
+                    ))}
                   </span>
                 </button>
               </li>

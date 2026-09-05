@@ -339,9 +339,13 @@ export function useZabbixDirectIndex({
           return;
         }
         lastReadyRef.current = fromSnapshot;
-        startTransition(() => {
+        if (alreadyReady) {
+          startTransition(() => {
+            setState(fromSnapshot);
+          });
+        } else {
           setState(fromSnapshot);
-        });
+        }
         return;
       }
       if (error) {
@@ -389,7 +393,7 @@ export function useZabbixDirectIndex({
           trafficKeys: trafficKeysRef.current,
           previous: previousRef.current,
           onSnapshot: (snapshot) => {
-            if (!cancelled) {
+            if (!cancelled && lastReadyRef.current?.ready) {
               applySnapshot(snapshot, true, false, undefined, false);
             }
           },

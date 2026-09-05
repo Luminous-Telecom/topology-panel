@@ -136,6 +136,7 @@ describe('shareHostDisplayMap', () => {
       'host-a': { value: 1, status: 'online' as const, color: '#0f0', updatedAtSec: 200 },
     };
     expect(shareHostDisplayMap(next, previous)).toBe(previous);
+    expect(previous['host-a']?.updatedAtSec).toBe(200);
   });
 
   it('troca só o host cujo lastvalue mudou', () => {

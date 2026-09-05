@@ -1,7 +1,9 @@
+import type { RefObject } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetricsMap, TopologyMap, TopologyPanelOptions, TopologyView } from '../types';
 import { HostProblemsMap } from '../utils/noc/types';
 import { QueryHostOption } from './queryHostPicker';
 import { TopologyBreadcrumbItem } from './topologyMapNavigation';
+import type { IcmpHistoryRange } from '../hooks/useHostIcmpHistory';
 
 /** Props de dados do canvas — callbacks `on*` não entram (trocam de identidade sem mudar o desenho). */
 export interface TopologyCanvasMemoProps {
@@ -20,6 +22,7 @@ export interface TopologyCanvasMemoProps {
   zabbixDatasourceUid?: string;
   linkPaintMetricsByLink?: LinkRuntimeMetricsMap;
   hostProblems?: HostProblemsMap;
+  icmpHistoryRangeRef?: RefObject<IcmpHistoryRange>;
   hideOverlayControls?: boolean;
   savedView?: TopologyView;
   mapNavigationKey?: string;

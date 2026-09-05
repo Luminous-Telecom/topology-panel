@@ -1,7 +1,15 @@
 import { TopologyHostIcon } from '../../types';
 
 /** Filtros de status do mapa (modo NOC). */
-export type TopologyMapStatusFilterId = 'offline' | 'problems' | 'congestedLinks';
+export type TopologyMapStatusFilterId = 'offline' | 'online' | 'alert' | 'nodata';
+
+/** Filtros de cabo (modo NOC). */
+export type TopologyMapLinkFilterId =
+  | 'congestedLinks'
+  | 'link1g'
+  | 'link10g'
+  | 'link40g'
+  | 'link100g';
 
 /** Filtros por tipo de equipamento (ícone / template). */
 export type TopologyMapTypeFilterId =
@@ -18,14 +26,56 @@ export type TopologyMapTypeFilterId =
   | 'server'
   | 'cloud';
 
-/** Filtros rápidos do mapa (modo NOC). */
-export type TopologyMapFilterId = TopologyMapStatusFilterId | TopologyMapTypeFilterId;
+/** Filtro de submapa no modo NOC (`submap:<mapId>`). */
+export type TopologyMapSubmapFilterId = `submap:${string}`;
 
-export const TOPOLOGY_STATUS_FILTER_IDS: readonly TopologyMapStatusFilterId[] = [
+/** Filtros rápidos do mapa (modo NOC). */
+export type TopologyMapFilterId =
+  | TopologyMapStatusFilterId
+  | TopologyMapTypeFilterId
+  | TopologyMapLinkFilterId
+  | TopologyMapSubmapFilterId;
+
+export const NOC_SUBMAP_FILTER_PREFIX = 'submap:';
+
+export function nocSubmapFilterId(mapId: string): TopologyMapSubmapFilterId {
+  return `${NOC_SUBMAP_FILTER_PREFIX}${mapId}`;
+}
+
+export function isNocSubmapFilterId(filter: string): filter is TopologyMapSubmapFilterId {
+  return filter.startsWith(NOC_SUBMAP_FILTER_PREFIX);
+}
+
+export function mapIdFromNocSubmapFilter(filter: string): string | undefined {
+  return isNocSubmapFilterId(filter) ? filter.slice(NOC_SUBMAP_FILTER_PREFIX.length) : undefined;
+}
+
+/** Opções do menu Status no modo NOC. */
+export const NOC_STATUS_MENU_IDS: readonly TopologyMapStatusFilterId[] = [
   'offline',
-  'problems',
-  'congestedLinks',
+  'online',
+  'alert',
+  'nodata',
 ];
+
+export const NOC_LINK_MENU_IDS: readonly TopologyMapLinkFilterId[] = [
+  'congestedLinks',
+  'link1g',
+  'link10g',
+  'link40g',
+  'link100g',
+];
+
+export const TOPOLOGY_STATUS_FILTER_IDS: readonly TopologyMapFilterId[] = [
+  ...NOC_STATUS_MENU_IDS,
+  ...NOC_LINK_MENU_IDS,
+];
+
+const LINK_FILTER_IDS = new Set<string>(NOC_LINK_MENU_IDS);
+
+export function isNocLinkFilterId(filter: TopologyMapFilterId): filter is TopologyMapLinkFilterId {
+  return LINK_FILTER_IDS.has(filter);
+}
 
 export interface TopologyHostTypeFilter {
   id: TopologyMapTypeFilterId;
@@ -65,10 +115,33 @@ export function isHostTypeFilterId(filter: TopologyMapFilterId): filter is Topol
   return HOST_TYPE_FILTER_IDS.has(filter);
 }
 
-export const TOPOLOGY_FILTER_LABELS: Record<TopologyMapFilterId, string> = {
-  offline: 'Somente DOWN',
-  problems: 'Com problemas',
-  congestedLinks: 'Links congestionados',
+export function nocFilterLabel(
+  filter: TopologyMapFilterId,
+  extra?: Readonly<Record<string, string>>
+): string {
+  const custom = extra?.[filter];
+  if (custom) {
+    return custom;
+  }
+  if (isNocSubmapFilterId(filter)) {
+    return mapIdFromNocSubmapFilter(filter) ?? filter;
+  }
+  return TOPOLOGY_FILTER_LABELS[filter];
+}
+
+export const TOPOLOGY_FILTER_LABELS: Record<
+  Exclude<TopologyMapFilterId, TopologyMapSubmapFilterId>,
+  string
+> = {
+  offline: 'Offline',
+  online: 'Online',
+  alert: 'Alerta',
+  nodata: 'Sem dados',
+  congestedLinks: 'Congestionados',
+  link1g: '1 Gb',
+  link10g: '10 Gb',
+  link40g: '40 Gb',
+  link100g: '100 Gb',
   olt: 'OLTs',
   router: 'Roteadores',
   switch: 'Switches',

@@ -45,12 +45,15 @@ export function buildLegendItems(options: TopologyPanelOptions): LegendItem[] {
     items.push({ label: 'Upload (destino)', color: options.colorLinkUpload });
   }
   if (options.legendHostTypes) {
+    const seenLabel = new Set(items.map((item) => item.label));
     for (const [icon, color] of Object.entries(options.hostTypeColors ?? {})) {
       const trimmed = color?.trim();
-      if (!trimmed) {
+      const label = HOST_ICON_LABELS[icon as TopologyHostIcon];
+      if (!trimmed || !label || seenLabel.has(label)) {
         continue;
       }
-      items.push({ label: HOST_ICON_LABELS[icon as TopologyHostIcon], color: trimmed });
+      seenLabel.add(label);
+      items.push({ label, color: trimmed });
     }
   }
   return items;

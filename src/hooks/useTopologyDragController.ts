@@ -60,7 +60,6 @@ interface UseTopologyDragControllerParams {
   completeLink: (targetId: string) => void;
   tryDoubleTapOpenProperties: (node: TopologyNode) => boolean;
   tryDoubleTapEnterChildMap: (node: TopologyNode) => boolean;
-  openSubmap: (node: TopologyNode) => void;
   openDashboardPicker: (node: TopologyNode) => void;
   onLinkSelect: (link: TopologyLink) => void;
   clearHostHover: () => void;
@@ -132,7 +131,6 @@ export function useTopologyDragController({
   completeLink,
   tryDoubleTapOpenProperties,
   tryDoubleTapEnterChildMap,
-  openSubmap,
   openDashboardPicker,
   onLinkSelect,
   clearHostHover,
@@ -822,10 +820,6 @@ export function useTopologyDragController({
         return false;
       }
       const tap = drag.tapNode ?? node;
-      if (!editable && tap?.type === 'submap') {
-        openSubmap(tap);
-        return true;
-      }
       if (!editable && tap?.type === 'dashboard_picker') {
         openDashboardPicker(tap);
         return true;
@@ -841,7 +835,7 @@ export function useTopologyDragController({
         return true;
       }
       clearHostHover();
-      if (editable && tap && tryDoubleTapEnterChildMap(tap)) {
+      if (tap && tryDoubleTapEnterChildMap(tap)) {
         return true;
       }
       if (tap && tryDoubleTapOpenProperties(tap)) {
@@ -855,7 +849,6 @@ export function useTopologyDragController({
       editable,
       onLinkSelect,
       openDashboardPicker,
-      openSubmap,
       selectTappedNode,
       tryDoubleTapEnterChildMap,
       tryDoubleTapOpenProperties,

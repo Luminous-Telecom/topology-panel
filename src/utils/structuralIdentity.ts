@@ -102,9 +102,9 @@ export function structuralShareMap<K, V>(next: Map<K, V>, previous: Map<K, V> | 
 }
 
 /**
- * Lastclock (`updatedAtSec`) muda em todo poll mesmo com o mesmo lastvalue. Se entrar no
- * `structuralShare`, o mapa de status inteiro troca de identidade e o canvas remonta hosts,
- * badges e `filterContext` a cada intervalo.
+ * Lastclock (`updatedAtSec`) muda em todo poll mesmo com o mesmo lastvalue. Se a identidade
+ * do mapa mudar, o canvas remonta hosts e badges. O relógio é patchado no objeto reusado
+ * para o hover mostrar a coleta atual sem invalidar o memo.
  */
 export function shareHostDisplayInfo(
   next: HostDisplayInfo,
@@ -119,6 +119,9 @@ export function shareHostDisplayInfo(
     previous.text === next.text &&
     previous.status === next.status
   ) {
+    if (previous.updatedAtSec !== next.updatedAtSec) {
+      previous.updatedAtSec = next.updatedAtSec;
+    }
     return previous;
   }
   return next;

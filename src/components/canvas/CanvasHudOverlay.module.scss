@@ -1,0 +1,18 @@
+@use '../../styles/mixins' as *;
+@use '../../styles/tokens' as *;
+
+.leftDock {
+  position: absolute;
+  left: $gap;
+  bottom: $gap;
+  z-index: $z-overlay;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $gap;
+  pointer-events: none;
+}
+
+.leftDock > * {
+  pointer-events: auto;
+}

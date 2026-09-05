@@ -1,6 +1,7 @@
 import React from 'react';
 import { BulkEditModalsState } from '../../hooks/useBulkEditModals';
 import { HostHoverTarget } from '../../hooks/useHostHoverTarget';
+import type { IcmpHistoryRange } from '../../hooks/useHostIcmpHistory';
 import { NodePropertiesModalsState } from '../../hooks/useNodePropertiesModals';
 import {
   HostDisplayMap,
@@ -51,6 +52,7 @@ interface CanvasModalsProps {
   pingTarget: PingTarget | null;
   setPingTarget: (target: PingTarget | null) => void;
   hostHover: HostHoverTarget | null;
+  icmpHistoryRangeRef?: React.RefObject<IcmpHistoryRange>;
   contextMenuOpen?: boolean;
   searchOpen: boolean;
   pendingLink: PendingLinkEndpoints | null;
@@ -86,6 +88,7 @@ export function CanvasModals({
   pingTarget,
   setPingTarget,
   hostHover,
+  icmpHistoryRangeRef,
   contextMenuOpen = false,
   searchOpen,
   pendingLink,
@@ -181,6 +184,8 @@ export function CanvasModals({
           hostProblems={hostProblems}
           options={options}
           queryReady={queryReady}
+          datasourceUid={zabbixDatasourceUid}
+          historyRangeRef={icmpHistoryRangeRef}
         />
       ) : null}
 

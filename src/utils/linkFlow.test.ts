@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LINK_FLOW_DASH, LINK_FLOW_SPEED, startLinkFlowAnimation } from './linkFlow';
+import { LINK_FLOW_DASH, LINK_FLOW_SPEED, linkFlowScaleFactor, startLinkFlowAnimation } from './linkFlow';
 
-/** Faixa de fluxo como o canvas desenha: direção e ativo no DOM; velocidade é constante. */
+/** Faixa de fluxo como o canvas desenha: direção e ativo no DOM. */
 function lane(root: HTMLElement, opts: { active: boolean }): Element {
   const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   el.setAttribute('data-link-flow', 'download');
@@ -89,6 +89,12 @@ describe('startLinkFlowAnimation', () => {
 
     expect(el.style.getPropertyValue('offset-distance')).toBe('');
     controller.stop();
+  });
+
+  it('compensa o zoom para o pulso manter a velocidade na tela', () => {
+    expect(linkFlowScaleFactor(1)).toBe(1);
+    expect(linkFlowScaleFactor(2)).toBe(0.5);
+    expect(linkFlowScaleFactor(0.5)).toBe(2);
   });
 
   it('avança o deslocamento das faixas ativas', () => {

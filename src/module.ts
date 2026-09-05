@@ -225,6 +225,22 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
         category: ['Interação'],
       })
       .addBooleanSwitch({
+        path: 'showZabbixAlerts',
+        name: 'Alertas do Zabbix',
+        description:
+          'Problemas Warning+ pintam o host, o badge e a lista. Desligado: só online e offline (lastvalue).',
+        defaultValue: true,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
+        path: 'showHostTemperature',
+        name: 'Temperatura no hover',
+        description:
+          'Ao passar o mouse no host, mostra as temperaturas (CPU e demais sensores). Desligado por padrão.',
+        defaultValue: false,
+        category: ['Interação'],
+      })
+      .addBooleanSwitch({
         path: 'showMinimap',
         name: 'Mini mapa de visão geral',
         description: 'Caixa no canto inferior esquerdo; arraste dentro dela para mover o mapa',

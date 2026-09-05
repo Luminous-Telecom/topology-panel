@@ -31,7 +31,8 @@ colocados ao lado do código.
   `vitest.setup.ts`.
 - Nada de rede em teste: `getBackendSrv` e `services/pluginBackend.ts` / `zabbixQuery.ts` /
   `zabbixPoll.ts` são mockados com `vi.mock`. Status: mocke `runZabbixPoll`. Ping/ICMP: mocke
-  `runZabbixPing` (não chame o datasource).
+  `runZabbixPing`. Histórico ICMP do hover: mocke `fetchHostIcmpHistory` (não chame o datasource).
+  Temperatura do hover: mocke `fetchHostTemperatures` / `useHostTemperatures`.
 - Não troque o `environment` de um teste para `node`: `@grafana/data` acessa `window` já no import,
   então todo teste precisa de jsdom.
 - Falta de API do jsdom (`matchMedia`, `ResizeObserver`, `canvas`) se resolve com stub em

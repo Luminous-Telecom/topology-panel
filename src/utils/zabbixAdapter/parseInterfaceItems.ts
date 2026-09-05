@@ -5,7 +5,7 @@ import {
   TopologyNetworkInterface,
 } from '../../types';
 import { InterfaceMetricKind, InterfaceKeyParseOptions, parseInterfaceItemKey, snmpIndexFromToken } from './interfaceItemKeys';
-import { interfacesShareIdentity } from './bindInterfaceMetrics';
+import { interfacesShareIdentity, portTokenFromLabel } from './bindInterfaceMetrics';
 
 export interface RawZabbixInterfaceItem {
   itemid: string;
@@ -91,17 +91,32 @@ function assignInterfaceName(
   acc.nameFromLink = true;
 }
 
-/** Nome do item no Zabbix, sem recorte. Token da key só se o item não tiver name. */
+/** Token da key sem aspas, primeiro argumento e prefixo SNMP pontilhado. */
+function cleanInterfaceToken(token: string): string {
+  const first = token.replace(/^["']+|["']+$/g, '').split(',')[0].trim();
+  if (!first) {
+    return '';
+  }
+  const dotted = first.match(
+    /^(?:ifHCInOctets|ifHCOutOctets|ifInOctets|ifOutOctets|ifOperStatus|ifAdminStatus|ifSpeed|ifHighSpeed|ifInErrors|ifOutErrors|ifInDiscards|ifOutDiscards)\.(\d+)$/i
+  );
+  if (dotted?.[1]) {
+    return dotted[1];
+  }
+  return first;
+}
+
+/** Só o nome da porta — não o texto do item (Bits received, Incoming traffic…). */
 function interfaceDisplayName(itemName: string | undefined, token: string): string {
-  const fromZabbix = itemName?.trim();
-  if (fromZabbix) {
-    return fromZabbix;
+  const cleaned = cleanInterfaceToken(token);
+  if (cleaned && !isNumericOnlyLabel(cleaned) && !/^ifHC/i.test(cleaned)) {
+    return cleaned;
   }
-  const t = token.trim();
-  if (t && !isNumericOnlyLabel(t) && !/^ifHC/i.test(t)) {
-    return t;
+  const port = portTokenFromLabel(itemName);
+  if (port) {
+    return port;
   }
-  return t || 'interface';
+  return cleaned || 'interface';
 }
 
 function parseNumber(value?: string): number | undefined {

@@ -72,6 +72,7 @@ describe('fetchProblems', () => {
         if (method === 'trigger.get') {
           expect(next.filter).toEqual({ status: 0 });
           expect(next.triggerids).toEqual(['9']);
+          expect(next.selectHosts).toEqual(['hostid']);
           return [{ triggerid: '9', status: 0 }] as never;
         }
         throw new Error(method);
@@ -118,7 +119,7 @@ describe('fetchProblems', () => {
     expect(summary['1001']?.count).toBe(1);
   });
 
-  it('sem hostid no problem.get busca o host no event.get', async () => {
+  it('sem hostid no problem.get usa o host do trigger.get', async () => {
     const methods: string[] = [];
     const summary = await fetchProblems(
       'ds',
@@ -131,6 +132,28 @@ describe('fetchProblems', () => {
         }
         if (method === 'trigger.get') {
           expect(next.filter).toEqual({ status: 0 });
+          expect(next.selectHosts).toEqual(['hostid']);
+          return [{ triggerid: '9', status: 0, hosts: [{ hostid: '1001' }] }] as never;
+        }
+        throw new Error(method);
+      },
+      ['10']
+    );
+    expect(methods).toEqual(['problem.get', 'trigger.get']);
+    expect(summary['1001']?.count).toBe(1);
+  });
+
+  it('se o trigger.get não trouxer host busca no event.get', async () => {
+    const methods: string[] = [];
+    const summary = await fetchProblems(
+      'ds',
+      [],
+      async (_uid, method, next) => {
+        methods.push(method);
+        if (method === 'problem.get') {
+          return [{ name: 'link down', severity: 4, objectid: '9', eventid: '99' }] as never;
+        }
+        if (method === 'trigger.get') {
           return [{ triggerid: '9', status: 0 }] as never;
         }
         if (method === 'event.get') {
@@ -143,30 +166,6 @@ describe('fetchProblems', () => {
       ['10']
     );
     expect(methods).toEqual(['problem.get', 'trigger.get', 'event.get']);
-    expect(summary['1001']?.count).toBe(1);
-  });
-
-  it('se o event.get não trouxer host cai no trigger.get', async () => {
-    const methods: string[] = [];
-    const summary = await fetchProblems(
-      'ds',
-      [],
-      async (_uid, method) => {
-        methods.push(method);
-        if (method === 'problem.get') {
-          return [{ name: 'link down', severity: 4, objectid: '9', eventid: '99' }] as never;
-        }
-        if (method === 'trigger.get') {
-          return [{ triggerid: '9', status: 0, hosts: [{ hostid: '1001' }] }] as never;
-        }
-        if (method === 'event.get') {
-          return [{ eventid: '99' }] as never;
-        }
-        throw new Error(method);
-      },
-      ['10']
-    );
-    expect(methods).toEqual(['problem.get', 'trigger.get', 'event.get', 'trigger.get']);
     expect(summary['1001']?.count).toBe(1);
   });
 

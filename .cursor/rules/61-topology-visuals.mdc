@@ -25,10 +25,13 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 - Fluxo: **pulsos circulares** que correm no cabo (`offset-path`), na **cor do sentido** (upload /
   download). TX origem→destino, RX no path invertido. Sem suporte (`supportsFlowArrows`), o canvas
   cai nos pacotes por dash (`7 11`).
-- Velocidade é **fixa** (`LINK_FLOW_SPEED` em `utils/linkFlow.ts`): o mesmo passo nos dois sentidos,
-  independente do lastvalue. Não recalcule velocidade no poll — gravar speed/path no SVG zerava o
-  deslocamento no Chrome. Cor do cabo muda com a **faixa** de utilização; o rótulo de bps atualiza
-  na pílula (`LinkTrafficOverlay`) sem remontar o path nem os pulsos.
+- Velocidade do traço amarelo **acompanha o upload em bps** (`linkFlowSpeedFromUpload`, escala
+  log): 1 Gbps corre mais que 10 Mbps, mesmo com a mesma % da capacidade. O laço avança por
+  tempo (`dt`), não por frame — piscada offline e zoom não freiam o pulso. `linkFlowScaleFactor`
+  mantém a velocidade na tela. O poll grava só `data-link-flow-step` no DOM; o React **não**
+  grava esse atributo. Interface down não anima (`trafficActive`); a linha fica vermelha como
+  já é. Cor do cabo muda com a **faixa** de utilização; o rótulo de bps atualiza na pílula
+  (`LinkTrafficOverlay`) sem remontar o path nem os pulsos.
 - Marcadores em px (`markerUnits=userSpaceOnUse`): ponto nas duas pontas.
 - Seleção/hover: a linha vai para `#4FC3F7` / `#81D4FA`.
 - Tráfego: uma pílula escura com borda ciano no meio do cabo; upload (↑) em cima, download (↓)

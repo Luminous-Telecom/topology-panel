@@ -3,13 +3,14 @@ import { LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyLink, TopologyNode }
 import { linkKey } from '../utils/mapLinkEdits';
 import { LinkPoint } from '../utils/linkGeometry';
 import { NodeLayout } from '../utils/nodeLayout';
-import { syncTrafficPillsInRoot } from '../utils/linkTrafficPillDom';
+import { syncLinkFlowStepsInRoot, syncTrafficPillsInRoot } from '../utils/linkTrafficPillDom';
 import { useLinkMetricsLiveStore } from './linkMetricsLiveStore';
 
 export interface LinkTrafficPillSyncContext {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
   nodeLayouts: Map<string, NodeLayout & TopologyNode>;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
+  linkAnimationSpeed: number;
 }
 
 function buildLinksByPillId(
@@ -39,7 +40,9 @@ export function useLinkTrafficPillSync(
       return;
     }
     const ctx = contextRef.current;
-    syncTrafficPillsInRoot(root, buildLinksByPillId(ctx.renderLinks, store.getLive()));
+    const linksByKey = buildLinksByPillId(ctx.renderLinks, store.getLive());
+    syncTrafficPillsInRoot(root, linksByKey);
+    syncLinkFlowStepsInRoot(root, linksByKey, ctx.linkAnimationSpeed);
   };
 
   useEffect(() => {

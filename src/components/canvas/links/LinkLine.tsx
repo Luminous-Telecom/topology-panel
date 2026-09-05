@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
 import { formatLinkBandwidth } from '../../../utils/linkBandwidth';
-import { normalizeLinkAnimationSpeed } from '../../../utils/linkAnimationStyle';
 import { resolveLinkUtilizationLevel } from '../../../utils/linkFlowSpeed';
 import {
   isLinkVisuallyDown,
@@ -168,7 +167,6 @@ function LinkLineComponent({
   const trafficColor = resolvePanelColor(theme, options.colorLinkUpload);
   const downloadLabelColor = resolvePanelColor(theme, options.colorLinkDownload);
   const uploadLabelColor = trafficColor;
-  const animationSpeed = normalizeLinkAnimationSpeed(options.linkAnimationSpeed);
   const animationEnabled = options.linkAnimationEnabled !== false;
   const trafficActive =
     flowAnimate &&
@@ -232,7 +230,7 @@ function LinkLineComponent({
         {...LINK_LINE_CAP}
       />
       {trafficActive ? (
-        <LinkTrafficFlow d={d} color={trafficColor} linkId={lk} speed={animationSpeed} />
+        <LinkTrafficFlow d={d} color={trafficColor} linkId={lk} />
       ) : null}
     </g>
   );
