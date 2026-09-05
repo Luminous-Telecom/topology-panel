@@ -116,13 +116,13 @@ const FLOW_FRAME_MS = 1000 / 60;
 const FLOW_MAX_DT_MS = 80;
 
 function frameSkipForLaneCount(count: number): number {
-  if (count <= 60) {
+  if (count <= 160) {
     return 1;
   }
-  if (count <= 120) {
+  if (count <= 320) {
     return 2;
   }
-  if (count <= 240) {
+  if (count <= 480) {
     return 3;
   }
   return 4;
@@ -215,6 +215,8 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let frameTick = 0;
   let lastAnimatedAt = 0;
   let lastTickAt = 0;
+  /** Primeiro frame após wake só relê o DOM — o commit do React não compete com o setProperty. */
+  let settleScan = false;
 
   const clearPending = () => {
     if (raf) {
@@ -254,10 +256,16 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
     const now = performance.now();
     const stale = lanes.some((el) => !el.isConnected);
     const scanInterval = queryIntervalForLaneCount(lanes.length);
-    if (stale || now - lanesReadAt >= scanInterval) {
+    if (lanesReadAt === 0 || stale || now - lanesReadAt >= scanInterval) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
       refreshLaneMeta(lanes);
-      lanesReadAt = now;
+      lanesReadAt = now || 1;
+    }
+    if (settleScan) {
+      settleScan = false;
+      lastTickAt = 0;
+      schedule();
+      return;
     }
     const skip = frameSkipForLaneCount(lanes.length);
     frameTick += 1;
@@ -268,13 +276,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
     const elapsed = lastTickAt === 0 ? FLOW_FRAME_MS : now - lastTickAt;
     lastTickAt = now;
     const frameUnits = Math.min(Math.max(elapsed, 0), FLOW_MAX_DT_MS) / FLOW_FRAME_MS;
-    let animated = advanceFlowLanes(lanes, frameUnits);
-    if (!animated) {
-      lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
-      refreshLaneMeta(lanes);
-      lanesReadAt = now;
-      animated = advanceFlowLanes(lanes, frameUnits);
-    }
+    const animated = advanceFlowLanes(lanes, frameUnits);
     if (!animated) {
       sleepUntilNextScan();
       return;
@@ -292,6 +294,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
       return;
     }
     lanesReadAt = 0;
+    settleScan = true;
     if (idleTimer) {
       window.clearTimeout(idleTimer);
       idleTimer = 0;

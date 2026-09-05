@@ -1,4 +1,4 @@
-import { MutableRefObject, useEffect, useLayoutEffect } from 'react';
+import { MutableRefObject, useEffect } from 'react';
 import { LinkRuntimeMetrics, LinkRuntimeMetricsMap, TopologyLink, TopologyNode } from '../types';
 import { linkKey } from '../utils/mapLinkEdits';
 import { LinkPoint } from '../utils/linkGeometry';
@@ -49,9 +49,5 @@ export function useLinkTrafficPillSync(
     const unsub = store.subscribeDom(run);
     run();
     return unsub;
-  }, [store, rootRef, contextRef]);
-
-  useLayoutEffect(() => {
-    run();
-  }, [revision, store]);
+  }, [store, rootRef, contextRef, revision]);
 }

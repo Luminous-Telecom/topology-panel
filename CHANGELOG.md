@@ -7,6 +7,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.432] - 2026-09-05
+
+### Corrigido
+
+- Abrir submapa não compete o paint com a primeira escrita das faixas; com até 160 cabos o
+  efeito avança em todo frame (sem pular e parecer travado).
+
 ## [1.4.431] - 2026-09-05
 
 ### Alterado
