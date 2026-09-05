@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { HostDisplayInfo } from '../types';
-import { collectHostMetadataForMaps, enrichHostDisplayFromMap, enrichHostMetadataFromMaps, preferHostDisplayInfo, resolveHostZabbixId } from './hostLookup';
+import {
+  collectHostLookupCandidates,
+  collectHostMetadataForMaps,
+  enrichHostDisplayFromMap,
+  enrichHostMetadataFromMaps,
+  findHostMetadata,
+  preferHostDisplayInfo,
+  resolveHostIp,
+  resolveHostZabbixId,
+} from './hostLookup';
 import { lookupHostDisplay } from './queryHosts';
 import { emptyMap, hostNode } from './testMapFixtures';
 
@@ -173,6 +182,68 @@ describe('enrichHostMetadataFromMaps', () => {
     const enriched = enrichHostMetadataFromMaps(metadata, [root, child]);
     expect(enriched['CPE-01']?.hostid).toBe('1002');
     expect(enriched['10.0.0.2']?.hostid).toBe('1002');
+  });
+});
+
+function metadataWithCrowd(
+  targetKey: string,
+  target: { name: string; ip?: string; hostid?: string },
+  extra = 400
+): Record<string, { name: string; ip?: string; hostid?: string }> {
+  const metadata: Record<string, { name: string; ip?: string; hostid?: string }> = {};
+  for (let i = 0; i < extra; i++) {
+    const octet = i % 250;
+    const net = 1 + Math.floor(i / 250);
+    const ip = `10.${net}.${octet}.1`;
+    metadata[ip] = { name: `host-${i}`, ip, hostid: String(2000 + i) };
+  }
+  metadata[targetKey] = target;
+  return metadata;
+}
+
+describe('findHostMetadata', () => {
+  it('acha o host pelo nome visível no meio de muitos outros (índice, não varredura)', () => {
+    const metadata = metadataWithCrowd('10.0.0.1', {
+      name: 'host-a',
+      ip: '10.0.0.1',
+      hostid: '101',
+    });
+    const found = findHostMetadata(metadata, undefined, ['Host-A']);
+    expect(found?.hostid).toBe('101');
+    expect(found?.ip).toBe('10.0.0.1');
+  });
+
+  it('acha o host pelo IP mesmo quando a chave do mapa é o nome', () => {
+    const metadata = metadataWithCrowd('host-a', {
+      name: 'host-a',
+      ip: '10.0.0.1',
+      hostid: '101',
+    });
+    const found = findHostMetadata(metadata, '10.0.0.1', []);
+    expect(found?.hostid).toBe('101');
+  });
+});
+
+describe('collectHostLookupCandidates', () => {
+  it('inclui IP e hostid quando a metadata só está indexada pelo nome', () => {
+    const metadata = metadataWithCrowd('host-a', {
+      name: 'host-a',
+      ip: '10.0.0.1',
+      hostid: '101',
+    });
+    const keys = collectHostLookupCandidates({ zabbixHost: 'host-a', label: 'Host-A' }, metadata);
+    expect(keys).toEqual(expect.arrayContaining(['10.0.0.1', 'host-a', '101']));
+  });
+});
+
+describe('resolveHostIp', () => {
+  it('resolve o IP pelo nome visível sem varrer o mapa à mão', () => {
+    const metadata = metadataWithCrowd('10.0.0.1', {
+      name: 'host-a',
+      ip: '10.0.0.1',
+      hostid: '101',
+    });
+    expect(resolveHostIp({ zabbixHost: 'host-a' }, metadata)).toBe('10.0.0.1');
   });
 });
 

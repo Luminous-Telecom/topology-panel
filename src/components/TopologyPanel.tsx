@@ -36,6 +36,10 @@ import { useGrafanaDashboardFlush } from '../hooks/useGrafanaDashboardFlush';
 import { useGrafanaPlaylistPlayback } from '../hooks/useGrafanaPlaylistPlayback';
 import { useTopologyQueryIndex } from '../hooks/useTopologyQueryIndex';
 import { useLinkMetricsRuntime } from '../hooks/useLinkMetricsRuntime';
+import {
+  createLinkMetricsLiveStore,
+  LinkMetricsLiveStoreContext,
+} from '../hooks/linkMetricsLiveStore';
 import { itemIdByKeyFromLastValues, mergeItemIdByKey, ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
 import { normalizeStoredPanelColors, resolvePanelOptionsColors } from '../utils/panelColors';
 import { CURRENT_MAP_SCHEMA_VERSION, migrateTopologyMap } from '../utils/mapMigration';
@@ -274,16 +278,21 @@ export function TopologyPanel({
     dataMeta,
   };
 
+  const linkMetricsLiveStoreRef = useRef<ReturnType<typeof createLinkMetricsLiveStore>>();
+  if (!linkMetricsLiveStoreRef.current) {
+    linkMetricsLiveStoreRef.current = createLinkMetricsLiveStore();
+  }
+
   /**
    * Lastvalue e tráfego já pintados continuam no mapa se o poll falhar — o badge avisa.
    * Na abertura sem índice (`!ready`) a tela fica vazia; não inventa status.
    */
-  const { metricsByLink: linkMetricsByLink } = useLinkMetricsRuntime(
+  const { metricsByLink: linkMetricsByLink, paintMetricsByLink: linkPaintMetricsByLink } = useLinkMetricsRuntime(
     activeStoredMap,
     resolvedOptions,
-    querySource.lastValues,
+    querySource.pollFeed,
     dataMeta,
-    querySource.interfaceItems ?? []
+    linkMetricsLiveStoreRef.current
   );
 
   const hostDisplayBucketsRef = useRef<{
@@ -662,6 +671,7 @@ export function TopologyPanel({
         overscrollBehavior: 'none',
       }}
     >
+      <LinkMetricsLiveStoreContext.Provider value={linkMetricsLiveStoreRef.current}>
       <TopologyCanvas
         map={displayMap}
         storedMap={storedForUi}
@@ -686,7 +696,7 @@ export function TopologyPanel({
         submapHosts={submapHosts}
         refreshIntervalSec={resolvedOptions.zabbixRefreshSec ?? ZABBIX_DIRECT_DEFAULT_REFRESH_SEC}
         zabbixDatasourceUid={zabbixDatasourceUid}
-        linkMetricsByLink={linkMetricsByLink}
+        linkPaintMetricsByLink={linkPaintMetricsByLink}
         hostProblems={hostProblems}
         onNocModeChange={handleNocModeChange}
         onMapChange={canPersistOptions ? handleMapChange : undefined}
@@ -700,6 +710,7 @@ export function TopologyPanel({
         canRedo={canPersistOptions && canRedo}
         hideOverlayControls={playlistPlayback}
       />
+      </LinkMetricsLiveStoreContext.Provider>
     </div>
     );
 

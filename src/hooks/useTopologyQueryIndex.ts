@@ -1,7 +1,5 @@
-import { QueryIndex } from '../services/queryIndex';
-import { HostProblemsMap } from '../utils/noc/types';
-import { ZabbixInterfaceItem, ZabbixItemLastValue } from '../utils/zabbixApi';
-import { useZabbixDirectIndex } from './useZabbixDirectIndex';
+import { useZabbixDirectIndex, UseZabbixDirectIndexResult } from './useZabbixDirectIndex';
+import { ZabbixPollFeed } from '../utils/zabbixPollVolatile';
 
 /**
  * Índice de status do mapa: lastvalue direto do Zabbix.
@@ -20,15 +18,9 @@ export interface UseTopologyQueryIndexOptions {
   trafficKeys?: string[];
 }
 
-export interface UseTopologyQueryIndexResult {
-  index: QueryIndex;
-  lastValues: Record<string, ZabbixItemLastValue>;
-  interfaceItems: ZabbixInterfaceItem[];
-  problems: HostProblemsMap;
-  ready: boolean;
-  loading: boolean;
-  error?: string;
-}
+export type UseTopologyQueryIndexResult = UseZabbixDirectIndexResult;
+
+export type { ZabbixPollFeed };
 
 export function useTopologyQueryIndex(options: UseTopologyQueryIndexOptions): UseTopologyQueryIndexResult {
   return useZabbixDirectIndex(options);

@@ -31,7 +31,7 @@ interface Props {
   showMinimap: boolean;
   onToggleMinimap: () => void;
   showLegend: boolean;
-  onToggleLegend: () => void;
+  onToggleLegend?: () => void;
   showHostAlertList?: boolean;
   onToggleHostAlertList?: () => void;
   searchOpen: boolean;

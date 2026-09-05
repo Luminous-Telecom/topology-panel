@@ -93,7 +93,11 @@ const queryIndexState = vi.hoisted(() => ({
   index: undefined as import('../services/queryIndex').QueryIndex | undefined,
   ready: true,
   error: undefined as string | undefined,
+  lastValues: {} as Record<string, { itemid: string; lastvalue: string }>,
+  interfaceItems: [] as import('../utils/zabbixApi').ZabbixInterfaceItem[],
 }));
+
+const pollListeners = vi.hoisted(() => new Set<() => void>());
 
 vi.mock('../hooks/useDashboardEditMode', () => ({
   useDashboardEditMode: () => true,
@@ -105,14 +109,30 @@ vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const emptyProblems = {};
   return {
     useTopologyQueryIndex: () => {
+      const pollFeed = {
+        subscribe(listener: () => void) {
+          pollListeners.add(listener);
+          return () => pollListeners.delete(listener);
+        },
+        getSnapshot() {
+          return {
+            lastValues: queryIndexState.lastValues,
+            interfaceItems: queryIndexState.interfaceItems,
+          };
+        },
+      };
+      for (const listener of pollListeners) {
+        listener();
+      }
       return {
         index: queryIndexState.index ?? empty,
         problems: emptyProblems,
-        lastValues: {},
-        interfaceItems: [],
+        lastValues: queryIndexState.lastValues,
+        interfaceItems: queryIndexState.interfaceItems,
         ready: queryIndexState.ready,
         loading: false,
         error: queryIndexState.error,
+        pollFeed,
       };
     },
   };
@@ -312,6 +332,8 @@ beforeEach(() => {
   queryIndexState.index = buildDirectIndex(HOST_COUNT);
   queryIndexState.ready = true;
   queryIndexState.error = undefined;
+  queryIndexState.lastValues = {};
+  queryIndexState.interfaceItems = [];
 });
 
 function perfOptions(map: TopologyMap): TopologyPanelOptions {
@@ -408,6 +430,46 @@ describe(`custo de re-render do mapa (${HOST_COUNT} hosts)`, () => {
     resetCounts();
     queryIndexState.index = buildDirectIndex(HOST_COUNT, new Set(), '2000');
     rerender(<TopologyPanel {...panelProps(options, buildPanelData(HOST_COUNT))} />);
+
+    expect(renderCounts.host).toBe(0);
+    expect(renderCounts.link).toBe(0);
+  });
+
+  it('poll só com bps novo nos cabos não redesenha host nem cabo', () => {
+    const hostCount = 80;
+    const map = buildMap(hostCount);
+    map.links = map.links.map((link, index) => ({
+      ...link,
+      fromInterface: {
+        name: 'eth0',
+        metrics: {
+          rx: { itemId: `rx-${index}` },
+          tx: { itemId: `tx-${index}` },
+        },
+      },
+    }));
+    const options = perfOptions(map);
+    queryIndexState.lastValues = Object.fromEntries(
+      map.links.flatMap((_, index) => [
+        [`rx-${index}`, { itemid: `rx-${index}`, lastvalue: '1000000' }],
+        [`tx-${index}`, { itemid: `tx-${index}`, lastvalue: '500000' }],
+      ])
+    );
+    const { rerender } = render(<TopologyPanel {...panelProps(options, buildPanelData(hostCount))} />);
+
+    resetCounts();
+    queryIndexState.lastValues = Object.fromEntries(
+      map.links.flatMap((_, index) => [
+        [`rx-${index}`, { itemid: `rx-${index}`, lastvalue: '4500000' }],
+        [`tx-${index}`, { itemid: `tx-${index}`, lastvalue: '2100000' }],
+      ])
+    );
+    rerender(<TopologyPanel {...panelProps(options, buildPanelData(hostCount))} />);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[perf] poll só bps nos cabos: ${renderCounts.host} hosts / ${renderCounts.link} cabos`
+    );
 
     expect(renderCounts.host).toBe(0);
     expect(renderCounts.link).toBe(0);

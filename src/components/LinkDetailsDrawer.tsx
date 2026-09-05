@@ -13,6 +13,8 @@ import {
 import { resolvePanelColor } from '../utils/panelColors';
 import { resolveLinkUtilizationLevel } from '../utils/linkFlowSpeed';
 import { linkRuntimeColor, utilizationThresholdsFromOptions } from '../utils/linkMetricsRuntime';
+import { useLinkMetricsLiveStore } from '../hooks/linkMetricsLiveStore';
+import { linkKey } from '../utils/mapLinkEdits';
 import { overlayCardBodyStyle,
   overlayCardFooterStyle,
   overlayCardBarStyle,
@@ -28,7 +30,6 @@ interface Props {
   link: TopologyLink;
   storedMap: TopologyMap;
   options: TopologyPanelOptions;
-  runtimeMetrics?: LinkRuntimeMetrics;
   onClose: () => void;
   onEdit?: () => void;
 }
@@ -105,11 +106,12 @@ export function LinkDetailsDrawer({
   link,
   storedMap,
   options,
-  runtimeMetrics,
   onClose,
   onEdit,
 }: Props) {
   const theme = useTheme2();
+  const linkMetricsStore = useLinkMetricsLiveStore();
+  const runtimeMetrics = linkMetricsStore.getLive()[linkKey(link)];
   const fromLabel = useMemo(() => {
     const base = nodeLabel(storedMap.nodes, link.from);
     const peer = link.fromPeerHost?.label?.trim() || link.fromPeerHost?.zabbixHost?.trim();

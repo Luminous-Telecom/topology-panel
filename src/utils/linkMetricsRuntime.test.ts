@@ -10,6 +10,8 @@ import {
   linkSignalSearchTerms,
   resolveLinkMapTrafficMetrics,
   sameLinkLinePaint,
+  refreshLinkTrafficBpsInMap,
+  shareLinkPaintMetrics,
 } from './linkMetricsRuntime';
 import { linkKey } from './mapLinkEdits';
 import { emptyMap, hostNode } from './testMapFixtures';
@@ -517,5 +519,67 @@ describe('sameLinkLinePaint', () => {
 
   it('detecta cabo down', () => {
     expect(sameLinkLinePaint(metrics(10, 1_000_000, 'up'), metrics(10, 1_000_000, 'down'))).toBe(false);
+  });
+});
+
+describe('refreshLinkTrafficBpsInMap', () => {
+  it('atualiza só o bps sem rebuild completo', () => {
+    const map = {
+      ...emptyMap(),
+      links: [
+        {
+          from: 'a',
+          to: 'b',
+          bandwidthMbps: 1000,
+          fromInterface: {
+            name: 'eth0',
+            metrics: { rx: { itemId: '10' }, tx: { itemId: '11' } },
+          },
+        },
+      ],
+    };
+    const previous = buildLinkRuntimeMetricsMap(map, {
+      '10': { itemid: '10', lastvalue: '500000000' },
+      '11': { itemid: '11', lastvalue: '100000000' },
+    });
+    const key = linkKey(map.links[0]!);
+    const patched = refreshLinkTrafficBpsInMap(map, previous, {
+      '10': { itemid: '10', lastvalue: '900000000' },
+      '11': { itemid: '11', lastvalue: '100000000' },
+    });
+    expect(patched).toBeDefined();
+    expect(patched![key]?.from.rxBps).toBe(900000000);
+    expect(patched![key]?.from.txBps).toBe(100000000);
+  });
+});
+
+describe('shareLinkPaintMetrics', () => {
+  function endpoint(pct: number, rxBps = 1_000_000) {
+    return {
+      rxBps,
+      txBps: rxBps,
+      rxUtilizationPct: pct,
+      txUtilizationPct: pct,
+      operStatus: 'up' as const,
+      capacityMbps: 1000,
+    };
+  }
+
+  function metrics(pct: number, rxBps = 1_000_000) {
+    return { status: 'up' as const, from: endpoint(pct, rxBps), to: endpoint(pct, rxBps) };
+  }
+
+  it('reaproveita a identidade quando só o bps mudou', () => {
+    const prev = { 'a->b': metrics(10, 1_000_000) };
+    const next = { 'a->b': metrics(12, 4_000_000) };
+    const shared = shareLinkPaintMetrics(next, prev);
+    expect(shared['a->b']).toBe(prev['a->b']);
+  });
+
+  it('troca o cabo que cruzou faixa de utilização', () => {
+    const prev = { 'a->b': metrics(10) };
+    const next = { 'a->b': metrics(95) };
+    const shared = shareLinkPaintMetrics(next, prev);
+    expect(shared['a->b']).toBe(next['a->b']);
   });
 });

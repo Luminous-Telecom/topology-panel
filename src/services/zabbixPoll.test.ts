@@ -58,6 +58,52 @@ describe('runZabbixPoll', () => {
     expect(result.error).toBeUndefined();
     expect(result.snapshot.lastValues['10001']?.lastvalue).toBe('0');
     expect(result.snapshot.knownStatusItems[0]?.lastvalue).toBe('0');
+    expect(result.volatileTrafficOnly).toBe(false);
+  });
+
+  it('em regime marca volatileTrafficOnly quando só o tráfego mudou', async () => {
+    const withTraffic: ZabbixLiveSnapshot = {
+      ...previous,
+      lastValues: {
+        ...previous.lastValues,
+        '20001': { itemid: '20001', lastvalue: '1000', lastclock: '10' },
+      },
+      interfaceItems: [{ itemid: '20001', key_: 'if.rx', lastvalue: '1000', hostid: '1' }],
+    };
+    const call: ZabbixRpc = async (_uid, method) => {
+      if (method === 'item.get') {
+        return [
+          {
+            itemid: '10001',
+            key_: 'icmpping',
+            hostid: '1',
+            lastvalue: '1',
+            lastclock: '20',
+          },
+          {
+            itemid: '20001',
+            key_: 'if.rx',
+            hostid: '1',
+            lastvalue: '9000',
+            lastclock: '20',
+          },
+        ] as never;
+      }
+      throw new Error(method);
+    };
+    const result = await runZabbixPoll(
+      {
+        datasourceUid: 'ds',
+        groupNames: ['Backbone'],
+        statusItemKey: 'icmpping',
+        trafficItemIds: ['20001'],
+        trafficKeys: [],
+        previous: withTraffic,
+      },
+      call
+    );
+    expect(result.volatileTrafficOnly).toBe(true);
+    expect(result.snapshot.lastValues['20001']?.lastvalue).toBe('9000');
   });
 
   it('em regime não rediscobre quando um host do grupo não tem item de status', async () => {

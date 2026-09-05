@@ -19,9 +19,10 @@ export function resolveHostNodeBadges(params: {
   hostMetadata?: HostMetadataMap;
   hostProblems?: HostProblemsMap;
   showProblems?: boolean;
+  queryReady?: boolean;
 }): HostNodeBadge[] {
-  const { node, hostMetadata, hostProblems, showProblems } = params;
-  if (!isHostNode(node)) {
+  const { node, hostMetadata, hostProblems, showProblems, queryReady = true } = params;
+  if (!isHostNode(node) || !queryReady) {
     return [];
   }
 
@@ -61,9 +62,13 @@ export function buildHostNodeBadgeMap(params: {
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   hostProblems?: HostProblemsMap;
+  queryReady?: boolean;
 }): Map<string, HostNodeBadge[]> {
-  const { map, hostDisplay, hostMetadata, hostProblems } = params;
+  const { map, hostDisplay, hostMetadata, hostProblems, queryReady = true } = params;
   const badgesByNode = new Map<string, HostNodeBadge[]>();
+  if (!queryReady) {
+    return badgesByNode;
+  }
   for (const node of map.nodes) {
     if (!isHostNode(node)) {
       continue;
@@ -73,6 +78,7 @@ export function buildHostNodeBadgeMap(params: {
       hostDisplay,
       hostMetadata,
       hostProblems,
+      queryReady,
     });
     if (badges.length) {
       badgesByNode.set(node.id, badges);

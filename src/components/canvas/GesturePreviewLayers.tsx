@@ -18,6 +18,7 @@ import { HostNodeBadge, TopologyMapFilterId } from '../../utils/noc/types';
 import { TopologyFilterContext } from '../../utils/noc/topologyFilters';
 import { CanvasSelectionShapes } from './CanvasSelectionShapes';
 import { LinksLayer } from './LinksLayer';
+import { LinkTrafficOverlaysLayer } from './links/LinkTrafficOverlaysLayer';
 import { HostNodesLayer, NetworkLabelsLayer, NetworkNodesLayer } from './NodeLayers';
 
 interface Props {
@@ -45,7 +46,7 @@ interface Props {
   hoveredLinkKey: string | null;
   setHoveredLinkKey: (key: string | null) => void;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
-  linkMetricsByLink: LinkRuntimeMetricsMap;
+  linkPaintMetricsByLink: LinkRuntimeMetricsMap;
   onNetworkPointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
   onNodePointerDown: (e: React.PointerEvent, node: TopologyNode) => void;
   onNodeClick: (e: React.MouseEvent, node: TopologyNode) => void;
@@ -95,7 +96,7 @@ export function GesturePreviewLayers({
   hoveredLinkKey,
   setHoveredLinkKey,
   resolveLinkWaypoints,
-  linkMetricsByLink,
+  linkPaintMetricsByLink,
   onNetworkPointerDown,
   onNodePointerDown,
   onNodeClick,
@@ -147,7 +148,7 @@ export function GesturePreviewLayers({
         hoveredLinkKey={hoveredLinkKey}
         setHoveredLinkKey={setHoveredLinkKey}
         resolveLinkWaypoints={resolveLinkWaypoints}
-        linkMetricsByLink={linkMetricsByLink}
+        linkPaintMetricsByLink={linkPaintMetricsByLink}
         hostDisplay={hostDisplay}
         hostMetadata={hostMetadata}
         onLinkSelect={onLinkSelect}
@@ -156,6 +157,14 @@ export function GesturePreviewLayers({
         beginWaypointDragFromPath={beginWaypointDragFromPath}
         removeWaypointNearPointer={removeWaypointNearPointer}
         flowAnimateBudget={flowAnimateBudget}
+      />
+
+      <LinkTrafficOverlaysLayer
+        renderLinks={renderLinks}
+        nodeLayouts={nodeLayouts}
+        gridStep={options.gridSize ?? 10}
+        resolveLinkWaypoints={resolveLinkWaypoints}
+        options={options}
       />
 
       <CanvasSelectionShapes guides={alignGuides} marqueeRect={marqueeRect} />

@@ -34,12 +34,13 @@ export async function zabbixCall<T>(
     throw new Error('Datasource Zabbix não configurado.');
   }
   zabbixCallSeq += 1;
+  const seq = zabbixCallSeq;
   try {
     const data = await grafanaFetch<T | ZabbixEnvelope<T>>({
       url: `/api/datasources/uid/${encodeURIComponent(uid)}/resources/zabbix-api`,
       method: 'POST',
       data: { method, params },
-      requestId: `luminous-topology:${uid}:${method}:${zabbixCallSeq}`,
+      requestId: `luminous-topology:${uid}:${method}:${seq}`,
     });
     return unwrapZabbixResult(data);
   } catch (err) {

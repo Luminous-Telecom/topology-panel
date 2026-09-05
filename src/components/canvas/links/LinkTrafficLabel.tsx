@@ -3,11 +3,13 @@ import { useTheme2 } from '@grafana/ui';
 import { LinkRuntimeMetrics, TopologyLink, TopologyPanelOptions } from '../../../types';
 import { LinkBox, LinkPoint, linkTrafficAnchor, sameLinkPoints } from '../../../utils/linkGeometry';
 import { resolveLinkMapTrafficMetrics } from '../../../utils/linkMetricsRuntime';
+import { linkKey } from '../../../utils/mapLinkEdits';
 import { resolvePanelColor } from '../../../utils/panelColors';
 import { formatBitsPerSecond } from '../../../utils/zabbixAdapter/formatTraffic';
 import { LINK_PILL_FILL, LINK_PILL_STROKE } from './linkLineVisual';
 
 interface TrafficLabelProps {
+  pillId: string;
   x: number;
   y: number;
   txLabel?: string;
@@ -30,6 +32,7 @@ const PILL_TEXT = {
 };
 
 function LinkTrafficLabelComponent({
+  pillId,
   x,
   y,
   txLabel,
@@ -55,7 +58,7 @@ function LinkTrafficLabelComponent({
     rxY = lineH / 2;
   }
   return (
-    <g transform={`translate(${x}, ${y})`} pointerEvents="none">
+    <g data-link-pill={pillId} transform={`translate(${x}, ${y})`} pointerEvents="none">
       <rect
         x={-width / 2}
         y={-height / 2}
@@ -67,17 +70,31 @@ function LinkTrafficLabelComponent({
         strokeWidth={1}
       />
       {txLabel ? (
-        <text x={0} y={txY} {...PILL_TEXT}>
+        <text x={0} y={txY} data-link-pill-tx {...PILL_TEXT}>
           <tspan fill={uploadColor}>↑</tspan>
-          <tspan fill={valueFill}> {txLabel}</tspan>
+          <tspan data-link-pill-tx-value fill={valueFill}>
+            {txLabel ? ` ${txLabel}` : ''}
+          </tspan>
         </text>
-      ) : null}
+      ) : (
+        <text x={0} y={txY} data-link-pill-tx {...PILL_TEXT} style={{ display: 'none' }}>
+          <tspan fill={uploadColor}>↑</tspan>
+          <tspan data-link-pill-tx-value fill={valueFill} />
+        </text>
+      )}
       {rxLabel ? (
-        <text x={0} y={rxY} {...PILL_TEXT}>
+        <text x={0} y={rxY} data-link-pill-rx {...PILL_TEXT}>
           <tspan fill={downloadColor}>↓</tspan>
-          <tspan fill={valueFill}> {rxLabel}</tspan>
+          <tspan data-link-pill-rx-value fill={valueFill}>
+            {rxLabel ? ` ${rxLabel}` : ''}
+          </tspan>
         </text>
-      ) : null}
+      ) : (
+        <text x={0} y={rxY} data-link-pill-rx {...PILL_TEXT} style={{ display: 'none' }}>
+          <tspan fill={downloadColor}>↓</tspan>
+          <tspan data-link-pill-rx-value fill={valueFill} />
+        </text>
+      )}
     </g>
   );
 }
@@ -125,6 +142,7 @@ function LinkTrafficOverlayComponent({
   const anchor = linkTrafficAnchor(from, to, gridStep, waypoints, bundleOffset);
   return (
     <LinkTrafficLabel
+      pillId={linkKey(link)}
       x={anchor.x}
       y={anchor.y}
       txLabel={txLabel}

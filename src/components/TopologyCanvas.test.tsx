@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TopologyCanvas } from './TopologyCanvas';
 import { defaultOptions, HostDisplayMap, TopologyMap, TopologyView } from '../types';
@@ -195,7 +195,7 @@ function projectNodeCenter(container: HTMLElement, nodeId: string, t: CanvasTran
 }
 
 describe('TopologyCanvas — modo NOC', () => {
-  it('clicar em equipamento de outro mapa centraliza o host no mapa de destino', () => {
+  it('clicar em equipamento de outro mapa centraliza o host no mapa de destino', async () => {
     const root = distantMap();
     const child = childMap();
     const options = {
@@ -219,6 +219,9 @@ describe('TopologyCanvas — modo NOC', () => {
     );
 
     const { container, rerender, getByLabelText } = render(element(root, 'root'));
+    await waitFor(() => {
+      expect(getByLabelText('Ir para Filho 3 no mapa filial')).toBeInTheDocument();
+    });
     fireEvent.click(getByLabelText('Ir para Filho 3 no mapa filial'));
     expect(jumps).toEqual(['filial']);
 

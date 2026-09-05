@@ -422,6 +422,98 @@ export function collectPolledSignalItemIds(
   return [...ids];
 }
 
+function patchEndpointTrafficBps(
+  prev: LinkEndpointRuntimeMetrics,
+  ref: TopologyInterfaceReference | undefined,
+  items: Record<string, ZabbixItemLastValue>,
+  lookupKeys: string[]
+): LinkEndpointRuntimeMetrics {
+  if (!ref?.metrics) {
+    return prev;
+  }
+  const m = ref.metrics;
+  let rxBps = prev.rxBps;
+  let txBps = prev.txBps;
+  let changed = false;
+  if (m.rx) {
+    const nextRx = readItemValue(items, m.rx, lookupKeys);
+    if (nextRx !== undefined && nextRx !== rxBps) {
+      rxBps = nextRx;
+      changed = true;
+    }
+  }
+  if (m.tx) {
+    const nextTx = readItemValue(items, m.tx, lookupKeys);
+    if (nextTx !== undefined && nextTx !== txBps) {
+      txBps = nextTx;
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return prev;
+  }
+  const capacityMbps = prev.capacityMbps;
+  const rxUtilizationPct = computeUtilizationPct(rxBps, capacityMbps);
+  const txUtilizationPct = computeUtilizationPct(txBps, capacityMbps);
+  return {
+    ...prev,
+    rxBps,
+    txBps,
+    rxUtilizationPct,
+    txUtilizationPct,
+  };
+}
+
+/**
+ * Atualiza só RX/TX/utilização nos cabos já montados — evita `buildLinkRuntimeMetricsMap` inteiro
+ * no poll de tráfego. Devolve `undefined` se precisar de build completo (mapa novo, cabo sem métrica).
+ */
+export function refreshLinkTrafficBpsInMap(
+  map: TopologyMap,
+  previous: LinkRuntimeMetricsMap,
+  items: Record<string, ZabbixItemLastValue>,
+  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS,
+  hostMetadata?: HostMetadataMap
+): LinkRuntimeMetricsMap | undefined {
+  if (!Object.keys(previous).length) {
+    return undefined;
+  }
+  const merged: LinkRuntimeMetricsMap = {};
+  let anyLinkChanged = false;
+  for (const raw of map.links) {
+    if (!raw.fromInterface?.metrics && !raw.toInterface?.metrics) {
+      continue;
+    }
+    const key = linkKey(raw);
+    const prevMetrics = previous[key];
+    if (!prevMetrics) {
+      return undefined;
+    }
+    const fromKeys = linkEndpointLookupKeys(map, raw.from, raw.fromPeerHost, hostMetadata);
+    const toKeys = linkEndpointLookupKeys(map, raw.to, raw.toPeerHost, hostMetadata);
+    const from = patchEndpointTrafficBps(prevMetrics.from, raw.fromInterface, items, fromKeys);
+    const to = patchEndpointTrafficBps(prevMetrics.to, raw.toInterface, items, toKeys);
+    const status = resolveLinkStatus(from, to, thresholds);
+    if (from === prevMetrics.from && to === prevMetrics.to && status === prevMetrics.status) {
+      merged[key] = prevMetrics;
+      continue;
+    }
+    anyLinkChanged = true;
+    merged[key] = { from, to, status };
+  }
+  const prevKeys = Object.keys(previous);
+  const mergedKeys = Object.keys(merged);
+  if (prevKeys.length !== mergedKeys.length) {
+    return undefined;
+  }
+  for (const key of prevKeys) {
+    if (!(key in merged)) {
+      return undefined;
+    }
+  }
+  return anyLinkChanged ? merged : previous;
+}
+
 /** Monta mapa de métricas runtime a partir dos lastvalues Zabbix. */
 export function buildLinkRuntimeMetricsMap(
   map: TopologyMap,
@@ -534,6 +626,45 @@ export function sameLinkLinePaint(
 }
 
 /**
+ * Reaproveita a identidade das métricas quando só o bps mudou — o `LinkLine` não remonta o traço
+ * amarelo e o laço rAF não perde o `stroke-dashoffset`.
+ */
+export function shareLinkPaintMetrics(
+  next: LinkRuntimeMetricsMap,
+  previous: LinkRuntimeMetricsMap,
+  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS
+): LinkRuntimeMetricsMap {
+  if (previous === next) {
+    return previous;
+  }
+  const nextKeys = Object.keys(next);
+  if (!nextKeys.length && !Object.keys(previous).length) {
+    return previous;
+  }
+  const merged: LinkRuntimeMetricsMap = {};
+  let reusedAll = nextKeys.length === Object.keys(previous).length;
+  for (const key of nextKeys) {
+    const fresh = next[key];
+    const prev = previous[key];
+    if (prev && fresh && sameLinkLinePaint(prev, fresh, thresholds)) {
+      merged[key] = prev;
+    } else {
+      merged[key] = fresh;
+      reusedAll = false;
+    }
+  }
+  if (reusedAll) {
+    for (const key of Object.keys(previous)) {
+      if (!(key in merged)) {
+        reusedAll = false;
+        break;
+      }
+    }
+  }
+  return reusedAll ? previous : merged;
+}
+
+/**
  * Um ciclo sem lastvalue (timeout, abort recuperado, lista de itemids ainda vazia) não pode
  * apagar o tráfego que já está no mapa — senão os cabos param e só voltam no ciclo seguinte.
  */
@@ -585,6 +716,34 @@ export function coalesceLinkTraffic(
   }
   return {
     lastValues,
-    interfaceItems: byId.size ? [...byId.values()] : incoming.interfaceItems,
+    interfaceItems:
+      byId.size === 0
+        ? incoming.interfaceItems
+        : sameInterfaceItemsSnapshot([...byId.values()], previous.interfaceItems)
+          ? previous.interfaceItems
+          : [...byId.values()],
   };
+}
+
+function sameInterfaceItemsSnapshot(
+  next: ZabbixInterfaceItem[],
+  previous: ZabbixInterfaceItem[]
+): boolean {
+  if (next.length !== previous.length) {
+    return false;
+  }
+  for (let i = 0; i < next.length; i += 1) {
+    const a = next[i];
+    const b = previous[i];
+    if (
+      a.itemid !== b.itemid ||
+      a.lastvalue !== b.lastvalue ||
+      a.lastclock !== b.lastclock ||
+      a.key_ !== b.key_ ||
+      a.hostid !== b.hostid
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

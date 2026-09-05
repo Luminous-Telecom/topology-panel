@@ -13,6 +13,10 @@ const queryIndexMock = vi.hoisted(() => ({
 vi.mock('../hooks/useTopologyQueryIndex', async () => {
   const { buildQueryIndex } = await import('../services/queryIndex');
   const empty = buildQueryIndex(undefined);
+  const pollFeed = {
+    subscribe: () => () => {},
+    getSnapshot: () => ({ lastValues: {}, interfaceItems: [] }),
+  };
   return {
     useTopologyQueryIndex: () => ({
       index: empty,
@@ -22,6 +26,7 @@ vi.mock('../hooks/useTopologyQueryIndex', async () => {
       ready: !queryIndexMock.error,
       loading: false,
       error: queryIndexMock.error,
+      pollFeed,
     }),
   };
 });

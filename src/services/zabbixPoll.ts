@@ -196,10 +196,17 @@ function snapshotFromParts(
   };
 }
 
+export type ZabbixPollResult = {
+  snapshot: ZabbixLiveSnapshot;
+  error?: string;
+  /** Regime: status inalterado — o painel pode pular montar índice e setState. */
+  volatileTrafficOnly?: boolean;
+};
+
 export async function runZabbixPoll(
   input: ZabbixPollInput,
   call: ZabbixRpc = zabbixCall
-): Promise<{ snapshot: ZabbixLiveSnapshot; error?: string }> {
+): Promise<ZabbixPollResult> {
   const previous = input.previous ?? emptySnapshot();
   const itemIdByKey = itemIdByKeyFromLastValues(previous.lastValues);
   mergeItemIdByKey(itemIdByKey, previous.interfaceItems);
@@ -239,11 +246,13 @@ export async function runZabbixPoll(
       mergeItemIdByKey(itemIdByKey, fetched.interfaceItems);
       const lastValues = aliasLastValuesByItemKey(fetched.lastValues, itemIdByKey);
       if (statusLastValuesPresent(lastValues, previous.knownStatusItems)) {
+        const snapshot = snapshotFromParts(previous, {
+          lastValues,
+          interfaceItems: fetched.interfaceItems,
+        });
         return {
-          snapshot: snapshotFromParts(previous, {
-            lastValues,
-            interfaceItems: fetched.interfaceItems,
-          }),
+          snapshot,
+          volatileTrafficOnly: sameStatusItemValues(snapshot.knownStatusItems, previous.knownStatusItems),
         };
       }
     }
@@ -362,13 +371,15 @@ export async function runZabbixPoll(
   });
   input.onSnapshot?.(painted);
 
+  const problems = await problemsP;
+
   return {
     snapshot: snapshotFromParts(previous, {
       metadata,
       knownStatusItems: statusItems,
       lastValues: trafficLast,
       interfaceItems: trafficItems,
-      problems: await problemsP,
+      problems,
     }),
   };
 }

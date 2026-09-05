@@ -10,6 +10,79 @@ import { isHostNode } from './topologyNodes';
  * entra quando não há IP, ou como alias adicional.
  */
 
+interface HostMetadataLookupIndex {
+  byLowerKey: Map<string, HostMetadata>;
+  byIp: Map<string, HostMetadata>;
+  byNameLower: Map<string, HostMetadata>;
+  namesByIp: Map<string, string[]>;
+  ipByNameExact: Map<string, string>;
+}
+
+const metadataLookupIndexCache = new WeakMap<HostMetadataMap, HostMetadataLookupIndex>();
+
+function ipv4Of(value?: string): string | undefined {
+  const ip = value?.trim();
+  return ip && isIpv4(ip) ? ip : undefined;
+}
+
+function indexMetadataKey(index: HostMetadataLookupIndex, key: string, entry: HostMetadata): void {
+  const keyTrim = key.trim();
+  if (keyTrim) {
+    const lower = keyTrim.toLowerCase();
+    if (!index.byLowerKey.has(lower)) {
+      index.byLowerKey.set(lower, entry);
+    }
+  }
+  const ip = ipv4Of(entry.ip);
+  const name = entry.name?.trim();
+  if (ip) {
+    if (!index.byIp.has(ip)) {
+      index.byIp.set(ip, entry);
+    }
+    if (name) {
+      const names = index.namesByIp.get(ip) ?? [];
+      if (!names.includes(name)) {
+        names.push(name);
+        index.namesByIp.set(ip, names);
+      }
+      if (!index.ipByNameExact.has(name)) {
+        index.ipByNameExact.set(name, ip);
+      }
+    }
+  }
+  if (name) {
+    const nameLower = name.toLowerCase();
+    if (!index.byNameLower.has(nameLower)) {
+      index.byNameLower.set(nameLower, entry);
+    }
+  }
+}
+
+function buildMetadataLookupIndex(metadata: HostMetadataMap): HostMetadataLookupIndex {
+  const index: HostMetadataLookupIndex = {
+    byLowerKey: new Map(),
+    byIp: new Map(),
+    byNameLower: new Map(),
+    namesByIp: new Map(),
+    ipByNameExact: new Map(),
+  };
+  for (const [key, entry] of Object.entries(metadata)) {
+    indexMetadataKey(index, key, entry);
+  }
+  return index;
+}
+
+/** Índice O(1) por IP/nome — o mesmo objeto de metadata reusa o cache (WeakMap). */
+function metadataLookupIndex(metadata: HostMetadataMap): HostMetadataLookupIndex {
+  const cached = metadataLookupIndexCache.get(metadata);
+  if (cached) {
+    return cached;
+  }
+  const built = buildMetadataLookupIndex(metadata);
+  metadataLookupIndexCache.set(metadata, built);
+  return built;
+}
+
 /** IP do host (subtitle, zabbixHost ou metadata da Query). */
 export function resolveHostIp(
   node: { zabbixHost?: string; subtitle?: string; zabbixHostId?: string },
@@ -32,11 +105,17 @@ export function resolveHostIp(
   if (byName?.ip && isIpv4(byName.ip)) {
     return byName.ip.trim();
   }
-  if (hostKey) {
-    for (const entry of Object.values(metadata ?? {})) {
-      if (entry.name?.trim() === hostKey && entry.ip && isIpv4(entry.ip)) {
-        return entry.ip.trim();
-      }
+  if (hostKey && metadata) {
+    const index = metadataLookupIndex(metadata);
+    const exactIp = index.ipByNameExact.get(hostKey);
+    if (exactIp) {
+      return exactIp;
+    }
+    const entry =
+      index.byNameLower.get(hostKey.toLowerCase()) ?? index.byLowerKey.get(hostKey.toLowerCase());
+    const fromIndex = ipv4Of(entry?.ip);
+    if (fromIndex) {
+      return fromIndex;
     }
   }
   return undefined;
@@ -50,19 +129,15 @@ export interface HostLookupRef {
   label?: string;
 }
 
-function sameLookupToken(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
 function nameKeysOf(ref: HostLookupRef): string[] {
   return [ref.zabbixHost, ref.label]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value && !isIpv4(value)));
 }
 
-/** Entrada de metadata por IP, por chave de nome, ou por `name` de qualquer entrada. */
-export function findHostMetadata(
+function lookupIndexedMetadata(
   metadata: HostMetadataMap,
+  index: HostMetadataLookupIndex,
   ip: string | undefined,
   nameKeys: string[]
 ): HostMetadata | undefined {
@@ -71,10 +146,10 @@ export function findHostMetadata(
     if (byIp) {
       return byIp;
     }
-    for (const value of Object.values(metadata)) {
-      if (value.ip && sameLookupToken(value.ip, ip)) {
-        return value;
-      }
+    const trimmed = ip.trim();
+    const indexed = index.byIp.get(trimmed) ?? index.byLowerKey.get(trimmed.toLowerCase());
+    if (indexed) {
+      return indexed;
     }
   }
   for (const key of nameKeys) {
@@ -83,16 +158,26 @@ export function findHostMetadata(
       return byName;
     }
   }
-  for (const [mapKey, value] of Object.entries(metadata)) {
-    if (nameKeys.some((name) => sameLookupToken(name, mapKey))) {
-      return value;
+  for (const key of nameKeys) {
+    const lower = key.trim().toLowerCase();
+    if (!lower) {
+      continue;
     }
-    const visible = value.name?.trim();
-    if (visible && nameKeys.some((name) => sameLookupToken(name, visible))) {
-      return value;
+    const indexed = index.byLowerKey.get(lower) ?? index.byNameLower.get(lower);
+    if (indexed) {
+      return indexed;
     }
   }
   return undefined;
+}
+
+/** Entrada de metadata por IP, por chave de nome, ou por `name` de qualquer entrada. */
+export function findHostMetadata(
+  metadata: HostMetadataMap,
+  ip: string | undefined,
+  nameKeys: string[]
+): HostMetadata | undefined {
+  return lookupIndexedMetadata(metadata, metadataLookupIndex(metadata), ip, nameKeys);
 }
 
 /** `hostid` gravado no índice para uma chave de lookup (IP, label ou nome técnico). */
@@ -192,6 +277,7 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
   };
 
   const resolvedIp = resolveHostIp(ref, metadata);
+  const index = metadata ? metadataLookupIndex(metadata) : undefined;
   // IP primeiro — status/hover/sync preferem interface estável ao rename.
   // (resolveHostIp já cobre subtitle/zabbixHost como IP; se vier vazio, nenhum dos dois é IP.)
   if (resolvedIp) {
@@ -200,9 +286,9 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
     if (metaByIp?.name) {
       add(metaByIp.name);
     }
-    for (const entry of Object.values(metadata ?? {})) {
-      if (entry.ip === resolvedIp && entry.name?.trim()) {
-        add(entry.name);
+    if (index) {
+      for (const name of index.namesByIp.get(resolvedIp) ?? []) {
+        add(name);
       }
     }
   }
@@ -246,16 +332,15 @@ export function collectHostLookupCandidates(ref: HostLookupRef, metadata?: HostM
     }
   }
 
-  if (zabbixHost && !isIpv4(zabbixHost)) {
-    for (const entry of Object.values(metadata ?? {})) {
-      if (entry.name?.trim() === zabbixHost && entry.ip && isIpv4(entry.ip)) {
-        add(entry.ip);
-      }
+  if (zabbixHost && !isIpv4(zabbixHost) && index) {
+    const ip = index.ipByNameExact.get(zabbixHost);
+    if (ip) {
+      add(ip);
     }
   }
 
-  if (metadata) {
-    const entry = findHostMetadata(metadata, resolvedIp, nameKeysOf(ref));
+  if (metadata && index) {
+    const entry = lookupIndexedMetadata(metadata, index, resolvedIp, nameKeysOf(ref));
     if (entry) {
       if (entry.ip && isIpv4(entry.ip)) {
         add(entry.ip);
@@ -279,6 +364,8 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
   }
 
   const result: HostMetadataMap = { ...meta };
+  const index = buildMetadataLookupIndex(result);
+  metadataLookupIndexCache.set(result, index);
 
   for (const node of map.nodes) {
     if (!isHostNode(node)) {
@@ -292,7 +379,7 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
       continue;
     }
 
-    const entry = findHostMetadata(result, ip, nameKeys);
+    const entry = lookupIndexedMetadata(result, index, ip, nameKeys);
     if (!entry) {
       continue;
     }
@@ -303,12 +390,15 @@ export function enrichHostMetadataFromMap(meta: HostMetadataMap, map: TopologyMa
     };
     if (ip) {
       result[ip] = next;
+      indexMetadataKey(index, ip, next);
     }
     if (next.name?.trim()) {
       result[next.name.trim()] = next;
+      indexMetadataKey(index, next.name.trim(), next);
     }
     for (const key of nameKeys) {
       result[key] = next;
+      indexMetadataKey(index, key, next);
     }
   }
 

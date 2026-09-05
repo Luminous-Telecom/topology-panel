@@ -67,6 +67,8 @@ export type LinkFlowController = {
  * valor só interessa à própria animação.
  */
 const flowOffsets = new WeakMap<Element, number>();
+/** Sobrevive à troca do `<path>` quando o React remonta o traço amarelo. */
+const flowOffsetsByLinkKey = new Map<string, number>();
 /** `offset-path` já aplicado — regravar o mesmo path no poll zera `offset-distance` no Chrome. */
 const appliedFlowPaths = new WeakMap<Element, string>();
 
@@ -91,6 +93,30 @@ function queryIntervalForLaneCount(count: number): number {
   return count > 80 ? FLOW_QUERY_INTERVAL_HEAVY_MS : FLOW_QUERY_INTERVAL_MS;
 }
 
+function flowStorageKey(el: Element): string | undefined {
+  const linkKey = el.getAttribute('data-link-key');
+  return linkKey && linkKey.length > 0 ? linkKey : undefined;
+}
+
+function readFlowOffset(el: Element): number {
+  const key = flowStorageKey(el);
+  if (key !== undefined) {
+    const keyed = flowOffsetsByLinkKey.get(key);
+    if (keyed !== undefined) {
+      return keyed;
+    }
+  }
+  return flowOffsets.get(el) ?? 0;
+}
+
+function storeFlowOffset(el: Element, normalized: number): void {
+  flowOffsets.set(el, normalized);
+  const key = flowStorageKey(el);
+  if (key !== undefined) {
+    flowOffsetsByLinkKey.set(key, normalized);
+  }
+}
+
 function isFlowLaneActive(el: Element): boolean {
   return el.getAttribute('data-link-flow-active') !== 'false';
 }
@@ -101,7 +127,7 @@ function advanceFlowLanes(lanes: Element[], scale: number): number {
     if (!el.isConnected || !isFlowLaneActive(el)) {
       continue;
     }
-    writeFlowOffset(el, (flowOffsets.get(el) ?? 0) + laneStep(el), scale);
+    writeFlowOffset(el, readFlowOffset(el) + laneStep(el), scale);
     animated += 1;
   }
   return animated;
@@ -128,7 +154,7 @@ function writeFlowOffset(el: Element, offset: number, scale: number): boolean {
     return false;
   }
   const normalized = ((offset % period) + period) % period;
-  flowOffsets.set(el, normalized);
+  storeFlowOffset(el, normalized);
   if (el.hasAttribute(FLOW_ARROW_ATTR)) {
     const pathWrote = ensureArrowOffsetPath(el, scale);
     // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
@@ -167,6 +193,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let lanes: Element[] = [];
   let lanesReadAt = 0;
   let frameTick = 0;
+  let lastAnimatedAt = 0;
 
   const clearPending = () => {
     if (raf) {
@@ -192,7 +219,8 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
    * barato num mapa sem tráfego ou com todos os cabos parados.
    */
   const sleepUntilNextScan = () => {
-    const delay = queryIntervalForLaneCount(lanes.length);
+    const recentlyActive = lastAnimatedAt > 0 && performance.now() - lastAnimatedAt < 2000;
+    const delay = recentlyActive ? 32 : queryIntervalForLaneCount(lanes.length);
     idleTimer = window.setTimeout(() => {
       idleTimer = 0;
       schedule();
@@ -224,6 +252,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
       sleepUntilNextScan();
       return;
     }
+    lastAnimatedAt = now;
     schedule();
   };
 

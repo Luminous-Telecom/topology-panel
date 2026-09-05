@@ -58,4 +58,15 @@ describe('buildHostNodeBadgeMap', () => {
   it('não cria entrada para host sem nada a mostrar', () => {
     expect(buildHostNodeBadgeMap({ map }).size).toBe(0);
   });
+
+  it('não monta badges antes da Query ficar pronta', () => {
+    const badges = buildHostNodeBadgeMap({
+      map,
+      queryReady: false,
+      hostDisplay: { '10.0.0.1': { value: 1, status: 'online' } },
+      hostProblems: { hostid1: { count: 3, maxSeverity: 4 } },
+      hostMetadata: { '10.0.0.1': { name: 'Core', hostid: 'hostid1' } },
+    });
+    expect(badges.size).toBe(0);
+  });
 });

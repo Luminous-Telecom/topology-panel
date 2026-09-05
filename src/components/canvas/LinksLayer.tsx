@@ -1,4 +1,4 @@
-import React, { MutableRefObject, useRef } from 'react';
+import React, { MutableRefObject } from 'react';
 import { HostDisplayMap, HostMetadataMap, LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../types';
 import { DragPreview } from '../../utils/dragState';
 import { LinkPoint } from '../../utils/linkGeometry';
@@ -6,7 +6,6 @@ import { linkKey } from '../../utils/mapLinkEdits';
 import { isHostNodeOffline } from '../../utils/networkStats';
 import { NodeLayout } from '../../utils/nodeLayout';
 import { LinkLine } from './links/LinkLine';
-import { LinkTrafficOverlay } from './links/LinkTrafficLabel';
 
 interface Props {
   renderLinks: Array<{ link: TopologyLink; key: string; bundleOffset: number }>;
@@ -19,7 +18,7 @@ interface Props {
   hoveredLinkKey: string | null;
   setHoveredLinkKey: (key: string | null) => void;
   resolveLinkWaypoints: (link: TopologyLink) => LinkPoint[];
-  linkMetricsByLink: Record<string, LinkRuntimeMetrics>;
+  linkPaintMetricsByLink: Record<string, LinkRuntimeMetrics>;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
   /** Máximo de cabos com faixas animadas (orçamento de performance). */
@@ -31,7 +30,7 @@ interface Props {
   removeWaypointNearPointer: (e: React.MouseEvent, link: TopologyLink) => void;
 }
 
-/** Todos os cabos do mapa, já filtrados e ordenados por `useRenderLinks`. */
+/** Cabos do mapa (linha + animação) — pílulas de bps ficam em `LinkTrafficOverlaysLayer`. */
 function LinksLayerComponent({
   renderLinks,
   nodeLayouts,
@@ -41,7 +40,7 @@ function LinksLayerComponent({
   hoveredLinkKey,
   setHoveredLinkKey,
   resolveLinkWaypoints,
-  linkMetricsByLink,
+  linkPaintMetricsByLink,
   hostDisplay,
   hostMetadata,
   onLinkSelect,
@@ -51,12 +50,7 @@ function LinksLayerComponent({
   removeWaypointNearPointer,
   flowAnimateBudget,
 }: Props) {
-  // Fora do laço: `linkKey` monta e concatena seis campos, e a chave do selecionado não muda de
-  // um cabo para o outro.
   const selectedKey = selectedLink ? linkKey(selectedLink) : null;
-  const metricsLiveRef = useRef(linkMetricsByLink);
-  metricsLiveRef.current = linkMetricsByLink;
-  const gridStep = options.gridSize ?? 10;
   return (
     <>
       {renderLinks.map(({ link, key, bundleOffset }, index) => {
@@ -71,8 +65,7 @@ function LinksLayerComponent({
           options={options}
           selected={selectedKey === lk}
           hovered={hoveredLinkKey === lk}
-          runtimeMetrics={linkMetricsByLink[lk]}
-          metricsLiveRef={metricsLiveRef}
+          runtimeMetrics={linkPaintMetricsByLink[lk]}
           fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
           toHostOffline={isHostNodeOffline(nodeLayouts.get(link.to), hostDisplay, hostMetadata)}
           flowAnimate={index < flowAnimateBudget}
@@ -87,7 +80,6 @@ function LinksLayerComponent({
           onPathPointerDown={(e) => {
             const { panTool, editable } = interactionRef.current;
             if (panTool || !editable) {
-              // Mão: pan no cabo; seta em visualização: só seleciona.
               if (panTool && options.enablePan) {
                 beginPan(e, undefined, link);
               } else {
@@ -107,36 +99,8 @@ function LinksLayerComponent({
         />
         );
       })}
-      {renderLinks.map(({ link, key, bundleOffset }) => {
-        const from = nodeLayouts.get(link.from);
-        const to = nodeLayouts.get(link.to);
-        if (!from || !to) {
-          return <React.Fragment key={`traffic-${key}`} />;
-        }
-        return (
-          <LinkTrafficOverlay
-            key={`traffic-${key}`}
-            from={from}
-            to={to}
-            gridStep={gridStep}
-            waypoints={resolveLinkWaypoints(link)}
-            bundleOffset={bundleOffset}
-            link={link}
-            runtimeMetrics={linkMetricsByLink[linkKey(link)]}
-            options={options}
-          />
-        );
-      })}
     </>
   );
 }
 
-/**
- * Memoizado por comparação rasa: durante pan, zoom ou arraste de um nó sem cabo, nenhuma prop muda
- * e a camada inteira é pulada. `dragPreview` entra na comparação para o arraste de waypoint —
- * nesse gesto `nodeLayouts` não muda, mas a rota provisória mora no store de gesto.
- *
- * Handlers precisam chegar com identidade fixa (`useStableCallback` em `TopologyCanvas`) — prop de
- * função recriada no pai anula o memo.
- */
 export const LinksLayer = React.memo(LinksLayerComponent);

@@ -140,6 +140,30 @@ describe('startLinkFlowAnimation', () => {
     controller.stop();
   });
 
+  it('preserva o offset quando o path é trocado com o mesmo data-link-key', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('data-link-flow', 'upload');
+    el.setAttribute('data-link-key', 'host-a->host-b');
+    el.setAttribute('data-link-flow-period', '28');
+    el.setAttribute('data-link-flow-step', '2');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(100);
+    const before = offsetOf(el);
+
+    const replacement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    replacement.setAttribute('data-link-flow', 'upload');
+    replacement.setAttribute('data-link-key', 'host-a->host-b');
+    replacement.setAttribute('data-link-flow-period', '28');
+    replacement.setAttribute('data-link-flow-step', '2');
+    el.remove();
+    root.appendChild(replacement);
+    controller.wake();
+    vi.advanceTimersByTime(50);
+    expect(offsetOf(replacement)).toBeGreaterThanOrEqual(before);
+    controller.stop();
+  });
+
   it('pausado não mexe mais no DOM, e retomar volta a animar', () => {
     const el = lane(root, { active: true });
     const controller = startLinkFlowAnimation(root);

@@ -7,6 +7,45 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.424] - 2026-09-05
+
+### Alterado
+
+- Legenda, lista de hosts com alerta e modo NOC voltam a seguir as opções do painel.
+- Lista NOC montada em `requestIdleCallback` — não bloqueia o handler de mensagem ao abrir o modo.
+- Badges e tags de alerta/offline só após `queryReady` — evita falso alerta enquanto o Zabbix carrega.
+
+### Removido
+
+- Instrumentação de diagnóstico `topology-perf-debug` (logs, traces de poll e flag que desligava
+  overlays) — o gargalo era o lookup de host, não a legenda.
+
+### Corrigido
+
+- Lookup de host (IP, nome e hostid) deixa de varrer o metadata inteiro a cada nó e cabo — índice O(1)
+  em `hostLookup.ts`, no mesmo padrão do índice de `HostDisplayMap`.
+- Poll de intervalo: `interfaceItems` com objeto novo mas mesmo `lastvalue` não força re-render;
+  `setState` é omitido quando o painel não precisa atualizar (sem depender do bailout do React).
+- Métricas de cabo no poll de tráfego: `interfaceItems` novo não dispara mais
+  `buildLinkRuntimeMetricsMap` inteiro — só `refreshLinkTrafficBpsInMap` (patch de bps).
+- Mount do painel: `setState` do poll e badges dos hosts em `startTransition` /
+  `requestIdleCallback`; métricas dos cabos só após o primeiro paint (`scheduleAfterPaint`).
+- Poll de tráfego nos cabos atualiza só as pílulas TX/RX via DOM (rAF), sem `useSyncExternalStore`
+  nem re-render do mapa, hosts ou animação.
+- Poll de tráfego: métricas calculadas fora do render (`useLayoutEffect` + patch rápido de bps) e
+  `TopologyCanvas` memoizado — o canvas não reconcilia quando só o tráfego muda.
+- Poll Zabbix: lastvalues de tráfego e métricas de cabo atualizam via feed volátil sem re-render do
+  painel; status, índice e problemas continuam re-renderizando normalmente.
+- Bootstrap: chegada de `problem.get` não republica o feed volátil nem remonta métricas de cabo —
+  só atualiza problemas em `requestIdleCallback` + `startTransition`.
+- Comparação do feed volátil e do snapshot de problemas por conteúdo (não só identidade de objeto) —
+  evita `montar estado` e `buildLinkRuntimeMetricsMap` redundantes no bootstrap.
+- `hostMetadata` com mesmo conteúdo não invalida mais o mapa de métricas de cabo.
+- Poll de tráfego nos cabos atualiza só as pílulas TX/RX — o mapa, hosts e animação não
+  re-renderizam mais a cada mudança de bps (store volátil + camada isolada).
+- Tráfego amarelo dos cabos não trava mais quando o poll Zabbix atualiza o bps na pílula: métricas de
+  pintura estáveis evitam remontar o traço e o laço rAF retoma sem dormir 250 ms.
+
 ## [1.4.423] - 2026-09-04
 
 ### Alterado

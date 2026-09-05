@@ -1,4 +1,4 @@
-import React, { MutableRefObject, useState } from 'react';
+import React, { useState } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { LinkRuntimeMetrics, TopologyLink, TopologyNode, TopologyPanelOptions } from '../../../types';
 import { formatLinkBandwidth } from '../../../utils/linkBandwidth';
@@ -23,6 +23,7 @@ import {
 import { resolveLinkMedium } from '../../../utils/linkMedium';
 import { formatBitsPerSecond } from '../../../utils/zabbixAdapter/formatTraffic';
 import { buildLinkHoverTooltip } from '../../../utils/linkHoverTooltip';
+import { useLinkMetricsLiveStore } from '../../../hooks/linkMetricsLiveStore';
 import { NodeLayout } from '../../../utils/nodeLayout';
 import { canvasStyles } from '../canvasStyles';
 import { LinkHoverPopover } from '../../LinkHoverPopover';
@@ -45,7 +46,6 @@ interface LinkLineProps {
   selected: boolean;
   hovered: boolean;
   runtimeMetrics?: LinkRuntimeMetrics;
-  metricsLiveRef?: MutableRefObject<Record<string, LinkRuntimeMetrics>>;
   fromHostOffline?: boolean;
   toHostOffline?: boolean;
   onSelect: () => void;
@@ -98,7 +98,6 @@ function LinkLineComponent({
   selected,
   hovered,
   runtimeMetrics,
-  metricsLiveRef,
   fromHostOffline = false,
   toHostOffline = false,
   onSelect,
@@ -110,9 +109,10 @@ function LinkLineComponent({
 }: LinkLineProps) {
   const theme = useTheme2();
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
+  const linkMetricsStore = useLinkMetricsLiveStore();
   const thresholds = utilizationThresholdsFromOptions(options);
   const lk = linkKey(link);
-  const liveMetrics = metricsLiveRef?.current[lk] ?? runtimeMetrics;
+  const liveMetrics = linkMetricsStore.getLive()[lk] ?? runtimeMetrics;
   const displayTraffic = resolveLinkMapTrafficMetrics(link, liveMetrics);
   const interfaceDown = runtimeMetrics?.status === 'down';
   const from = nodeLayouts.get(link.from);
@@ -285,20 +285,23 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
   if (pt.x !== nt.x || pt.y !== nt.y || pt.w !== nt.w || pt.h !== nt.h) {
     return false;
   }
-  return (
-    prev.options.colorLink === next.options.colorLink &&
-    prev.options.colorOffline === next.options.colorOffline &&
-    prev.options.colorLinkDownload === next.options.colorLinkDownload &&
-    prev.options.colorLinkUpload === next.options.colorLinkUpload &&
-    prev.options.gridSize === next.options.gridSize &&
-    prev.options.colorLinkCongestion === next.options.colorLinkCongestion &&
-    prev.options.colorLinkAttention === next.options.colorLinkAttention &&
-    prev.options.colorLinkHigh === next.options.colorLinkHigh &&
-    prev.options.linkUtilThresholdAttention === next.options.linkUtilThresholdAttention &&
-    prev.options.linkUtilThresholdHigh === next.options.linkUtilThresholdHigh &&
-    prev.options.linkUtilThresholdCritical === next.options.linkUtilThresholdCritical &&
-    prev.options.linkAnimationEnabled === next.options.linkAnimationEnabled &&
-    prev.options.linkAnimationSpeed === next.options.linkAnimationSpeed &&
-    prev.flowAnimate === next.flowAnimate
-  );
+  if (
+    prev.options.colorLink !== next.options.colorLink ||
+    prev.options.colorOffline !== next.options.colorOffline ||
+    prev.options.colorLinkDownload !== next.options.colorLinkDownload ||
+    prev.options.colorLinkUpload !== next.options.colorLinkUpload ||
+    prev.options.gridSize !== next.options.gridSize ||
+    prev.options.colorLinkCongestion !== next.options.colorLinkCongestion ||
+    prev.options.colorLinkAttention !== next.options.colorLinkAttention ||
+    prev.options.colorLinkHigh !== next.options.colorLinkHigh ||
+    prev.options.linkUtilThresholdAttention !== next.options.linkUtilThresholdAttention ||
+    prev.options.linkUtilThresholdHigh !== next.options.linkUtilThresholdHigh ||
+    prev.options.linkUtilThresholdCritical !== next.options.linkUtilThresholdCritical ||
+    prev.options.linkAnimationEnabled !== next.options.linkAnimationEnabled ||
+    prev.options.linkAnimationSpeed !== next.options.linkAnimationSpeed ||
+    prev.flowAnimate !== next.flowAnimate
+  ) {
+    return false;
+  }
+  return true;
 });

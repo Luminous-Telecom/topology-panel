@@ -242,7 +242,7 @@ describe('useZabbixDirectIndex', () => {
 
     expect(poll).toHaveBeenCalledTimes(2);
     expect(result.current.index).toBe(indexAfterFirst);
-    expect(result.current.lastValues['10001']?.lastclock).toBe('2000');
+    expect(result.current.pollFeed.getSnapshot().lastValues['10001']?.lastvalue).toBe('1');
   });
 
   it('lastvalue "1" e "1.0" reusa o QueryIndex', async () => {

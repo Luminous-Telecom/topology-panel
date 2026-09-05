@@ -3,6 +3,7 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultOptions, HostDisplayMap, LinkRuntimeMetrics, TopologyMap, TopologyNode, TopologyView } from '../types';
 import { linkKey } from '../utils/mapLinkEdits';
+import { createLinkMetricsLiveStore, LinkMetricsLiveStoreContext } from '../hooks/linkMetricsLiveStore';
 
 /**
  * Custo de re-render de um gesto de arraste, medido como em `TopologyPanel.perf.test.tsx`:
@@ -281,19 +282,23 @@ describe('poll de tráfego no cabo', () => {
     };
   }
 
-  function canvasWithMetrics(map: TopologyMap, linkMetricsByLink: Record<string, LinkRuntimeMetrics>) {
+  function canvasWithMetrics(map: TopologyMap, linkPaintMetricsByLink: Record<string, LinkRuntimeMetrics>) {
+    const store = createLinkMetricsLiveStore();
+    store.publish(linkPaintMetricsByLink, linkPaintMetricsByLink);
     return (
-      <TopologyCanvas
-        map={map}
-        storedMap={map}
-        options={defaultOptions()}
-        hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
-        submapHosts={STABLE_SUBMAP_HOSTS}
-        mapNavigationKey="root"
-        queryReady
-        linkMetricsByLink={linkMetricsByLink}
-        onMapChange={() => {}}
-      />
+      <LinkMetricsLiveStoreContext.Provider value={store}>
+        <TopologyCanvas
+          map={map}
+          storedMap={map}
+          options={defaultOptions()}
+          hostDisplayByRefId={STABLE_HOST_DISPLAY_BY_REF_ID}
+          submapHosts={STABLE_SUBMAP_HOSTS}
+          mapNavigationKey="root"
+          queryReady
+          linkPaintMetricsByLink={linkPaintMetricsByLink}
+          onMapChange={() => {}}
+        />
+      </LinkMetricsLiveStoreContext.Provider>
     );
   }
 

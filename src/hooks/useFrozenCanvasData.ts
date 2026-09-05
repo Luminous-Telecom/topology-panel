@@ -11,7 +11,7 @@ export interface CanvasData {
   queryError?: boolean;
   hostMetadata?: HostMetadataMap;
   submapHosts: Record<string, string[] | null | undefined>;
-  linkMetricsByLink: LinkRuntimeMetricsMap;
+  linkPaintMetricsByLink: LinkRuntimeMetricsMap;
   hostProblems?: HostProblemsMap;
 }
 
@@ -28,7 +28,7 @@ export function useFrozenCanvasData(
   const stable = useMemo(
     () => live,
     [live.map, live.hostDisplay, live.hostDisplayByRefId, live.queryReady,
-     live.queryError, live.hostMetadata, live.submapHosts, live.linkMetricsByLink,
+     live.queryError, live.hostMetadata, live.submapHosts, live.linkPaintMetricsByLink,
      live.hostProblems]
   );
   return useDeferredDuringGesture(stable, isGestureActiveRef);

@@ -31,6 +31,8 @@ export interface TopologyFilterContext {
   hostProblems?: HostProblemsMap;
   linkMetricsByLink?: LinkRuntimeMetricsMap;
   options: Pick<TopologyPanelOptions, 'linkUtilThresholdHigh'>;
+  /** Sem status da Query ainda — não marcar offline/alerta na lista NOC nem na de alertas. */
+  queryReady?: boolean;
 }
 
 /** Severidade mínima (Warning+) para contar problema na UI. */
@@ -369,6 +371,9 @@ function collectAlertHostEntriesForMap(
   mapLabel: string,
   ctx: TopologyFilterContext
 ): HostAlertListEntry[] {
+  if (ctx.queryReady === false) {
+    return [];
+  }
   const entries: HostAlertListEntry[] = [];
 
   for (const node of ctx.map.nodes) {
@@ -445,25 +450,27 @@ export function collectAlertHostEntriesFromMaps(
 
 function nodeNocTags(node: TopologyNode, ctx: TopologyFilterContext): string[] {
   const tags: string[] = [];
-  const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
-  if (status === 'offline') {
-    tags.push('DOWN');
-  } else if (status === 'alert') {
-    tags.push('ALERTA');
-  }
+  if (ctx.queryReady !== false) {
+    const status = resolveHostNodeStatus(node, ctx.hostDisplay, ctx.hostMetadata);
+    if (status === 'offline') {
+      tags.push('DOWN');
+    } else if (status === 'alert') {
+      tags.push('ALERTA');
+    }
 
-  const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
-  if (problemSummary) {
-    tags.push(`Problemas (${problemSummary.count})`);
+    const problemSummary = resolveHostProblemSummary(node, ctx.hostMetadata, ctx.hostProblems);
+    if (problemSummary) {
+      tags.push(`Problemas (${problemSummary.count})`);
+    }
+
+    if (filterIndex(ctx).congestedNodeIds.has(node.id)) {
+      tags.push('Link congestionado');
+    }
   }
 
   const typeTag = hostTypeTagForNode(node);
   if (typeTag) {
     tags.push(typeTag);
-  }
-
-  if (filterIndex(ctx).congestedNodeIds.has(node.id)) {
-    tags.push('Link congestionado');
   }
 
   return tags;

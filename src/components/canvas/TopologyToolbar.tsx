@@ -239,16 +239,18 @@ export function TopologyToolbar({
           onFocusNode={onSearchFocusNode}
         />
       </div>
-      <button
-        type="button"
-        className={toolbarClass('icon', { active: showLegend })}
-        onClick={onToggleLegend}
-        title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
-        aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
-        aria-pressed={showLegend}
-      >
-        <FaListUl size={13} />
-      </button>
+      {onToggleLegend ? (
+        <button
+          type="button"
+          className={toolbarClass('icon', { active: showLegend })}
+          onClick={onToggleLegend}
+          title={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+          aria-label={showLegend ? 'Ocultar legenda' : 'Mostrar legenda'}
+          aria-pressed={showLegend}
+        >
+          <FaListUl size={13} />
+        </button>
+      ) : null}
       {onToggleHostAlertList ? (
         <button
           type="button"

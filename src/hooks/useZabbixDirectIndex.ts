@@ -13,6 +13,16 @@ import {
 import { ZabbixInterfaceItem, ZabbixItemLastValue, ZabbixLiveSnapshot } from '../utils/zabbixApi';
 import { coalesceLinkTraffic } from '../utils/linkMetricsRuntime';
 import { HostProblemsMap } from '../utils/noc/types';
+import {
+  isProblemsOnlyPanelDelta,
+  panelStateNeedsRerender,
+  pollVolatileFeedChanged,
+  snapshotOnlyProblemsChanged,
+  ZabbixPollFeed,
+  ZabbixPollSnapshot,
+} from '../utils/zabbixPollVolatile';
+import { sameStructure } from '../utils/structuralIdentity';
+import { scheduleWhenIdle } from '../utils/scheduleAfterPaint';
 
 /** Consulta o Zabbix no browser via `runZabbixPoll`. */
 
@@ -36,6 +46,8 @@ export interface UseZabbixDirectIndexResult {
   ready: boolean;
   loading: boolean;
   error?: string;
+  /** Assinatura de lastvalues/interfaceItems sem re-render do painel (tráfego de cabos). */
+  pollFeed: ZabbixPollFeed;
 }
 
 interface DirectState {
@@ -173,6 +185,36 @@ export function useZabbixDirectIndex({
   const previousRef = useRef<ZabbixLiveSnapshot | undefined>(undefined);
   const lastReadyRef = useRef<DirectState | undefined>(undefined);
   const prevConfigKeyRef = useRef<string | null>(null);
+  const pollSnapshotRef = useRef<ZabbixPollSnapshot>({
+    lastValues: EMPTY_LAST_VALUES,
+    interfaceItems: EMPTY_INTERFACE_ITEMS,
+  });
+  const pollListenersRef = useRef(new Set<() => void>());
+  const publishQueuedRef = useRef(false);
+  const pollFeedRef = useRef<ZabbixPollFeed | null>(null);
+  if (!pollFeedRef.current) {
+    pollFeedRef.current = {
+      subscribe: (listener) => {
+        pollListenersRef.current.add(listener);
+        return () => pollListenersRef.current.delete(listener);
+      },
+      getSnapshot: () => pollSnapshotRef.current,
+    };
+  }
+
+  const publishPollSnapshot = (snapshot: ZabbixPollSnapshot) => {
+    pollSnapshotRef.current = snapshot;
+    if (publishQueuedRef.current) {
+      return;
+    }
+    publishQueuedRef.current = true;
+    requestAnimationFrame(() => {
+      publishQueuedRef.current = false;
+      for (const listener of pollListenersRef.current) {
+        listener();
+      }
+    });
+  };
 
   const [state, setState] = useState<DirectState>(() => {
     if (!enabled || !datasourceUid || !groups.length || !itemKey) {
@@ -209,12 +251,58 @@ export function useZabbixDirectIndex({
     let intervalId: number | undefined;
     let inFlight = false;
 
+    const applyProblemsOnly = (snapshot: ZabbixLiveSnapshot, problems: HostProblemsMap) => {
+      const readyState = lastReadyRef.current;
+      if (!readyState?.ready) {
+        return false;
+      }
+      previousRef.current = snapshot;
+      lastReadyRef.current = { ...readyState, problems };
+      scheduleWhenIdle(() => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setState((prev) => {
+            if (sameStructure(prev.problems, problems)) {
+              return prev;
+            }
+            return { ...prev, problems };
+          });
+        });
+      }, 16);
+      return true;
+    };
+
     const applySnapshot = (
       snapshot: ZabbixLiveSnapshot,
       ready: boolean,
       loading: boolean,
-      error?: string
+      error?: string,
+      volatileOnly = false
     ) => {
+      const readyState = lastReadyRef.current;
+      const trafficIds = new Set(trafficItemIdsRef.current);
+      const trafficKeys = new Set(trafficKeysRef.current);
+      if (
+        ready &&
+        !error &&
+        readyState?.ready &&
+        snapshotOnlyProblemsChanged(previousRef.current, snapshot, trafficIds, trafficKeys)
+      ) {
+        if (applyProblemsOnly(snapshot, snapshot.problems ?? EMPTY_PROBLEMS)) {
+          return;
+        }
+      }
+      if (ready && !error && readyState?.ready && volatileOnly) {
+        previousRef.current = snapshot;
+        publishPollSnapshot({
+          lastValues: snapshot.lastValues ?? EMPTY_LAST_VALUES,
+          interfaceItems: snapshot.interfaceItems ?? EMPTY_INTERFACE_ITEMS,
+        });
+        return;
+      }
+
       const fromSnapshot = directStateFromLiveSnapshot(
         snapshot,
         datasourceUid,
@@ -226,12 +314,34 @@ export function useZabbixDirectIndex({
       if (fromSnapshot && ready && !error) {
         previousRef.current = snapshot;
         const alreadyReady = Boolean(lastReadyRef.current?.ready);
-        lastReadyRef.current = fromSnapshot;
-        if (alreadyReady) {
-          startTransition(() => setState(fromSnapshot));
-        } else {
-          setState(fromSnapshot);
+        const feedChanged =
+          !lastReadyRef.current ||
+          pollVolatileFeedChanged(lastReadyRef.current, fromSnapshot, trafficIds, trafficKeys);
+        if (feedChanged) {
+          publishPollSnapshot({
+            lastValues: fromSnapshot.lastValues,
+            interfaceItems: fromSnapshot.interfaceItems,
+          });
         }
+        if (
+          alreadyReady &&
+          lastReadyRef.current &&
+          isProblemsOnlyPanelDelta(lastReadyRef.current, fromSnapshot, trafficIds, trafficKeys)
+        ) {
+          applyProblemsOnly(snapshot, fromSnapshot.problems);
+          return;
+        }
+        if (
+          alreadyReady &&
+          lastReadyRef.current &&
+          !panelStateNeedsRerender(lastReadyRef.current, fromSnapshot, trafficIds, trafficKeys)
+        ) {
+          return;
+        }
+        lastReadyRef.current = fromSnapshot;
+        startTransition(() => {
+          setState(fromSnapshot);
+        });
         return;
       }
       if (error) {
@@ -253,7 +363,9 @@ export function useZabbixDirectIndex({
       }
       if (fromSnapshot) {
         previousRef.current = snapshot;
-        setState({ ...fromSnapshot, ready, loading });
+        startTransition(() => {
+          setState({ ...fromSnapshot, ready, loading });
+        });
         return;
       }
       setState((prev) => ({
@@ -278,14 +390,20 @@ export function useZabbixDirectIndex({
           previous: previousRef.current,
           onSnapshot: (snapshot) => {
             if (!cancelled) {
-              applySnapshot(snapshot, true, false);
+              applySnapshot(snapshot, true, false, undefined, false);
             }
           },
         });
         if (cancelled) {
           return;
         }
-        applySnapshot(result.snapshot, !result.error, false, result.error);
+        applySnapshot(
+          result.snapshot,
+          !result.error,
+          false,
+          result.error,
+          Boolean(result.volatileTrafficOnly)
+        );
       } catch {
         if (!cancelled) {
           setState((prev) => ({
@@ -314,5 +432,5 @@ export function useZabbixDirectIndex({
     };
   }, [enabled, configKey, datasourceUid, itemKey, intervalSec]);
 
-  return state;
+  return { ...state, pollFeed: pollFeedRef.current! };
 }
