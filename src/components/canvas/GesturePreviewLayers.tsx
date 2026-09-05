@@ -62,7 +62,6 @@ interface Props {
   beginPan: (e: React.PointerEvent, node?: TopologyNode, link?: TopologyLink) => void;
   beginWaypointDragFromPath: (e: React.PointerEvent, link: TopologyLink) => void;
   removeWaypointNearPointer: (e: React.MouseEvent, link: TopologyLink) => void;
-  flowAnimateBudget: number;
 }
 
 /**
@@ -112,7 +111,6 @@ export function GesturePreviewLayers({
   beginPan,
   beginWaypointDragFromPath,
   removeWaypointNearPointer,
-  flowAnimateBudget,
 }: Props) {
   const { dragPreview, alignGuides, marqueeRect } = useCanvasGestureUi(store);
   const nodeLayouts = useMemo(
@@ -156,7 +154,6 @@ export function GesturePreviewLayers({
         beginPan={beginPan}
         beginWaypointDragFromPath={beginWaypointDragFromPath}
         removeWaypointNearPointer={removeWaypointNearPointer}
-        flowAnimateBudget={flowAnimateBudget}
       />
 
       <LinkTrafficOverlaysLayer

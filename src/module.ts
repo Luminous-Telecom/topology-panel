@@ -407,7 +407,7 @@ export const plugin = new PanelPlugin<TopologyPanelOptions>(TopologyPanelLoader)
       .addNumberInput({
         path: 'linkAnimationSpeed',
         name: 'Velocidade do tráfego',
-        description: 'Multiplicador da velocidade (1 = padrão)',
+        description: 'Igual em todos os cabos (1 = padrão)',
         defaultValue: 0.5,
         settings: {
           min: 0.25,

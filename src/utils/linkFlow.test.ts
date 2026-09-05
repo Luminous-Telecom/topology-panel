@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LINK_FLOW_DASH, LINK_FLOW_SPEED, startLinkFlowAnimation } from './linkFlow';
+import { LINK_FLOW_DASH, LINK_FLOW_PERIOD, LINK_FLOW_SPEED, startLinkFlowAnimation } from './linkFlow';
 
 /** Faixa de fluxo como o canvas desenha: direção e ativo no DOM. */
 function lane(root: HTMLElement, opts: { active: boolean }): Element {
@@ -77,6 +77,30 @@ describe('startLinkFlowAnimation', () => {
     controller.stop();
   });
 
+  it('pulso avança os mesmos px em cabo curto e longo', () => {
+    const make = (length: number) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      el.setAttribute('data-link-flow', 'download');
+      el.setAttribute('data-link-flow-arrow', 'true');
+      el.setAttribute('data-link-flow-length', String(length));
+      el.setAttribute('data-link-flow-phase', '0');
+      el.setAttribute('data-link-flow-step', '0.4');
+      el.setAttribute('data-link-flow-path', `M 0 0 L ${length} 0`);
+      return el;
+    };
+    const short = make(100);
+    const long = make(400);
+    root.append(short, long);
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(100);
+    const shortMoved = Number(short.style.getPropertyValue('offset-distance').replace('px', ''));
+    const longMoved = Number(long.style.getPropertyValue('offset-distance').replace('px', ''));
+    expect(shortMoved).toBeGreaterThan(0);
+    expect(longMoved).toBeCloseTo(shortMoved, 5);
+    expect(LINK_FLOW_PERIOD).toBe(18);
+    controller.stop();
+  });
+
   it('seta sem comprimento de cabo não é animada', () => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     el.setAttribute('data-link-flow', 'upload');
@@ -91,32 +115,20 @@ describe('startLinkFlowAnimation', () => {
     controller.stop();
   });
 
-  it('o zoom não muda o dash nem a velocidade no mapa', () => {
-    const atScale = (scale: number): { moved: number; dash: string | null; styleDash: string } => {
-      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      el.setAttribute('data-link-flow', 'upload');
-      el.setAttribute('stroke-dasharray', '10 16');
-      el.setAttribute('data-link-flow-period', '26');
-      el.setAttribute('data-link-flow-step', '2');
-      el.setAttribute('data-link-flow-active', 'true');
-      root.replaceChildren(el);
-      const controller = startLinkFlowAnimation(root);
-      controller.setViewScale(scale);
-      vi.advanceTimersByTime(100);
-      const moved = offsetOf(el);
-      const dash = el.getAttribute('stroke-dasharray');
-      const styleDash = el instanceof SVGElement ? el.style.strokeDasharray : '';
-      controller.stop();
-      return { moved, dash, styleDash };
-    };
-    const zoomedOut = atScale(0.5);
-    const zoomedIn = atScale(2);
-    expect(zoomedOut.moved).toBeGreaterThan(0);
-    expect(zoomedOut.moved).toBe(zoomedIn.moved);
-    expect(zoomedOut.dash).toBe('10 16');
-    expect(zoomedIn.dash).toBe('10 16');
-    expect(zoomedOut.styleDash).toBe('');
-    expect(zoomedIn.styleDash).toBe('');
+  it('o dash e o passo ficam em unidades do mapa', () => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('data-link-flow', 'upload');
+    el.setAttribute('stroke-dasharray', '10 16');
+    el.setAttribute('data-link-flow-period', '26');
+    el.setAttribute('data-link-flow-step', '2');
+    el.setAttribute('data-link-flow-active', 'true');
+    root.appendChild(el);
+    const controller = startLinkFlowAnimation(root);
+    vi.advanceTimersByTime(100);
+    expect(offsetOf(el)).toBeGreaterThan(0);
+    expect(el.getAttribute('stroke-dasharray')).toBe('10 16');
+    expect(el instanceof SVGElement ? el.style.strokeDasharray : '').toBe('');
+    controller.stop();
   });
 
   it('avança o deslocamento das faixas ativas', () => {
@@ -206,28 +218,6 @@ describe('startLinkFlowAnimation', () => {
     vi.advanceTimersByTime(100);
     expect(offsetOf(el)).not.toBe(parado);
     controller.stop();
-  });
-
-  it('reaplica offset-path quando a escala do mapa muda', () => {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    el.setAttribute('data-link-flow', 'download');
-    el.setAttribute('data-link-flow-arrow', 'true');
-    el.setAttribute('data-link-flow-length', '100');
-    el.setAttribute('data-link-flow-phase', '0');
-    el.setAttribute('data-link-flow-path', 'M 0 0 L 100 0');
-    root.appendChild(el);
-    const setProperty = vi.spyOn(el.style, 'setProperty');
-    const controller = startLinkFlowAnimation(root);
-    vi.advanceTimersByTime(50);
-    const callsBefore = setProperty.mock.calls.filter(([name]) => name === 'offset-path').length;
-    expect(callsBefore).toBeGreaterThan(0);
-
-    controller.setViewScale(2);
-    vi.advanceTimersByTime(50);
-    const callsAfter = setProperty.mock.calls.filter(([name]) => name === 'offset-path').length;
-    expect(callsAfter).toBeGreaterThan(callsBefore);
-    controller.stop();
-    setProperty.mockRestore();
   });
 
   it('stop encerra o frame e o timer do modo dormente', () => {

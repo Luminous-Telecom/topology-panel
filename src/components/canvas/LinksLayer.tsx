@@ -21,8 +21,6 @@ interface Props {
   linkPaintMetricsByLink: Record<string, LinkRuntimeMetrics>;
   hostDisplay?: HostDisplayMap;
   hostMetadata?: HostMetadataMap;
-  /** Máximo de cabos com faixas animadas (orçamento de performance). */
-  flowAnimateBudget: number;
   onLinkSelect: (link: TopologyLink) => void;
   onLinkContextMenu: (e: React.MouseEvent, link: TopologyLink) => void;
   beginPan: (e: React.PointerEvent, node?: TopologyNode, link?: TopologyLink) => void;
@@ -48,12 +46,11 @@ function LinksLayerComponent({
   beginPan,
   beginWaypointDragFromPath,
   removeWaypointNearPointer,
-  flowAnimateBudget,
 }: Props) {
   const selectedKey = selectedLink ? linkKey(selectedLink) : null;
   return (
     <>
-      {renderLinks.map(({ link, key, bundleOffset }, index) => {
+      {renderLinks.map(({ link, key, bundleOffset }) => {
         const lk = linkKey(link);
         return (
         <LinkLine
@@ -68,7 +65,6 @@ function LinksLayerComponent({
           runtimeMetrics={linkPaintMetricsByLink[lk]}
           fromHostOffline={isHostNodeOffline(nodeLayouts.get(link.from), hostDisplay, hostMetadata)}
           toHostOffline={isHostNodeOffline(nodeLayouts.get(link.to), hostDisplay, hostMetadata)}
-          flowAnimate={index < flowAnimateBudget}
           onSelect={() => {
             const { panTool, editable } = interactionRef.current;
             if (!panTool && !editable) {

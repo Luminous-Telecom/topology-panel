@@ -56,7 +56,6 @@ describe('LinksLayer', () => {
     setHoveredLinkKey: () => {},
     resolveLinkWaypoints: () => [],
     linkPaintMetricsByLink: {},
-    flowAnimateBudget: 99,
     onLinkSelect: () => {},
     onLinkContextMenu: () => {},
     beginPan: () => {},

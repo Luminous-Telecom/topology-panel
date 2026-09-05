@@ -54,7 +54,6 @@ interface LinkLineProps {
   onContextMenu: (e: React.MouseEvent) => void;
   onPathPointerDown: (e: React.PointerEvent) => void;
   onPathDoubleClick: (e: React.MouseEvent) => void;
-  flowAnimate?: boolean;
 }
 
 function resolveBaseStrokeWidth(selected: boolean, hovered: boolean): number {
@@ -106,7 +105,6 @@ function LinkLineComponent({
   onContextMenu,
   onPathPointerDown,
   onPathDoubleClick,
-  flowAnimate = true,
 }: LinkLineProps) {
   const theme = useTheme2();
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
@@ -174,7 +172,6 @@ function LinkLineComponent({
   const reverseD = reverseLinkPathD(pathPoints, gridStep, hasWaypoints, bundleOffset);
   const animationEnabled = options.linkAnimationEnabled !== false;
   const trafficActive =
-    flowAnimate &&
     animationEnabled &&
     !linkDown &&
     !interfaceDown &&
@@ -310,8 +307,7 @@ export const LinkLine = React.memo(LinkLineComponent, (prev, next) => {
     prev.options.linkUtilThresholdCritical !== next.options.linkUtilThresholdCritical ||
     prev.options.linkAnimationEnabled !== next.options.linkAnimationEnabled ||
     prev.options.linkAnimationSpeed !== next.options.linkAnimationSpeed ||
-    prev.options.linkAnimationEffect !== next.options.linkAnimationEffect ||
-    prev.flowAnimate !== next.flowAnimate
+    prev.options.linkAnimationEffect !== next.options.linkAnimationEffect
   ) {
     return false;
   }

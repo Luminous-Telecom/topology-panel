@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TopologyLink } from '../types';
+import { trafficFlowStep } from './linkAnimationStyle';
 import { syncLinkFlowStepsInRoot, syncTrafficPillGroup, trafficPillLabels } from './linkTrafficPillDom';
 
 function pillGroup(): SVGGElement {
@@ -67,7 +68,7 @@ describe('linkTrafficPillDom', () => {
     expect(g.querySelector('[data-link-pill-rx-value]')?.textContent?.trim()).toBe('2 Mbps');
   });
 
-  it('syncLinkFlowStepsInRoot grava passo maior quando o upload sobe', () => {
+  it('syncLinkFlowStepsInRoot grava o mesmo passo independente do tráfego', () => {
     const root = document.createElement('div');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('data-link-flow', 'upload');
@@ -88,7 +89,7 @@ describe('linkTrafficPillDom', () => {
       ],
     ]);
     expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
-    const busy = Number(path.getAttribute('data-link-flow-step'));
+    expect(Number(path.getAttribute('data-link-flow-step'))).toBe(trafficFlowStep(1));
     expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(0);
     links.set('a->b', {
       link,
@@ -98,11 +99,11 @@ describe('linkTrafficPillDom', () => {
         to: {},
       },
     });
-    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
-    expect(Number(path.getAttribute('data-link-flow-step'))).toBeLessThan(busy);
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(0);
+    expect(Number(path.getAttribute('data-link-flow-step'))).toBe(trafficFlowStep(1));
   });
 
-  it('passo de download usa o RX da interface', () => {
+  it('passo de download e upload é o mesmo', () => {
     const root = document.createElement('div');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('data-link-flow', 'download');
@@ -130,8 +131,9 @@ describe('linkTrafficPillDom', () => {
     expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
     const downloadStep = Number(path.getAttribute('data-link-flow-step'));
     path.setAttribute('data-link-flow', 'upload');
-    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(1);
-    expect(downloadStep).toBeGreaterThan(Number(path.getAttribute('data-link-flow-step')));
+    expect(syncLinkFlowStepsInRoot(root, links, 1)).toBe(0);
+    expect(downloadStep).toBe(Number(path.getAttribute('data-link-flow-step')));
+    expect(downloadStep).toBe(trafficFlowStep(1));
   });
 
   it('syncTrafficPillGroup troca o texto sem remontar o grupo', () => {

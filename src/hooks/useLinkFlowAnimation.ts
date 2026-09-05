@@ -5,8 +5,6 @@ import { CanvasGestureStore } from '../utils/canvasGestureStore';
 interface LinkFlowAnimationOptions {
   /** Acorda o laço quando a Query fica pronta. */
   queryReady?: boolean;
-  /** Escala do canvas — o zoom invalida o offset-path cacheado das setas. */
-  viewScale?: number;
   /** Pausa a animação durante arraste, laço ou pan com preview ativo. */
   gestureStore?: CanvasGestureStore;
   /** Troca de mapa/submapa — faixas novas entram no laço sem esperar o scan de 250 ms. */
@@ -18,14 +16,12 @@ function gestureBlocksLinkFlow(store: CanvasGestureStore): boolean {
   return ui.dragPreview != null || ui.marqueeRect != null;
 }
 
-/** Anima os tracejados de download/upload dos links (velocidade via SNMP / utilização). */
+/** Anima os tracejados de download/upload dos links (velocidade igual, só o controle do painel). */
 export function useLinkFlowAnimation(
   wrapRef: RefObject<HTMLDivElement>,
-  { queryReady, viewScale = 1, gestureStore, navigationKey }: LinkFlowAnimationOptions = {}
+  { queryReady, gestureStore, navigationKey }: LinkFlowAnimationOptions = {}
 ): void {
   const linkFlowRef = useRef<LinkFlowController | null>(null);
-  const viewScaleRef = useRef(viewScale);
-  viewScaleRef.current = viewScale;
 
   const syncPaused = (controller: LinkFlowController) => {
     const gesturing = gestureStore ? gestureBlocksLinkFlow(gestureStore) : false;
@@ -38,7 +34,6 @@ export function useLinkFlowAnimation(
       return;
     }
     const controller = startLinkFlowAnimation(el);
-    controller.setViewScale(viewScale);
     linkFlowRef.current = controller;
     syncPaused(controller);
     const onVisibility = () => syncPaused(controller);
@@ -59,8 +54,7 @@ export function useLinkFlowAnimation(
     if (!controller) {
       return;
     }
-    controller.setViewScale(viewScale);
     syncPaused(controller);
     controller.wake();
-  }, [gestureStore, queryReady, viewScale, navigationKey]);
+  }, [gestureStore, queryReady, navigationKey]);
 }

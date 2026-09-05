@@ -3,14 +3,14 @@
  *
  * Traço curto + linecap redondo vira cápsula (pacote). Soma do padrão = LINK_FLOW_PERIOD.
  *
- * O passo por faixa vem de `data-link-flow-step` (upload via `syncLinkFlowStepsInRoot`). O React
- * não grava `offset-distance`, `offset-path` nem `stroke-dashoffset` — gravar speed/path no SVG a
- * cada poll zerava o deslocamento no Chrome.
+ * O passo por faixa vem de `data-link-flow-step` (igual em todos, via `syncLinkFlowStepsInRoot`).
+ * O React não grava `offset-distance`, `offset-path` nem `stroke-dashoffset` — gravar speed/path
+ * no SVG a cada poll zerava o deslocamento no Chrome.
  */
 
 export const LINK_FLOW_DASH = '7 11';
-const LINK_FLOW_PERIOD = 18;
-/** Multiplicador-base do passo; o lastvalue escala via `data-link-flow-step`. */
+export const LINK_FLOW_PERIOD = 18;
+/** Multiplicador-base do passo; o controle do painel entra em `data-link-flow-step`. */
 export const LINK_FLOW_SPEED = 1;
 
 /** Seta que corre pelo cabo: anda por `offset-path`, não por dash. */
@@ -34,28 +34,64 @@ function readNumberAttribute(el: Element, name: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function laneStep(el: Element): number {
+/** Atributos lidos na varredura do DOM — o frame só consulta este cache. */
+type LaneMeta = {
+  step: number;
+  period: number;
+  phase: number;
+  isArrow: boolean;
+  direction: string;
+  pathD: string;
+  rotate: string;
+  storageKey: string | undefined;
+  active: boolean;
+};
+
+const laneMeta = new WeakMap<Element, LaneMeta>();
+
+function buildLaneMeta(el: Element): LaneMeta {
+  const isArrow = el.hasAttribute(FLOW_ARROW_ATTR);
+  const customPeriod = readNumberAttribute(el, 'data-link-flow-period');
+  const period = isArrow
+    ? readNumberAttribute(el, 'data-link-flow-length')
+    : customPeriod > 0
+      ? customPeriod
+      : LINK_FLOW_PERIOD;
+  const linkKey = el.getAttribute('data-link-key');
+  const direction = el.getAttribute('data-link-flow') ?? '';
   const mult = readNumberAttribute(el, 'data-link-flow-step');
-  return LINK_FLOW_SPEED * (mult > 0 ? mult : 1);
+  return {
+    step: LINK_FLOW_SPEED * (mult > 0 ? mult : 1),
+    period,
+    phase: readNumberAttribute(el, 'data-link-flow-phase'),
+    isArrow,
+    direction,
+    pathD: el.getAttribute('data-link-flow-path') ?? '',
+    rotate: el.getAttribute('data-link-flow-rotate') === 'auto' ? 'auto' : '0deg',
+    storageKey: linkKey ? (direction ? `${linkKey}\0${direction}` : linkKey) : undefined,
+    active: el.getAttribute('data-link-flow-active') !== 'false',
+  };
 }
 
-/** Dash fecha o ciclo no padrão; seta fecha no comprimento do próprio cabo. */
-function flowPeriod(el: Element): number {
-  if (el.hasAttribute(FLOW_ARROW_ATTR)) {
-    return readNumberAttribute(el, 'data-link-flow-length');
+function metaOf(el: Element): LaneMeta {
+  const cached = laneMeta.get(el);
+  if (cached) {
+    return cached;
   }
-  const custom = readNumberAttribute(el, 'data-link-flow-period');
-  if (custom > 0) {
-    return custom;
+  const built = buildLaneMeta(el);
+  laneMeta.set(el, built);
+  return built;
+}
+
+function refreshLaneMeta(lanes: Element[]): void {
+  for (const el of lanes) {
+    laneMeta.set(el, buildLaneMeta(el));
   }
-  return LINK_FLOW_PERIOD;
 }
 
 export type LinkFlowController = {
   stop: () => void;
   setPaused: (paused: boolean) => void;
-  /** Escala do `<g>` do mapa — muda o offset-path aplicado e acorda o laço. */
-  setViewScale: (scale: number) => void;
   /** Relê as faixas agora — o lastvalue acabou de pintar e o laço dormente atrasava ~1 s. */
   wake: () => void;
 };
@@ -80,13 +116,13 @@ const FLOW_FRAME_MS = 1000 / 60;
 const FLOW_MAX_DT_MS = 80;
 
 function frameSkipForLaneCount(count: number): number {
-  if (count <= 40) {
+  if (count <= 60) {
     return 1;
   }
-  if (count <= 80) {
+  if (count <= 120) {
     return 2;
   }
-  if (count <= 160) {
+  if (count <= 240) {
     return 3;
   }
   return 4;
@@ -96,19 +132,9 @@ function queryIntervalForLaneCount(count: number): number {
   return count > 80 ? FLOW_QUERY_INTERVAL_HEAVY_MS : FLOW_QUERY_INTERVAL_MS;
 }
 
-function flowStorageKey(el: Element): string | undefined {
-  const linkKey = el.getAttribute('data-link-key');
-  if (!linkKey) {
-    return undefined;
-  }
-  const dir = el.getAttribute('data-link-flow') ?? '';
-  return dir ? `${linkKey}\0${dir}` : linkKey;
-}
-
-function readFlowOffset(el: Element): number {
-  const key = flowStorageKey(el);
-  if (key !== undefined) {
-    const keyed = flowOffsetsByLinkKey.get(key);
+function readFlowOffset(el: Element, meta: LaneMeta): number {
+  if (meta.storageKey !== undefined) {
+    const keyed = flowOffsetsByLinkKey.get(meta.storageKey);
     if (keyed !== undefined) {
       return keyed;
     }
@@ -116,66 +142,60 @@ function readFlowOffset(el: Element): number {
   return flowOffsets.get(el) ?? 0;
 }
 
-function storeFlowOffset(el: Element, normalized: number): void {
+function storeFlowOffset(el: Element, meta: LaneMeta, normalized: number): void {
   flowOffsets.set(el, normalized);
-  const key = flowStorageKey(el);
-  if (key !== undefined) {
-    flowOffsetsByLinkKey.set(key, normalized);
+  if (meta.storageKey !== undefined) {
+    flowOffsetsByLinkKey.set(meta.storageKey, normalized);
   }
 }
 
-function isFlowLaneActive(el: Element): boolean {
-  return el.getAttribute('data-link-flow-active') !== 'false';
-}
-
-function advanceFlowLanes(lanes: Element[], scale: number, frameUnits: number): number {
+function advanceFlowLanes(lanes: Element[], frameUnits: number): number {
   let animated = 0;
   const units = Number.isFinite(frameUnits) && frameUnits > 0 ? frameUnits : 1;
   for (const el of lanes) {
-    if (!el.isConnected || !isFlowLaneActive(el)) {
+    if (!el.isConnected) {
       continue;
     }
-    writeFlowOffset(el, readFlowOffset(el) + laneStep(el) * units, scale);
+    const meta = metaOf(el);
+    if (!meta.active) {
+      continue;
+    }
+    writeFlowOffset(el, meta, readFlowOffset(el, meta) + meta.step * units);
     animated += 1;
   }
   return animated;
 }
 
-function ensureArrowOffsetPath(el: Element, scale: number): boolean {
-  const d = el.getAttribute('data-link-flow-path');
-  if (!d || !(el instanceof SVGElement || el instanceof HTMLElement)) {
+function ensureArrowOffsetPath(el: Element, meta: LaneMeta): boolean {
+  if (!meta.pathD || !(el instanceof SVGElement || el instanceof HTMLElement)) {
     return false;
   }
-  const rotate = el.getAttribute('data-link-flow-rotate') === 'auto' ? 'auto' : '0deg';
-  const cacheKey = `${arrowPathCacheKey(d, scale)}\0${rotate}`;
+  const cacheKey = `${meta.pathD}\0${meta.rotate}`;
   if (appliedFlowPaths.get(el) === cacheKey) {
     return false;
   }
   appliedFlowPaths.set(el, cacheKey);
-  el.style.setProperty('offset-path', `path('${d}')`);
-  el.style.setProperty('offset-rotate', rotate);
+  el.style.setProperty('offset-path', `path('${meta.pathD}')`);
+  el.style.setProperty('offset-rotate', meta.rotate);
   return true;
 }
 
-function writeFlowOffset(el: Element, offset: number, scale: number): boolean {
-  const period = flowPeriod(el);
-  if (period <= 0) {
+function writeFlowOffset(el: Element, meta: LaneMeta, offset: number): boolean {
+  if (meta.period <= 0) {
     return false;
   }
-  const normalized = ((offset % period) + period) % period;
-  storeFlowOffset(el, normalized);
-  if (el.hasAttribute(FLOW_ARROW_ATTR)) {
-    const pathWrote = ensureArrowOffsetPath(el, scale);
+  const normalized = ((offset % meta.period) + meta.period) % meta.period;
+  storeFlowOffset(el, meta, normalized);
+  if (meta.isArrow) {
+    const pathWrote = ensureArrowOffsetPath(el, meta);
     // Cada seta entra defasada para as três se espalharem pelo cabo; o path já vem no sentido certo.
-    const phase = readNumberAttribute(el, 'data-link-flow-phase');
-    const distance = (normalized + phase) % period;
+    const distance = (normalized + meta.phase) % meta.period;
     if (el instanceof SVGElement || el instanceof HTMLElement) {
       el.style.setProperty('offset-distance', `${distance}px`);
     }
     return pathWrote;
   }
-  const direction = el.getAttribute('data-link-flow');
-  const signed = direction === 'upload' ? -normalized : normalized;
+  const signed = meta.direction === 'upload' ? -normalized : normalized;
   if (el instanceof SVGElement) {
     el.style.strokeDashoffset = String(signed);
   } else {
@@ -184,21 +204,12 @@ function writeFlowOffset(el: Element, offset: number, scale: number): boolean {
   return false;
 }
 
-function normalizeViewScale(scale: number): number {
-  return Number.isFinite(scale) && scale > 0 ? scale : 1;
-}
-
-function arrowPathCacheKey(pathD: string, viewScale: number): string {
-  return `${pathD}\0${viewScale}`;
-}
-
 /** Atualiza o deslocamento via rAF com velocidade fixa por faixa. */
 export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
   let raf = 0;
   /** Timer do modo dormente — nenhuma faixa no DOM, nada para animar. */
   let idleTimer = 0;
   let paused = false;
-  let viewScale = 1;
   let lanes: Element[] = [];
   let lanesReadAt = 0;
   let frameTick = 0;
@@ -245,6 +256,7 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
     const scanInterval = queryIntervalForLaneCount(lanes.length);
     if (stale || now - lanesReadAt >= scanInterval) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
+      refreshLaneMeta(lanes);
       lanesReadAt = now;
     }
     const skip = frameSkipForLaneCount(lanes.length);
@@ -256,11 +268,12 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
     const elapsed = lastTickAt === 0 ? FLOW_FRAME_MS : now - lastTickAt;
     lastTickAt = now;
     const frameUnits = Math.min(Math.max(elapsed, 0), FLOW_MAX_DT_MS) / FLOW_FRAME_MS;
-    let animated = advanceFlowLanes(lanes, viewScale, frameUnits);
+    let animated = advanceFlowLanes(lanes, frameUnits);
     if (!animated) {
       lanes = Array.from(root.querySelectorAll('[data-link-flow]'));
+      refreshLaneMeta(lanes);
       lanesReadAt = now;
-      animated = advanceFlowLanes(lanes, viewScale, frameUnits);
+      animated = advanceFlowLanes(lanes, frameUnits);
     }
     if (!animated) {
       sleepUntilNextScan();
@@ -288,19 +301,9 @@ export function startLinkFlowAnimation(root: HTMLElement): LinkFlowController {
 
   schedule();
 
-  const setViewScale = (scale: number) => {
-    const next = normalizeViewScale(scale);
-    if (viewScale === next) {
-      return;
-    }
-    viewScale = next;
-    wake();
-  };
-
   return {
     stop: clearPending,
     wake,
-    setViewScale,
     setPaused: (next) => {
       if (paused === next) {
         return;

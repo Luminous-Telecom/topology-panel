@@ -51,7 +51,7 @@ import { openDashboardUrl } from './DashboardPickerModal';
 import { useGridLines } from '../hooks/useGridLines';
 import { useLinkFlowAnimation } from '../hooks/useLinkFlowAnimation';
 import { useLinkTrafficPillSync } from '../hooks/useLinkTrafficPillSync';
-import { LINK_ANIMATION_SPEED_DEFAULT, linkFlowAnimationBudget } from '../utils/linkAnimationStyle';
+import { LINK_ANIMATION_SPEED_DEFAULT } from '../utils/linkAnimationStyle';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useStableIdentity } from '../hooks/useStableIdentity';
 import { structuralShareMap } from '../utils/structuralIdentity';
@@ -296,7 +296,6 @@ export function TopologyCanvasComponent({
   });
   useLinkFlowAnimation(wrapRef, {
     queryReady,
-    viewScale: view.scale,
     gestureStore,
     navigationKey: mapNavigationKey,
   });
@@ -1291,10 +1290,6 @@ export function TopologyCanvasComponent({
   // recortada invalidaria o `React.memo` das camadas justamente durante o pan.
   const visibleNodes = useStableIdentity(visibleNodesRaw);
   const culledRenderLinks = useStableIdentity(culledRenderLinksRaw);
-  const flowAnimateBudget = useMemo(
-    () => linkFlowAnimationBudget(culledRenderLinks.length),
-    [culledRenderLinks.length]
-  );
   pillSyncRef.current = {
     renderLinks: culledRenderLinks,
     nodeLayouts,
@@ -1503,7 +1498,6 @@ export function TopologyCanvasComponent({
             setHoveredLinkKey={setHoveredLinkKey}
             resolveLinkWaypoints={resolveLinkWaypoints}
             linkPaintMetricsByLink={linkPaintMetricsByLink}
-            flowAnimateBudget={flowAnimateBudget}
             onNetworkPointerDown={stableNetworkPointerDown}
             onNodePointerDown={stableNodePointerDown}
             onNodeClick={stableNodeClick}

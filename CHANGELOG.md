@@ -7,6 +7,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A v
 
 ## [Unreleased]
 
+## [1.4.431] - 2026-09-05
+
+### Alterado
+
+- Velocidade do efeito nos cabos fica igual em todos, só pelo controle do painel — sem
+  acompanhar o bps. Pulso e seta andam em px/s fixos.
+- Submapa e mapa raiz usam a mesma quantidade de pulsos/setas (só o tamanho do cabo).
+
+### Removido
+
+- Cálculo de velocidade por tráfego, teto de pulsos por densidade e orçamento de cabos
+  animados — não mudavam o visual e só complicavam o laço.
+
 ## [1.4.430] - 2026-09-05
 
 ### Adicionado

@@ -25,12 +25,14 @@ Render do canvas e do minimapa, resolução de cores e ícones.
 - Fluxo: o visual vem da opção **Efeito do tráfego** (`linkAnimationEffect`: traço, dois
   sentidos, cápsulas, pulsos, setas, cometa). Pulsos e setas usam `offset-path` na cor do
   sentido (TX origem→destino, RX no path invertido). Sem `offset-path`, caem no traço.
-- Velocidade dos pulsos **acompanha o bps** (`linkFlowSpeedFromUpload`, escala log): upload
-  usa TX, download usa RX. 1 Gbps corre mais que 10 Mbps. O laço avança por tempo (`dt`).
+- Velocidade do efeito é **igual em todos os cabos e mapas**, só o controle **Velocidade do
+  tráfego** (`trafficFlowStep` + `syncLinkFlowStepsInRoot`): px/s fixos, sem bps e sem
+  fração do comprimento. Quantidade de pulsos/setas só pelo tamanho do cabo
+  (`linkFlowPulseCount`). O laço avança por tempo (`dt`).
   Pulsos e passo ficam em unidades do mapa: o zoom da câmera não muda o tamanho nem a
   velocidade no cabo. Sem `offset-path`, cai no traço. O poll grava só `data-link-flow-step`
-  no DOM; o React **não** grava esse atributo. Interface down não anima (`trafficActive`); a
-  linha fica vermelha como já é. Cor do cabo muda com a **faixa** de utilização; o rótulo
+  no DOM; o React **não** grava esse atributo. Interface down não anima (`trafficActive`);
+  a linha fica vermelha como já é. Cor do cabo muda com a **faixa** de utilização; o rótulo
   de bps atualiza na pílula (`LinkTrafficOverlay`) sem remontar o path nem os pulsos.
 - Marcadores em px (`markerUnits=userSpaceOnUse`): ponto nas duas pontas.
 - Seleção/hover: a linha vai para `#4FC3F7` / `#81D4FA`.

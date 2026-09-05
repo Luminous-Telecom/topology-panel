@@ -1,5 +1,5 @@
 import { LinkRuntimeMetrics, TopologyLink } from '../types';
-import { formatLinkFlowStep, linkFlowSpeedFromUpload } from './linkAnimationStyle';
+import { formatLinkFlowStep, trafficFlowStep } from './linkAnimationStyle';
 import { resolveLinkMapTrafficMetrics } from './linkMetricsRuntime';
 import { formatBitsPerSecond } from './zabbixAdapter/formatTraffic';
 
@@ -100,8 +100,8 @@ export function syncTrafficPillGroup(
 }
 
 /**
- * Atualiza o passo dos pulsos (TX no upload, RX no download), sem o React gravar
- * speed no path (isso zerava o deslocamento no Chrome).
+ * Passo igual em todos os cabos (só o controle do painel). Sem o React gravar speed no
+ * path — isso zerava o deslocamento no Chrome.
  */
 export function syncLinkFlowStepsInRoot(
   root: ParentNode,
@@ -109,27 +109,14 @@ export function syncLinkFlowStepsInRoot(
   baseSpeed: number
 ): number {
   let updated = 0;
+  const next = formatLinkFlowStep(trafficFlowStep(baseSpeed));
   const nodes = root.querySelectorAll('[data-link-flow][data-link-key]');
   for (let i = 0; i < nodes.length; i += 1) {
     const el = nodes.item(i);
     const key = el.getAttribute('data-link-key');
-    if (!key) {
+    if (!key || !linksByKey.has(key)) {
       continue;
     }
-    const entry = linksByKey.get(key);
-    if (!entry) {
-      continue;
-    }
-    const display = resolveLinkMapTrafficMetrics(entry.link, entry.metrics);
-    const upload = el.getAttribute('data-link-flow') !== 'download';
-    const next = formatLinkFlowStep(
-      linkFlowSpeedFromUpload({
-        txBps: upload ? display.txBps : display.rxBps,
-        txUtilizationPct: upload ? display.txUtilizationPct : display.rxUtilizationPct,
-        capacityMbps: display.capacityMbps,
-        baseSpeed,
-      })
-    );
     if (el.getAttribute('data-link-flow-step') !== next) {
       el.setAttribute('data-link-flow-step', next);
       updated += 1;
